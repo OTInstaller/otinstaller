@@ -17,6 +17,7 @@
 </p>
 
 <p align="center">
+  <a href="https://osintverse.com/otinstaller">Website</a> ·
   <a href="https://osintverse.gitbook.io/otinstaller">Documentation</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#typed-inputs">Typed inputs</a> ·
