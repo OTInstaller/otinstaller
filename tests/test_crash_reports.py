@@ -273,3 +273,23 @@ def test_unwritable_results_folder_is_an_error_not_a_crash(monkeypatch, tmp_path
     assert exit_info.value.code == 1
     assert not reported
     assert "can't save results in" in capsys.readouterr().err
+
+
+def test_command_line_mistakes_are_not_crashes(monkeypatch, capsys):
+    """click usage errors that reach run_cli are shown, not reported."""
+    import click
+
+    import otinstaller.cli as cli
+
+    reported = []
+    monkeypatch.setattr(crash_reports, "report", lambda exc, cmd=None: reported.append(exc))
+
+    def bad_usage():
+        raise click.UsageError("Got unexpected extra argument (a)")
+
+    monkeypatch.setattr(cli, "app", bad_usage)
+    with pytest.raises(SystemExit) as exit_info:
+        cli.run_cli()
+    assert exit_info.value.code == 2
+    assert not reported
+    assert "Got unexpected extra argument (a)" in capsys.readouterr().err
