@@ -3791,3 +3791,70 @@ def test_run_all_skips_interactive_and_setup_tools(monkeypatch, tmp_path):
 def test_run_all_include_credentialed_still_skips_interactive(monkeypatch, tmp_path):
     selected = _all_mode_selected(monkeypatch, tmp_path, ["--include-credentialed"])
     assert selected == ["keytool", "plaintool", "setuptool"]
+
+
+def _sherlock_only_registry(monkeypatch, tmp_path):
+    monkeypatch.setenv("OTINSTALLER_HOME", str(tmp_path))
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setenv(
+        "OTINSTALLER_REGISTRY",
+        str(
+            make_registry_yaml(
+                tmp_path,
+                [
+                    {
+                        "name": "sherlock",
+                        "display_name": "Sherlock",
+                        "description": "Search usernames",
+                        "install": {"method": "pip", "package": "sherlock-project"},
+                        "entrypoint": {"command": "sherlock"},
+                        "capabilities": ["username-search"],
+                    }
+                ],
+            )
+        ),
+    )
+    runner.invoke(app, ["init", "--yes"])
+
+
+def test_run_ctrl_c_names_the_results_folder(monkeypatch, tmp_path):
+    """Ctrl-C during a run says where the partial output is, without crashing."""
+    import datetime
+
+    from otinstaller.state import InstalledTool
+
+    _sherlock_only_registry(monkeypatch, tmp_path)
+    results = tmp_path / "results"
+    monkeypatch.setenv("OTINSTALLER_RESULTS_DIR", str(results))
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    installed = InstalledTool(
+        name="sherlock",
+        version="1.0",
+        method="pip",
+        source="sherlock-project",
+        ref=None,
+        commit=None,
+        entry_command="sherlock",
+        entry_script=None,
+        installed_at=now,
+        updated_at=now,
+    )
+    with patch("otinstaller.cli.get_installed", return_value=installed):
+        with patch("otinstaller.cli.run_tool", side_effect=KeyboardInterrupt):
+            result = runner.invoke(app, ["run", "sherlock", "--", "someuser"])
+    assert result.exit_code == 130, result.output
+    assert not isinstance(result.exception, TypeError)
+    assert "partial output saved in" in result.output
+    assert str(results / "sherlock") in result.output.replace("\n", "")
+
+
+def test_tool_name_with_extra_words_explains_how_to_run(monkeypatch, tmp_path):
+    """'otinstaller sherlock johndoe' shows the run command instead of a usage error."""
+    _sherlock_only_registry(monkeypatch, tmp_path)
+    for args in (["sherlock", "johndoe"], ["sherlock", "-x"], ["sherlock", "--bogus", "u:jo"]):
+        result = runner.invoke(app, args)
+        assert result.exit_code == 2, args
+        assert "To run it, use: otinstaller run sherlock -- " in result.output, args
+    result = runner.invoke(app, ["sherlock"])
+    assert result.exit_code == 0
+    assert "Sherlock" in result.output
