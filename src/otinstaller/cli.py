@@ -104,13 +104,32 @@ class ToolAwareGroup(typer.core.TyperGroup):
                 # Return a command that shows tool info
                 from otinstaller.cli import _show_tool_info
 
-                @click.command(name=cmd_name, hidden=True)
+                # Extra words or unknown options are taken here (not left to click),
+                # so "otinstaller sherlock johndoe" explains how to run the tool
+                # instead of failing with a usage error.
+                @click.command(
+                    name=cmd_name,
+                    hidden=True,
+                    context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
+                )
                 @click.option("--json", "json_output", is_flag=True, help="Output as JSON")
                 @click.option("--verbose", is_flag=True, help="Verbose output")
                 @click.option("--no-color", is_flag=True, help="Disable colored output")
+                @click.pass_context
                 def _tool_info_cmd(
-                    json_output: bool = False, verbose: bool = False, no_color: bool = False
+                    click_ctx: click.Context,
+                    json_output: bool = False,
+                    verbose: bool = False,
+                    no_color: bool = False,
                 ):
+                    if click_ctx.args:
+                        extra = " ".join(click_ctx.args)
+                        typer.echo(
+                            f"error: 'otinstaller {cmd_name}' only shows information about "
+                            f"{tool.name}. To run it, use: otinstaller run {tool.name} -- {extra}",
+                            err=True,
+                        )
+                        raise SystemExit(2)
                     _show_tool_info(
                         tool, json_output=json_output, no_color=no_color, verbose=verbose
                     )
@@ -1343,12 +1362,11 @@ def run(
                 raise typer.Exit(code=meta.exit_code)
 
         except KeyboardInterrupt:
-            msg = "interrupted, partial output saved to "
-            if "meta" in locals() and hasattr(meta, "output_path"):
-                msg += meta.output_path
-            else:
-                msg += expected_output_path
-            typer.echo(msg, err=True)
+            # The partial output is in this run's folder; the file name has the
+            # run's own timestamp and id, so name the folder, not a guessed file.
+            typer.echo(
+                f"interrupted, partial output saved in {expected_output_path.parent}", err=True
+            )
             raise typer.Exit(code=130) from None
 
     # Multiple tools: use run_tools_parallel
@@ -2883,6 +2901,15 @@ def run_cli() -> None:
         # A problem with the user's folder, not a bug: say what to do, no traceback
         typer.echo(f"error: {exc}", err=True)
         raise SystemExit(1) from None
+    except click.exceptions.Abort:
+        typer.echo("Aborted!", err=True)
+        raise SystemExit(1) from None
+    except click.ClickException as exc:
+        # A mistake in the command line, not a crash. Newer Typer versions bundle
+        # their own copy of click and only handle that copy's errors, so errors
+        # from click itself can reach this point: show them the way click does.
+        exc.show()
+        raise SystemExit(exc.exit_code) from None
     except Exception as exc:
         try:
             names = set(typer.main.get_command(app).commands)  # type: ignore[attr-defined]
