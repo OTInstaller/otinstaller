@@ -182,7 +182,7 @@ export function authRoutes(app: App) {
     const { provider: p = "github" } = await c.req.json<{ provider?: Provider }>().catch(() => ({} as { provider?: Provider }));
     if (p !== "github" && p !== "gitlab") apiError(400, "unknown_provider", "provider must be github or gitlab");
     const client = oauthClient(c.env, p);
-    const d = p === "github" ? await github.startDeviceFlow(deps.fetch, client.id) : await gitlab.startDeviceFlow(deps.fetch, client.id);
+    const d = p === "github" ? await github.startDeviceFlow(deps.fetch, client.id) : await gitlab.startDeviceFlow(deps.fetch, client.id, client.secret);
     return c.json({ provider: p, device_code: d.deviceCode, user_code: d.userCode, verification_uri: d.verificationUri, interval: d.interval, expires_in: d.expiresIn });
   });
 
@@ -191,7 +191,7 @@ export function authRoutes(app: App) {
     const p = body.provider ?? "github";
     if ((p !== "github" && p !== "gitlab") || !body.device_code) apiError(400, "invalid_body", "send {provider, device_code}");
     const client = oauthClient(c.env, p);
-    const r = p === "github" ? await github.pollDeviceFlow(deps.fetch, client.id, body.device_code) : await gitlab.pollDeviceFlow(deps.fetch, client.id, body.device_code);
+    const r = p === "github" ? await github.pollDeviceFlow(deps.fetch, client.id, body.device_code) : await gitlab.pollDeviceFlow(deps.fetch, client.id, client.secret, body.device_code);
     if (r.status !== "ok") return c.json({ status: r.status });
     const who = p === "github" ? await github.fetchUser(deps.fetch, r.accessToken) : await gitlab.fetchUser(deps.fetch, r.accessToken);
     const userId = await signIn(c.env, p, who, r, null);

@@ -52,12 +52,14 @@ export async function fetchUser(f: Fetch, token: string): Promise<OAuthUser> {
   return { id: String(u.id), login: u.username, name: u.name ?? null, email: u.email ?? u.public_email ?? null, avatarUrl: u.avatar_url ?? null };
 }
 
-export async function startDeviceFlow(f: Fetch, clientId: string) {
+// Confidential applications (ours) must authenticate with the client secret on both device-flow calls;
+// without it GitLab answers 401 invalid_client.
+export async function startDeviceFlow(f: Fetch, clientId: string, clientSecret: string) {
   const res = await check(
     await f(`${GITLAB}/oauth/authorize_device`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-      body: new URLSearchParams({ client_id: clientId, scope: SCOPES }),
+      body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, scope: SCOPES }),
     }),
     "GitLab device code",
   );
@@ -65,11 +67,11 @@ export async function startDeviceFlow(f: Fetch, clientId: string) {
   return { deviceCode: d.device_code, userCode: d.user_code, verificationUri: d.verification_uri_complete ?? d.verification_uri, interval: d.interval ?? 5, expiresIn: d.expires_in };
 }
 
-export async function pollDeviceFlow(f: Fetch, clientId: string, deviceCode: string) {
+export async function pollDeviceFlow(f: Fetch, clientId: string, clientSecret: string, deviceCode: string) {
   const res = await f(`${GITLAB}/oauth/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-    body: new URLSearchParams({ client_id: clientId, device_code: deviceCode, grant_type: "urn:ietf:params:oauth:grant-type:device_code" }),
+    body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, device_code: deviceCode, grant_type: "urn:ietf:params:oauth:grant-type:device_code" }),
   });
   // GitLab answers "authorization_pending" with HTTP 400, so read the body before judging the status.
   const t = (await res.json().catch(() => ({}))) as TokenResponse;
