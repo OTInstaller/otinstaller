@@ -59,8 +59,8 @@ describe("search", () => {
   });
 
   it("filters by runtime and category", async () => {
-    expect(refs((await get("/tools?runtime=pipx")).body)).toEqual(["osintverse/phone-parse"]);
-    expect(refs((await get("/tools?category=domain-dns")).body)).toEqual(["dheeraj/whois-lite"]);
+    expect(refs((await get("/tools?runtime=pipx")).body).sort()).toEqual(["osintverse-community/tldextract", "osintverse/phone-parse"]);
+    expect(refs((await get("/tools?category=domain-dns")).body).sort()).toEqual(["dheeraj/whois-lite", "osintverse-community/tldextract"]);
   });
 
   it("paginates with a cursor", async () => {
@@ -113,6 +113,12 @@ describe("tool detail and manifests", () => {
   it("lists versions newest first", async () => {
     const { body } = await get("/tools/dheeraj/holehe-lite/versions");
     expect(body.versions.map((v: any) => v.version)).toEqual(["1.2.0", "1.1.0", "1.0.0"]);
+  });
+
+  it("records the real signer for keyless-signed images", async () => {
+    const { body } = await get("/tools/sigstore/cosign/latest/manifest");
+    expect(body.signer_identity).toBe("keyless@projectsigstore.iam.gserviceaccount.com");
+    expect(body.signer_issuer).toBe("https://accounts.google.com");
   });
 
   it("follows aliases after a transfer", async () => {

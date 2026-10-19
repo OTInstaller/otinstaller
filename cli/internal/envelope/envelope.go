@@ -48,7 +48,10 @@ func ParseOutput(format string, stdout []byte) (raw any, entities []Entity, warn
 		if err := json.Unmarshal(stdout, &v); err != nil {
 			return string(stdout), entities, []string{"output was not valid JSON; kept as text"}
 		}
-		return v, extract(v), nil
+		if found := extract(v); found != nil {
+			entities = found
+		}
+		return v, entities, nil
 	case "jsonl":
 		var items []any
 		sc := bufio.NewScanner(bytes.NewReader(stdout))

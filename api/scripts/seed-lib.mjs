@@ -14,6 +14,10 @@ addFormats(ajv);
 const validate = ajv.compile(schema);
 
 const fixture = (name) => YAML.parse(readFileSync(path.join(root, "spec/fixtures/valid", name), "utf8"));
+const example = (name) => YAML.parse(readFileSync(path.join(root, "examples", name, "otinstaller.yaml"), "utf8"));
+
+// Real packages: a PyPI wheel whose hash ot checks, and Sigstore's keyless-signed cosign image.
+const COSIGN_SIGNER = { identity: "keyless@projectsigstore.iam.gserviceaccount.com", issuer: "https://accounts.google.com" };
 const digest = (c) => c.repeat(64);
 
 const base = (over) => ({
@@ -68,6 +72,11 @@ const packages = [
       command: ["scrape", "{username}"], output_format: "json" },
     secrets: [{ name: "FORUM_API_KEY", required: true }],
   }), { installs: 900, stars: 60, health: "broken" }],
+  [example("tldextract"), { installs: 700, stars: 90, health: "healthy", community: true }],
+  [example("cosign"), { installs: 50, stars: 5, health: "healthy", signer: COSIGN_SIGNER }],
+  // Same image, but the registry recorded a different signer: ot must refuse to install it.
+  [{ ...example("cosign"), name: "cosign-wrong-signer", summary: "Test fixture whose recorded signer does not match the image" },
+    { installs: 0, stars: 0, health: "healthy", signer: { identity: "attacker@example.com", issuer: "https://accounts.google.com" } }],
   [base({
     name: "secret-tool", namespace: "newbie", version: "0.1.0",
     summary: "A tool from a namespace that is still waiting for review",
@@ -83,6 +92,7 @@ const namespaces = [
   ["ns_osintverse", "github", "1002", "osintverse", "org", "active", 1],
   ["ns_community", "registry", "community", "osintverse-community", "org", "active", 1],
   ["ns_newbie", "github", "1003", "newbie", "user", "pending_review", 0],
+  ["ns_sigstore", "github", "1004", "sigstore", "org", "active", 1],
 ];
 
 const PARAMETER_TYPES = new Set(["string", "integer", "boolean", "enum"]);
@@ -114,7 +124,8 @@ export function buildSeedStatements(now = Date.UTC(2026, 9, 1)) {
       latest_version_id: latestId, community_packaged: facts.community ? 1 : 0, stars_count: facts.stars,
       installs_30d: facts.installs, health_status: facts.health, readme_text: readme, created_at: now, updated_at: now,
     }));
-    const signer = facts.signed ? `https://github.com/${m.namespace}/${m.name}/.github/workflows/otinstaller-release.yml@refs/tags/v${m.version}` : null;
+    const signer = facts.signer?.identity ?? (facts.signed ? `https://github.com/${m.namespace}/${m.name}/.github/workflows/otinstaller-release.yml@refs/tags/v${m.version}` : null);
+    const issuer = facts.signer?.issuer ?? "https://token.actions.githubusercontent.com";
     const versions = [...(facts.history ?? []), [m.version, "published"]];
     versions.forEach(([version, status, reason], i) => {
       const manifest = { ...m, version };
@@ -122,7 +133,7 @@ export function buildSeedStatements(now = Date.UTC(2026, 9, 1)) {
         id: `ver_${m.namespace}_${m.name}_${version}`, tool_id: toolId, version, ...semver(version),
         manifest_json: JSON.stringify(manifest), runtime_kind: m.runtime?.kind ?? null,
         artifact_ref: m.runtime?.image ?? (m.runtime?.wheel_sha256 ? `sha256:${m.runtime.wheel_sha256}` : null),
-        signer_identity: signer, signer_issuer: signer ? "https://token.actions.githubusercontent.com" : null,
+        signer_identity: signer, signer_issuer: signer ? issuer : null,
         scan_status: "pass", status, removed_reason: reason ?? null, published_at: now - (versions.length - i) * 86400000, created_at: now,
       }));
     });

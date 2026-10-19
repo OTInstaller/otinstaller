@@ -316,8 +316,8 @@ func (a *App) doctorCmd() *cobra.Command {
 			} else {
 				check("containers", false, "Docker or Podman not found (needed for Docker tools and sandboxed pipx tools)")
 			}
-			_, perr := ex.LookPath("pipx")
-			check("pipx", perr == nil || a.Runner.Engine != "", map[bool]string{true: "found", false: "not found (only needed for --native pipx runs)"}[perr == nil])
+			_, _, hasPipx := runner.FindPipx(ex)
+			check("pipx", hasPipx || a.Runner.Engine != "", map[bool]string{true: "found", false: "not found (only needed for --native pipx runs)"}[hasPipx])
 			py := "python3"
 			if _, err := ex.LookPath(py); err != nil {
 				py = "python"

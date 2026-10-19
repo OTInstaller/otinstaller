@@ -107,12 +107,30 @@ func pipxEnv() []string {
 	return []string{"PIPX_HOME=" + PipxHome(), "PIPX_BIN_DIR=" + PipxBinDir()}
 }
 
+// FindPipx returns how to invoke pipx: the pipx command, or `python -m pipx` when pipx was
+// installed with `pip install --user` and its scripts folder is not on PATH.
+func FindPipx(ex Exec) (cmd string, prefix []string, ok bool) {
+	if p, err := ex.LookPath("pipx"); err == nil {
+		return p, nil, true
+	}
+	for _, py := range []string{"python3", "python", "py"} {
+		p, err := ex.LookPath(py)
+		if err != nil {
+			continue
+		}
+		if code, err := ex.Run(context.Background(), p, []string{"-m", "pipx", "--version"}, nil, nil, io.Discard, io.Discard); err == nil && code == 0 {
+			return p, []string{"-m", "pipx"}, true
+		}
+	}
+	return "", nil, false
+}
+
 func (r *Runner) installPipxNative(ctx context.Context, m *manifest.Manifest, wheel string) error {
-	pipx, err := r.Exec.LookPath("pipx")
-	if err != nil {
+	pipx, prefix, ok := FindPipx(r.Exec)
+	if !ok {
 		return &RuntimeMissingError{"this package needs pipx (or Docker); install pipx with `python -m pip install --user pipx`"}
 	}
-	args := []string{"install", "--force", wheel}
+	args := append(prefix, "install", "--force", wheel)
 	if m.Runtime.Python != "" && !strings.ContainsAny(m.Runtime.Python, "<>=~!") {
 		args = append(args, "--python", m.Runtime.Python)
 	}
@@ -228,8 +246,8 @@ func download(ctx context.Context, url, path, wantSHA string) error {
 func (r *Runner) Uninstall(ctx context.Context, inst *state.Installed) error {
 	switch {
 	case inst.Runtime == "pipx" && inst.Native:
-		if pipx, err := r.Exec.LookPath("pipx"); err == nil {
-			_, _ = r.Exec.Run(ctx, pipx, []string{"uninstall", inst.Manifest.Runtime.Package}, pipxEnv(), nil, io.Discard, r.Stderr)
+		if pipx, prefix, ok := FindPipx(r.Exec); ok {
+			_, _ = r.Exec.Run(ctx, pipx, append(prefix, "uninstall", inst.Manifest.Runtime.Package), pipxEnv(), nil, io.Discard, r.Stderr)
 		}
 	case r.Engine != "":
 		image := inst.Artifact

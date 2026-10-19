@@ -1,0 +1,37 @@
+# Real PyPI package used to test the pipx runtime end to end.
+schema: 1
+name: tldextract
+namespace: osintverse-community
+version: 5.4.0
+summary: Splits a URL or hostname into subdomain, registered domain and public suffix
+readme: README.md
+license: BSD-3-Clause
+homepage: https://github.com/john-kurkowski/tldextract
+categories: [domain-dns, utilities]
+inputs:
+  - name: url
+    type: url
+    required: true
+outputs:
+  - type: domain
+  - type: subdomain
+runtime:
+  kind: pipx
+  package: tldextract
+  package_version: "5.4.0"
+  index: pypi
+  python: ">=3.10"
+  entrypoint: tldextract
+  wheel_sha256: "7f02aed30bd3b6ad5717192eb859a39b20aafc7caf3917d9cf6cb00a58efb34f"
+  command: ["tldextract", "--json", "{url}"]
+  output_format: json
+  timeout_seconds: 120
+network:
+  egress: true
+  domains: ["publicsuffix.org", "raw.githubusercontent.com"]
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+test:
+  input: { url: "https://forums.news.cnn.com/" }

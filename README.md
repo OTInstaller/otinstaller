@@ -9,6 +9,7 @@ This repository holds weeks 1–3 of the plan: the manifest spec, the `ot` CLI a
 | `cli/` | The `ot` CLI (Go): `init`, `validate`, `search`, `info`, `install`, `run`, `list`, `uninstall`, `keys`, `doctor` |
 | `api/` | Registry API (Cloudflare Workers + Hono + D1): search, tool detail, manifests, versions, namespaces, pivots, install counts |
 | `examples/dns-lookup/` | A tiny real tool used by the end-to-end test |
+| `examples/tldextract/`, `examples/cosign/` | Real packages (a PyPI wheel and Sigstore's signed image) used by `scripts/e2e-real.sh` |
 | `scripts/e2e.sh` | Builds the example, pushes it to a local registry, then validates, smoke-tests and runs it with `ot` |
 
 ## Requirements
@@ -53,6 +54,12 @@ With Docker running:
 
 ```bash
 bash scripts/e2e.sh
+```
+
+Against real artifacts (a keyless-signed image and a real PyPI wheel), with Docker, cosign and the local API running:
+
+```bash
+bash scripts/e2e-real.sh
 ```
 
 ## Notes on the plan
