@@ -14,6 +14,10 @@ export interface Env {
   GITLAB_CLIENT_ID?: string;
   GITLAB_CLIENT_SECRET?: string;
   TOKEN_ENC_KEY?: string;
+  OPS_REPO?: string; // e.g. "osintverse/registry-ops", where the scan workflow runs
+  OPS_INSTALLATION_ID?: string; // the GitHub App's installation on that repo
+  RESEND_API_KEY?: string;
+  EMAIL_FROM?: string;
 }
 
 export interface PublishMessage {

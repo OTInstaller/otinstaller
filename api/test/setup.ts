@@ -14,6 +14,9 @@ declare global {
       GITLAB_CLIENT_ID: string;
       GITLAB_CLIENT_SECRET: string;
       TOKEN_ENC_KEY: string;
+      OPS_REPO: string;
+      OPS_INSTALLATION_ID: string;
+      RESEND_API_KEY: string;
       SITE_URL: string;
       API_URL: string;
     }

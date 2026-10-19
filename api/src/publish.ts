@@ -7,6 +7,8 @@ import { parseManifest, referencedFiles, semverParts, type Manifest, type Proble
 import * as github from "./hosts/github";
 import { checkImage, checkWheel } from "./hosts/artifacts";
 import { audit } from "./routes/auth";
+import { dispatchScan } from "./scans";
+import { ownerEmails, sendEmail, templates } from "./notify";
 
 export const MANIFEST_FILE = "otinstaller.yaml";
 
@@ -25,7 +27,16 @@ type Outcome = { status: "scanning" | "rejected"; problems: Problem[]; versionId
 export async function processJob(env: Env, jobId: string): Promise<Outcome | null> {
   const db = env.DB;
   const job = await db.prepare(`SELECT id, repo, repo_id, tag, installation_id, status, attempts FROM publish_jobs WHERE id = ?`).bind(jobId).first<Job>();
-  if (!job || !["queued", "validating"].includes(job.status)) return null; // already handled
+  if (!job) return null;
+  if (job.status === "scanning") {
+    // Validation finished but the scan dispatch failed last time: dispatch again.
+    const v = await db.prepare(
+      `SELECT v.id, v.manifest_json FROM publish_jobs j JOIN versions v ON v.id = j.version_id WHERE j.id = ? AND v.status = 'scanning' AND v.scan_dispatched_at IS NULL`,
+    ).bind(jobId).first<{ id: string; manifest_json: string }>();
+    if (v) await dispatchScan(env, { versionId: v.id, repo: job.repo, tag: job.tag, manifest: JSON.parse(v.manifest_json) });
+    return null;
+  }
+  if (!["queued", "validating"].includes(job.status)) return null; // already handled
   await db.prepare(`UPDATE publish_jobs SET status = 'validating', attempts = attempts + 1, updated_at = ? WHERE id = ?`).bind(Date.now(), jobId).run();
 
   const f = deps.fetch;
@@ -50,7 +61,7 @@ export async function processJob(env: Env, jobId: string): Promise<Outcome | nul
     ({ manifest, problems } = parseManifest(text));
   }
   if (manifest && problems.length === 0) {
-    problems = await releaseProblems(env, manifest, job, ns.name);
+    problems = await releaseProblems(env, manifest, job, ns.name, ns.status);
     if (problems.length === 0) {
       for (const file of referencedFiles(manifest)) {
         const content = await github.fileAt(f, token, job.repo, file.path, sha);
@@ -62,18 +73,28 @@ export async function processJob(env: Env, jobId: string): Promise<Outcome | nul
   }
 
   const outcome = await record(env, job, sha, ns, manifest, problems, readme);
+  if (outcome.status === "scanning") {
+    await dispatchScan(env, { versionId: outcome.versionId!, repo: job.repo, tag: job.tag, manifest: manifest! });
+  } else if (manifest && outcome.versionId) {
+    const first = problems[0]!;
+    await sendEmail(env, { to: await ownerEmails(env, ns.id), kind: "rejected", key: `rejected:${job.id}`, ...templates.rejected(env, `${manifest.namespace}/${manifest.name}`, manifest.version, first.code, first.message) });
+  }
   const first = problems[0];
   await github.setCommitStatus(
     f, token, job.repo, sha,
     outcome.status === "rejected" ? "failure" : "pending",
-    outcome.status === "rejected" ? `${first!.code}: ${first!.message}` : ns.status === "active" ? "Valid; security scans queued" : "Valid; new publisher awaiting review",
+    outcome.status === "rejected" ? `${first!.code}: ${first!.message}` : "Valid; security scans running",
     target,
   );
   return outcome;
 }
 
-async function releaseProblems(env: Env, m: Manifest, job: Job, namespace: string): Promise<Problem[]> {
+async function releaseProblems(env: Env, m: Manifest, job: Job, namespace: string, nsStatus: string): Promise<Problem[]> {
   const ps: Problem[] = [];
+  if (nsStatus === "rejected" || nsStatus === "suspended") {
+    ps.push({ code: "namespace_not_allowed", path: "/namespace", message: `namespace ${namespace} is ${nsStatus} and cannot publish`, hint: "contact abuse@otinstaller.com" });
+    return ps;
+  }
   if (job.tag.replace(/^v/, "") !== m.version) {
     ps.push({ code: "manifest_tag_mismatch", path: "/version", message: `tag ${job.tag} does not match version ${m.version}`, hint: "tag releases as v<version>" });
   }
@@ -123,11 +144,14 @@ async function record(env: Env, job: Job, sha: string, ns: { id: string }, m: Ma
       ).bind(toolId, ns.id, m.kind ?? "tool", m.name, m.summary, JSON.stringify(m.categories), JSON.stringify(m.tags ?? []), `https://github.com/${job.repo}`, readme.slice(0, 20000), now, now));
     }
     const sv = semverParts(m.version);
-    versionId = ulid(now);
+    // Re-tagging a version that was rejected reuses its row.
+    const prior = tool ? await db.prepare(`SELECT id FROM versions WHERE tool_id = ? AND version = ?`).bind(toolId, m.version).first<{ id: string }>() : null;
+    versionId = prior?.id ?? ulid(now);
     stmts.push(db.prepare(
       `INSERT INTO versions (id, tool_id, version, semver_major, semver_minor, semver_patch, semver_pre, manifest_json, runtime_kind, artifact_ref, git_sha, status, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (tool_id, version) DO UPDATE SET manifest_json = excluded.manifest_json, git_sha = excluded.git_sha, status = excluded.status, created_at = excluded.created_at`,
+       ON CONFLICT (tool_id, version) DO UPDATE SET manifest_json = excluded.manifest_json, git_sha = excluded.git_sha, status = excluded.status,
+         scan_status = 'pending', rejected_reason = NULL, created_at = excluded.created_at`,
     ).bind(versionId, toolId, m.version, sv.major, sv.minor, sv.patch, sv.pre, JSON.stringify(m), m.runtime?.kind ?? null,
       m.runtime?.image ?? (m.runtime?.wheel_sha256 ? `sha256:${m.runtime.wheel_sha256}` : null), sha, status, now));
   }

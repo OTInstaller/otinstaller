@@ -4,6 +4,7 @@ import { parseManifest } from "../src/lib/manifest";
 import { processJob, handleBatch } from "../src/publish";
 import { decrypt } from "../src/lib/crypto";
 import { call, cookiesFrom, fakeHosts, sent, testEnv, webhook } from "./helpers";
+import { README, fakeRelease, ghUser, installation, manifestFor, queuedJob, statuses, tagEvent } from "./fixtures";
 
 const DB = () => env.DB;
 
@@ -18,12 +19,6 @@ describe("manifest validation matches the CLI", () => {
 });
 
 // ---------- sign-in ----------
-
-const ghUser = (id: number, login: string) => ({
-  "POST https://github.com/login/oauth/access_token": { access_token: `gho_${login}`, scope: "read:user" },
-  "GET https://api.github.com/user/emails": [{ email: `${login}@example.com`, primary: true, verified: true }],
-  "GET https://api.github.com/user": { id, login, name: login, email: null, avatar_url: null },
-});
 
 async function webSignIn(provider: "github" | "gitlab", cookie = "") {
   const start = await call(`/auth/${provider}/login?redirect=/dashboard/tools`, { headers: { cookie } });
@@ -135,21 +130,6 @@ describe("CLI device flow and API tokens", () => {
 
 // ---------- GitHub App webhooks ----------
 
-const installation = (id: number, account: { id: number; login: string; type?: string }, repos: number[], sender = 9999) => ({
-  action: "created",
-  installation: { id, account: { type: "User", ...account }, repository_selection: "selected" },
-  repositories: repos.map((r) => ({ id: r, full_name: `${account.login}/repo${r}` })),
-  sender: { id: sender },
-});
-
-const tagEvent = (installationId: number, repo: string, repoId: number, tag: string) => ({
-  ref: tag,
-  ref_type: "tag",
-  repository: { id: repoId, full_name: repo },
-  installation: { id: installationId },
-  sender: { id: 1 },
-});
-
 describe("GitHub App webhooks", () => {
   beforeEach(() => void (sent.length = 0));
 
@@ -205,61 +185,6 @@ describe("GitHub App webhooks", () => {
 
 // ---------- publish consumer ----------
 
-const README = "# Tool\n";
-const manifestFor = (ns: string, version = "1.0.0", over = "") => `schema: 1
-name: whois-plus
-namespace: ${ns}
-version: ${version}
-summary: WHOIS lookups with registrar and creation dates
-readme: README.md
-license: MIT
-categories: [domain-dns]
-inputs:
-  - name: domain
-    type: domain
-    required: true
-outputs:
-  - type: organization
-runtime:
-  kind: docker
-  image: ghcr.io/${ns}/whois-plus@sha256:${"e".repeat(64)}
-  platforms: [linux/amd64]
-  command: ["whois-plus", "{domain}"]
-  output_format: json
-ethics:
-  touches_target: false
-  auth_required: false
-  collects_personal_data: true
-${over}`;
-
-/** Fakes GitHub (installation token, tag, files, statuses) and ghcr.io for one repository. */
-function fakeRelease(repo: string, files: Record<string, string | null>, opts: { imageStatus?: number } = {}) {
-  return fakeHosts({
-    "POST https://api.github.com/app/installations/": { token: "ghs_install" },
-    [`GET https://api.github.com/repos/${repo}/commits/`]: { sha: "abc123" },
-    [`GET https://api.github.com/repos/${repo}/contents/`]: (req) => {
-      const path = decodeURIComponent(new URL(req.url).pathname.split("/contents/")[1]!);
-      const content = files[path];
-      return content == null ? null : content;
-    },
-    [`POST https://api.github.com/repos/${repo}/statuses/abc123`]: { ok: true },
-    "GET https://ghcr.io/v2/": (req) =>
-      req.headers.get("authorization")
-        ? new Response(JSON.stringify({ schemaVersion: 2 }), { status: opts.imageStatus ?? 200 })
-        : new Response("", { status: 401, headers: { "www-authenticate": 'Bearer realm="https://ghcr.io/token",service="ghcr.io",scope="repository:x:pull"' } }),
-    "GET https://ghcr.io/token": { token: "anon" },
-  });
-}
-
-async function queuedJob(installationId: number, login: string, ownerId: number, repoId: number, tag = "v1.0.0") {
-  await webhook("installation", installation(installationId, { id: ownerId, login }, [repoId]));
-  const res = await webhook("create", tagEvent(installationId, `${login}/whois-plus`, repoId, tag));
-  return ((await res.json()) as any).jobId as string;
-}
-
-const statuses = (calls: { url: string; body: string }[]) =>
-  calls.filter((c) => c.url.includes("/statuses/")).map((c) => JSON.parse(c.body) as { state: string; description: string });
-
 describe("publish consumer", () => {
   it("validates a good release, records the version as scanning and reports a pending status", async () => {
     const id = await queuedJob(200, "pat", 8001, 60);
@@ -269,7 +194,9 @@ describe("publish consumer", () => {
     const v = await DB().prepare(`SELECT v.status, v.git_sha, t.repo_url FROM versions v JOIN tools t ON t.id = v.tool_id WHERE v.id = ?`).bind(out!.versionId).first();
     expect(v).toMatchObject({ status: "scanning", git_sha: "abc123", repo_url: "https://github.com/pat/whois-plus" });
     expect(statuses(calls).map((s) => s.state)).toEqual(["pending", "pending"]);
-    expect(statuses(calls)[1]!.description).toMatch(/awaiting review/);
+    expect(statuses(calls)[1]!.description).toMatch(/scans running/);
+    const dispatch = calls.find((c) => c.url.endsWith("/registry-ops/dispatches"))!;
+    expect(JSON.parse(dispatch.body)).toMatchObject({ event_type: "otinstaller-scan", client_payload: { scan: { ref: "pat/whois-plus@1.0.0" } } });
     // Not visible until scans pass and the namespace is approved.
     expect((await call("/tools/pat/whois-plus")).status).toBe(404);
   });

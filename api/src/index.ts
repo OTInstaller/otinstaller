@@ -7,6 +7,8 @@ import type { AppEnv, Env, PublishMessage } from "./env";
 import { apiError } from "./lib/errors";
 import { authRoutes } from "./routes/auth";
 import { webhookRoutes } from "./routes/webhooks";
+import { reviewRoutes } from "./routes/review";
+import { expireStaleScans } from "./scans";
 import { handleBatch } from "./publish";
 
 export type { Env } from "./env";
@@ -20,6 +22,7 @@ app.use("*", async (c, next) => {
 });
 authRoutes(app);
 webhookRoutes(app);
+reviewRoutes(app);
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
@@ -417,12 +420,16 @@ app.post("/installs", async (c) => {
 export default {
   fetch: app.fetch,
   queue: (batch: MessageBatch<PublishMessage>, env: Env) => handleBatch(batch, env),
-  // Nightly: recompute 30-day install totals that ranking uses.
-  async scheduled(_event: ScheduledController, env: Env) {
-    await env.DB.prepare(
-      `UPDATE tools SET installs_30d = COALESCE((SELECT SUM(count) FROM install_counts
-         WHERE tool_id = tools.id AND day >= date('now', '-30 days')), 0)`,
-    ).run();
+  async scheduled(event: ScheduledController, env: Env) {
+    // Every 15 minutes: close scans that never reported back.
+    await expireStaleScans(env);
+    // Nightly: recompute 30-day install totals that ranking uses.
+    if (event.cron === "17 3 * * *") {
+      await env.DB.prepare(
+        `UPDATE tools SET installs_30d = COALESCE((SELECT SUM(count) FROM install_counts
+           WHERE tool_id = tools.id AND day >= date('now', '-30 days')), 0)`,
+      ).run();
+    }
   },
 } satisfies ExportedHandler<Env, PublishMessage>;
 
