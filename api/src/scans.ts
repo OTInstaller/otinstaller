@@ -75,6 +75,8 @@ export async function dispatchScan(env: Env, opts: { versionId: string; repo: st
     kind: m.kind ?? "tool",
     runtime: m.runtime ?? null,
     test_input: (m.test as { input?: unknown } | undefined)?.input ?? null,
+    // Tools that declare egress get network access during the smoke test; everything else runs offline.
+    network_egress: (m.network as { egress?: boolean } | undefined)?.egress === true,
     expected_signer: signer,
     callback_url: `${env.API_URL}/v1/internal/scans`,
     callback_token: token,

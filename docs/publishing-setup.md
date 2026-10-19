@@ -40,7 +40,29 @@ GitLab.com → Edit profile (or the group) → Applications → Add new applicat
 - Application ID → `GITLAB_CLIENT_ID`, secret → `GITLAB_CLIENT_SECRET`
 - Device flow (`ot login --gitlab`) works with the same application.
 
-## 4. Secrets
+## 4. Scanner repository (registry-ops) and email
+
+Security scans run as a GitHub Actions workflow in a private repository the registry dispatches to.
+
+1. Create `osintverse/registry-ops` (private) and copy into it: `ops/scanner/scan.py` → `ops/scanner/scan.py`,
+   and `ops/workflows/scan.yml` → `.github/workflows/scan.yml`.
+2. Install the GitHub App on that repository too. Add **Contents: Read and write** for it only if your org
+   requires it for `repository_dispatch`; otherwise the permissions above are enough. Note the installation
+   ID (Settings → Integrations → the app → the number in the URL) → `OPS_INSTALLATION_ID`.
+3. Set `OPS_REPO` in `wrangler.jsonc` if the repository has another name.
+4. Create a Resend API key with sending access for `otinstaller.com` (verify the domain in Resend first) →
+   `RESEND_API_KEY`. Without it, emails are recorded in the `notifications` table as skipped.
+
+To run a scan locally, exactly as CI does:
+
+```bash
+docker build -t otinstaller-scanner ops/scanner
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/request.json:/req.json" otinstaller-scanner /req.json
+```
+
+`request.json` is the `client_payload` the registry sends (see `dispatchScan` in `api/src/scans.ts`).
+
+## 5. Secrets
 
 ```bash
 cd api
@@ -56,9 +78,14 @@ npx wrangler deploy
 For local development, copy `api/.dev.vars.example` to `api/.dev.vars` and fill it in. Use a tunnel
 (for example `cloudflared tunnel --url http://127.0.0.1:8787`) as the staging app's webhook URL.
 
-## 5. Check it
+## 6. Check it
 
 1. Install the app on a test repository that has a valid `otinstaller.yaml` (`ot init`), with the image pushed.
 2. Push tag `v0.1.0`. Within a minute the tagged commit shows an `otinstaller/publish` status:
-   *"Valid; new publisher awaiting review"* (pending), or a failure naming the error code.
-3. `ot login`, then `ot whoami` lists the namespace as `owner, pending review`.
+   *"Valid; security scans running"* (pending), or a failure naming the error code.
+3. When the scan workflow in registry-ops finishes, the status becomes *"Scans passed; new publisher awaiting review"*
+   and the owner gets an email.
+4. `ot login`, then `ot whoami` lists the namespace as `owner, pending review`.
+5. Make yourself a reviewer (`UPDATE users SET is_reviewer = 1 WHERE login = '...'` in D1), then
+   `POST /v1/admin/namespaces/<ns>/approve` with your API token: the release is published, the commit status turns green,
+   and `ot install <ns>/<name>` works.

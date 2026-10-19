@@ -1,0 +1,34 @@
+# Copy to .github/workflows/scan.yml in the registry-ops repository.
+# The registry dispatches one "otinstaller-scan" event per release; this job scans it and posts
+# the results to the registry with the single-use token in the payload.
+name: scan
+on:
+  repository_dispatch:
+    types: [otinstaller-scan]
+permissions:
+  contents: read
+concurrency:
+  group: scan-${{ github.event.client_payload.scan.version_id }}
+  cancel-in-progress: false
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aquasecurity/setup-trivy@v0.3.1
+        with:
+          version: v0.76.0
+      - uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: v3.1.3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install guarddog==3.2.0 cryptography==50.0.2
+      - name: Write the scan request
+        env:
+          PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+        run: printf '%s' "$PAYLOAD" > "$RUNNER_TEMP/request.json"
+      - name: Scan and report
+        run: python3 ops/scanner/scan.py "$RUNNER_TEMP/request.json" --post

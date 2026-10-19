@@ -1,8 +1,9 @@
 # OTInstaller Registry
 
 A free, public registry of OSINT tools and guides, and `ot`, the CLI that installs and runs them.
-This repository holds weeks 1–4 of the plan: the manifest spec, the `ot` CLI, the registry API's read side, and
-publishing intake (GitHub/GitLab sign-in, the GitHub App webhook, and the queue that validates tagged releases).
+This repository holds weeks 1–5 of the plan: the manifest spec, the `ot` CLI, the registry API's read side,
+publishing intake (GitHub/GitLab sign-in, the GitHub App webhook, the queue that validates tagged releases), and
+security scans with the review queue (scanner, verdicts, publishing, reviewer decisions, emails).
 To connect real GitHub and GitLab apps, follow [docs/publishing-setup.md](docs/publishing-setup.md).
 
 | Folder | What it is |
@@ -10,6 +11,7 @@ To connect real GitHub and GitLab apps, follow [docs/publishing-setup.md](docs/p
 | `spec/` | Manifest JSON Schema (`schema/v1.json`) and example manifests: 3 valid, 24 invalid with expected error codes |
 | `cli/` | The `ot` CLI (Go): `init`, `validate`, `search`, `info`, `install`, `run`, `list`, `uninstall`, `keys`, `doctor`, `login`, `logout`, `whoami` |
 | `api/` | Registry API (Cloudflare Workers + Hono + D1 + Queues): search and read endpoints, GitHub/GitLab sign-in and device flow, API tokens, GitHub App webhooks, publish validation |
+| `ops/` | The scanner (`scanner/scan.py` + its Docker image) and the GitHub Actions workflow for the registry-ops repo |
 | `examples/dns-lookup/` | A tiny real tool used by the end-to-end test |
 | `examples/tldextract/`, `examples/cosign/` | Real packages (a PyPI wheel and Sigstore's signed image) used by `scripts/e2e-real.sh` |
 | `scripts/e2e.sh` | Builds the example, pushes it to a local registry, then validates, smoke-tests and runs it with `ot` |
@@ -71,3 +73,7 @@ bash scripts/e2e-real.sh
 - Sandboxed pipx tools are built into a local image (`ot-local/<namespace>-<name>:<version>`) from a verified wheel on `python:3.12-slim`.
 - An extra `tool_secrets` table powers the "no API keys needed" search filter.
 - Config is `config.json` in the data directory.
+- Smoke tests run offline unless the manifest declares `network.egress: true`; then they keep the network, on a disposable
+  runner with no secrets in the container. Fully offline smoke tests would fail most OSINT tools.
+- Wheels are scanned for vulnerabilities in their Python packages only; the base image the scanner wraps them in is not the author's.
+- Docker images are not run through GuardDog (it reads Python packages); Trivy and the smoke test cover them.
