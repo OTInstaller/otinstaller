@@ -7,7 +7,7 @@ import * as gitlab from "../hosts/gitlab";
 import { HostError } from "../hosts/github";
 import { gitlabToken, type SourceRow } from "../hosts/repo";
 import { audit, requireUser } from "./auth";
-import { pollSource, sourceById, SOURCE_COLUMNS } from "../sync";
+import { pollSource, RELEASE_TAG, sourceById, SOURCE_COLUMNS } from "../sync";
 
 const MANUAL_SYNC_PER_HOUR = 10;
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
@@ -60,17 +60,21 @@ export async function connectGitlabProject(env: Env, userId: string, token: stri
   }
   const id = existing?.id ?? ulid();
   const mode = registryManifest ? "registry" : "repo";
+  // Tags that exist now predate the manifest; sync leaves them alone. If this fails, the first poll records them.
+  const baseline = await gitlab.listTags(deps.fetch, token, String(p.id))
+    .then((tags) => JSON.stringify(tags.filter((t) => RELEASE_TAG.test(t)))).catch(() => null);
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO sources (id, namespace_id, provider, project_id, path, url, default_branch, connected_by, webhook_id, webhook_secret_hash, visibility,
-         manifest_mode, registry_manifest_json, created_at)
-       VALUES (?, ?, 'gitlab', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         manifest_mode, registry_manifest_json, baseline_tags, created_at)
+       VALUES (?, ?, 'gitlab', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (provider, project_id) DO UPDATE SET webhook_id = excluded.webhook_id, webhook_secret_hash = excluded.webhook_secret_hash,
          sync_status = 'ok', last_error = NULL, path = excluded.path, url = excluded.url,
          manifest_mode = CASE WHEN excluded.manifest_mode = 'registry' THEN 'registry' ELSE sources.manifest_mode END,
-         registry_manifest_json = COALESCE(excluded.registry_manifest_json, sources.registry_manifest_json)`,
+         registry_manifest_json = COALESCE(excluded.registry_manifest_json, sources.registry_manifest_json),
+         baseline_tags = CASE WHEN sources.tool_id IS NULL THEN COALESCE(sources.baseline_tags, excluded.baseline_tags) ELSE sources.baseline_tags END`,
     ).bind(id, ns.id, String(p.id), p.path_with_namespace, p.web_url, p.default_branch, userId, hookId, await sha256Hex(secret), p.visibility,
-      mode, registryManifest ?? null, Date.now()),
+      mode, registryManifest ?? null, baseline, Date.now()),
     env.DB.prepare(`INSERT OR IGNORE INTO namespace_members (namespace_id, user_id, role) VALUES (?, ?, ?)`).bind(ns.id, userId, role),
     audit(env.DB, userId, "user", "source.connect", "source", id, { project: p.path_with_namespace, manifest_mode: mode }),
   ]);

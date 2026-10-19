@@ -14,7 +14,7 @@ const RESTORE_WINDOW = 30 * 24 * 3600 * 1000;
 const MAX_TAGS_PER_POLL = 3;
 
 export const SOURCE_COLUMNS = `s.id, s.tool_id, s.namespace_id, s.provider, s.project_id, s.path, s.url, s.installation_id, s.connected_by,
-  s.etag, s.sync_status, s.archived, s.unavailable_since`;
+  s.etag, s.manifest_mode, s.baseline_tags, s.sync_status, s.archived, s.unavailable_since`;
 
 export async function sourceById(env: Env, id: string) {
   return env.DB.prepare(`SELECT ${SOURCE_COLUMNS} FROM sources s WHERE s.id = ?`).bind(id).first<SourceRow>();
@@ -143,9 +143,16 @@ export async function pollSource(env: Env, s: SourceRow, kind: "poll" | "manual"
     const state = await applyMeta(env, s, meta);
     if (meta && (state === "ok" || state === "archived" || state === "unarchived")) {
       await refreshReadme(env, s, host, meta.defaultBranch);
-      const tags = await host.listTags(s.etag);
-      if (!tags.notModified) {
-        const releases = tags.tags.filter((t) => RELEASE_TAG.test(t)).slice(0, 10);
+      // A repo-mode source connected before its first release starts from the tags it already has:
+      // those predate otinstaller.yaml, so only tags pushed after that are backfilled.
+      const needsBaseline = !s.tool_id && s.manifest_mode === "repo" && s.baseline_tags === null;
+      const tags = await host.listTags(needsBaseline ? null : s.etag);
+      if (needsBaseline) {
+        await env.DB.prepare(`UPDATE sources SET baseline_tags = ?, etag = ? WHERE id = ? AND baseline_tags IS NULL`)
+          .bind(JSON.stringify(tags.tags.filter((t) => RELEASE_TAG.test(t))), tags.etag, s.id).run();
+      } else if (!tags.notModified) {
+        const baseline = new Set<string>(s.manifest_mode === "repo" && s.baseline_tags ? JSON.parse(s.baseline_tags) : []);
+        const releases = tags.tags.filter((t) => RELEASE_TAG.test(t) && !baseline.has(t)).slice(0, 10);
         for (const tag of releases) {
           if (queued.length >= MAX_TAGS_PER_POLL) break;
           const id = await queueTag(env, s, tag, `${kind}:${s.provider}:${s.project_id}:${tag}`, meta.path);
