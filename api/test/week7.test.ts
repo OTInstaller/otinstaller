@@ -18,7 +18,8 @@ const GH = "https://api.github.com";
 const GL = "https://gitlab.com/api/v4/projects/";
 const DIGEST = `sha256:${"a".repeat(64)}`;
 let n = 0;
-const uniq = () => `${Date.now() % 1e6}${++n}`;
+// A fixed-width counter keeps IDs from colliding ("12" + "34" vs "123" + "4").
+const uniq = () => `${Date.now() % 1e6}${String(++n).padStart(4, "0")}`;
 
 beforeEach(() => void (sent.length = 0));
 
@@ -165,14 +166,15 @@ const registry = (images: Record<string, string>) => (req: Request) => {
   return digest ? new Response(JSON.stringify(index), { headers: { "docker-content-digest": digest, "content-type": "application/json" } }) : null;
 };
 
-/** GitHub (user and App tokens), ghcr.io and email for one repository; records commits and pull requests. */
-function fakeGithub(r: GhRepo, extra: Record<string, any> = {}) {
-  const commits: { path: string; content: string; branch: string }[] = [];
+type Commit = { path: string; content: string; branch: string };
+
+/** GitHub routes for one repository, recording what is committed to it. */
+function githubRoutes(r: GhRepo, commits: Commit[]): Record<string, any> {
   const base = `${GH}/repos/${r.path}`;
-  const calls = fakeHosts({
+  return {
     [`GET ${GH}/repos/${r.path}`]: ghRepoJson(r),
     [`GET ${GH}/repositories/${r.id}`]: ghRepoJson(r),
-    [`GET ${base}/contents`]: (req) => {
+    [`GET ${base}/contents`]: (req: Request) => {
       const path = decodeURIComponent(new URL(req.url).pathname.split("/contents")[1] ?? "").replace(/^\//, "");
       if ((req.headers.get("accept") ?? "").includes("raw")) return r.files[path] ?? null;
       if (r.files[path] !== undefined) return { sha: "old", type: "file" };
@@ -183,14 +185,23 @@ function fakeGithub(r: GhRepo, extra: Record<string, any> = {}) {
     [`POST ${base}/statuses/`]: { ok: true },
     [`GET ${base}/git/ref/heads/main`]: { object: { sha: "base123" } },
     [`POST ${base}/git/refs`]: new Response("{}", { status: 201 }),
-    [`PUT ${base}/contents/`]: async (req) => {
+    [`PUT ${base}/contents/`]: async (req: Request) => {
       const body = (await req.json()) as { content: string; branch: string };
       const path = decodeURIComponent(new URL(req.url).pathname.split("/contents/")[1]!);
       commits.push({ path, branch: body.branch, content: new TextDecoder().decode(Uint8Array.from(atob(body.content), (ch) => ch.charCodeAt(0))) });
       return new Response("{}", { status: 201 });
     },
     [`POST ${base}/pulls`]: { html_url: `https://github.com/${r.path}/pull/7`, number: 7 },
+  };
+}
+
+/** GitHub (user and App tokens), ghcr.io and email for one repository; records commits and pull requests. */
+function fakeGithub(r: GhRepo, extra: Record<string, any> = {}) {
+  const commits: Commit[] = [];
+  const calls = fakeHosts({
+    ...githubRoutes(r, commits),
     [`POST ${GH}/app/installations/`]: { token: "ghs_install" },
+    [`GET ${GH}/user/memberships/orgs/`]: null,
     "GET https://ghcr.io/v2/": registry(r.images ?? {}),
     "POST https://api.github.com/repos/osintverse/registry-ops/dispatches": new Response(null, { status: 204 }),
     "POST https://api.resend.com/emails": { id: "e" },
@@ -463,6 +474,100 @@ describe("registry-held manifests", () => {
     expect(await DB().prepare(`SELECT manifest_mode, registry_manifest_json FROM sources WHERE project_id = ?`).bind(String(r.id)).first())
       .toEqual({ manifest_mode: "repo", registry_manifest_json: null });
     expect((await put({ manifest: held })).status).toBe(409);
+  });
+});
+
+// ---------- community wrappers ----------
+
+describe("community wrappers", () => {
+  /** A community admin, an upstream repository they don't own, and a wrapper repository in osintverse-community. */
+  async function setup(upstreamOver: Partial<GhRepo> = {}) {
+    const u = await user();
+    await DB().prepare(`INSERT INTO namespace_members (namespace_id, user_id, role) VALUES ('ns_community', ?, 'owner')`).bind(u.id).run();
+    const name = `sherlock${uniq()}`;
+    const upstream: GhRepo = {
+      id: Number(uniq()), path: `upstream${uniq()}/${name}`, owner: { id: Number(uniq()), type: "Organization" }, admin: false,
+      files: { Dockerfile: "FROM python", "README.md": "# sherlock", LICENSE: "MIT License" }, tags: ["v0.15.0"], images: { "0.15.0": DIGEST },
+      description: "Finds accounts by username across social networks", topics: ["username", "osint"], ...upstreamOver,
+    };
+    const wrapper: GhRepo = { id: Number(uniq()), path: `osintverse-community/${name}`, owner: { id: 4242, type: "Organization" }, files: {} };
+    const instId = Number(uniq());
+    await DB().prepare(
+      `INSERT INTO installations (id, github_installation_id, namespace_id, repo_ids, account_login, account_type, repository_selection) VALUES (?, ?, 'ns_community', ?, 'osintverse-community', 'Organization', 'selected')`,
+    ).bind(ulid(), instId, JSON.stringify([String(wrapper.id)])).run();
+    return { u, name, upstream, wrapper, instId };
+  }
+
+  it("is only for osintverse-community admins", async () => {
+    const u = await user();
+    const res = await post("/imports", u.auth, { repo: "https://github.com/someone/sherlock", community: true });
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as any).error.code).toBe("not_community_admin");
+    // Without --community, a repository they can't administer points them at the wrapper route.
+    const { upstream } = await setup();
+    fakeGithub(upstream);
+    const plain = await post("/imports", u.auth, { repo: `https://github.com/${upstream.path}` });
+    expect(((await plain.json()) as any).error).toMatchObject({ code: "not_admin", hint: expect.stringContaining("community wrapper") });
+  });
+
+  it("drafts a labelled wrapper and opens its pull request in the wrapper repository", async () => {
+    const { u, name, upstream, wrapper, instId } = await setup();
+    const wrapperCommits: Commit[] = [];
+    fakeGithub(upstream, githubRoutes(wrapper, wrapperCommits));
+    const imp = (await (await post("/imports", u.auth, { repo: `https://github.com/${upstream.path}`, community: true })).json()) as any;
+    expect(imp).toMatchObject({ community: true, namespace: "osintverse-community", finish_modes: ["wrapper"], can_hold_manifest: false });
+    expect(imp.draft).toMatchObject({ name, namespace: "osintverse-community", homepage: `https://github.com/${upstream.path}`, runtime: { image: `ghcr.io/${upstream.path}@${DIGEST}` } });
+    await patch(`/imports/${imp.id}`, u.auth, {
+      manifest: { inputs: [{ name: "username", type: "username", required: true }], outputs: [{ type: "account" }], ethics: completion.ethics,
+        runtime: { ...imp.draft.runtime, command: ["sherlock", "{username}"] } },
+    });
+
+    expect(((await (await post(`/imports/${imp.id}/finish`, u.auth, { mode: "pr" })).json()) as any).error.code).toBe("invalid_mode");
+    expect(((await (await post(`/imports/${imp.id}/finish`, u.auth, {})).json()) as any).error.code).toBe("wrapper_required");
+    const done = (await (await post(`/imports/${imp.id}/finish`, u.auth, { wrapper_repo: `https://github.com/${wrapper.path}` })).json()) as any;
+    expect(done).toMatchObject({ status: "finished", finish_mode: "wrapper", wrapper_repo: `github:${wrapper.path}`, pr_url: `https://github.com/${wrapper.path}/pull/7` });
+    // The upstream image is already published, so the wrapper needs only the manifest and a README with credit.
+    expect(wrapperCommits.map((c) => c.path)).toEqual(["otinstaller.yaml", "README.md"]);
+    expect(wrapperCommits[1]!.content).toContain(`https://github.com/${upstream.path}`);
+    expect(YAML.parse(wrapperCommits[0]!.content)).toMatchObject({ readme: "README.md", homepage: `https://github.com/${upstream.path}` });
+
+    // A tag on the wrapper publishes it into osintverse-community, labelled Community-packaged.
+    wrapper.files = { "otinstaller.yaml": wrapperCommits[0]!.content, "README.md": wrapperCommits[1]!.content };
+    fakeGithub(upstream, githubRoutes(wrapper, []));
+    const jobId = ((await (await webhook("create", tagEvent(instId, wrapper.path, wrapper.id, "v0.15.0"))).json()) as any).jobId;
+    expect(await processJob(await testEnv(), jobId)).toMatchObject({ status: "scanning", problems: [] });
+    expect(await DB().prepare(`SELECT t.community_packaged, t.repo_url FROM tools t JOIN namespaces n ON n.id = t.namespace_id WHERE n.name = 'osintverse-community' AND t.name = ?`).bind(name).first())
+      .toEqual({ community_packaged: 1, repo_url: `https://github.com/${wrapper.path}` });
+  });
+
+  it("builds the image in the wrapper when upstream publishes none, and refuses a wrapper outside the namespace", async () => {
+    const { u, upstream, wrapper } = await setup({ images: {} });
+    const wrapperCommits: Commit[] = [];
+    const elsewhere: GhRepo = { id: Number(uniq()), path: `${u.login}/sherlock-wrap`, owner: { id: 1, type: "User" }, files: {} };
+    fakeGithub(upstream, { ...githubRoutes(wrapper, wrapperCommits), ...githubRoutes(elsewhere, []) });
+    const imp = (await (await post("/imports", u.auth, { repo: `https://github.com/${upstream.path}`, community: true })).json()) as any;
+    await patch(`/imports/${imp.id}`, u.auth, {
+      manifest: { inputs: [{ name: "username", type: "username", required: true }], outputs: [{ type: "account" }], ethics: completion.ethics,
+        runtime: { ...imp.draft.runtime, command: ["sherlock", "{username}"] } },
+    });
+    const outside = await post(`/imports/${imp.id}/finish`, u.auth, { wrapper_repo: `https://github.com/${elsewhere.path}` });
+    expect(outside.status).toBe(409);
+    expect(((await outside.json()) as any).error.code).toBe("wrapper_not_community");
+    await post(`/imports/${imp.id}/finish`, u.auth, { wrapper_repo: wrapper.path });
+    expect(wrapperCommits.map((c) => c.path)).toEqual(["otinstaller.yaml", "README.md", ".github/workflows/otinstaller-release.yml"]);
+    expect(YAML.parse(wrapperCommits[0]!.content).runtime.image).toBe(`ghcr.io/${wrapper.path}@sha256:${"0".repeat(64)}`);
+  });
+
+  it.each([
+    ["no license", { license: null, files: { Dockerfile: "x", "README.md": "# x" } }, 400, "license_not_redistributable"],
+    ["a proprietary license", { license: "LicenseRef-Proprietary" }, 400, "license_not_redistributable"],
+    ["its own otinstaller.yaml", { files: { Dockerfile: "x", "README.md": "# x", "otinstaller.yaml": "schema: 1" } }, 409, "upstream_has_manifest"],
+  ])("refuses an upstream with %s", async (_label, over, status, code) => {
+    const { u, upstream } = await setup(over as Partial<GhRepo>);
+    fakeGithub(upstream);
+    const res = await post("/imports", u.auth, { repo: `https://github.com/${upstream.path}`, community: true });
+    expect(res.status).toBe(status);
+    expect(((await res.json()) as any).error.code).toBe(code);
   });
 });
 

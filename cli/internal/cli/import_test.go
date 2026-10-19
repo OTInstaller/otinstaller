@@ -13,8 +13,10 @@ import (
 
 // fakeImports is the registry's import wizard: a Docker repository whose draft lacks what can't be detected.
 type fakeImports struct {
-	edits    []map[string]any
-	finished string
+	edits     []map[string]any
+	finished  string
+	community bool
+	wrapper   string
 }
 
 func (f *fakeImports) handler(t *testing.T) http.HandlerFunc {
@@ -27,7 +29,7 @@ func (f *fakeImports) handler(t *testing.T) http.HandlerFunc {
 		return map[string]any{
 			"id": "imp1", "provider": "github", "repo": "alice/whois-plus", "status": status, "namespace": "alice", "detected_kind": "docker",
 			"signals": []string{"Dockerfile"}, "assumed": []string{`runtime.output_format: "json"`}, "finish_modes": []string{"pr", "registry"},
-			"can_hold_manifest": true, "draft": draft, "draft_yaml": "name: whois-plus\n", "problems": []any{}, "missing": missing, "suggested": suggested,
+			"can_hold_manifest": !f.community, "community": f.community, "draft": draft, "draft_yaml": "name: whois-plus\n", "problems": []any{}, "missing": missing, "suggested": suggested,
 		}
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -52,12 +54,18 @@ func (f *fakeImports) handler(t *testing.T) http.HandlerFunc {
 				t.Errorf("unexpected repo %v", body["repo"])
 			}
 			w.WriteHeader(201)
-			json.NewEncoder(w).Encode(view("draft", []string{"inputs", "outputs", "command", "ethics"}, []string{"test"}))
+			f.community, _ = body["community"].(bool)
+			v := view("draft", []string{"inputs", "outputs", "command", "ethics"}, []string{"test"})
+			if f.community {
+				v["finish_modes"] = []string{"wrapper"}
+			}
+			json.NewEncoder(w).Encode(v)
 		case r.Method == "PATCH" && r.URL.Path == "/v1/imports/imp1":
 			f.edits = append(f.edits, body)
 			json.NewEncoder(w).Encode(view("ready", []string{}, []string{}))
 		case r.Method == "POST" && r.URL.Path == "/v1/imports/imp1/finish":
 			f.finished, _ = body["mode"].(string)
+			f.wrapper, _ = body["wrapper_repo"].(string)
 			v := view("finished", []string{}, []string{})
 			v["finish_mode"] = f.finished
 			v["pr_url"] = "https://github.com/alice/whois-plus/pull/7"
@@ -133,6 +141,24 @@ func TestImportRegistryFlagAndYes(t *testing.T) {
 	}
 	if f.finished != "registry" {
 		t.Errorf("finished with %q", f.finished)
+	}
+}
+
+func TestImportCommunityWrapper(t *testing.T) {
+	// Answers as in the PR test, then Enter to accept the suggested wrapper repository.
+	a, f, out := importApp(t, "domain\n\nother\nwhois-plus {domain}\nn\nn\ny\n\n\n")
+	if code := run(a, "import", "--community", "https://github.com/alice/whois-plus"); code != 0 {
+		t.Fatalf("exit %d: %s", code, out)
+	}
+	if !f.community || f.finished != "wrapper" || f.wrapper != "https://github.com/osintverse-community/whois-plus" {
+		t.Errorf("community=%v mode=%q wrapper=%q", f.community, f.finished, f.wrapper)
+	}
+	a, f, out = importApp(t, "domain\n\nother\nwhois-plus {domain}\nn\nn\ny\n\n")
+	if code := run(a, "import", "--community", "--wrapper", "osintverse-community/whois", "https://github.com/alice/whois-plus"); code != 0 {
+		t.Fatalf("exit %d: %s", code, out)
+	}
+	if f.wrapper != "osintverse-community/whois" {
+		t.Errorf("wrapper = %q", f.wrapper)
 	}
 }
 

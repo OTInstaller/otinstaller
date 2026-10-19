@@ -54,7 +54,9 @@ async function view(env: Env, row: ImportRow) {
     app_installed: facts?.appInstalled ?? null,
     install_url: row.provider === "github" && facts && !facts.appInstalled ? installUrl(env) : undefined,
     can_hold_manifest: facts?.canHoldManifest ?? false,
-    finish_modes: !facts ? [] : facts.existingManifest ? ["connect"] : facts.canHoldManifest ? ["pr", "registry"] : ["pr"],
+    community: row.community === 1,
+    wrapper_repo: row.wrapper_path ?? undefined,
+    finish_modes: !facts ? [] : row.community === 1 ? ["wrapper"] : facts.existingManifest ? ["connect"] : facts.canHoldManifest ? ["pr", "registry"] : ["pr"],
     draft,
     draft_yaml: draft ? manifestYaml(draft) : null,
     problems: draft && row.status !== "finished" ? await draftProblems(env, row, draft) : [],
@@ -133,7 +135,8 @@ export function importRoutes(app: App) {
   // Start an import: {repo} or {repos: [...]}, as URLs or paths (with {provider} for bare paths).
   app.post("/imports", async (c) => {
     const u = requireUser(c);
-    const body = await c.req.json<{ provider?: string; repo?: string; repos?: string[] }>().catch(() => ({}) as { provider?: string; repo?: string; repos?: string[] });
+    type Body = { provider?: string; repo?: string; repos?: string[]; community?: boolean };
+    const body = await c.req.json<Body>().catch(() => ({}) as Body);
     const fallback = body.provider === undefined ? undefined : providerParam(body.provider);
     const inputs = body.repos ?? (body.repo ? [body.repo] : []);
     if (!Array.isArray(inputs) || inputs.length === 0) apiError(400, "invalid_body", "send {repo: 'https://github.com/owner/name'} or {repos: [...]}");
@@ -147,7 +150,7 @@ export function importRoutes(app: App) {
       if (!seen.has(key)) refs.push(ref);
       seen.add(key);
     }
-    const rows = await wizard(() => startImports(c.env, u, refs));
+    const rows = await wizard(() => startImports(c.env, u, refs, { community: body.community === true }));
     const views = await Promise.all(rows.map((r) => view(c.env, r)));
     return c.json(refs.length === 1 ? views[0] : { batch_id: rows[0]?.batch_id, imports: views }, refs.length === 1 ? 201 : 202);
   });
@@ -182,13 +185,14 @@ export function importRoutes(app: App) {
   });
 
   // Finish: {mode: "pr"} opens a pull/merge request, "registry" keeps the manifest on the registry,
-  // "connect" links a repository that already has otinstaller.yaml.
+  // "connect" links a repository that already has otinstaller.yaml, and "wrapper" (community imports)
+  // opens the pull/merge request in {wrapper_repo}.
   app.post("/imports/:id/finish", async (c) => {
     const u = requireUser(c);
     const row = requireOwnImport(u, await importById(c.env, c.req.param("id")));
-    const { mode = "pr" } = await c.req.json<{ mode?: string }>().catch(() => ({}) as { mode?: string });
-    if (!["pr", "registry", "connect"].includes(mode)) apiError(400, "invalid_mode", "mode must be pr, registry or connect");
-    const out = await wizard(() => finishImport(c.env, u, row, mode as FinishMode));
+    const { mode = row.community === 1 ? "wrapper" : "pr", wrapper_repo } = await c.req.json<{ mode?: string; wrapper_repo?: string }>().catch(() => ({}) as { mode?: string; wrapper_repo?: string });
+    if (!["pr", "registry", "connect", "wrapper"].includes(mode)) apiError(400, "invalid_mode", "mode must be pr, registry, connect or wrapper");
+    const out = await wizard(() => finishImport(c.env, u, row, mode as FinishMode, { wrapper: wrapper_repo }));
     return c.json({ ...(await view(c.env, (await importById(c.env, row.id))!)), queued_tag: out.queued ?? undefined });
   });
 

@@ -12,7 +12,7 @@ To connect real GitHub and GitLab apps, follow [docs/publishing-setup.md](docs/p
 | Folder | What it is |
 | --- | --- |
 | `spec/` | Manifest JSON Schema (`schema/v1.json`), example manifests (3 valid, 24 invalid with expected error codes) and the release workflow templates (`templates/`) that `ot init` and the import wizard both use |
-| `cli/` | The `ot` CLI (Go): `init`, `validate`, `search`, `info`, `install`, `run`, `list`, `uninstall`, `keys`, `doctor`, `login`, `logout`, `whoami`, `import` |
+| `cli/` | The `ot` CLI (Go): `init`, `validate`, `search`, `info`, `install`, `run`, `list`, `uninstall`, `keys`, `doctor`, `login`, `logout`, `whoami`, `import`, `sync` |
 | `api/` | Registry API (Cloudflare Workers + Hono + D1 + Queues): search and read endpoints, GitHub/GitLab sign-in and device flow, API tokens, GitHub App webhooks, publish validation, the import wizard |
 | `ops/` | The scanner (`scanner/scan.py` + its Docker image) and the GitHub Actions workflow for the registry-ops repo |
 | `examples/dns-lookup/` | A tiny real tool used by the end-to-end test |
@@ -47,7 +47,13 @@ and `npm run sync:templates` in `api/`; tests fail if the copies drift.
 in it (a Dockerfile, a `pyproject.toml` console script, or `docs/`), `ot` asks for what it could not detect (inputs,
 outputs, command, ethics), and then opens a pull or merge request with the manifest and a release workflow. `--registry`
 keeps the manifest on the registry instead (repository owners only), several URLs start a bulk import, and `--list`
-shows your imports.
+shows your imports. `osintverse-community` admins can package a tool they don't own with `--community`: the draft goes
+into the `osintverse-community` namespace (only for upstream licenses that allow it), the pull or merge request goes to a
+wrapper repository (`--wrapper`) with a README crediting the upstream project, and the package is labelled
+Community-packaged.
+
+`ot sync <namespace/name>` checks a package's source repository now instead of waiting for a webhook or the 6-hourly
+poll (10 times an hour at most); `ot sync --log <namespace/name>` shows its sync status and recent events.
 
 ## API
 

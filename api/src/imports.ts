@@ -24,7 +24,13 @@ const ZERO = "0".repeat(64);
 
 export type Provider = "github" | "gitlab";
 export type Kind = "docker" | "pipx" | "guide";
-export type FinishMode = "pr" | "registry" | "connect";
+export type FinishMode = "pr" | "registry" | "connect" | "wrapper";
+
+/** Wrappers of other people's tools live here, labelled Community-packaged with credit to the upstream project. */
+export const COMMUNITY_NAMESPACE = "osintverse-community";
+
+// Licenses that allow publishing a wrapper of someone else's tool.
+const REDISTRIBUTABLE = /^(MIT|MIT-0|Apache-2\.0|BSD-[234]-Clause|0BSD|ISC|MPL-2\.0|(A|L)?GPL-[23]\.0(-only|-or-later)?|LGPL-2\.1(-only|-or-later)?|Unlicense|CC0-1\.0|CC-BY(-SA)?-4\.0|EPL-2\.0|EUPL-1\.2|Zlib|Artistic-2\.0|BSL-1\.0)$/;
 
 /** A refusal that the routes turn into an API error and bulk detection records on the import. */
 export class ImportProblem extends Error {
@@ -59,6 +65,8 @@ export interface Facts {
   hasGitlabCi: boolean;
   canHoldManifest: boolean;
   appInstalled: boolean;
+  /** A community wrapper of this (upstream) repository. */
+  community?: boolean;
 }
 
 // ---------- detection (pure) ----------
@@ -322,6 +330,7 @@ export interface Repo {
   canHoldManifest: boolean;
   installationId: number | null;
   gitlabProject?: gitlab.GitlabProject;
+  community: boolean;
   reader: Reader;
 }
 
@@ -354,8 +363,27 @@ async function linkedAccount(env: Env, userId: string, provider: Provider) {
     .bind(userId, provider).first<{ provider_user_id: string; login: string }>();
 }
 
-/** Opens a repository for import, checking that the user may import it. */
-export async function openRepo(env: Env, userId: string, provider: Provider, ref: string): Promise<Repo> {
+/** The community namespace, which must exist before wrappers can be imported. */
+async function communityNamespace(env: Env) {
+  const ns = await env.DB.prepare(`SELECT id, name, status FROM namespaces WHERE name = ?`).bind(COMMUNITY_NAMESPACE).first<{ id: string; name: string; status: string }>();
+  return ns ?? refuse(409, "community_namespace_missing", `the ${COMMUNITY_NAMESPACE} namespace does not exist yet; install the GitHub App on its organization first`);
+}
+
+/** Registry admins and owners of the community namespace may package tools they don't own. */
+export async function isCommunityAdmin(env: Env, user: User): Promise<boolean> {
+  if (user.is_admin) return true;
+  return !!(await env.DB.prepare(
+    `SELECT 1 FROM namespace_members m JOIN namespaces n ON n.id = m.namespace_id WHERE n.name = ? AND m.user_id = ? AND m.role = 'owner'`,
+  ).bind(COMMUNITY_NAMESPACE, user.id).first());
+}
+
+/**
+ * Opens a repository for import, checking that the user may import it. A community import reads someone
+ * else's repository (the upstream), so it needs no access beyond seeing it, and drafts into the community
+ * namespace.
+ */
+export async function openRepo(env: Env, userId: string, provider: Provider, ref: string, opts: { community?: boolean } = {}): Promise<Repo> {
+  const community = !!opts.community;
   if (provider === "github") {
     let token: string;
     try {
@@ -366,13 +394,19 @@ export async function openRepo(env: Env, userId: string, provider: Provider, ref
     const r = await github.getRepo(deps.fetch, token, ref);
     if (!r) return refuse(404, "repo_not_found", `${ref} does not exist or you cannot see it`);
     if (r.private) return refuse(400, "repo_not_public", "only public repositories can publish to the registry");
-    if (!r.permissions?.admin) return refuse(403, "not_admin", `you need admin access to ${r.full_name} to import it`);
+    if (!community && !r.permissions?.admin) {
+      return refuse(403, "not_admin", `you need admin access to ${r.full_name} to import it`, `${COMMUNITY_NAMESPACE} admins can package it as a community wrapper instead`);
+    }
     const { installed, account } = await installationFor(env, r.owner.login, String(r.id));
-    const namespace = account ? { id: account.namespace_id, name: account.name, status: account.status } : await githubNamespaceName(env, r.owner);
+    const namespace = community
+      ? await communityNamespace(env)
+      : account ? { id: account.namespace_id, name: account.name, status: account.status } : await githubNamespaceName(env, r.owner);
     const acct = await linkedAccount(env, userId, "github");
-    const owns = r.owner.type === "User"
-      ? String(r.owner.id) === acct?.provider_user_id
-      : (await github.orgRole(deps.fetch, token, r.owner.login)) === "admin";
+    const owns = community
+      ? false
+      : r.owner.type === "User"
+        ? String(r.owner.id) === acct?.provider_user_id
+        : (await github.orgRole(deps.fetch, token, r.owner.login)) === "admin";
     // Reads go through the App when it is installed (higher rate limits), otherwise as the user.
     let readToken: Promise<string> | null = null;
     const tok = () =>
@@ -382,7 +416,7 @@ export async function openRepo(env: Env, userId: string, provider: Provider, ref
     return {
       provider, projectId: String(r.id), path: r.full_name, url: r.html_url, defaultBranch: r.default_branch, description: r.description,
       topics: r.topics ?? [], license: r.license?.spdx_id && r.license.spdx_id !== "NOASSERTION" ? r.license.spdx_id : null, archived: r.archived,
-      namespace, canHoldManifest: owns, installationId: installed?.github_installation_id ?? null,
+      namespace, canHoldManifest: owns, installationId: installed?.github_installation_id ?? null, community,
       reader: {
         dir: async (p) => github.listDir(deps.fetch, await tok(), r.full_name, p, r.default_branch),
         file: async (p) => github.fileAt(deps.fetch, await tok(), r.full_name, p, r.default_branch),
@@ -399,17 +433,20 @@ export async function openRepo(env: Env, userId: string, provider: Provider, ref
   const p = await gitlab.getProject(deps.fetch, token, ref, true);
   if (!p) return refuse(404, "project_not_found", `${ref} does not exist or you cannot see it`);
   if (p.visibility !== "public") return refuse(400, "project_not_public", "only public projects can publish to the registry");
-  if (gitlab.accessLevel(p) < gitlab.MAINTAINER) return refuse(403, "not_maintainer", `you need Maintainer access or above to import ${p.path_with_namespace}`);
+  if (!community && gitlab.accessLevel(p) < gitlab.MAINTAINER) {
+    return refuse(403, "not_maintainer", `you need Maintainer access or above to import ${p.path_with_namespace}`, `${COMMUNITY_NAMESPACE} admins can package it as a community wrapper instead`);
+  }
   const acct = await linkedAccount(env, userId, "gitlab");
-  const owns = p.namespace.kind === "user"
+  const owns = !community && (p.namespace.kind === "user"
     ? p.namespace.path.toLowerCase() === acct?.login.toLowerCase()
-    : gitlab.accessLevel(p) >= gitlab.OWNER;
+    : gitlab.accessLevel(p) >= gitlab.OWNER);
   const branch = p.default_branch ?? "main";
   const id = String(p.id);
   return {
     provider, projectId: id, path: p.path_with_namespace, url: p.web_url, defaultBranch: branch, description: p.description ?? null,
     topics: p.topics ?? p.tag_list ?? [], license: gitlabLicense(p.license?.key), archived: p.archived,
-    namespace: await gitlabNamespaceName(env, p.namespace), canHoldManifest: owns, installationId: null, gitlabProject: p,
+    namespace: community ? await communityNamespace(env) : await gitlabNamespaceName(env, p.namespace), canHoldManifest: owns, installationId: null,
+    gitlabProject: p, community,
     reader: {
       dir: (d) => gitlab.listTree(deps.fetch, token, id, d, branch),
       file: (f) => gitlab.rawFile(deps.fetch, token, id, f, branch),
@@ -434,13 +471,23 @@ export async function detect(env: Env, repo: Repo): Promise<{ facts: Facts; draf
     const file = root.find((e) => e.type === "file" && /^(license|licence|copying)(\.(md|txt))?$/i.test(e.name));
     if (file) license = licenseFromText((await r.file(file.name)) ?? "");
   }
+  if (repo.community) {
+    // Wrappers only where the license allows it, and only when upstream doesn't publish the tool itself.
+    if (!license || !REDISTRIBUTABLE.test(license)) {
+      refuse(400, "license_not_redistributable", `${repo.path} has ${license ? `the license ${license}, which` : "no license that"} the registry accepts for community wrappers`,
+        "ask the maintainer to publish it themselves");
+    }
+    if (has(MANIFEST_FILE)) refuse(409, "upstream_has_manifest", `${repo.path} already has ${MANIFEST_FILE}; its maintainer can publish it, so it needs no wrapper`);
+  }
   const py = has("pyproject.toml") ? pyprojectInfo((await r.file("pyproject.toml")) ?? "") : null;
   const existingText = has(MANIFEST_FILE) ? await r.file(MANIFEST_FILE) : null;
   const latestTag = latestReleaseTag(await r.tags());
   const version = latestTag?.slice(1);
   const warnings: string[] = [];
   if (repo.archived) warnings.push("the repository is archived; packages from archived repositories are marked deprecated");
-  if (repo.provider === "github" && !repo.installationId) {
+  if (repo.community) {
+    warnings.push(`community wrapper of ${repo.url}: finish with a wrapper repository in ${COMMUNITY_NAMESPACE}; the package is labelled Community-packaged and links back here`);
+  } else if (repo.provider === "github" && !repo.installationId) {
     warnings.push(`the OTInstaller GitHub App is not installed on ${repo.path}; install it before finishing: ${installUrl(env)}`);
   }
 
@@ -448,6 +495,7 @@ export async function detect(env: Env, repo: Repo): Promise<{ facts: Facts; draf
     provider: repo.provider, path: repo.path, url: repo.url, defaultBranch: repo.defaultBranch, namespace: repo.namespace.name,
     repoName: repo.path.split("/").pop()!, description: repo.description, topics: repo.topics, license, readme,
     latestTag, hasGitlabCi: has(".gitlab-ci.yml"), canHoldManifest: repo.canHoldManifest, appInstalled: repo.provider === "gitlab" || !!repo.installationId,
+    ...(repo.community ? { community: true } : {}),
   };
 
   if (existingText !== null) {
@@ -498,6 +546,8 @@ export type ImportRow = {
   id: string;
   user_id: string;
   batch_id: string | null;
+  community: number;
+  wrapper_path: string | null;
   provider: Provider;
   project_id: string | null;
   path: string;
@@ -554,7 +604,7 @@ export async function detectQueued(env: Env, id: string) {
   const row = await importById(env, id);
   if (!row || row.status !== "detecting") return;
   try {
-    const repo = await openRepo(env, row.user_id, row.provider, row.path);
+    const repo = await openRepo(env, row.user_id, row.provider, row.path, { community: row.community === 1 });
     await saveDetection(env, row, repo, await detect(env, repo));
   } catch (e) {
     if (e instanceof ImportProblem) return failImport(env, id, e.code, e.message);
@@ -586,25 +636,29 @@ export function parseRepoRef(input: string, fallback?: Provider): { provider: Pr
 }
 
 /** Starts imports: one repository is detected right away, several are detected in the queue. */
-export async function startImports(env: Env, user: User, refs: { provider: Provider; path: string }[]): Promise<ImportRow[]> {
+export async function startImports(env: Env, user: User, refs: { provider: Provider; path: string }[], opts: { community?: boolean } = {}): Promise<ImportRow[]> {
+  const community = !!opts.community;
+  if (community && !(await isCommunityAdmin(env, user))) {
+    refuse(403, "not_community_admin", `only ${COMMUNITY_NAMESPACE} admins can package tools they don't own`);
+  }
   const now = Date.now();
   const batch = refs.length > 1 ? ulid(now) : null;
   const rows: ImportRow[] = refs.map((r) => ({
-    id: ulid(now), user_id: user.id, batch_id: batch, provider: r.provider, project_id: null, path: r.path, url: null, namespace: null,
+    id: ulid(now), user_id: user.id, batch_id: batch, community: community ? 1 : 0, wrapper_path: null, provider: r.provider, project_id: null, path: r.path, url: null, namespace: null,
     detected_kind: null, detection_json: null, draft_manifest_json: null, finish_mode: null, pr_url: null, source_id: null,
     status: "detecting", error_code: null, error: null, created_at: now, updated_at: now,
   }));
   if (rows.length === 1) {
     // Detect before writing anything, so a refusal leaves no row behind.
-    const repo = await openRepo(env, user.id, rows[0]!.provider, rows[0]!.path);
+    const repo = await openRepo(env, user.id, rows[0]!.provider, rows[0]!.path, { community });
     const d = await detect(env, repo);
-    await env.DB.prepare(`INSERT INTO imports (id, user_id, provider, path, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'detecting', ?, ?)`)
-      .bind(rows[0]!.id, user.id, repo.provider, repo.path, now, now).run();
+    await env.DB.prepare(`INSERT INTO imports (id, user_id, community, provider, path, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'detecting', ?, ?)`)
+      .bind(rows[0]!.id, user.id, community ? 1 : 0, repo.provider, repo.path, now, now).run();
     await saveDetection(env, rows[0]!, repo, d);
   } else {
     await env.DB.batch(rows.map((r) =>
-      env.DB.prepare(`INSERT INTO imports (id, user_id, batch_id, provider, path, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'detecting', ?, ?)`)
-        .bind(r.id, user.id, batch, r.provider, r.path, now, now),
+      env.DB.prepare(`INSERT INTO imports (id, user_id, batch_id, community, provider, path, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'detecting', ?, ?)`)
+        .bind(r.id, user.id, batch, community ? 1 : 0, r.provider, r.path, now, now),
     ));
     for (const r of rows) await env.PUBLISH_QUEUE.send({ importId: r.id });
   }
@@ -706,13 +760,19 @@ function changeBody(env: Env, provider: Provider, draft: Record<string, unknown>
 
 const CHANGE_TITLE = "Publish on the OTInstaller Registry";
 
-/** Opens the pull or merge request with the manifest. GitHub goes through the App; GitLab through the user. */
-export async function openChange(env: Env, user: User, target: { provider: Provider; projectId: string; path: string; defaultBranch: string; installationId: number | null; hasGitlabCi: boolean }, draft: Record<string, unknown>) {
+/**
+ * Opens the pull or merge request with the manifest (or the given files). GitHub goes through the App;
+ * GitLab through the user.
+ */
+export async function openChange(
+  env: Env, user: User, target: { provider: Provider; projectId: string; path: string; defaultBranch: string; installationId: number | null; hasGitlabCi: boolean },
+  draft: Record<string, unknown>, custom?: { files: (FileChange & { exists?: boolean })[]; notes: string[] },
+) {
   if (target.provider === "github") {
     if (!target.installationId) refuse(409, "app_not_installed", `install the OTInstaller GitHub App on ${target.path} first`, installUrl(env));
     const token = await github.installationToken(deps.fetch, requireSecret(env, "GITHUB_APP_ID"), requireSecret(env, "GITHUB_APP_PRIVATE_KEY"), target.installationId!);
-    const workflowExists = (await github.fileAt(deps.fetch, token, target.path, ".github/workflows/otinstaller-release.yml", target.defaultBranch)) !== null;
-    const { files, notes } = changeFiles("github", draft, false, workflowExists);
+    const { files, notes } = custom ?? changeFiles("github", draft, false,
+      (await github.fileAt(deps.fetch, token, target.path, ".github/workflows/otinstaller-release.yml", target.defaultBranch)) !== null);
     try {
       return await github.openPullRequest(deps.fetch, token, target.path, target.defaultBranch, IMPORT_BRANCH, files, CHANGE_TITLE, changeBody(env, "github", draft, user.login, notes));
     } catch (e) {
@@ -724,7 +784,7 @@ export async function openChange(env: Env, user: User, target: { provider: Provi
     }
   }
   const token = await gitlabToken(env, user.id);
-  const { files, notes } = changeFiles("gitlab", draft, target.hasGitlabCi);
+  const { files, notes } = custom ?? changeFiles("gitlab", draft, target.hasGitlabCi);
   try {
     return await gitlab.openMergeRequest(deps.fetch, token, target.projectId, target.defaultBranch, IMPORT_BRANCH, files, CHANGE_TITLE, changeBody(env, "gitlab", draft, user.login, notes));
   } catch (e) {
@@ -759,11 +819,15 @@ async function mirrorOf(env: Env, row: ImportRow, name: string): Promise<string 
   return hit ? `${hit.ns}/${hit.name} is already published from ${hit.url}; switch its source from the dashboard instead of importing a mirror` : null;
 }
 
-export async function finishImport(env: Env, user: User, row: ImportRow, mode: FinishMode) {
+export async function finishImport(env: Env, user: User, row: ImportRow, mode: FinishMode, opts: { wrapper?: string } = {}) {
   if (row.status === "finished") refuse(409, "import_finished", "this import is already finished");
   if (!row.detection_json || row.status === "detecting" || row.status === "failed") refuse(409, "import_not_detected", "detection has not finished for this import");
   const detection = JSON.parse(row.detection_json!) as Detection;
   const facts = detection.facts;
+  if (row.community === 1 || mode === "wrapper") {
+    if (row.community !== 1 || mode !== "wrapper") refuse(400, "invalid_mode", `community imports finish with mode "wrapper" (and only they do)`);
+    return finishWrapper(env, user, row, facts, opts.wrapper);
+  }
   if (facts.existingManifest && mode !== "connect") refuse(400, "manifest_in_repo", `the repository already has ${MANIFEST_FILE}; finish with mode "connect"`);
   if (!facts.existingManifest && mode === "connect") refuse(400, "invalid_mode", `"connect" is for repositories that already have ${MANIFEST_FILE}; use "pr" or "registry"`);
   const draft = JSON.parse(row.draft_manifest_json ?? "{}") as Record<string, any>;
@@ -817,6 +881,68 @@ export async function finishImport(env: Env, user: User, row: ImportRow, mode: F
     audit(env.DB, user.id, "user", `import.finish.${mode}`, "import", row.id, { repo: repo.path, pr: prUrl, queued }),
   ]);
   return { prUrl, sourceId, queued };
+}
+
+/** The README a wrapper repository starts with: what it packages, and credit to the upstream project. */
+export function wrapperReadme(draft: Record<string, unknown>, upstream: string): string {
+  return `# ${draft.name} (community package)\n\n` +
+    `This repository packages [${upstream.replace(/^https:\/\//, "")}](${upstream}) for the OTInstaller Registry as ` +
+    `\`${COMMUNITY_NAMESPACE}/${draft.name}\`. The tool is the work of its authors, under the ${draft.license} license; ` +
+    `this repository only holds the manifest and release workflow.\n\n` +
+    `Report problems with the tool upstream, and problems with the packaging here. If you maintain the upstream project ` +
+    `and want to publish it yourself, open an issue: the package is transferred to you.\n`;
+}
+
+/**
+ * Finishes a community import: opens a pull/merge request in a wrapper repository owned by the community
+ * namespace. The manifest lives in that repository, so wrappers are never registry-held.
+ */
+async function finishWrapper(env: Env, user: User, row: ImportRow, facts: Facts, wrapperInput: string | undefined) {
+  if (!(await isCommunityAdmin(env, user))) refuse(403, "not_community_admin", `only ${COMMUNITY_NAMESPACE} admins can package tools they don't own`);
+  const ref = wrapperInput ? parseRepoRef(wrapperInput, row.provider) : null;
+  if (!ref) return refuse(400, "wrapper_required", `send the wrapper repository, e.g. {"mode": "wrapper", "wrapper_repo": "https://github.com/${COMMUNITY_NAMESPACE}/${facts.repoName}"}`);
+  const wrapper = await openRepo(env, user.id, ref.provider, ref.path);
+  if (wrapper.namespace.name !== COMMUNITY_NAMESPACE) {
+    refuse(409, "wrapper_not_community", `${wrapper.path} publishes to "${wrapper.namespace.name}"; the wrapper repository must belong to ${COMMUNITY_NAMESPACE}`);
+  }
+  if (wrapper.provider === "github" && !wrapper.installationId) refuse(409, "app_not_installed", `install the OTInstaller GitHub App on ${wrapper.path} first`, installUrl(env));
+  const published = await sourceByProject(env, wrapper.provider, wrapper.projectId);
+  if (published?.tool_id) refuse(409, "already_published", `${wrapper.path} already publishes a package`);
+
+  const draft = JSON.parse(row.draft_manifest_json ?? "{}") as Record<string, any>;
+  draft.homepage = facts.url;
+  draft.readme = "README.md";
+  // Without a published upstream image, the wrapper builds one from its own Dockerfile.
+  const rt = draft.runtime as Record<string, any> | undefined;
+  const builds = rt?.kind === "docker" && String(rt.image ?? "").endsWith(ZERO);
+  if (builds) rt!.image = `${defaultImage(wrapper.provider, wrapper.path)}@sha256:${ZERO}`;
+  const problems = await draftProblems(env, { ...row, url: wrapper.url }, draft);
+  if (rt?.kind === "pipx") problems.push(...heldManifestProblems(draft));
+  if (problems.length) {
+    throw Object.assign(new ImportProblem(409, "import_not_ready", `the draft manifest has ${problems.length} problem(s); fix them first`), { problems });
+  }
+
+  const files: (FileChange & { exists?: boolean })[] = [{ path: MANIFEST_FILE, content: manifestYaml(draft) }];
+  const notes = [`This is a community package of ${facts.url} (${draft.license}), labelled Community-packaged on the registry with a link back to it.`];
+  const readme = await wrapper.reader.file("README.md");
+  if (readme === null) files.push({ path: "README.md", content: wrapperReadme(draft, facts.url) });
+  if (builds) {
+    const hasCi = wrapper.provider === "gitlab" && (await wrapper.reader.file(".gitlab-ci.yml")) !== null;
+    files.push(...changeFiles(wrapper.provider, draft, hasCi).files.filter((f) => f.path !== MANIFEST_FILE));
+    notes.push(`No published image of the upstream project was found, so the release workflow builds one: add a \`Dockerfile\` that builds ${facts.url} at the version being released.`);
+  } else {
+    notes.push("The manifest points at the upstream project's own published release, so no build is needed: bump `version` and the pinned artifact, then push a tag.");
+  }
+
+  let sourceId: string | null = null;
+  if (wrapper.provider === "gitlab") sourceId = (await connectGitlabProject(env, user.id, await gitlabToken(env, user.id), wrapper.gitlabProject!)).sourceId;
+  const pr = await openChange(env, user, { ...wrapper, hasGitlabCi: false }, draft, { files, notes });
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE imports SET status = 'finished', finish_mode = 'wrapper', wrapper_path = ?, pr_url = ?, source_id = ?, updated_at = ? WHERE id = ?`)
+      .bind(`${wrapper.provider}:${wrapper.path}`, pr.url, sourceId, Date.now(), row.id),
+    audit(env.DB, user.id, "user", "import.finish.wrapper", "import", row.id, { upstream: facts.url, wrapper: wrapper.path, pr: pr.url }),
+  ]);
+  return { prUrl: pr.url as string | null, sourceId, queued: null as string | null };
 }
 
 // ---------- registry-held manifests at publish time ----------

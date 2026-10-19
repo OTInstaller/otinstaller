@@ -10,7 +10,7 @@ import { checkImage, checkWheel } from "./hosts/artifacts";
 import { audit } from "./routes/auth";
 import { dispatchScan } from "./scans";
 import { ownerEmails, sendEmail, templates } from "./notify";
-import { detectQueued, failImport, heldManifestFor } from "./imports";
+import { COMMUNITY_NAMESPACE, detectQueued, failImport, heldManifestFor } from "./imports";
 
 export const MANIFEST_FILE = "otinstaller.yaml";
 
@@ -170,9 +170,11 @@ async function record(env: Env, job: Job, sha: string, ns: Namespace, m: Manifes
     toolId = tool?.id ?? ulid(now);
     if (!tool) {
       stmts.push(db.prepare(
-        `INSERT INTO tools (id, namespace_id, kind, name, summary, categories, tags, repo_url, readme_text, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).bind(toolId, ns.id, m.kind ?? "tool", m.name, m.summary, JSON.stringify(m.categories), JSON.stringify(m.tags ?? []), repoUrl(job.provider, job.repo), readme.slice(0, 20000), now, now));
+        `INSERT INTO tools (id, namespace_id, kind, name, summary, categories, tags, repo_url, readme_text, community_packaged, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(toolId, ns.id, m.kind ?? "tool", m.name, m.summary, JSON.stringify(m.categories), JSON.stringify(m.tags ?? []), repoUrl(job.provider, job.repo), readme.slice(0, 20000),
+        // Packages in the community namespace wrap someone else's tool and are labelled so.
+        ns.name === COMMUNITY_NAMESPACE ? 1 : 0, now, now));
     }
     // Link the package to its source repository, which sync keeps up to date from now on.
     if (job.provider === "github") {

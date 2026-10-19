@@ -19,16 +19,19 @@ import (
 // manifest, ot asks for what it could not detect, then opens a pull/merge request or keeps the manifest
 // on the registry.
 func (a *App) importCmd() *cobra.Command {
-	var id, file, save string
-	var registry, draftOnly, yes, list, asJSON bool
+	var id, file, save, wrapper string
+	var registry, draftOnly, yes, list, asJSON, community bool
 	cmd := &cobra.Command{
 		Use:   "import <github-or-gitlab-url>...",
 		Short: "Publish an existing GitHub or GitLab repository: detect, complete, open a PR/MR",
 		Long: "Runs the import wizard for a repository you administer (GitHub) or maintain (GitLab). The registry drafts\n" +
 			"otinstaller.yaml from the repository, ot asks for what it could not detect, and then opens a pull or merge\n" +
 			"request adding the manifest and a release workflow. With --registry the manifest stays on the registry instead\n" +
-			"(repository owners only). Several URLs start a bulk import of up to 50 repositories.",
-		Example: "  ot import https://github.com/alice/whois-plus\n  ot import --id 01J... --file otinstaller.yaml\n  ot import --list",
+			"(repository owners only). Several URLs start a bulk import of up to 50 repositories.\n\n" +
+			"osintverse-community admins can package a tool they don't own with --community: the package is labelled\n" +
+			"Community-packaged, credits the upstream project, and its manifest goes into a wrapper repository (--wrapper).",
+		Example: "  ot import https://github.com/alice/whois-plus\n  ot import --id 01J... --file otinstaller.yaml\n  ot import --list\n" +
+			"  ot import --community https://github.com/sherlock-project/sherlock --wrapper https://github.com/osintverse-community/sherlock",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			if a.API.Token == "" {
@@ -40,7 +43,7 @@ func (a *App) importCmd() *cobra.Command {
 			case id == "" && len(args) == 0:
 				return exitErr(ExitUsage, "give a repository URL, or --id to continue an import")
 			case id == "" && len(args) > 1:
-				return a.bulkImport(ctx, args, asJSON)
+				return a.bulkImport(ctx, args, community, asJSON)
 			}
 			var imp *api.Import
 			var err error
@@ -48,12 +51,16 @@ func (a *App) importCmd() *cobra.Command {
 				imp, err = a.API.Import(ctx, id)
 			} else {
 				fmt.Fprintf(a.Out, "Looking at %s…\n", args[0])
-				imp, err = a.API.StartImport(ctx, args[0])
+				if community {
+					imp, err = a.API.StartCommunityImport(ctx, args[0])
+				} else {
+					imp, err = a.API.StartImport(ctx, args[0])
+				}
 			}
 			if err != nil {
 				return a.importError(err)
 			}
-			return a.runWizard(ctx, imp, wizardOptions{file: file, save: save, registry: registry, draftOnly: draftOnly, yes: yes, asJSON: asJSON})
+			return a.runWizard(ctx, imp, wizardOptions{file: file, save: save, wrapper: wrapper, registry: registry, draftOnly: draftOnly, yes: yes, asJSON: asJSON})
 		},
 	}
 	f := cmd.Flags()
@@ -61,6 +68,8 @@ func (a *App) importCmd() *cobra.Command {
 	f.StringVar(&file, "file", "", "use this manifest file as the draft")
 	f.StringVar(&save, "save", "", "write the draft manifest to this file")
 	f.BoolVar(&registry, "registry", false, "keep the manifest on the registry instead of opening a pull/merge request")
+	f.BoolVar(&community, "community", false, "package a tool you don't own as a community wrapper (osintverse-community admins)")
+	f.StringVar(&wrapper, "wrapper", "", "the wrapper repository a community import opens its pull/merge request in")
 	f.BoolVar(&draftOnly, "draft", false, "stop after saving the draft; finish later with --id")
 	f.BoolVarP(&yes, "yes", "y", false, "do not prompt; fail if the draft still needs input")
 	f.BoolVar(&list, "list", false, "list your imports")
@@ -69,7 +78,7 @@ func (a *App) importCmd() *cobra.Command {
 }
 
 type wizardOptions struct {
-	file, save                       string
+	file, save, wrapper              string
 	registry, draftOnly, yes, asJSON bool
 }
 
@@ -149,6 +158,9 @@ func (a *App) runWizard(ctx context.Context, imp *api.Import, o wizardOptions) e
 		return nil
 	}
 
+	if imp.Community {
+		return a.finishWrapper(ctx, imp, o, ask)
+	}
 	mode := "pr"
 	switch {
 	case imp.ExistingManifest:
@@ -336,8 +348,27 @@ func (a *App) printDetection(imp *api.Import) {
 	}
 }
 
+// finishWrapper opens a community import's pull/merge request in its wrapper repository.
+func (a *App) finishWrapper(ctx context.Context, imp *api.Import, o wizardOptions, ask func(label, current, def string) (string, error)) error {
+	name, _ := imp.Draft["name"].(string)
+	repo, err := ask("Wrapper repository in osintverse-community", o.wrapper, fmt.Sprintf("https://%s.com/osintverse-community/%s", imp.Provider, name))
+	if err != nil {
+		return err
+	}
+	if imp, err = a.API.FinishWrapper(ctx, imp.ID, repo); err != nil {
+		return a.importError(err)
+	}
+	if o.asJSON {
+		return writeJSON(a.Out, imp)
+	}
+	a.printFinished(imp)
+	return nil
+}
+
 func (a *App) printFinished(imp *api.Import) {
 	switch imp.FinishMode {
+	case "wrapper":
+		fmt.Fprintf(a.Out, "\nOpened %s\nMerge it, then push a vX.Y.Z tag in the wrapper repository to publish the community package.\n", imp.PRURL)
 	case "pr":
 		fmt.Fprintf(a.Out, "\nOpened %s\nMerge it, then run the release workflow it adds (or push a tag for a guide) to publish.\n", imp.PRURL)
 	case "registry":
@@ -380,8 +411,8 @@ func (a *App) importError(err error) error {
 	return err
 }
 
-func (a *App) bulkImport(ctx context.Context, repos []string, asJSON bool) error {
-	b, err := a.API.StartImports(ctx, repos)
+func (a *App) bulkImport(ctx context.Context, repos []string, community, asJSON bool) error {
+	b, err := a.API.StartImports(ctx, repos, community)
 	if err != nil {
 		return a.importError(err)
 	}
