@@ -115,16 +115,22 @@ describe("CLI device flow and API tokens", () => {
 
   it("supports GitLab's device flow, which answers pending with HTTP 400", async () => {
     let approved = false;
-    fakeHosts({
+    const calls = fakeHosts({
       "POST https://gitlab.com/oauth/authorize_device": { device_code: "gldev", user_code: "WXYZ", verification_uri: "https://gitlab.com/oauth/device", interval: 5 },
       "POST https://gitlab.com/oauth/token": () =>
         approved ? { access_token: "glpat-ivan", expires_in: 7200 } : Response.json({ error: "authorization_pending" }, { status: 400 }),
       "GET https://gitlab.com/api/v4/user": { id: 88, username: "ivan" },
     });
+    const start = (await (await call("/auth/device/start", { method: "POST", body: JSON.stringify({ provider: "gitlab" }) })).json()) as any;
+    expect(start.user_code).toBe("WXYZ");
     const poll = () => call("/auth/device/token", { method: "POST", body: JSON.stringify({ provider: "gitlab", device_code: "gldev" }) });
     expect(await (await poll()).json()).toEqual({ status: "pending" });
     approved = true;
     expect(((await (await poll()).json()) as any).login).toBe("ivan");
+    // The application is confidential: GitLab rejects device-flow calls without the client secret.
+    const deviceCalls = calls.filter((c) => c.url.startsWith("https://gitlab.com/oauth/"));
+    expect(deviceCalls).toHaveLength(3);
+    for (const c of deviceCalls) expect(new URLSearchParams(c.body).get("client_secret")).toBe("gl-secret");
   });
 });
 
