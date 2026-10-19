@@ -56,9 +56,10 @@ const project = (id: number, path: string, over: Record<string, unknown> = {}) =
   ...over,
 });
 
-async function connect(user: Awaited<ReturnType<typeof gitlabUser>>, p: ReturnType<typeof project>) {
+async function connect(user: Awaited<ReturnType<typeof gitlabUser>>, p: ReturnType<typeof project>, routes: Parameters<typeof fakeHosts>[0] = {}) {
   let secret = "";
   fakeHosts({
+    ...routes,
     [`GET ${GL}`]: p,
     [`POST ${GL}${p.id}/hooks`]: async (req) => {
       secret = ((await req.json()) as { token: string }).token;
@@ -313,5 +314,54 @@ describe("sync", () => {
     const log = (await (await call(`/packages/${pkg.login}/scraper/sync-log`, { headers: pkg.auth })).json()) as any;
     expect(log.source).toMatchObject({ provider: "github", sync_status: "ok" });
     expect(log.events.filter((e: any) => e.kind === "manual")).toHaveLength(10);
+  });
+});
+
+describe("sync before a package's first release", () => {
+  const tagList = (tags: string[]) => tags.map((name) => ({ name }));
+  async function connectedWith(tagsAtConnect: string[] | null) {
+    const user = await gitlabUser();
+    const p = project(Number(uniq()), `${user.login}/early`);
+    const { body } = await connect(user, p, tagsAtConnect ? { [`GET ${GL}${p.id}/repository/tags`]: tagList(tagsAtConnect) } : {});
+    return { p, sourceId: body.source_id as string };
+  }
+  async function poll(c: Awaited<ReturnType<typeof connectedWith>>, tags: string[]) {
+    fakeHosts({ [`GET ${GL}${c.p.id}/repository/tags`]: tagList(tags), [`GET ${GL}${c.p.id}`]: c.p });
+    return pollSource(await testEnv(), (await sourceById(env as any, c.sourceId))!, "poll");
+  }
+  const jobs = async (sourceId: string) =>
+    (await DB().prepare(`SELECT tag FROM publish_jobs WHERE source_id = ? ORDER BY tag`).bind(sourceId).all<{ tag: string }>()).results.map((r) => r.tag);
+
+  it("never backfills tags that existed when the project was connected", async () => {
+    const c = await connectedWith(["v0.2.0", "v0.1.0", "nightly"]);
+    expect(await DB().prepare(`SELECT baseline_tags FROM sources WHERE id = ?`).bind(c.sourceId).first()).toEqual({ baseline_tags: '["v0.2.0","v0.1.0"]' });
+    expect(await poll(c, ["v0.2.0", "v0.1.0"])).toEqual({ status: "ok", queued: [] });
+    expect(await poll(c, ["v0.3.0", "v0.2.0", "v0.1.0"])).toEqual({ status: "ok", queued: ["v0.3.0"] });
+    expect(await jobs(c.sourceId)).toEqual(["v0.3.0"]);
+  });
+
+  it("records the existing tags on the first poll when they could not be listed at connect time", async () => {
+    const c = await connectedWith(null);
+    expect(await DB().prepare(`SELECT baseline_tags FROM sources WHERE id = ?`).bind(c.sourceId).first()).toEqual({ baseline_tags: null });
+    expect(await poll(c, ["v0.2.0", "v0.1.0"])).toEqual({ status: "ok", queued: [] });
+    expect(await poll(c, ["v1.0.0", "v0.2.0", "v0.1.0"])).toEqual({ status: "ok", queued: ["v1.0.0"] });
+    expect(await jobs(c.sourceId)).toEqual(["v1.0.0"]);
+  });
+
+  it("keeps old tags out after the first release too", async () => {
+    const c = await connectedWith(["v0.1.0"]);
+    const pkg = await githubPackage();
+    // The package's first release moves its tool onto this source.
+    await DB().batch([
+      DB().prepare(`UPDATE sources SET tool_id = NULL WHERE id = ?`).bind(pkg.srcId),
+      DB().prepare(`UPDATE sources SET tool_id = ? WHERE id = ?`).bind(pkg.toolId, c.sourceId),
+    ]);
+    expect((await poll(c, ["v1.1.0", "v0.1.0"])).queued).toEqual(["v1.1.0"]);
+  });
+
+  it("still backfills existing tags for a registry-held manifest", async () => {
+    const c = await connectedWith(["v0.2.0", "v0.1.0"]);
+    await DB().prepare(`UPDATE sources SET manifest_mode = 'registry', registry_manifest_json = '{}' WHERE id = ?`).bind(c.sourceId).run();
+    expect(await poll(c, ["v0.2.0", "v0.1.0"])).toEqual({ status: "ok", queued: ["v0.2.0", "v0.1.0"] });
   });
 });

@@ -173,6 +173,9 @@ export type SourceRow = {
   installation_id: number | null;
   connected_by: string | null;
   etag: string | null;
+  manifest_mode: "repo" | "registry";
+  /** JSON array of the release tags the repository had when it was connected without a package. */
+  baseline_tags: string | null;
   sync_status: string;
   archived: number;
   unavailable_since: number | null;
