@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osintverse/otinstaller/cli/internal/manifest"
+	"github.com/otinstaller/otinstaller/cli/internal/manifest"
 )
 
 func TestFilesPerHost(t *testing.T) {

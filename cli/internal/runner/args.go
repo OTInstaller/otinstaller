@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/osintverse/otinstaller/cli/internal/manifest"
+	"github.com/otinstaller/otinstaller/cli/internal/manifest"
 )
 
 var placeholderRe = regexp.MustCompile(`\{[^{}]*\}`)

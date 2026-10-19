@@ -9,10 +9,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/osintverse/otinstaller/cli/internal/api"
-	"github.com/osintverse/otinstaller/cli/internal/keys"
-	"github.com/osintverse/otinstaller/cli/internal/runner"
-	"github.com/osintverse/otinstaller/cli/internal/state"
+	"github.com/otinstaller/otinstaller/cli/internal/api"
+	"github.com/otinstaller/otinstaller/cli/internal/keys"
+	"github.com/otinstaller/otinstaller/cli/internal/runner"
+	"github.com/otinstaller/otinstaller/cli/internal/state"
 )
 
 // Version is set at build time with -ldflags "-X .../cli.Version=1.0.0".

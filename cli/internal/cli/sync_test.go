@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osintverse/otinstaller/cli/internal/api"
+	"github.com/otinstaller/otinstaller/cli/internal/api"
 )
 
 func TestSync(t *testing.T) {

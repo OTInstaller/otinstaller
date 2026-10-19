@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osintverse/otinstaller/cli/internal/api"
-	"github.com/osintverse/otinstaller/cli/internal/runner"
-	"github.com/osintverse/otinstaller/cli/internal/state"
+	"github.com/otinstaller/otinstaller/cli/internal/api"
+	"github.com/otinstaller/otinstaller/cli/internal/runner"
+	"github.com/otinstaller/otinstaller/cli/internal/state"
 )
 
 const fixtures = "../../../spec/fixtures"

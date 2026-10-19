@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osintverse/otinstaller/cli/internal/api"
+	"github.com/otinstaller/otinstaller/cli/internal/api"
 )
 
 // fakeImports is the registry's import wizard: a Docker repository whose draft lacks what can't be detected.

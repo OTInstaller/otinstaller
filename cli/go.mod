@@ -1,4 +1,4 @@
-module github.com/osintverse/otinstaller/cli
+module github.com/otinstaller/otinstaller/cli
 
 go 1.25
 

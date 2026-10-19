@@ -12,7 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/osintverse/otinstaller/cli/internal/api"
+	"github.com/otinstaller/otinstaller/cli/internal/api"
 )
 
 // importCmd runs the import wizard: the registry detects what a repository contains and drafts its

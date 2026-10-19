@@ -11,11 +11,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/osintverse/otinstaller/cli/internal/api"
-	"github.com/osintverse/otinstaller/cli/internal/keys"
-	"github.com/osintverse/otinstaller/cli/internal/manifest"
-	"github.com/osintverse/otinstaller/cli/internal/runner"
-	"github.com/osintverse/otinstaller/cli/internal/state"
+	"github.com/otinstaller/otinstaller/cli/internal/api"
+	"github.com/otinstaller/otinstaller/cli/internal/keys"
+	"github.com/otinstaller/otinstaller/cli/internal/manifest"
+	"github.com/otinstaller/otinstaller/cli/internal/runner"
+	"github.com/otinstaller/otinstaller/cli/internal/state"
 )
 
 func newJSONEncoder(w io.Writer) *json.Encoder {

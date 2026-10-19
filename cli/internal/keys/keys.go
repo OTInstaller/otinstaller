@@ -10,7 +10,7 @@ import (
 
 	"github.com/zalando/go-keyring"
 
-	"github.com/osintverse/otinstaller/cli/internal/state"
+	"github.com/otinstaller/otinstaller/cli/internal/state"
 )
 
 const service = "osintverse-ot"

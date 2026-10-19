@@ -10,7 +10,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/osintverse/otinstaller/cli/internal/manifest"
+	"github.com/otinstaller/otinstaller/cli/internal/manifest"
 )
 
 // Home is ot's data directory: $OT_HOME, %APPDATA%\ot on Windows, ~/.ot elsewhere.

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osintverse/otinstaller/cli/internal/manifest"
+	"github.com/otinstaller/otinstaller/cli/internal/manifest"
 )
 
 func load(t *testing.T, name string) *manifest.Manifest {

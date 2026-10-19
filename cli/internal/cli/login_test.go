@@ -11,8 +11,8 @@ import (
 
 	"github.com/zalando/go-keyring"
 
-	"github.com/osintverse/otinstaller/cli/internal/api"
-	"github.com/osintverse/otinstaller/cli/internal/keys"
+	"github.com/otinstaller/otinstaller/cli/internal/api"
+	"github.com/otinstaller/otinstaller/cli/internal/keys"
 )
 
 func TestLoginDeviceFlow(t *testing.T) {

@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osintverse/otinstaller/cli/internal/manifest"
-	"github.com/osintverse/otinstaller/cli/internal/state"
+	"github.com/otinstaller/otinstaller/cli/internal/manifest"
+	"github.com/otinstaller/otinstaller/cli/internal/state"
 )
 
 // TrustError means a verification check failed and ot refused to continue (exit code 4).

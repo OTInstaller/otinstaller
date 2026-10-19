@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/osintverse/otinstaller/cli/internal/api"
-	"github.com/osintverse/otinstaller/cli/internal/keys"
+	"github.com/otinstaller/otinstaller/cli/internal/api"
+	"github.com/otinstaller/otinstaller/cli/internal/keys"
 )
 
 // TokenKey is the keychain entry that holds the registry API token.

@@ -15,9 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osintverse/otinstaller/cli/internal/envelope"
-	"github.com/osintverse/otinstaller/cli/internal/manifest"
-	"github.com/osintverse/otinstaller/cli/internal/state"
+	"github.com/otinstaller/otinstaller/cli/internal/envelope"
+	"github.com/otinstaller/otinstaller/cli/internal/manifest"
+	"github.com/otinstaller/otinstaller/cli/internal/state"
 )
 
 // Exec runs external programs. Tests replace it with a fake.

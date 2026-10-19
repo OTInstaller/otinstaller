@@ -11,8 +11,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/osintverse/otinstaller/cli/internal/manifest"
-	"github.com/osintverse/otinstaller/cli/internal/scaffold"
+	"github.com/otinstaller/otinstaller/cli/internal/manifest"
+	"github.com/otinstaller/otinstaller/cli/internal/scaffold"
 )
 
 func (a *App) initCmd() *cobra.Command {

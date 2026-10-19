@@ -14,10 +14,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/osintverse/otinstaller/cli/internal/api"
-	"github.com/osintverse/otinstaller/cli/internal/manifest"
-	"github.com/osintverse/otinstaller/cli/internal/runner"
-	"github.com/osintverse/otinstaller/cli/internal/state"
+	"github.com/otinstaller/otinstaller/cli/internal/api"
+	"github.com/otinstaller/otinstaller/cli/internal/manifest"
+	"github.com/otinstaller/otinstaller/cli/internal/runner"
+	"github.com/otinstaller/otinstaller/cli/internal/state"
 )
 
 // pkgRef is "namespace/name[@version]" or a path to a local manifest.
