@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://otinstaller.com/schema/v1.json",
+  "title": "OTInstaller package manifest (otinstaller.yaml), schema 1",
+  "type": "object",
+  "required": ["schema", "name", "namespace", "version", "summary", "license", "categories"],
+  "properties": {
+    "schema": { "const": 1 },
+    "kind": { "enum": ["tool", "guide"], "default": "tool" },
+    "name": { "$ref": "#/$defs/slug" },
+    "namespace": { "$ref": "#/$defs/slug" },
+    "version": { "$ref": "#/$defs/semver" },
+    "summary": { "type": "string", "minLength": 10, "maxLength": 140 },
+    "license": { "type": "string", "minLength": 1, "not": { "const": "NOASSERTION" } },
+    "homepage": { "type": "string", "format": "uri" },
+    "categories": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/category" }
+    },
+    "tags": {
+      "type": "array",
+      "maxItems": 10,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 32 }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "guide" } }, "required": ["kind"] },
+      "then": { "$ref": "#/$defs/guide" },
+      "else": { "$ref": "#/$defs/tool" }
+    }
+  ],
+  "$defs": {
+    "slug": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$" },
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "category": {
+      "enum": [
+        "email", "username", "phone", "domain-dns", "ip-network", "social-media", "people", "company",
+        "images-geo", "crypto", "breach-data", "web-archive", "documents-metadata", "utilities"
+      ]
+    },
+    "inputType": {
+      "enum": [
+        "email", "username", "phone", "domain", "ip", "url", "name", "image", "crypto_address", "hash", "company",
+        "string", "integer", "boolean", "enum"
+      ]
+    },
+    "entityType": {
+      "enum": [
+        "account", "email", "username", "phone", "domain", "subdomain", "ip", "url", "person", "organization",
+        "location", "breach", "certificate", "dns_record", "image", "document", "crypto_address", "transaction", "other"
+      ]
+    },
+    "pages": {
+      "type": "object",
+      "required": ["root", "nav"],
+      "additionalProperties": false,
+      "properties": {
+        "root": { "type": "string", "pattern": "^[^/][^\\\\]*/$" },
+        "nav": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[^/\\\\][^\\\\]*\\.md$" }
+        }
+      }
+    },
+    "tool": {
+      "required": ["readme", "inputs", "outputs", "runtime", "ethics"],
+      "properties": {
+        "kind": { "const": "tool" },
+        "readme": { "type": "string", "minLength": 1 },
+        "inputs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "type", "required"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$" },
+              "type": { "$ref": "#/$defs/inputType" },
+              "required": { "type": "boolean" },
+              "default": {},
+              "description": { "type": "string", "maxLength": 200 },
+              "values": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+            },
+            "if": { "properties": { "type": { "const": "enum" } } },
+            "then": { "required": ["values"] }
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["type"],
+            "additionalProperties": false,
+            "properties": { "type": { "$ref": "#/$defs/entityType" } }
+          }
+        },
+        "runtime": {
+          "type": "object",
+          "required": ["kind", "command", "output_format"],
+          "properties": {
+            "kind": { "enum": ["docker", "pipx"] },
+            "command": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+            "output_format": { "enum": ["json", "jsonl", "csv", "text"] },
+            "timeout_seconds": { "type": "integer", "minimum": 1, "maximum": 3600, "default": 300 }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "kind": { "const": "docker" } } },
+              "then": {
+                "required": ["image", "platforms"],
+                "properties": {
+                  "image": { "type": "string", "pattern": "^[a-z0-9.-]+(:[0-9]+)?/[a-z0-9._/-]+@sha256:[a-f0-9]{64}$" },
+                  "platforms": {
+                    "type": "array",
+                    "contains": { "const": "linux/amd64" },
+                    "items": { "enum": ["linux/amd64", "linux/arm64"] },
+                    "uniqueItems": true
+                  }
+                }
+              }
+            },
+            {
+              "if": { "properties": { "kind": { "const": "pipx" } } },
+              "then": {
+                "required": ["package", "package_version", "entrypoint", "wheel_sha256"],
+                "properties": {
+                  "package": { "type": "string", "pattern": "^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$" },
+                  "package_version": { "type": "string", "pattern": "^[0-9][0-9A-Za-z.+-]*$" },
+                  "index": { "const": "pypi" },
+                  "python": { "type": "string" },
+                  "entrypoint": { "type": "string", "minLength": 1 },
+                  "wheel_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+                }
+              }
+            }
+          ]
+        },
+        "secrets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "required"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,63}$" },
+              "required": { "type": "boolean" },
+              "description": { "type": "string", "maxLength": 200 },
+              "url": { "type": "string", "format": "uri" }
+            }
+          }
+        },
+        "network": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "egress": { "type": "boolean" },
+            "domains": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "ethics": {
+          "type": "object",
+          "required": ["touches_target", "auth_required", "collects_personal_data"],
+          "additionalProperties": false,
+          "properties": {
+            "touches_target": { "type": "boolean" },
+            "auth_required": { "type": "boolean" },
+            "collects_personal_data": { "type": "boolean" }
+          }
+        },
+        "test": {
+          "type": "object",
+          "required": ["input"],
+          "additionalProperties": false,
+          "properties": {
+            "input": { "type": "object" },
+            "expect_exit_code": { "type": "integer", "default": 0 }
+          }
+        },
+        "docs": { "$ref": "#/$defs/pages" }
+      }
+    },
+    "guide": {
+      "required": ["title", "level", "format", "content"],
+      "not": { "anyOf": [{ "required": ["runtime"] }, { "required": ["inputs"] }] },
+      "properties": {
+        "title": { "type": "string", "minLength": 3, "maxLength": 120 },
+        "level": { "enum": ["beginner", "intermediate", "advanced"] },
+        "format": { "enum": ["guide", "reference"] },
+        "language": { "type": "string", "pattern": "^[a-z]{2}(-[A-Z]{2})?$", "default": "en" },
+        "content": { "$ref": "#/$defs/pages" },
+        "related_tools": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]/[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$" }
+        },
+        "topics": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/inputType" } }
+      }
+    }
+  }
+}

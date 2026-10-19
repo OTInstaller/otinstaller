@@ -1,0 +1,5 @@
+node_modules/
+.wrangler/
+bin/
+*.exe
+examples/dns-lookup/otinstaller.yaml

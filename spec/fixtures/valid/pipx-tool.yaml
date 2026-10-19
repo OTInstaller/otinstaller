@@ -1,0 +1,39 @@
+schema: 1
+kind: tool
+name: phone-parse
+namespace: osintverse
+version: 0.3.1
+summary: Parses phone numbers into country, carrier type and E.164 format
+readme: README.md
+license: Apache-2.0
+categories: [phone]
+inputs:
+  - name: phone
+    type: phone
+    required: true
+  - name: region
+    type: enum
+    required: false
+    values: [US, GB, IN]
+outputs:
+  - type: phone
+  - type: location
+runtime:
+  kind: pipx
+  package: phone-parse
+  package_version: 0.3.1
+  index: pypi
+  python: ">=3.10"
+  entrypoint: phone-parse
+  wheel_sha256: 9c4a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d771
+  command: ["phone-parse", "--json", "{phone}"]
+  output_format: json
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+test:
+  input: { phone: "+14155550123" }
+docs:
+  root: docs/
+  nav: [usage.md, output-fields.md]

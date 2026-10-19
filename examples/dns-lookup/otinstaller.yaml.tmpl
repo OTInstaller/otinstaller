@@ -1,0 +1,29 @@
+schema: 1
+name: dns-lookup
+namespace: osintverse
+version: 0.1.0
+summary: Resolves a domain to its IPv4 and IPv6 addresses
+readme: README.md
+license: MIT
+categories: [domain-dns]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+outputs:
+  - type: ip
+runtime:
+  kind: docker
+  image: __IMAGE__
+  platforms: [linux/amd64]
+  command: ["dns-lookup", "{domain}"]
+  output_format: json
+  timeout_seconds: 60
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+test:
+  input: { domain: "example.com" }

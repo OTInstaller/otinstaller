@@ -1,0 +1,27 @@
+# expect: manifest_schema
+schema: 1
+kind: guide
+name: email-investigation-playbook
+namespace: dheeraj
+version: 1.0.0
+title: Email investigation playbook
+summary: A repeatable workflow from one email address to linked accounts and breaches
+license: CC-BY-4.0
+categories: [email]
+level: intermediate
+format: guide
+language: en
+content:
+  root: docs/
+  nav:
+    - index.md
+    - 01-scope-and-legal.md
+    - 02-passive-checks.md
+related_tools:
+  - dheeraj/holehe-lite
+  - osintverse/email-header-parser
+topics: [email]
+runtime:
+  kind: docker
+  command: ["x"]
+  output_format: json
