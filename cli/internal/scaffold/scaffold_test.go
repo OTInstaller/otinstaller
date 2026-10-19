@@ -1,6 +1,7 @@
 package scaffold
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -38,5 +39,25 @@ func TestFilesPerHost(t *testing.T) {
 		if ps := manifest.Validate(doc, m, manifest.Options{}); len(ps) > 0 {
 			t.Errorf("%s/%s manifest invalid: %v", c.kind, c.host, ps)
 		}
+	}
+}
+
+// The CLI embeds copies of the spec's release templates, which the registry's import wizard also uses.
+func TestTemplatesMatchSpec(t *testing.T) {
+	for _, name := range []string{"github-docker.yml", "github-pipx.yml", "gitlab-docker.yml", "gitlab-pipx.yml"} {
+		spec, err := os.ReadFile("../../../spec/templates/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		local, err := os.ReadFile("templates/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(spec) != string(local) {
+			t.Errorf("templates/%s differs from spec/templates; run `go generate ./...`", name)
+		}
+	}
+	if ReleaseTemplate("gitlab", "pipx") != gitlabPipxTmpl || ReleaseTemplate("github", "docker") != githubDockerTmpl {
+		t.Error("ReleaseTemplate picks the wrong template")
 	}
 }

@@ -1,18 +1,19 @@
 # OTInstaller Registry
 
 A free, public registry of OSINT tools and guides, and `ot`, the CLI that installs and runs them.
-This repository holds weeks 1–6 of the plan: the manifest spec, the `ot` CLI, the registry API's read side,
+This repository holds weeks 1–7 of the plan: the manifest spec, the `ot` CLI, the registry API's read side,
 publishing intake (GitHub/GitLab sign-in, the GitHub App webhook, the queue that validates tagged releases), and
 security scans with the review queue (scanner, verdicts, publishing, reviewer decisions, emails), and GitLab support
 with sync (connecting GitLab projects, GitLab webhooks and CI templates, and a poller that catches missed tags, renames,
-archiving and deleted repositories).
+archiving and deleted repositories), and the import wizard (detecting what a repository contains, drafting its manifest,
+opening a pull or merge request, registry-held manifests, and bulk imports of up to 50 repositories).
 To connect real GitHub and GitLab apps, follow [docs/publishing-setup.md](docs/publishing-setup.md).
 
 | Folder | What it is |
 | --- | --- |
-| `spec/` | Manifest JSON Schema (`schema/v1.json`) and example manifests: 3 valid, 24 invalid with expected error codes |
-| `cli/` | The `ot` CLI (Go): `init`, `validate`, `search`, `info`, `install`, `run`, `list`, `uninstall`, `keys`, `doctor`, `login`, `logout`, `whoami` |
-| `api/` | Registry API (Cloudflare Workers + Hono + D1 + Queues): search and read endpoints, GitHub/GitLab sign-in and device flow, API tokens, GitHub App webhooks, publish validation |
+| `spec/` | Manifest JSON Schema (`schema/v1.json`), example manifests (3 valid, 24 invalid with expected error codes) and the release workflow templates (`templates/`) that `ot init` and the import wizard both use |
+| `cli/` | The `ot` CLI (Go): `init`, `validate`, `search`, `info`, `install`, `run`, `list`, `uninstall`, `keys`, `doctor`, `login`, `logout`, `whoami`, `import` |
+| `api/` | Registry API (Cloudflare Workers + Hono + D1 + Queues): search and read endpoints, GitHub/GitLab sign-in and device flow, API tokens, GitHub App webhooks, publish validation, the import wizard |
 | `ops/` | The scanner (`scanner/scan.py` + its Docker image) and the GitHub Actions workflow for the registry-ops repo |
 | `examples/dns-lookup/` | A tiny real tool used by the end-to-end test |
 | `examples/tldextract/`, `examples/cosign/` | Real packages (a PyPI wheel and Sigstore's signed image) used by `scripts/e2e-real.sh` |
@@ -39,7 +40,14 @@ an environment variable with the same name takes precedence, which is handy in C
 
 Exit codes: 0 success, 1 tool error, 2 bad usage or invalid manifest, 3 missing key, 4 trust refusal, 5 runtime missing, 124 timeout.
 
-The CLI embeds a copy of `spec/schema/v1.json`. After changing the spec, run `go generate ./...` in `cli/`; a test fails if the copies drift.
+The CLI embeds copies of `spec/schema/v1.json` and `spec/templates/`. After changing the spec, run `go generate ./...` in `cli/`
+and `npm run sync:templates` in `api/`; tests fail if the copies drift.
+
+`ot import <github-or-gitlab-url>` publishes an existing repository: the registry drafts `otinstaller.yaml` from what is
+in it (a Dockerfile, a `pyproject.toml` console script, or `docs/`), `ot` asks for what it could not detect (inputs,
+outputs, command, ethics), and then opens a pull or merge request with the manifest and a release workflow. `--registry`
+keeps the manifest on the registry instead (repository owners only), several URLs start a bulk import, and `--list`
+shows your imports.
 
 ## API
 
@@ -81,3 +89,10 @@ bash scripts/e2e-real.sh
 - Release templates sign on the default branch before creating the tag, so the expected signer accepts the repository's
   CI on a branch ref as well as on the release tag.
 - Docker images are not run through GuardDog (it reads Python packages); Trivy and the smoke test cover them.
+- The import wizard opens GitHub pull requests through the GitHub App, so the App also needs Contents and Workflows
+  write access (GitHub requires the Workflows permission to add a file under `.github/workflows/`). GitLab merge
+  requests use the author's own token with the `api` scope, asked for only when they finish an import.
+- A GitLab project that already has a `.gitlab-ci.yml` gets the release job as `.gitlab/otinstaller-release.yml`, with a
+  note in the merge request to include it; an existing pipeline is never rewritten.
+- A registry-held manifest is published with the version from each new tag, and the image tagged with that version (or
+  the PyPI wheel of that version) is looked up at publish time, so authors don't edit the manifest for every release.

@@ -36,6 +36,8 @@ type Error struct {
 	Message string `json:"message"`
 	Hint    string `json:"hint,omitempty"`
 	Docs    string `json:"docs,omitempty"`
+	// Problems lists what is wrong with a manifest, for errors about one.
+	Problems []Problem `json:"problems,omitempty"`
 }
 
 func (e *Error) Error() string {
@@ -62,6 +64,7 @@ type ToolSummary struct {
 	Verified      bool     `json:"verified"`
 	Signed        bool     `json:"signed"`
 	NeedsKeys     bool     `json:"needs_keys"`
+	ManifestHeld  bool     `json:"manifest_held_by_registry"`
 	Status        string   `json:"status"`
 }
 
@@ -76,7 +79,6 @@ type ToolDetail struct {
 	RepoURL       string          `json:"repo_url"`
 	License       string          `json:"license"`
 	DeprecatedMsg string          `json:"deprecated_message,omitempty"`
-	ManifestHeld  bool            `json:"manifest_held_by_registry"`
 	CommunityWrap bool            `json:"community_packaged"`
 	Manifest      json.RawMessage `json:"manifest"`
 	MovedTo       string          `json:"moved_to,omitempty"`

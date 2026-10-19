@@ -8,6 +8,7 @@ export interface Env {
   API_URL: string;
   GITHUB_APP_ID?: string;
   GITHUB_APP_PRIVATE_KEY?: string;
+  GITHUB_APP_SLUG?: string; // for the App's install link; defaults to "otinstaller"
   GITHUB_WEBHOOK_SECRET?: string;
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
@@ -20,9 +21,8 @@ export interface Env {
   EMAIL_FROM?: string;
 }
 
-export interface PublishMessage {
-  jobId: string;
-}
+/** The queue carries publish jobs and bulk-import detection. */
+export type PublishMessage = { jobId: string } | { importId: string };
 
 export interface User {
   id: string;

@@ -23,6 +23,7 @@
     "API_URL": "https://api.otinstaller.com",
     "OPS_REPO": "osintverse/registry-ops",
     "EMAIL_FROM": "OTInstaller Registry <registry@otinstaller.com>"
+    // "GITHUB_APP_SLUG": "otinstaller" is the App's URL name for install links (this is the default)
   }
   // Secrets (set with `wrangler secret put`, or in .dev.vars locally):
   //   GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY (PKCS#8 PEM), GITHUB_WEBHOOK_SECRET,

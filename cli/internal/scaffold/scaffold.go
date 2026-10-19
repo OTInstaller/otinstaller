@@ -3,6 +3,7 @@ package scaffold
 
 import (
 	"bytes"
+	_ "embed"
 	"fmt"
 	"os"
 	"os/exec"
@@ -63,6 +64,34 @@ func GitRemote(dir string) (host, owner, repo string) {
 		return "", "", ""
 	}
 	return strings.TrimSuffix(m[1], ".com"), m[2], m[3]
+}
+
+// Release workflows are shared with the registry's import wizard; the canonical copies live in
+// spec/templates. Run `go generate ./...` after changing them.
+//
+//go:generate go run sync_templates.go
+var (
+	//go:embed templates/github-docker.yml
+	githubDockerTmpl string
+	//go:embed templates/github-pipx.yml
+	githubPipxTmpl string
+	//go:embed templates/gitlab-docker.yml
+	gitlabDockerTmpl string
+	//go:embed templates/gitlab-pipx.yml
+	gitlabPipxTmpl string
+)
+
+// ReleaseTemplate is the release workflow for a host ("github" or "gitlab") and runtime ("docker" or "pipx").
+func ReleaseTemplate(host, kind string) string {
+	switch {
+	case host == "gitlab" && kind == "pipx":
+		return gitlabPipxTmpl
+	case host == "gitlab":
+		return gitlabDockerTmpl
+	case kind == "pipx":
+		return githubPipxTmpl
+	}
+	return githubDockerTmpl
 }
 
 // Files returns path -> content for everything `ot init` creates.
@@ -177,142 +206,6 @@ COPY . .
 RUN pip install --no-cache-dir .
 USER app
 ENTRYPOINT ["<< .Name >>"]
-`
-
-const githubDockerTmpl = `# Builds a multi-arch image, signs it, pins its digest in otinstaller.yaml and tags the release.
-# Run it from the Actions tab with the version to release.
-name: otinstaller release
-on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: Version to release (e.g. 1.2.0)
-        required: true
-permissions:
-  contents: write
-  packages: write
-  id-token: write
-jobs:
-  release:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: sigstore/cosign-installer@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - id: build
-        uses: docker/build-push-action@v6
-        with:
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/${{ github.repository }}:${{ inputs.version }}
-      - name: Sign
-        run: cosign sign --yes "ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}"
-      - name: Pin digest and tag
-        env:
-          VERSION: ${{ inputs.version }}
-          IMAGE: ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
-        run: |
-          IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
-          sed -i -E "s|^version: .*|version: ${VERSION}|; s|^  image: .*|  image: ${IMAGE}|" otinstaller.yaml
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "Release ${VERSION}"
-          git tag "v${VERSION}"
-          git push origin HEAD "v${VERSION}"
-`
-
-const gitlabDockerTmpl = `# Builds the image, signs it with GitLab's OIDC token, pins its digest and tags the release.
-# Run a pipeline manually with the variable VERSION set (e.g. 1.2.0). RELEASE_TOKEN is a project
-# access token with write_repository, used to push the release commit and tag.
-otinstaller-release:
-  image: docker:27
-  services: [docker:27-dind]
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "web" && $VERSION
-  id_tokens:
-    SIGSTORE_ID_TOKEN:
-      aud: sigstore
-  script:
-    - apk add --no-cache git cosign
-    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
-    - docker buildx create --use
-    - docker buildx build --platform linux/amd64,linux/arm64 --push -t "$CI_REGISTRY_IMAGE:$VERSION" --metadata-file meta.json .
-    - DIGEST=$(sed -n 's/.*"containerimage.digest": *"\([^"]*\)".*/\1/p' meta.json)
-    - cosign sign --yes "$CI_REGISTRY_IMAGE@$DIGEST"
-    - sed -i -E "s|^version: .*|version: $VERSION|; s|^  image: .*|  image: $CI_REGISTRY_IMAGE@$DIGEST|" otinstaller.yaml
-    - git config user.name "otinstaller release"
-    - git config user.email "release@otinstaller.invalid"
-    - git commit -am "Release $VERSION"
-    - git tag "v$VERSION"
-    - git push "https://oauth2:${RELEASE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" HEAD:$CI_DEFAULT_BRANCH "v$VERSION"
-`
-
-const githubPipxTmpl = `# Publishes to PyPI with Trusted Publishing, pins the wheel hash in otinstaller.yaml and tags the release.
-name: otinstaller release
-on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: Version to release (must match pyproject.toml)
-        required: true
-permissions:
-  contents: write
-  id-token: write
-jobs:
-  release:
-    runs-on: ubuntu-latest
-    environment: pypi
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: python -m pip install build && python -m build
-      - uses: pypa/gh-action-pypi-publish@release/v1
-      - name: Pin wheel hash and tag
-        env:
-          VERSION: ${{ inputs.version }}
-        run: |
-          SHA=$(sha256sum dist/*.whl | cut -d' ' -f1)
-          sed -i -E "s|^version: .*|version: ${VERSION}|; s|^  package_version: .*|  package_version: \"${VERSION}\"|; s|^  wheel_sha256: .*|  wheel_sha256: \"${SHA}\"|" otinstaller.yaml
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "Release ${VERSION}"
-          git tag "v${VERSION}"
-          git push origin HEAD "v${VERSION}"
-`
-
-const gitlabPipxTmpl = `# Publishes to PyPI with Trusted Publishing, pins the wheel hash in otinstaller.yaml and tags the release.
-# Configure a GitLab trusted publisher for this project on PyPI first, then run a pipeline manually
-# with the variable VERSION set (it must match pyproject.toml). RELEASE_TOKEN is a project access token
-# with write_repository, used to push the release commit and tag.
-otinstaller-release:
-  image: python:3.12
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "web" && $VERSION
-  id_tokens:
-    PYPI_ID_TOKEN:
-      aud: pypi
-  script:
-    - python -m pip install build twine
-    - python -m build
-    - RESP=$(curl -sSf -X POST https://pypi.org/_/oidc/mint-token -d "{\"token\":\"${PYPI_ID_TOKEN}\"}")
-    - export TWINE_USERNAME=__token__
-    - export TWINE_PASSWORD=$(python -c "import json,sys; print(json.loads(sys.argv[1])['token'])" "$RESP")
-    - python -m twine upload dist/*
-    - SHA=$(sha256sum dist/*.whl | cut -d' ' -f1)
-    - sed -i -E "s|^version: .*|version: $VERSION|; s|^  package_version: .*|  package_version: \"$VERSION\"|; s|^  wheel_sha256: .*|  wheel_sha256: \"$SHA\"|" otinstaller.yaml
-    - git config user.name "otinstaller release"
-    - git config user.email "release@otinstaller.invalid"
-    - git commit -am "Release $VERSION"
-    - git tag "v$VERSION"
-    - git push "https://oauth2:${RELEASE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" HEAD:$CI_DEFAULT_BRANCH "v$VERSION"
 `
 
 const guideIndexTmpl = `# << .Summary >>

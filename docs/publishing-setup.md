@@ -12,9 +12,18 @@ GitHub → Settings → Developer settings → GitHub Apps → New GitHub App (c
 | Homepage URL | `https://otinstaller.com` |
 | Webhook URL | `https://api.otinstaller.com/v1/webhooks/github` |
 | Webhook secret | a long random string → `GITHUB_WEBHOOK_SECRET` |
-| Repository permissions | Contents: Read-only · Metadata: Read-only · Commit statuses: Read and write · Pull requests: Read and write (import wizard, week 7) |
+| Repository permissions | Contents: Read and write · Metadata: Read-only · Commit statuses: Read and write · Pull requests: Read and write · Workflows: Read and write |
 | Subscribe to events | Create · Release · Push · Repository · Installation target (push, release and repository keep packages in sync) |
 | Where can it be installed | Any account |
+
+Contents, Pull requests and Workflows write access are used only by the import wizard, to push the `otinstaller/import`
+branch with `otinstaller.yaml` and `.github/workflows/otinstaller-release.yml` and open the pull request (GitHub refuses
+to create a workflow file without the Workflows permission). Publishing itself only reads. When you add permissions to an
+existing App, every installation has to accept them (Settings → Applications → the App → Review request) before the
+wizard can open pull requests there; until then finishing an import answers `github_permission_required`.
+
+If the App's URL name is not `otinstaller`, set `GITHUB_APP_SLUG` in `wrangler.jsonc` so the wizard's install links point
+to `https://github.com/apps/<slug>/installations/new`.
 
 Then generate a private key. GitHub gives a PKCS#1 key; convert it to PKCS#8 for Workers:
 
@@ -41,6 +50,7 @@ GitLab.com → Edit profile (or the group) → Applications → Add new applicat
 - Device flow (`ot login --gitlab`) works with the same application.
 - Connecting a project creates its webhook, which needs the `api` scope. Users grant it only when they connect:
   `POST /v1/sources/gitlab {"project": "group/name"}` answers `gitlab_scope_required` with a sign-in link that asks for it.
+  Finishing an import (`POST /v1/imports/{id}/finish`) needs the same scope, for the webhook and the merge request.
 - GitLab projects publish with the `.gitlab-ci.yml` that `ot init` writes: images are signed with GitLab's OIDC token
   (cosign keyless, issuer `https://gitlab.com`) and Python packages use PyPI trusted publishing. Add a project access
   token with `write_repository` as the CI variable `RELEASE_TOKEN` so the pipeline can push the release commit and tag.
@@ -83,7 +93,24 @@ npx wrangler deploy
 For local development, copy `api/.dev.vars.example` to `api/.dev.vars` and fill it in. Use a tunnel
 (for example `cloudflared tunnel --url http://127.0.0.1:8787`) as the staging app's webhook URL.
 
-## 6. Check it
+## 6. Import wizard
+
+`ot import https://github.com/<owner>/<repo>` (or `https://gitlab.com/<group>/<project>`), or the API directly:
+
+| Call | What it does |
+| --- | --- |
+| `GET /v1/me/repos?provider=github\|gitlab&q=` | Public repositories you administer (GitHub) or maintain (GitLab), whether the App is installed, and which are already published |
+| `POST /v1/imports {"repo": url}` | Detects one repository and returns the draft manifest, what was guessed (`assumed`), and what is `missing` |
+| `POST /v1/imports {"repos": [url, ...]}` | Bulk import of up to 50; detection runs in the queue (`GET /v1/imports?batch=<id>` to follow it) |
+| `PATCH /v1/imports/{id}` | `{"manifest": {...}}` sets top-level keys (null removes one), `{"yaml": "..."}` replaces the draft, `{"kind": "docker\|pipx\|guide"}` redrafts it |
+| `POST /v1/imports/{id}/finish {"mode": "pr\|registry\|connect"}` | Opens the pull/merge request, keeps the manifest on the registry (owners only; publishes the newest tag right away), or connects a repository that already has `otinstaller.yaml` |
+| `PUT /v1/packages/{ns}/{name}/manifest` | Edits a registry-held manifest; the next tag uses it |
+| `POST /v1/packages/{ns}/{name}/manifest/pr` | Opens a pull/merge request that moves a registry-held manifest into the repository; the label goes once a tag publishes from it |
+
+To check it against real hosts: import 5 GitHub and 5 GitLab repositories of different kinds, check that each draft is
+right, then merge one pull request and one merge request, run their release workflows, and confirm the tags publish.
+
+## 7. Check it
 
 1. Install the app on a test repository that has a valid `otinstaller.yaml` (`ot init`), with the image pushed.
 2. Push tag `v0.1.0`. Within a minute the tagged commit shows an `otinstaller/publish` status:

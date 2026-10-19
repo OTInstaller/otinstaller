@@ -12,6 +12,12 @@ export default defineConfig(async () => {
       .filter((f) => f.endsWith(".yaml"))
       .map((f) => ({ dir, name: f, text: readFileSync(`../spec/fixtures/${dir}/${f}`, "utf8") })),
   );
+  // The release workflows the import wizard commits, to check the API's generated copy against.
+  const templates = Object.fromEntries(
+    readdirSync("../spec/templates")
+      .filter((f) => f.endsWith(".yml"))
+      .map((f) => [f.replace(/\.yml$/, ""), readFileSync(`../spec/templates/${f}`, "utf8")]),
+  );
   return {
     plugins: [
       cloudflareTest({
@@ -20,6 +26,7 @@ export default defineConfig(async () => {
           TEST_MIGRATIONS: migrations,
           TEST_SEED: buildSeedStatements(),
           TEST_FIXTURES: fixtures,
+          TEST_TEMPLATES: templates,
           SITE_URL: "https://otinstaller.com",
           API_URL: "https://api.otinstaller.com",
           GITHUB_APP_ID: "123",

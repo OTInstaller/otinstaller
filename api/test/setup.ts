@@ -7,6 +7,7 @@ declare global {
       TEST_MIGRATIONS: import("cloudflare:test").D1Migration[];
       TEST_SEED: string[];
       TEST_FIXTURES: { dir: string; name: string; text: string }[];
+      TEST_TEMPLATES: Record<string, string>;
       GITHUB_APP_ID: string;
       GITHUB_WEBHOOK_SECRET: string;
       GITHUB_CLIENT_ID: string;

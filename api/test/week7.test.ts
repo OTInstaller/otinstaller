@@ -1,0 +1,639 @@
+import { env } from "cloudflare:test";
+import { beforeEach, describe, expect, it } from "vitest";
+import YAML from "yaml";
+import { processJob } from "../src/publish";
+import { publishVersion } from "../src/scans";
+import { RELEASE_TEMPLATES } from "../src/release-templates";
+import {
+  buildDraft, categoriesFrom, detectKind, detectQueued, latestReleaseTag, licenseFromText, missingFields, parseRepoRef, pyprojectInfo, summaryFrom,
+  type Facts,
+} from "../src/imports";
+import { encrypt, sha256Hex, ulid } from "../src/lib/crypto";
+import { parseManifest } from "../src/lib/manifest";
+import { call, fakeHosts, sent, testEnv, webhook } from "./helpers";
+import { installation, tagEvent } from "./fixtures";
+
+const DB = () => env.DB;
+const GH = "https://api.github.com";
+const GL = "https://gitlab.com/api/v4/projects/";
+const DIGEST = `sha256:${"a".repeat(64)}`;
+let n = 0;
+const uniq = () => `${Date.now() % 1e6}${++n}`;
+
+beforeEach(() => void (sent.length = 0));
+
+// ---------- detection rules ----------
+
+describe("detection", () => {
+  const files = (...names: string[]) => names.map((name) => ({ name, type: name.endsWith("/") ? ("dir" as const) : ("file" as const) })).map((e) => ({ ...e, name: e.name.replace(/\/$/, "") }));
+
+  it.each([
+    [["Dockerfile", "README.md", "pyproject.toml"], { scripts: ["tool"] }, "docker"],
+    [["pyproject.toml", "README.md"], { scripts: ["tool"] }, "pipx"],
+    [["pyproject.toml", "README.md"], { scripts: [] }, null],
+    [["README.md", "docs/"], null, "guide"],
+    [["mkdocs.yml", "README.md"], null, "guide"],
+    [["README.md", "02-passive.md", "LICENSE", ".gitignore"], null, "guide"],
+    [["main.go", "README.md"], null, null],
+  ] as const)("%j is %s", (names, py, kind) => {
+    expect(detectKind(files(...names), py ? { scripts: [...py.scripts] } : null).kind).toBe(kind);
+  });
+
+  it("reads names and console scripts from pyproject.toml without a TOML parser", () => {
+    expect(pyprojectInfo(`[build-system]\nrequires = ["hatchling"]\n\n[project]\nname = "holehe-lite"  # pypi name\nversion = "1.0"\n\n[project.scripts]\nholehe = "holehe.cli:main"\n`))
+      .toEqual({ name: "holehe-lite", scripts: ["holehe"] });
+    expect(pyprojectInfo(`[tool.poetry]\nname = 'sherlock'\n[tool.poetry.scripts]\nsherlock = 'sherlock:main'\n`)).toEqual({ name: "sherlock", scripts: ["sherlock"] });
+  });
+
+  it("maps topics to categories, shortens long descriptions, and picks the newest release", () => {
+    expect(categoriesFrom(["osint", "dns", "email", "socmint", "python"])).toEqual(["domain-dns", "email", "social-media"]);
+    expect(summaryFrom("short")).toEqual({ summary: null, cut: false });
+    const long = summaryFrom("Finds accounts by username across hundreds of social networks, forums and other websites, with JSON output, proxies, timeouts and retries built in");
+    expect(long.cut).toBe(true);
+    expect(long.summary!.length).toBeLessThanOrEqual(140);
+    expect(latestReleaseTag(["v1.2.0", "v1.10.0", "v2.0.0-rc.1", "latest", "1.9.9"])).toBe("v1.10.0");
+    expect(latestReleaseTag(["v2.0.0-rc.1"])).toBe("v2.0.0-rc.1");
+    expect(latestReleaseTag(["nightly"])).toBeNull();
+  });
+
+  it("recognises common license texts", () => {
+    expect(licenseFromText("MIT License\n\nCopyright (c) 2026")).toBe("MIT");
+    expect(licenseFromText("                                 Apache License\n                           Version 2.0, January 2004")).toBe("Apache-2.0");
+    expect(licenseFromText("GNU GENERAL PUBLIC LICENSE\n Version 3, 29 June 2007")).toBe("GPL-3.0-only");
+    expect(licenseFromText("All rights reserved")).toBeNull();
+  });
+
+  it.each([
+    ["https://github.com/Alice/tool", undefined, { provider: "github", path: "Alice/tool" }],
+    ["git@github.com:alice/tool.git", undefined, { provider: "github", path: "alice/tool" }],
+    ["https://gitlab.com/group/sub/project/-/tree/main", undefined, { provider: "gitlab", path: "group/sub/project" }],
+    ["alice/tool", "gitlab", { provider: "gitlab", path: "alice/tool" }],
+    ["alice/tool", undefined, null],
+    ["https://github.com/alice", undefined, null],
+    ["https://example.com/alice/tool", undefined, null],
+  ] as const)("parses %s", (input, fallback, want) => {
+    expect(parseRepoRef(input, fallback)).toEqual(want);
+  });
+
+  it("drafts a Docker tool whose manifest validates once the author fills in the rest", () => {
+    const facts: Facts = {
+      provider: "github", path: "alice/whois-plus", url: "https://github.com/alice/whois-plus", defaultBranch: "main", namespace: "alice", repoName: "whois-plus",
+      description: "WHOIS lookups with registrar and creation dates", topics: ["whois", "osint"], license: "MIT", readme: "README.md", signals: ["Dockerfile"],
+      kind: "docker", existingManifest: false, latestTag: null, image: null, pypi: null, docs: null, hasGitlabCi: false, canHoldManifest: true, appInstalled: true,
+    };
+    const { manifest, assumed } = buildDraft(facts, "docker");
+    expect(manifest).toMatchObject({ name: "whois-plus", namespace: "alice", version: "0.1.0", categories: ["domain-dns"], tags: ["whois", "osint"] });
+    expect((manifest.runtime as any).image).toBe(`ghcr.io/alice/whois-plus@sha256:${"0".repeat(64)}`);
+    expect(assumed.join("\n")).toContain("placeholder");
+    expect(missingFields(manifest)).toEqual(["inputs", "outputs", "command", "ethics"]);
+    Object.assign(manifest, completion);
+    (manifest.runtime as any).command = ["whois-plus", "{domain}"];
+    expect(parseManifest(JSON.stringify(manifest)).problems).toEqual([]);
+  });
+
+  it("generates the API's release templates from spec/templates", () => {
+    expect(RELEASE_TEMPLATES).toEqual(env.TEST_TEMPLATES);
+  });
+});
+
+// What the author fills in for a tool (the CLI's prompts send the same shape).
+const completion = {
+  inputs: [{ name: "domain", type: "domain", required: true }],
+  outputs: [{ type: "organization" }],
+  ethics: { touches_target: false, auth_required: false, collects_personal_data: true },
+  test: { input: { domain: "example.com" } },
+};
+
+// ---------- fakes ----------
+
+/** A user with linked GitHub and GitLab accounts and an API token. */
+async function user(opts: { githubId?: number; gitlabLogin?: string } = {}) {
+  const id = ulid();
+  const login = `imp${uniq()}`;
+  const token = `ot_imp_${id}`;
+  const key = env.TOKEN_ENC_KEY;
+  await DB().batch([
+    DB().prepare(`INSERT INTO users (id, login, email, created_at) VALUES (?, ?, ?, ?)`).bind(id, login, `${login}@example.com`, Date.now()),
+    DB().prepare(`INSERT INTO accounts (id, user_id, provider, provider_user_id, login, access_token_enc, created_at) VALUES (?, ?, 'github', ?, ?, ?, ?)`)
+      .bind(ulid(), id, String(opts.githubId ?? Number(uniq())), login, await encrypt(key, `gho_${login}`), Date.now()),
+    DB().prepare(
+      `INSERT INTO accounts (id, user_id, provider, provider_user_id, login, access_token_enc, refresh_token_enc, expires_at, created_at) VALUES (?, ?, 'gitlab', ?, ?, ?, ?, ?, ?)`,
+    ).bind(ulid(), id, uniq(), opts.gitlabLogin ?? login, await encrypt(key, "glpat"), await encrypt(key, "glrt"), Date.now() + 3600_000, Date.now()),
+    DB().prepare(`INSERT INTO api_tokens (id, user_id, name, token_hash, created_at) VALUES (?, ?, 't', ?, ?)`).bind(ulid(), id, await sha256Hex(token), Date.now()),
+  ]);
+  return { id, login, auth: { authorization: `Bearer ${token}`, "content-type": "application/json" } };
+}
+
+type GhRepo = {
+  id: number;
+  path: string;
+  files: Record<string, string>;
+  tags?: string[];
+  images?: Record<string, string>;
+  owner?: { id: number; type: string };
+  admin?: boolean;
+  private?: boolean;
+  description?: string;
+  topics?: string[];
+  license?: string | null;
+};
+
+const ghRepoJson = (r: GhRepo) => ({
+  id: r.id, full_name: r.path, html_url: `https://github.com/${r.path}`, default_branch: "main", description: r.description ?? "WHOIS lookups with registrar and creation dates",
+  topics: r.topics ?? ["whois", "osint"], license: r.license === null ? null : { spdx_id: r.license ?? "MIT" }, private: !!r.private, archived: false,
+  owner: { login: r.path.split("/")[0], id: r.owner?.id ?? 1, type: r.owner?.type ?? "User" }, permissions: { admin: r.admin ?? true, push: true },
+});
+
+/** Lists a directory of the fake repository's files ("" is the root). */
+function listing(files: Record<string, string>, dir: string) {
+  const prefix = dir ? `${dir}/` : "";
+  const entries = new Map<string, string>();
+  for (const path of Object.keys(files)) {
+    if (!path.startsWith(prefix)) continue;
+    const rest = path.slice(prefix.length);
+    entries.set(rest.split("/")[0]!, rest.includes("/") ? "dir" : "file");
+  }
+  return entries.size ? [...entries].map(([name, type]) => ({ name, type })) : null;
+}
+
+/** An OCI registry with the given tag -> digest map; any digest resolves. */
+const registry = (images: Record<string, string>) => (req: Request) => {
+  const ref = decodeURIComponent(new URL(req.url).pathname.split("/manifests/")[1]!);
+  const index = { schemaVersion: 2, manifests: [{ platform: { os: "linux", architecture: "amd64" } }, { platform: { os: "linux", architecture: "arm64" } }] };
+  if (ref.startsWith("sha256:")) return index;
+  const digest = images[ref];
+  return digest ? new Response(JSON.stringify(index), { headers: { "docker-content-digest": digest, "content-type": "application/json" } }) : null;
+};
+
+/** GitHub (user and App tokens), ghcr.io and email for one repository; records commits and pull requests. */
+function fakeGithub(r: GhRepo, extra: Record<string, any> = {}) {
+  const commits: { path: string; content: string; branch: string }[] = [];
+  const base = `${GH}/repos/${r.path}`;
+  const calls = fakeHosts({
+    [`GET ${GH}/repos/${r.path}`]: ghRepoJson(r),
+    [`GET ${GH}/repositories/${r.id}`]: ghRepoJson(r),
+    [`GET ${base}/contents`]: (req) => {
+      const path = decodeURIComponent(new URL(req.url).pathname.split("/contents")[1] ?? "").replace(/^\//, "");
+      if ((req.headers.get("accept") ?? "").includes("raw")) return r.files[path] ?? null;
+      if (r.files[path] !== undefined) return { sha: "old", type: "file" };
+      return listing(r.files, path);
+    },
+    [`GET ${base}/tags`]: (r.tags ?? []).map((name) => ({ name })),
+    [`GET ${base}/commits/`]: { sha: "abc123" },
+    [`POST ${base}/statuses/`]: { ok: true },
+    [`GET ${base}/git/ref/heads/main`]: { object: { sha: "base123" } },
+    [`POST ${base}/git/refs`]: new Response("{}", { status: 201 }),
+    [`PUT ${base}/contents/`]: async (req) => {
+      const body = (await req.json()) as { content: string; branch: string };
+      const path = decodeURIComponent(new URL(req.url).pathname.split("/contents/")[1]!);
+      commits.push({ path, branch: body.branch, content: new TextDecoder().decode(Uint8Array.from(atob(body.content), (ch) => ch.charCodeAt(0))) });
+      return new Response("{}", { status: 201 });
+    },
+    [`POST ${base}/pulls`]: { html_url: `https://github.com/${r.path}/pull/7`, number: 7 },
+    [`POST ${GH}/app/installations/`]: { token: "ghs_install" },
+    "GET https://ghcr.io/v2/": registry(r.images ?? {}),
+    "POST https://api.github.com/repos/osintverse/registry-ops/dispatches": new Response(null, { status: 204 }),
+    "POST https://api.resend.com/emails": { id: "e" },
+    ...extra,
+  });
+  return { calls, commits };
+}
+
+/** Installs the App on the repository; the namespace is the owner's login. */
+async function installApp(login: string, ownerId: number, repoId: number, sender = 1) {
+  const instId = Number(uniq());
+  await webhook("installation", installation(instId, { id: ownerId, login }, [repoId], sender));
+  return instId;
+}
+
+const post = (path: string, auth: Record<string, string>, body: unknown) => call(path, { method: "POST", headers: auth, body: JSON.stringify(body) });
+const patch = (path: string, auth: Record<string, string>, body: unknown) => call(path, { method: "PATCH", headers: auth, body: JSON.stringify(body) });
+
+// ---------- GitHub ----------
+
+describe("importing a GitHub repository", () => {
+  async function dockerRepo(over: Partial<GhRepo> = {}) {
+    const ownerId = Number(uniq());
+    const u = await user({ githubId: ownerId });
+    const r: GhRepo = {
+      id: Number(uniq()), path: `${u.login}/whois-plus`, owner: { id: ownerId, type: "User" },
+      files: { Dockerfile: "FROM alpine", "README.md": "# whois-plus\n", LICENSE: "MIT License" },
+      tags: ["v1.2.0", "v1.10.0", "latest"], images: { "1.10.0": DIGEST }, ...over,
+    };
+    return { u, r, ownerId };
+  }
+
+  it("lists the repositories the user administers, with whether the App is installed", async () => {
+    const u = await user();
+    const ids = [Number(uniq()), Number(uniq()), Number(uniq())];
+    const repo = (id: number, name: string, over: Record<string, unknown> = {}) => ({ ...ghRepoJson({ id, path: `${u.login}/${name}`, files: {} }), ...over });
+    await installApp(u.login, Number(uniq()), ids[0]!);
+    fakeHosts({
+      [`GET ${GH}/user/repos`]: [repo(ids[0]!, "tool-a"), repo(ids[1]!, "tool-b"), repo(ids[2]!, "fork", { permissions: { admin: false } }), repo(9, "secret", { private: true })],
+    });
+    const res = await call("/me/repos?provider=github", { headers: u.auth });
+    const body = (await res.json()) as any;
+    expect(res.status).toBe(200);
+    expect(body.repos.map((x: any) => [x.path.split("/")[1], x.app_installed])).toEqual([["tool-a", true], ["tool-b", false]]);
+    expect(body.install_url).toBe("https://github.com/apps/otinstaller/installations/new");
+    const filtered = (await (await call("/me/repos?provider=github&q=TOOL-B", { headers: u.auth })).json()) as any;
+    expect(filtered.repos).toHaveLength(1);
+  });
+
+  it("detects a Docker tool and drafts its manifest from the repository", async () => {
+    const { u, r, ownerId } = await dockerRepo();
+    await installApp(u.login, ownerId, r.id);
+    fakeGithub(r);
+    const res = await post("/imports", u.auth, { repo: `https://github.com/${r.path}` });
+    const imp = (await res.json()) as any;
+    expect(res.status).toBe(201);
+    expect(imp).toMatchObject({ status: "draft", detected_kind: "docker", namespace: u.login, signals: ["Dockerfile"], app_installed: true, finish_modes: ["pr", "registry"] });
+    expect(imp.draft).toMatchObject({
+      name: "whois-plus", namespace: u.login, version: "1.10.0", summary: "WHOIS lookups with registrar and creation dates", license: "MIT", readme: "README.md",
+      categories: ["domain-dns"], runtime: { kind: "docker", image: `ghcr.io/${r.path}@${DIGEST}`, platforms: ["linux/amd64", "linux/arm64"] },
+    });
+    expect(imp.missing).toEqual(["inputs", "outputs", "command", "ethics"]);
+    expect(imp.suggested).toEqual(["test"]);
+    expect(imp.draft_yaml).toContain("name: whois-plus");
+  });
+
+  it("completes the draft, opens a pull request, and the merged manifest publishes on the next tag", async () => {
+    const { u, r, ownerId } = await dockerRepo();
+    const instId = await installApp(u.login, ownerId, r.id);
+    const { commits, calls } = fakeGithub(r);
+    const imp = (await (await post("/imports", u.auth, { repo: r.path, provider: "github" })).json()) as any;
+    const edited = (await (await patch(`/imports/${imp.id}`, u.auth, {
+      manifest: { ...completion, runtime: { ...imp.draft.runtime, command: ["whois-plus", "--json", "{domain}"] } },
+    })).json()) as any;
+    expect(edited).toMatchObject({ status: "ready", problems: [], missing: [] });
+
+    const res = await post(`/imports/${imp.id}/finish`, u.auth, { mode: "pr" });
+    const done = (await res.json()) as any;
+    expect(res.status).toBe(200);
+    expect(done).toMatchObject({ status: "finished", finish_mode: "pr", pr_url: `https://github.com/${r.path}/pull/7` });
+    expect(commits.map((c) => [c.path, c.branch])).toEqual([["otinstaller.yaml", "otinstaller/import"], [".github/workflows/otinstaller-release.yml", "otinstaller/import"]]);
+    expect(commits[1]!.content).toBe(RELEASE_TEMPLATES["github-docker"]);
+    const pr = JSON.parse(calls.find((c) => c.url.endsWith("/pulls"))!.body);
+    expect(pr).toMatchObject({ head: "otinstaller/import", base: "main", title: "Publish on the OTInstaller Registry" });
+    expect(pr.body).toContain("otinstaller release");
+    expect((await post(`/imports/${imp.id}/finish`, u.auth, { mode: "pr" })).status).toBe(409);
+
+    // The author merges, runs the release workflow (which bumps the version and pins the digest) and it tags v1.11.0.
+    const merged = YAML.parse(commits[0]!.content);
+    merged.version = "1.11.0";
+    r.files["otinstaller.yaml"] = YAML.stringify(merged);
+    fakeGithub(r);
+    const jobId = ((await (await webhook("create", tagEvent(instId, r.path, r.id, "v1.11.0"))).json()) as any).jobId;
+    expect(await processJob(await testEnv(), jobId)).toMatchObject({ status: "scanning", problems: [] });
+    const view = (await (await call(`/imports/${imp.id}`, { headers: u.auth })).json()) as any;
+    expect(view.package).toEqual({ ref: `${u.login}/whois-plus`, published: false });
+  });
+
+  it.each([
+    ["a repository the user does not administer", { admin: false }, 403, "not_admin"],
+    ["a private repository", { private: true }, 400, "repo_not_public"],
+  ])("refuses %s", async (_label, over, status, code) => {
+    const { u, r } = await dockerRepo(over);
+    fakeGithub(r);
+    const res = await post("/imports", u.auth, { repo: `https://github.com/${r.path}` });
+    expect(res.status).toBe(status);
+    expect(((await res.json()) as any).error.code).toBe(code);
+    expect(await DB().prepare(`SELECT COUNT(*) AS n FROM imports WHERE user_id = ?`).bind(u.id).first()).toEqual({ n: 0 });
+  });
+
+  it("drafts without the App, but asks for it before finishing", async () => {
+    const { u, r } = await dockerRepo();
+    fakeGithub(r);
+    const imp = (await (await post("/imports", u.auth, { repo: `https://github.com/${r.path}` })).json()) as any;
+    expect(imp.app_installed).toBe(false);
+    expect(imp.warnings.join(" ")).toContain("installations/new");
+    await patch(`/imports/${imp.id}`, u.auth, { manifest: { ...completion, runtime: { ...imp.draft.runtime, command: ["whois-plus", "{domain}"] } } });
+    const res = await post(`/imports/${imp.id}/finish`, u.auth, { mode: "pr" });
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as any).error).toMatchObject({ code: "app_not_installed", hint: expect.stringContaining("installations/new") });
+  });
+
+  it("explains which App permissions are missing when GitHub refuses the branch", async () => {
+    const { u, r, ownerId } = await dockerRepo();
+    await installApp(u.login, ownerId, r.id);
+    fakeGithub(r, { [`POST ${GH}/repos/${r.path}/git/refs`]: new Response('{"message":"Resource not accessible by integration"}', { status: 403 }) });
+    const imp = (await (await post("/imports", u.auth, { repo: r.path, provider: "github" })).json()) as any;
+    await patch(`/imports/${imp.id}`, u.auth, { manifest: { ...completion, runtime: { ...imp.draft.runtime, command: ["whois-plus", "{domain}"] } } });
+    const res = await post(`/imports/${imp.id}/finish`, u.auth, { mode: "pr" });
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as any).error.code).toBe("github_permission_required");
+  });
+
+  it("uses an otinstaller.yaml that is already in the repository and only connects it", async () => {
+    const { u, r, ownerId } = await dockerRepo();
+    r.files["otinstaller.yaml"] = YAML.stringify({ schema: 1, name: "whois-plus", namespace: u.login, version: "1.0.0", summary: "Existing manifest here", license: "MIT", categories: ["domain-dns"], readme: "README.md", ...completion, runtime: { kind: "docker", image: `ghcr.io/${r.path}@${DIGEST}`, platforms: ["linux/amd64"], command: ["x", "{domain}"], output_format: "json" } });
+    await installApp(u.login, ownerId, r.id);
+    fakeGithub(r);
+    const imp = (await (await post("/imports", u.auth, { repo: `https://github.com/${r.path}` })).json()) as any;
+    expect(imp).toMatchObject({ existing_manifest: true, status: "ready", finish_modes: ["connect"], signals: ["otinstaller.yaml"] });
+    expect((await post(`/imports/${imp.id}/finish`, u.auth, { mode: "pr" })).status).toBe(400);
+    expect(await (await post(`/imports/${imp.id}/finish`, u.auth, { mode: "connect" })).json()).toMatchObject({ status: "finished", finish_mode: "connect" });
+  });
+
+  it("asks for a kind when nothing is recognised, then drafts for the chosen one", async () => {
+    const { u, r, ownerId } = await dockerRepo({ files: { "main.go": "package main", "README.md": "# x" }, tags: [] });
+    await installApp(u.login, ownerId, r.id);
+    fakeGithub(r);
+    const imp = (await (await post("/imports", u.auth, { repo: `https://github.com/${r.path}` })).json()) as any;
+    expect(imp).toMatchObject({ detected_kind: null, status: "draft", missing: ["kind"] });
+    const docker = (await (await patch(`/imports/${imp.id}`, u.auth, { kind: "docker" })).json()) as any;
+    expect(docker).toMatchObject({ detected_kind: "docker", missing: ["inputs", "outputs", "command", "ethics"] });
+    expect(docker.draft.runtime.image).toContain("sha256:0000");
+    expect((await patch(`/imports/${imp.id}`, u.auth, { kind: "rust" })).status).toBe(400);
+    expect((await patch(`/imports/${imp.id}`, u.auth, { manifest: { namespace: "someone-else" } })).status).toBe(400);
+  });
+
+  it("keeps imports private to the user who started them", async () => {
+    const { u, r, ownerId } = await dockerRepo();
+    await installApp(u.login, ownerId, r.id);
+    fakeGithub(r);
+    const imp = (await (await post("/imports", u.auth, { repo: `https://github.com/${r.path}` })).json()) as any;
+    const other = await user();
+    expect((await call(`/imports/${imp.id}`, { headers: other.auth })).status).toBe(404);
+    expect((await call(`/imports/${imp.id}`)).status).toBe(401);
+    const mine = (await (await call("/imports", { headers: u.auth })).json()) as any;
+    expect(mine.imports.map((i: any) => i.id)).toEqual([imp.id]);
+  });
+});
+
+// ---------- registry-held manifests ----------
+
+describe("registry-held manifests", () => {
+  async function heldPackage() {
+    const ghId = Number(uniq());
+    const u = await user({ githubId: ghId });
+    const r: GhRepo = {
+      id: Number(uniq()), path: `${u.login}/whois-plus`, owner: { id: ghId, type: "User" },
+      files: { Dockerfile: "FROM alpine", "README.md": "# whois-plus\n" }, tags: ["v1.0.0"], images: { "1.0.0": DIGEST },
+    };
+    const instId = await installApp(u.login, ghId, r.id, ghId);
+    fakeGithub(r);
+    const imp = (await (await post("/imports", u.auth, { repo: `https://github.com/${r.path}` })).json()) as any;
+    await patch(`/imports/${imp.id}`, u.auth, { manifest: { ...completion, runtime: { ...imp.draft.runtime, command: ["whois-plus", "{domain}"] } } });
+    return { u, r, imp, instId };
+  }
+
+  it("saves the manifest on the registry, publishes the newest tag from it, and never shows it as signed", async () => {
+    const { u, r, imp } = await heldPackage();
+    const res = await post(`/imports/${imp.id}/finish`, u.auth, { mode: "registry" });
+    const done = (await res.json()) as any;
+    expect(res.status).toBe(200);
+    expect(done).toMatchObject({ status: "finished", finish_mode: "registry", queued_tag: "v1.0.0" });
+    const src = await DB().prepare(`SELECT manifest_mode, registry_manifest_json FROM sources WHERE id = ?`).bind(done.source_id ?? (await DB().prepare(`SELECT source_id FROM imports WHERE id = ?`).bind(imp.id).first<any>()).source_id).first<any>();
+    expect(src.manifest_mode).toBe("registry");
+
+    const { jobId } = sent[0] as { jobId: string };
+    expect(await processJob(await testEnv(), jobId)).toMatchObject({ status: "scanning", problems: [] });
+    const v = await DB().prepare(`SELECT v.id, v.manifest_json FROM versions v JOIN publish_jobs j ON j.version_id = v.id WHERE j.id = ?`).bind(jobId).first<any>();
+    expect(JSON.parse(v.manifest_json).runtime.image).toBe(`ghcr.io/${r.path}@${DIGEST}`);
+
+    await DB().batch([
+      DB().prepare(`UPDATE namespaces SET status = 'active' WHERE name = ?`).bind(u.login),
+      DB().prepare(`UPDATE versions SET signer_identity = 'someone', signer_issuer = 'https://token.actions.githubusercontent.com' WHERE id = ?`).bind(v.id),
+    ]);
+    await publishVersion(await testEnv(), v.id);
+    const tool = (await (await call(`/tools/${u.login}/whois-plus`)).json()) as any;
+    expect(tool).toMatchObject({ manifest_held_by_registry: true, signed: false });
+  });
+
+  it("is only for the repository's owner and only with a published artifact", async () => {
+    const owner = await user();
+    const orgId = Number(uniq());
+    const r: GhRepo = { id: Number(uniq()), path: `org${uniq()}/scanner`, owner: { id: orgId, type: "Organization" }, files: { Dockerfile: "x", "README.md": "# x" }, tags: [] };
+    await installApp(r.path.split("/")[0]!, orgId, r.id);
+    fakeGithub(r, { [`GET ${GH}/user/memberships/orgs/`]: { state: "active", role: "member" } });
+    const imp = (await (await post("/imports", owner.auth, { repo: `https://github.com/${r.path}` })).json()) as any;
+    expect(imp.finish_modes).toEqual(["pr"]);
+    await patch(`/imports/${imp.id}`, owner.auth, { manifest: { ...completion, runtime: { ...imp.draft.runtime, command: ["s", "{domain}"] } } });
+    // No image was found, so the digest is still the placeholder the release workflow would fill in.
+    const placeholder = await post(`/imports/${imp.id}/finish`, owner.auth, { mode: "registry" });
+    expect(placeholder.status).toBe(409);
+    expect(((await placeholder.json()) as any).error.problems[0].code).toBe("artifact_image_not_found");
+    await patch(`/imports/${imp.id}`, owner.auth, { manifest: { runtime: { ...imp.draft.runtime, image: `ghcr.io/${r.path}@${DIGEST}`, command: ["s", "{domain}"] } } });
+    const res = await post(`/imports/${imp.id}/finish`, owner.auth, { mode: "registry" });
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as any).error.code).toBe("not_repo_owner");
+  });
+
+  it("publishes later tags with the image tagged for that version, and refuses when there is none", async () => {
+    const { u, r, imp, instId } = await heldPackage();
+    await post(`/imports/${imp.id}/finish`, u.auth, { mode: "registry" });
+    const newer = `sha256:${"b".repeat(64)}`;
+    r.images = { "1.0.0": DIGEST, "v1.1.0": newer };
+    fakeGithub(r);
+    const ok = ((await (await webhook("create", tagEvent(instId, r.path, r.id, "v1.1.0"))).json()) as any).jobId;
+    expect(await processJob(await testEnv(), ok)).toMatchObject({ status: "scanning" });
+    const v = await DB().prepare(`SELECT v.manifest_json FROM versions v JOIN publish_jobs j ON j.version_id = v.id WHERE j.id = ?`).bind(ok).first<any>();
+    expect(JSON.parse(v.manifest_json)).toMatchObject({ version: "1.1.0", runtime: { image: `ghcr.io/${r.path}@${newer}` } });
+    const missing = ((await (await webhook("create", tagEvent(instId, r.path, r.id, "v1.2.0"))).json()) as any).jobId;
+    expect(await processJob(await testEnv(), missing)).toMatchObject({ status: "rejected", problems: [{ code: "artifact_image_not_found" }] });
+  });
+
+  it("lets owners edit the held manifest, and moves it into the repository with one pull request", async () => {
+    const { u, r, imp, instId } = await heldPackage();
+    await post(`/imports/${imp.id}/finish`, u.auth, { mode: "registry" });
+    await processJob(await testEnv(), (sent[0] as { jobId: string }).jobId);
+    const held = JSON.parse((await DB().prepare(`SELECT registry_manifest_json FROM sources WHERE project_id = ?`).bind(String(r.id)).first<any>()).registry_manifest_json);
+
+    const put = (body: unknown, auth = u.auth) => call(`/packages/${u.login}/whois-plus/manifest`, { method: "PUT", headers: auth, body: JSON.stringify(body) });
+    expect((await put({ manifest: { ...held, summary: "WHOIS lookups, now with RDAP fallback" } })).status).toBe(200);
+    const renamed = await put({ manifest: { ...held, name: "other-name" } });
+    expect(renamed.status).toBe(400);
+    expect(((await renamed.json()) as any).error.problems[0].code).toBe("manifest_name_mismatch");
+    expect((await put({ manifest: held }, (await user()).auth)).status).toBe(403);
+
+    const { commits } = fakeGithub(r);
+    const pr = await call(`/packages/${u.login}/whois-plus/manifest/pr`, { method: "POST", headers: u.auth });
+    expect(pr.status).toBe(201);
+    expect(commits[0]!.path).toBe("otinstaller.yaml");
+    expect(YAML.parse(commits[0]!.content)).toMatchObject({ version: "1.0.0", summary: "WHOIS lookups, now with RDAP fallback" });
+
+    // After the merge, a tag publishes from the repository's file and the package is no longer registry-held.
+    const merged = YAML.parse(commits[0]!.content);
+    merged.version = "1.3.0";
+    r.files["otinstaller.yaml"] = YAML.stringify(merged);
+    fakeGithub(r);
+    const jobId = ((await (await webhook("create", tagEvent(instId, r.path, r.id, "v1.3.0"))).json()) as any).jobId;
+    expect(await processJob(await testEnv(), jobId)).toMatchObject({ status: "scanning" });
+    expect(await DB().prepare(`SELECT manifest_mode, registry_manifest_json FROM sources WHERE project_id = ?`).bind(String(r.id)).first())
+      .toEqual({ manifest_mode: "repo", registry_manifest_json: null });
+    expect((await put({ manifest: held })).status).toBe(409);
+  });
+});
+
+// ---------- GitLab ----------
+
+type GlProject = { id: number; path: string; files: Record<string, string>; tags?: string[]; level?: number; kind?: "user" | "group"; topics?: string[] };
+
+function fakeGitlab(p: GlProject, extra: Record<string, any> = {}) {
+  const commits: any[] = [];
+  const json = {
+    id: p.id, path_with_namespace: p.path, web_url: `https://gitlab.com/${p.path}`, visibility: "public", default_branch: "main", archived: false,
+    namespace: { id: p.id + 1000, path: p.path.split("/")[0], kind: p.kind ?? "user", full_path: p.path.split("/").slice(0, -1).join("/") },
+    permissions: { project_access: { access_level: p.level ?? 40 }, group_access: null }, description: "Find accounts that use a phone number",
+    topics: p.topics ?? ["phone"], license: { key: "apache-2.0" }, star_count: 2,
+  };
+  const calls = fakeHosts({
+    [`GET ${GL}`]: (req) => {
+      const id = decodeURIComponent(new URL(req.url).pathname.slice("/api/v4/projects/".length));
+      return id === String(p.id) || id === p.path ? json : null;
+    },
+    [`GET ${GL}${p.id}/repository/tree`]: (req) =>
+      listing(p.files, new URL(req.url).searchParams.get("path") ?? "")?.map((e) => ({ name: e.name, type: e.type === "dir" ? "tree" : "blob" })) ?? null,
+    [`GET ${GL}${p.id}/repository/files/`]: (req) => p.files[decodeURIComponent(new URL(req.url).pathname.split("/files/")[1]!.replace(/\/raw$/, ""))] ?? null,
+    [`GET ${GL}${p.id}/repository/tags`]: (p.tags ?? []).map((name) => ({ name })),
+    [`POST ${GL}${p.id}/hooks`]: { id: 77 },
+    [`POST ${GL}${p.id}/repository/commits`]: async (req) => {
+      commits.push(await req.json());
+      return new Response("{}", { status: 201 });
+    },
+    [`POST ${GL}${p.id}/merge_requests`]: { web_url: `https://gitlab.com/${p.path}/-/merge_requests/3`, iid: 3 },
+    "GET https://pypi.org/pypi/": (req) => req.url.includes("phoneinfo")
+      ? { info: { version: "2.1.0" }, urls: [{ packagetype: "sdist", filename: "x.tar.gz", digests: { sha256: "1".repeat(64) } }, { packagetype: "bdist_wheel", filename: "phoneinfo-2.1.0-py3-none-any.whl", digests: { sha256: "c".repeat(64) } }] }
+      : null,
+    ...extra,
+  });
+  return { calls, commits };
+}
+
+const pipxFiles = {
+  "pyproject.toml": `[project]\nname = "phoneinfo"\nversion = "2.1.0"\n\n[project.scripts]\nphoneinfo = "phoneinfo.cli:main"\n`,
+  "README.md": "# phoneinfo\n",
+};
+
+describe("importing a GitLab project", () => {
+  it("lists the projects the user maintains", async () => {
+    const u = await user();
+    const calls = fakeHosts({ "GET https://gitlab.com/api/v4/projects?": [{ id: 5, path_with_namespace: `${u.login}/a`, web_url: "https://gitlab.com/x/a", default_branch: "main", archived: false, description: null }] });
+    const body = (await (await call("/me/repos?provider=gitlab&q=a", { headers: u.auth })).json()) as any;
+    expect(body.repos).toEqual([expect.objectContaining({ project_id: "5", path: `${u.login}/a`, published_as: null })]);
+    expect(calls[0]!.url).toContain("min_access_level=40");
+    expect(calls[0]!.url).toContain("search=a");
+  });
+
+  it("detects a pipx tool from pyproject.toml and PyPI, and opens a merge request with the CI template", async () => {
+    const u = await user();
+    const p: GlProject = { id: Number(uniq()), path: `${u.login}/phoneinfo`, files: { ...pipxFiles }, tags: ["v2.1.0"] };
+    const { commits, calls } = fakeGitlab(p);
+    const imp = (await (await post("/imports", u.auth, { repo: `https://gitlab.com/${p.path}` })).json()) as any;
+    expect(imp).toMatchObject({ detected_kind: "pipx", namespace: u.login, finish_modes: ["pr", "registry"] });
+    expect(imp.draft).toMatchObject({
+      license: "Apache-2.0", categories: ["phone"], version: "2.1.0",
+      runtime: { kind: "pipx", package: "phoneinfo", package_version: "2.1.0", entrypoint: "phoneinfo", wheel_sha256: "c".repeat(64) },
+    });
+    await patch(`/imports/${imp.id}`, u.auth, {
+      manifest: { inputs: [{ name: "phone", type: "phone", required: true }], outputs: [{ type: "account" }], ethics: completion.ethics, runtime: { ...imp.draft.runtime, command: ["phoneinfo", "{phone}"] } },
+    });
+    const done = (await (await post(`/imports/${imp.id}/finish`, u.auth, { mode: "pr" })).json()) as any;
+    expect(done).toMatchObject({ status: "finished", pr_url: `https://gitlab.com/${p.path}/-/merge_requests/3` });
+    expect(commits[0]).toMatchObject({ branch: "otinstaller/import", start_branch: "main" });
+    expect(commits[0].actions.map((a: any) => [a.action, a.file_path])).toEqual([["create", "otinstaller.yaml"], ["create", ".gitlab-ci.yml"]]);
+    expect(commits[0].actions[1].content).toBe(RELEASE_TEMPLATES["gitlab-pipx"]);
+    // The project webhook is created too, so the first tag after the merge publishes.
+    expect(calls.some((c) => c.url.endsWith(`/projects/${p.id}/hooks`))).toBe(true);
+    expect(await DB().prepare(`SELECT manifest_mode FROM sources WHERE provider = 'gitlab' AND project_id = ?`).bind(String(p.id)).first()).toEqual({ manifest_mode: "repo" });
+  });
+
+  it("puts the release job in its own file when the project already has a pipeline", async () => {
+    const u = await user();
+    const p: GlProject = { id: Number(uniq()), path: `${u.login}/phoneinfo`, files: { ...pipxFiles, ".gitlab-ci.yml": "test:\n  script: [pytest]\n" } };
+    const { commits, calls } = fakeGitlab(p);
+    const imp = (await (await post("/imports", u.auth, { repo: `https://gitlab.com/${p.path}` })).json()) as any;
+    await patch(`/imports/${imp.id}`, u.auth, {
+      manifest: { inputs: [{ name: "phone", type: "phone", required: true }], outputs: [{ type: "account" }], ethics: completion.ethics, runtime: { ...imp.draft.runtime, command: ["phoneinfo", "{phone}"] } },
+    });
+    await post(`/imports/${imp.id}/finish`, u.auth, { mode: "pr" });
+    expect(commits[0].actions.map((a: any) => a.file_path)).toEqual(["otinstaller.yaml", ".gitlab/otinstaller-release.yml"]);
+    expect(JSON.parse(calls.find((c) => c.url.endsWith("/merge_requests"))!.body).description).toContain("local: .gitlab/otinstaller-release.yml");
+  });
+
+  it("drafts a guide from docs/ that is ready without further input", async () => {
+    const u = await user();
+    const p: GlProject = { id: Number(uniq()), path: `${u.login}/phone-osint-guide`, files: { "README.md": "# Guide", "docs/02-carriers.md": "x", "docs/index.md": "x", "docs/01-scope.md": "x" } };
+    const { commits } = fakeGitlab(p);
+    const imp = (await (await post("/imports", u.auth, { repo: `https://gitlab.com/${p.path}` })).json()) as any;
+    expect(imp).toMatchObject({ detected_kind: "guide", status: "ready", missing: [], suggested: ["related_tools"] });
+    expect(imp.draft).toMatchObject({ kind: "guide", title: "Phone osint guide", topics: ["phone"], content: { root: "docs/", nav: ["index.md", "01-scope.md", "02-carriers.md"] } });
+    await post(`/imports/${imp.id}/finish`, u.auth, { mode: "pr" });
+    expect(commits[0].actions.map((a: any) => a.file_path)).toEqual(["otinstaller.yaml"]);
+  });
+
+  it("won't import a mirror of a package the user already publishes from the other host", async () => {
+    const u = await user();
+    const nsId = ulid(), toolId = ulid();
+    await DB().batch([
+      DB().prepare(`INSERT INTO namespaces (id, provider, provider_owner_id, name, kind, status, created_at) VALUES (?, 'github', ?, ?, 'user', 'active', 0)`).bind(nsId, uniq(), `${u.login}-gh`),
+      DB().prepare(`INSERT INTO namespace_members (namespace_id, user_id, role) VALUES (?, ?, 'owner')`).bind(nsId, u.id),
+      DB().prepare(`INSERT INTO tools (id, namespace_id, name, summary, categories, created_at, updated_at) VALUES (?, ?, 'phoneinfo', 'Phone lookups', '[]', 0, 0)`).bind(toolId, nsId),
+      DB().prepare(`INSERT INTO sources (id, tool_id, namespace_id, provider, project_id, path, url, created_at) VALUES (?, ?, ?, 'github', ?, ?, ?, 0)`)
+        .bind(ulid(), toolId, nsId, uniq(), `${u.login}/PhoneInfo`, `https://github.com/${u.login}/PhoneInfo`),
+    ]);
+    const p: GlProject = { id: Number(uniq()), path: `${u.login}/phoneinfo`, files: { ...pipxFiles } };
+    fakeGitlab(p);
+    const imp = (await (await post("/imports", u.auth, { repo: `https://gitlab.com/${p.path}` })).json()) as any;
+    await patch(`/imports/${imp.id}`, u.auth, {
+      manifest: { inputs: [{ name: "phone", type: "phone", required: true }], outputs: [{ type: "account" }], ethics: completion.ethics, runtime: { ...imp.draft.runtime, command: ["phoneinfo", "{phone}"] } },
+    });
+    const res = await post(`/imports/${imp.id}/finish`, u.auth, { mode: "pr" });
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as any).error.code).toBe("mirror_already_imported");
+  });
+
+  it("refuses Developers, and asks to re-authorize when the merge request needs the api scope", async () => {
+    const u = await user();
+    const dev: GlProject = { id: Number(uniq()), path: `${u.login}/x`, files: pipxFiles, level: 30 };
+    fakeGitlab(dev);
+    const res = await post("/imports", u.auth, { repo: `https://gitlab.com/${dev.path}` });
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as any).error.code).toBe("not_maintainer");
+
+    const p: GlProject = { id: Number(uniq()), path: `${u.login}/phone-osint-guide`, files: { "README.md": "# g", "docs/index.md": "x" } };
+    fakeGitlab(p, { [`POST ${GL}${p.id}/hooks`]: new Response("insufficient_scope", { status: 403 }) });
+    const imp = (await (await post("/imports", u.auth, { repo: `https://gitlab.com/${p.path}` })).json()) as any;
+    const fin = await post(`/imports/${imp.id}/finish`, u.auth, { mode: "pr" });
+    expect(fin.status).toBe(403);
+    expect(((await fin.json()) as any).error).toMatchObject({ code: "gitlab_scope_required", hint: expect.stringContaining("scope=api") });
+  });
+});
+
+// ---------- bulk ----------
+
+describe("bulk import", () => {
+  it("queues one detection per repository and records what each found", async () => {
+    const u = await user();
+    const a: GlProject = { id: Number(uniq()), path: `${u.login}/phoneinfo`, files: { ...pipxFiles } };
+    const res = await post("/imports", u.auth, {
+      repos: [`https://gitlab.com/${a.path}`, `https://gitlab.com/${u.login}/gone`, `https://gitlab.com/${a.path}`, `https://gitlab.com/${u.login}/empty`],
+    });
+    const body = (await res.json()) as any;
+    expect(res.status).toBe(202);
+    expect(body.imports.map((i: any) => i.status)).toEqual(["detecting", "detecting", "detecting"]);
+    expect(sent).toHaveLength(3);
+
+    const empty: GlProject = { id: a.id + 1, path: `${u.login}/empty`, files: { "main.go": "package main" } };
+    for (const m of sent as { importId: string }[]) {
+      const row = await DB().prepare(`SELECT path FROM imports WHERE id = ?`).bind(m.importId).first<{ path: string }>();
+      if (row!.path === a.path) fakeGitlab(a);
+      else if (row!.path === empty.path) fakeGitlab(empty);
+      else fakeHosts({ [`GET ${GL}`]: null });
+      await detectQueued(await testEnv(), m.importId);
+    }
+    const list = (await (await call(`/imports?batch=${body.batch_id}`, { headers: u.auth })).json()) as any;
+    const byRepo = Object.fromEntries(list.imports.map((i: any) => [i.repo, i]));
+    expect(byRepo[a.path]).toMatchObject({ status: "draft", detected_kind: "pipx" });
+    expect(byRepo[`${u.login}/gone`]).toMatchObject({ status: "failed", error: { code: "project_not_found" } });
+    expect(byRepo[empty.path]).toMatchObject({ status: "draft", detected_kind: null, missing: ["kind"] });
+  });
+
+  it("accepts at most 50 repositories and rejects what is not a repository", async () => {
+    const u = await user();
+    const many = Array.from({ length: 51 }, (_, i) => `https://github.com/${u.login}/r${i}`);
+    expect(((await (await post("/imports", u.auth, { repos: many })).json()) as any).error.code).toBe("too_many_repos");
+    expect(((await (await post("/imports", u.auth, { repo: "https://example.com/a/b" })).json()) as any).error.code).toBe("invalid_repo");
+  });
+});

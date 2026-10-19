@@ -96,6 +96,9 @@ func badges(t api.ToolSummary) string {
 	if t.Status == "deprecated" {
 		b = append(b, "deprecated")
 	}
+	if t.ManifestHeld {
+		b = append(b, "manifest held by registry")
+	}
 	if len(b) == 0 {
 		return ""
 	}

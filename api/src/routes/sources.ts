@@ -12,25 +12,73 @@ import { pollSource, sourceById, SOURCE_COLUMNS } from "../sync";
 const MANUAL_SYNC_PER_HOUR = 10;
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
 
-/** Finds (or creates, awaiting review) the namespace for a GitLab user or group. */
-async function gitlabNamespace(env: Env, ns: gitlab.GitlabProject["namespace"]): Promise<{ id: string; name: string; status: string }> {
+/** The namespace a GitLab user or group publishes into: the existing one, or the name it would get. */
+export async function gitlabNamespaceName(env: Env, ns: gitlab.GitlabProject["namespace"]): Promise<{ id?: string; name: string; status: string }> {
   const existing = await env.DB.prepare(`SELECT id, name, status FROM namespaces WHERE provider = 'gitlab' AND provider_owner_id = ?`)
     .bind(String(ns.id)).first<{ id: string; name: string; status: string }>();
   if (existing) return existing;
   let name = slug(ns.path);
   if (await env.DB.prepare(`SELECT 1 FROM namespaces WHERE name = ?`).bind(name).first()) name = `${name.slice(0, 37)}-gl`;
+  return { name, status: "pending_review" };
+}
+
+/** Finds (or creates, awaiting review) the namespace for a GitLab user or group. */
+async function gitlabNamespace(env: Env, ns: gitlab.GitlabProject["namespace"]): Promise<{ id: string; name: string; status: string }> {
+  const found = await gitlabNamespaceName(env, ns);
+  if (found.id) return found as { id: string; name: string; status: string };
   const id = ulid();
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO namespaces (id, provider, provider_owner_id, name, kind, display_name, status, created_at) VALUES (?, 'gitlab', ?, ?, ?, ?, 'pending_review', ?)`,
-    ).bind(id, String(ns.id), name, ns.kind === "group" ? "group" : "user", ns.full_path, Date.now()),
+    ).bind(id, String(ns.id), found.name, ns.kind === "group" ? "group" : "user", ns.full_path, Date.now()),
     audit(env.DB, null, "gitlab", "namespace.create", "namespace", id, { path: ns.full_path }),
   ]);
-  return { id, name, status: "pending_review" };
+  return { id, name: found.name, status: "pending_review" };
+}
+
+/**
+ * Connects a public GitLab project the user maintains: its namespace, the user's membership, the project
+ * webhook and the source row. A registry-held manifest is stored on the source when one is given.
+ */
+export async function connectGitlabProject(env: Env, userId: string, token: string, p: gitlab.GitlabProject, registryManifest?: string) {
+  const existing = await env.DB.prepare(`SELECT id, connected_by FROM sources WHERE provider = 'gitlab' AND project_id = ?`)
+    .bind(String(p.id)).first<{ id: string; connected_by: string }>();
+  if (existing && existing.connected_by !== userId) apiError(409, "already_connected", "someone else already connected this project");
+
+  const ns = await gitlabNamespace(env, p.namespace);
+  const role = p.namespace.kind === "user" || gitlab.accessLevel(p) >= gitlab.OWNER ? "owner" : "publisher";
+  const secret = randomToken(32);
+  let hookId: string;
+  try {
+    hookId = await gitlab.createHook(deps.fetch, token, p.id, `${env.API_URL}/v1/webhooks/gitlab`, secret, p.default_branch);
+  } catch (e) {
+    if (e instanceof HostError && e.status === 403) {
+      apiError(403, "gitlab_scope_required", "connecting a project needs permission to create its webhook",
+        `sign in again at ${env.API_URL}/v1/auth/gitlab/login?scope=api`);
+    }
+    throw e;
+  }
+  const id = existing?.id ?? ulid();
+  const mode = registryManifest ? "registry" : "repo";
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO sources (id, namespace_id, provider, project_id, path, url, default_branch, connected_by, webhook_id, webhook_secret_hash, visibility,
+         manifest_mode, registry_manifest_json, created_at)
+       VALUES (?, ?, 'gitlab', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (provider, project_id) DO UPDATE SET webhook_id = excluded.webhook_id, webhook_secret_hash = excluded.webhook_secret_hash,
+         sync_status = 'ok', last_error = NULL, path = excluded.path, url = excluded.url,
+         manifest_mode = CASE WHEN excluded.manifest_mode = 'registry' THEN 'registry' ELSE sources.manifest_mode END,
+         registry_manifest_json = COALESCE(excluded.registry_manifest_json, sources.registry_manifest_json)`,
+    ).bind(id, ns.id, String(p.id), p.path_with_namespace, p.web_url, p.default_branch, userId, hookId, await sha256Hex(secret), p.visibility,
+      mode, registryManifest ?? null, Date.now()),
+    env.DB.prepare(`INSERT OR IGNORE INTO namespace_members (namespace_id, user_id, role) VALUES (?, ?, ?)`).bind(ns.id, userId, role),
+    audit(env.DB, userId, "user", "source.connect", "source", id, { project: p.path_with_namespace, manifest_mode: mode }),
+  ]);
+  return { sourceId: id, namespace: ns.name, namespaceStatus: ns.status, role };
 }
 
 /** The signed-in user must belong to the namespace that owns the source. */
-async function requireMember(c: Context<AppEnv>, namespaceId: string | null) {
+export async function requireMember(c: Context<AppEnv>, namespaceId: string | null) {
   const u = requireUser(c);
   const m = namespaceId
     ? await c.env.DB.prepare(`SELECT role FROM namespace_members WHERE namespace_id = ? AND user_id = ?`).bind(namespaceId, u.id).first<{ role: string }>()
@@ -39,7 +87,7 @@ async function requireMember(c: Context<AppEnv>, namespaceId: string | null) {
   return u;
 }
 
-async function sourceForPackage(env: Env, ns: string, name: string) {
+export async function sourceForPackage(env: Env, ns: string, name: string) {
   const s = await env.DB.prepare(
     `SELECT ${SOURCE_COLUMNS} FROM sources s JOIN tools t ON t.id = s.tool_id JOIN namespaces n ON n.id = t.namespace_id WHERE n.name = ? AND t.name = ?`,
   ).bind(ns, name).first<SourceRow>();
@@ -64,35 +112,8 @@ export function sourceRoutes(app: App) {
     if (gitlab.accessLevel(p) < gitlab.MAINTAINER) apiError(403, "not_maintainer", "you need Maintainer access or above to connect a project");
     if (p.visibility !== "public") apiError(400, "project_not_public", "only public projects can publish to the registry");
 
-    const existing = await c.env.DB.prepare(`SELECT id, connected_by FROM sources WHERE provider = 'gitlab' AND project_id = ?`)
-      .bind(String(p.id)).first<{ id: string; connected_by: string }>();
-    if (existing && existing.connected_by !== u.id) apiError(409, "already_connected", "someone else already connected this project");
-
-    const ns = await gitlabNamespace(c.env, p.namespace);
-    const role = p.namespace.kind === "user" || gitlab.accessLevel(p) >= gitlab.OWNER ? "owner" : "publisher";
-    const secret = randomToken(32);
-    let hookId: string;
-    try {
-      hookId = await gitlab.createHook(deps.fetch, token, p.id, `${c.env.API_URL}/v1/webhooks/gitlab`, secret, p.default_branch);
-    } catch (e) {
-      if (e instanceof HostError && e.status === 403) {
-        apiError(403, "gitlab_scope_required", "connecting a project needs permission to create its webhook",
-          `sign in again at ${c.env.API_URL}/v1/auth/gitlab/login?scope=api`);
-      }
-      throw e;
-    }
-    const id = existing?.id ?? ulid();
-    await c.env.DB.batch([
-      c.env.DB.prepare(
-        `INSERT INTO sources (id, namespace_id, provider, project_id, path, url, default_branch, connected_by, webhook_id, webhook_secret_hash, visibility, created_at)
-         VALUES (?, ?, 'gitlab', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (provider, project_id) DO UPDATE SET webhook_id = excluded.webhook_id, webhook_secret_hash = excluded.webhook_secret_hash,
-           sync_status = 'ok', last_error = NULL, path = excluded.path, url = excluded.url`,
-      ).bind(id, ns.id, String(p.id), p.path_with_namespace, p.web_url, p.default_branch, u.id, hookId, await sha256Hex(secret), p.visibility, Date.now()),
-      c.env.DB.prepare(`INSERT OR IGNORE INTO namespace_members (namespace_id, user_id, role) VALUES (?, ?, ?)`).bind(ns.id, u.id, role),
-      audit(c.env.DB, u.id, "user", "source.connect", "source", id, { project: p.path_with_namespace }),
-    ]);
-    return c.json({ source_id: id, project: p.path_with_namespace, namespace: ns.name, namespace_status: ns.status, role }, 201);
+    const r = await connectGitlabProject(c.env, u.id, token, p);
+    return c.json({ source_id: r.sourceId, project: p.path_with_namespace, namespace: r.namespace, namespace_status: r.namespaceStatus, role: r.role }, 201);
   });
 
   app.delete("/sources/:id", async (c) => {

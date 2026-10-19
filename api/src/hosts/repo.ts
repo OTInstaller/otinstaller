@@ -105,6 +105,14 @@ export async function gitlabToken(env: Env, userId: string): Promise<string> {
   return t.access_token;
 }
 
+/** The user's GitHub sign-in token, which the import wizard uses to see repositories as they do. */
+export async function githubUserToken(env: Env, userId: string): Promise<string> {
+  const acct = await env.DB.prepare(`SELECT access_token_enc FROM accounts WHERE user_id = ? AND provider = 'github'`)
+    .bind(userId).first<{ access_token_enc: string | null }>();
+  if (!acct?.access_token_enc) throw new HostError("link your GitHub account first", 401, false);
+  return decrypt(requireSecret(env, "TOKEN_ENC_KEY"), acct.access_token_enc);
+}
+
 const GL_STATE: Record<CommitState, string> = { pending: "running", success: "success", failure: "failed", error: "failed" };
 
 export function gitlabRepo(env: Env, projectId: string, userId: string): RepoHost {

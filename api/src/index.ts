@@ -9,6 +9,7 @@ import { authRoutes } from "./routes/auth";
 import { webhookRoutes } from "./routes/webhooks";
 import { reviewRoutes } from "./routes/review";
 import { sourceRoutes } from "./routes/sources";
+import { importRoutes } from "./routes/imports";
 import { pollDueSources } from "./sync";
 import { expireStaleScans } from "./scans";
 import { handleBatch } from "./publish";
@@ -20,12 +21,13 @@ const app = new Hono<AppEnv>().basePath("/v1");
 // Public reads are open to any origin; credentialed calls only from the website.
 app.use("*", async (c, next) => {
   const site = c.env.SITE_URL;
-  return cors({ origin: (o) => (o === site ? o : "*"), credentials: true, allowMethods: ["GET", "POST", "DELETE"] })(c, next);
+  return cors({ origin: (o) => (o === site ? o : "*"), credentials: true, allowMethods: ["GET", "POST", "PATCH", "PUT", "DELETE"] })(c, next);
 });
 authRoutes(app);
 webhookRoutes(app);
 reviewRoutes(app);
 sourceRoutes(app);
+importRoutes(app);
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
@@ -96,7 +98,8 @@ function summary(r: SummaryRow) {
     installs_30d: r.installs_30d,
     health: r.health_status,
     verified: r.verified === 1,
-    signed: !!r.signer_identity,
+    // Registry-held manifests never get the Signed badge.
+    signed: !!r.signer_identity && r.manifest_mode !== "registry",
     needs_keys: r.needs_keys === 1,
     manifest_held_by_registry: r.manifest_mode === "registry",
     community_packaged: r.community_packaged === 1,
@@ -286,7 +289,7 @@ app.get("/tools/:ns/:name/versions", async (c) => {
     .bind(row.id)
     .all();
   cached(c, 60);
-  return c.json({ versions: versions.results.map((v: any) => ({ ...v, signed: v.signed === 1 })) });
+  return c.json({ versions: versions.results.map((v: any) => ({ ...v, signed: v.signed === 1 && row.manifest_mode !== "registry" })) });
 });
 
 type VersionRow = {
@@ -352,7 +355,7 @@ app.get("/tools/:ns/:name/:version", async (c) => {
     status: v.status,
     published_at: v.published_at,
     scan_status: v.scan_status,
-    signed: !!v.signer_identity,
+    signed: !!v.signer_identity && row.manifest_mode !== "registry",
     manifest: JSON.parse(v.manifest_json),
   });
 });

@@ -1,7 +1,7 @@
 // Queue consumer: validates a tagged release (from GitHub or GitLab) and records it as a version.
 // Valid releases move to `scanning`; invalid ones are `rejected`, and the author sees why as a failed
-// commit status on the tagged commit.
-import { deps, type Env } from "./env";
+// commit status on the tagged commit. The same queue runs bulk-import detection.
+import { deps, type Env, type PublishMessage } from "./env";
 import { ulid } from "./lib/crypto";
 import { parseManifest, referencedFiles, semverParts, type Manifest, type Problem } from "./lib/manifest";
 import * as github from "./hosts/github";
@@ -10,6 +10,7 @@ import { checkImage, checkWheel } from "./hosts/artifacts";
 import { audit } from "./routes/auth";
 import { dispatchScan } from "./scans";
 import { ownerEmails, sendEmail, templates } from "./notify";
+import { detectQueued, failImport, heldManifestFor } from "./imports";
 
 export const MANIFEST_FILE = "otinstaller.yaml";
 
@@ -69,10 +70,16 @@ export async function processJob(env: Env, jobId: string): Promise<Outcome | nul
   await host.setStatus(sha, "pending", "Validating otinstaller.yaml", target);
 
   const text = await host.fileAt(MANIFEST_FILE, sha);
+  // A manifest in the repository always wins; otherwise the registry may hold one for this package.
+  const held = await env.DB.prepare(`SELECT manifest_mode, registry_manifest_json FROM sources WHERE provider = ? AND project_id = ?`)
+    .bind(job.provider, job.repo_id).first<{ manifest_mode: string; registry_manifest_json: string | null }>();
+  const fromRegistry = text === null && held?.manifest_mode === "registry" && !!held.registry_manifest_json;
   let manifest: Manifest | undefined;
   let problems: Problem[];
   let readme = "";
-  if (text === null) {
+  if (fromRegistry) {
+    ({ manifest, problems } = await heldManifestFor(held!.registry_manifest_json!, job.tag));
+  } else if (text === null) {
     problems = [{ code: "manifest_file_missing", path: "/", message: `${MANIFEST_FILE} was not found at ${job.tag}`, hint: "run `ot init` and commit the file" }];
   } else {
     ({ manifest, problems } = parseManifest(text));
@@ -90,6 +97,13 @@ export async function processJob(env: Env, jobId: string): Promise<Outcome | nul
   }
 
   const outcome = await record(env, job, sha, ns, manifest, problems, readme);
+  if (outcome.status === "scanning" && held?.manifest_mode === "registry" && !fromRegistry) {
+    // The manifest moved into the repository: the registry-held label and ranking penalty go away.
+    await db.batch([
+      db.prepare(`UPDATE sources SET manifest_mode = 'repo', registry_manifest_json = NULL WHERE provider = ? AND project_id = ?`).bind(job.provider, job.repo_id),
+      audit(db, null, "system", "source.manifest_moved_to_repo", "publish_job", job.id),
+    ]);
+  }
   if (outcome.status === "scanning") {
     await dispatchScan(env, { versionId: outcome.versionId!, provider: job.provider, repo: job.repo, tag: job.tag, manifest: manifest! });
   } else if (manifest && outcome.versionId) {
@@ -198,17 +212,20 @@ export async function failJob(env: Env, jobId: string, error: string) {
     .bind(error.slice(0, 500), Date.now(), jobId).run();
 }
 
-export async function handleBatch(batch: MessageBatch<{ jobId: string }>, env: Env) {
+export async function handleBatch(batch: MessageBatch<PublishMessage>, env: Env) {
   for (const msg of batch.messages) {
+    const body = msg.body;
     try {
-      await processJob(env, msg.body.jobId);
+      if ("importId" in body) await detectQueued(env, body.importId);
+      else await processJob(env, body.jobId);
       msg.ack();
     } catch (e) {
       const transient = !(e instanceof github.HostError) || e.transient;
       if (transient && msg.attempts < 5) {
         msg.retry({ delaySeconds: 30 * msg.attempts });
       } else {
-        await failJob(env, msg.body.jobId, (e as Error).message);
+        if ("importId" in body) await failImport(env, body.importId, "detection_failed", (e as Error).message);
+        else await failJob(env, body.jobId, (e as Error).message);
         msg.ack();
       }
     }

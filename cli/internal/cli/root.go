@@ -97,6 +97,7 @@ func (a *App) Root() *cobra.Command {
 		a.loginCmd(),
 		a.logoutCmd(),
 		a.whoamiCmd(),
+		a.importCmd(),
 	)
 	return root
 }

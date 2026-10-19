@@ -156,3 +156,130 @@ export async function setCommitStatus(f: Fetch, token: string, repo: string, sha
     "setting commit status",
   );
 }
+
+// ---------- import wizard ----------
+
+export interface GithubRepo {
+  id: number;
+  full_name: string;
+  html_url: string;
+  default_branch: string;
+  description: string | null;
+  topics?: string[];
+  license?: { spdx_id: string | null } | null;
+  private: boolean;
+  archived: boolean;
+  stargazers_count?: number;
+  owner: { login: string; id: number; type: string };
+  permissions?: { admin?: boolean; maintain?: boolean; push?: boolean };
+}
+
+export interface DirEntry {
+  name: string;
+  type: "file" | "dir";
+}
+
+export interface FileChange {
+  path: string;
+  content: string;
+}
+
+/** A repository as the given token sees it, or null when it does not exist or is hidden. */
+export async function getRepo(f: Fetch, token: string, repo: string): Promise<GithubRepo | null> {
+  // A numeric ID survives renames and transfers.
+  const url = /^\d+$/.test(repo) ? `${GITHUB_API}/repositories/${repo}` : `${GITHUB_API}/repos/${repo}`;
+  const res = await f(url, { headers: apiHeaders(token) });
+  if (res.status === 404 || res.status === 403) return null;
+  await check(res, "reading repository");
+  return (await res.json()) as GithubRepo;
+}
+
+/** Public repositories the signed-in user owns or belongs to through an org (first 300). */
+export async function listUserRepos(f: Fetch, token: string): Promise<GithubRepo[]> {
+  const out: GithubRepo[] = [];
+  for (let page = 1; page <= 3; page++) {
+    const res = await check(
+      await f(`${GITHUB_API}/user/repos?affiliation=owner,organization_member&visibility=public&sort=pushed&per_page=100&page=${page}`, { headers: apiHeaders(token) }),
+      "listing repositories",
+    );
+    const batch = (await res.json()) as GithubRepo[];
+    out.push(...batch);
+    if (batch.length < 100) break;
+  }
+  return out;
+}
+
+/** The user's role in an org ("admin" or "member"), or null when they are not an active member. */
+export async function orgRole(f: Fetch, token: string, org: string): Promise<"admin" | "member" | null> {
+  const res = await f(`${GITHUB_API}/user/memberships/orgs/${encodeURIComponent(org)}`, { headers: apiHeaders(token) });
+  if (res.status === 404 || res.status === 403) return null;
+  await check(res, "reading org membership");
+  const m = (await res.json()) as { state: string; role: string };
+  return m.state === "active" ? (m.role === "admin" ? "admin" : "member") : null;
+}
+
+/** Files and folders directly inside `dir` ("" for the root), or null when it does not exist. */
+export async function listDir(f: Fetch, token: string, repo: string, dir: string, ref: string): Promise<DirEntry[] | null> {
+  const path = dir ? `/${dir.split("/").map(encodeURIComponent).join("/")}` : "";
+  const res = await f(`${GITHUB_API}/repos/${repo}/contents${path}?ref=${encodeURIComponent(ref)}`, { headers: apiHeaders(token) });
+  if (res.status === 404) return null;
+  await check(res, `listing ${dir || "the repository root"}`);
+  const body = (await res.json()) as { name: string; type: string }[] | object;
+  if (!Array.isArray(body)) return null;
+  return body.map((e) => ({ name: e.name, type: e.type === "dir" ? "dir" : "file" }));
+}
+
+export async function listTags(f: Fetch, token: string, repo: string): Promise<string[]> {
+  const res = await check(await f(`${GITHUB_API}/repos/${repo}/tags?per_page=100`, { headers: apiHeaders(token) }), "listing tags");
+  return ((await res.json()) as { name: string }[]).map((t) => t.name);
+}
+
+function base64(text: string): string {
+  let bin = "";
+  for (const b of new TextEncoder().encode(text)) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
+
+/**
+ * Commits files to `branch` (created from, or reset to, the default branch) and opens a pull request,
+ * or returns the one already open from that branch. Needs the App's Contents, Workflows and Pull
+ * requests write permissions.
+ */
+export async function openPullRequest(
+  f: Fetch, token: string, repo: string, base: string, branch: string, files: FileChange[], title: string, body: string,
+): Promise<{ url: string; number: number }> {
+  const json = { ...apiHeaders(token), "Content-Type": "application/json" };
+  const head = await check(await f(`${GITHUB_API}/repos/${repo}/git/ref/heads/${encodeURIComponent(base)}`, { headers: apiHeaders(token) }), "reading the default branch");
+  const sha = ((await head.json()) as { object: { sha: string } }).object.sha;
+  const created = await f(`${GITHUB_API}/repos/${repo}/git/refs`, { method: "POST", headers: json, body: JSON.stringify({ ref: `refs/heads/${branch}`, sha }) });
+  if (created.status === 422) {
+    // The branch is left over from an earlier attempt: start it again from the default branch.
+    await check(
+      await f(`${GITHUB_API}/repos/${repo}/git/refs/heads/${branch}`, { method: "PATCH", headers: json, body: JSON.stringify({ sha, force: true }) }),
+      "resetting the import branch",
+    );
+  } else {
+    await check(created, "creating the import branch");
+  }
+  for (const file of files) {
+    const url = `${GITHUB_API}/repos/${repo}/contents/${file.path.split("/").map(encodeURIComponent).join("/")}`;
+    const existing = await f(`${url}?ref=${encodeURIComponent(branch)}`, { headers: apiHeaders(token) });
+    const prior = existing.ok ? ((await existing.json()) as { sha?: string }).sha : undefined;
+    await check(
+      await f(url, { method: "PUT", headers: json, body: JSON.stringify({ message: `Add ${file.path} for the OTInstaller Registry`, content: base64(file.content), branch, sha: prior }) }),
+      `committing ${file.path}`,
+    );
+  }
+  const pr = await f(`${GITHUB_API}/repos/${repo}/pulls`, { method: "POST", headers: json, body: JSON.stringify({ title, head: branch, base, body, maintainer_can_modify: true }) });
+  if (pr.status === 422) {
+    const owner = repo.split("/")[0];
+    const open = await check(
+      await f(`${GITHUB_API}/repos/${repo}/pulls?state=open&head=${encodeURIComponent(`${owner}:${branch}`)}`, { headers: apiHeaders(token) }),
+      "finding the open pull request",
+    );
+    const first = ((await open.json()) as { html_url: string; number: number }[])[0];
+    if (first) return { url: first.html_url, number: first.number };
+  }
+  const p = (await (await check(pr, "opening the pull request")).json()) as { html_url: string; number: number };
+  return { url: p.html_url, number: p.number };
+}

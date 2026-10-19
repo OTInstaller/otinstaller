@@ -8,7 +8,8 @@
     "db:seed": "node scripts/seed.mjs && wrangler d1 execute otinstaller --local --file=.wrangler/seed.sql",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "sync:templates": "node scripts/sync-templates.mjs"
   },
   "dependencies": {
     "@cfworker/json-schema": "^4.1.1",
