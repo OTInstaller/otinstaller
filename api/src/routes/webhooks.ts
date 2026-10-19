@@ -1,11 +1,12 @@
 // GitHub App webhooks: installations become namespaces; tag pushes become publish jobs.
 import { requireSecret, type App, type Env } from "../env";
 import { apiError } from "../lib/errors";
-import { hmacSha256Hex, safeEqual, ulid } from "../lib/crypto";
+import { hmacSha256Hex, safeEqual, sha256Hex, ulid } from "../lib/crypto";
 import { audit } from "./auth";
+import { githubRepo, gitlabRepo, type RepoMeta } from "../hosts/repo";
+import { RELEASE_TAG, applyMeta, queueTag, recordEvent, refreshReadme, setChangelog, sourceByProject } from "../sync";
 
 const MAX_BODY = 5 * 1024 * 1024;
-const RELEASE_TAG = /^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
 
@@ -89,7 +90,83 @@ async function onTag(env: Env, deliveryId: string, p: Payload): Promise<{ status
   return { status: "queued", jobId };
 }
 
+/** Repository state as GitHub sends it in webhook payloads. */
+function githubMeta(r: Payload): RepoMeta {
+  return {
+    path: r.full_name, url: r.html_url, defaultBranch: r.default_branch ?? null, description: r.description ?? null,
+    topics: r.topics ?? [], stars: r.stargazers_count ?? 0, archived: !!r.archived, visibility: r.private ? "private" : "public",
+  };
+}
+
+/** push, release and repository events keep an already-published package in sync. */
+async function onGithubSync(env: Env, event: string, delivery: string, p: Payload): Promise<string> {
+  const s = p.repository ? await sourceByProject(env, "github", String(p.repository.id)) : null;
+  if (!s) return "ignored: not a registry source";
+  if (!(await recordEvent(env, s.id, delivery, event === "repository" ? "repo" : event, `${event}.${p.action ?? p.ref ?? ""}`))) return "duplicate delivery";
+  await env.DB.prepare(`UPDATE sources SET last_event_at = ? WHERE id = ?`).bind(Date.now(), s.id).run();
+  if (event === "repository") {
+    return applyMeta(env, s, p.action === "deleted" ? null : githubMeta(p.repository));
+  }
+  if (event === "release" && ["published", "edited"].includes(p.action)) {
+    await setChangelog(env, s, p.release.tag_name, p.release.body ?? "");
+    return "changelog updated";
+  }
+  if (event === "push" && p.ref === `refs/heads/${p.repository.default_branch}` && s.installation_id) {
+    await applyMeta(env, s, githubMeta(p.repository));
+    await refreshReadme(env, s, githubRepo(env, s.installation_id, p.repository.full_name, String(p.repository.id)), p.repository.default_branch);
+    return "metadata refreshed";
+  }
+  return "ignored";
+}
+
+async function onGitlab(env: Env, eventId: string, p: Payload, token: string): Promise<{ code: number; body: Record<string, unknown> }> {
+  const projectId = String(p.project_id ?? p.project?.id ?? "");
+  const s = projectId ? await sourceByProject(env, "gitlab", projectId) : null;
+  const hash = s ? (await env.DB.prepare(`SELECT webhook_secret_hash FROM sources WHERE id = ?`).bind(s.id).first<{ webhook_secret_hash: string | null }>())?.webhook_secret_hash : null;
+  // Each project has its own secret, so a leaked one cannot be used for another project.
+  if (!s || !hash || !safeEqual(await sha256Hex(token), hash)) return { code: 401, body: { error: { code: "bad_signature", message: "webhook token does not match" } } };
+  if (s.sync_status === "paused") return { code: 200, body: { status: "ignored: sync paused" } };
+  const kind = p.object_kind === "tag_push" ? "tag" : p.object_kind === "release" ? "release" : p.object_kind === "push" ? "push" : "repo";
+  if (!(await recordEvent(env, s.id, `gitlab:${eventId}`, kind, `${p.object_kind}:${p.ref ?? p.tag ?? ""}`))) return { code: 200, body: { status: "duplicate delivery" } };
+  await env.DB.prepare(`UPDATE sources SET last_event_at = ? WHERE id = ?`).bind(Date.now(), s.id).run();
+  const path: string = p.project?.path_with_namespace ?? s.path ?? "";
+  switch (p.object_kind) {
+    case "tag_push": {
+      const tag = String(p.ref ?? "").replace(/^refs\/tags\//, "");
+      if (/^0+$/.test(p.after ?? "")) return { code: 200, body: { status: "ignored: tag deleted" } };
+      if (!RELEASE_TAG.test(tag)) return { code: 200, body: { status: "ignored: not a vX.Y.Z tag" } };
+      const jobId = await queueTag(env, s, tag, `gitlab:${eventId}`, path);
+      return { code: 202, body: jobId ? { status: "queued", jobId } : { status: "ignored: already handled" } };
+    }
+    case "release":
+      if (["create", "update"].includes(p.action)) await setChangelog(env, s, p.tag, p.description ?? "");
+      return { code: 200, body: { status: "changelog updated" } };
+    case "push": {
+      const branch = String(p.ref ?? "").replace(/^refs\/heads\//, "");
+      if (branch === p.project?.default_branch && s.connected_by) {
+        const host = gitlabRepo(env, s.project_id, s.connected_by);
+        await applyMeta(env, s, await host.metadata());
+        await refreshReadme(env, s, host, branch);
+        return { code: 200, body: { status: "metadata refreshed" } };
+      }
+      return { code: 200, body: { status: "ignored: not the default branch" } };
+    }
+  }
+  return { code: 200, body: { status: `ignored: ${p.object_kind}` } };
+}
+
 export function webhookRoutes(app: App) {
+  app.post("/webhooks/gitlab", async (c) => {
+    const len = Number(c.req.header("content-length") ?? 0);
+    if (len > MAX_BODY) apiError(413, "payload_too_large", "webhook payload is larger than 5 MB");
+    const body = await c.req.text();
+    if (body.length > MAX_BODY) apiError(413, "payload_too_large", "webhook payload is larger than 5 MB");
+    const p = JSON.parse(body) as Payload;
+    const eventId = c.req.header("x-gitlab-event-uuid") ?? c.req.header("x-gitlab-webhook-uuid") ?? ulid();
+    const out = await onGitlab(c.env, eventId, p, c.req.header("x-gitlab-token") ?? "");
+    return c.json(out.body, out.code as 200);
+  });
+
   app.post("/webhooks/github", async (c) => {
     const secret = requireSecret(c.env, "GITHUB_WEBHOOK_SECRET");
     const len = Number(c.req.header("content-length") ?? 0);
@@ -114,6 +191,10 @@ export function webhookRoutes(app: App) {
       case "create":
         if (p.ref_type !== "tag") return c.json({ status: "ignored: not a tag" });
         return c.json(await onTag(c.env, delivery, p), 202);
+      case "push":
+      case "release":
+      case "repository":
+        return c.json({ status: await onGithubSync(c.env, event, delivery, p) });
       default:
         return c.json({ status: `ignored: ${event}` });
     }

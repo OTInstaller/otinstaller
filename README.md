@@ -1,9 +1,11 @@
 # OTInstaller Registry
 
 A free, public registry of OSINT tools and guides, and `ot`, the CLI that installs and runs them.
-This repository holds weeks 1–5 of the plan: the manifest spec, the `ot` CLI, the registry API's read side,
+This repository holds weeks 1–6 of the plan: the manifest spec, the `ot` CLI, the registry API's read side,
 publishing intake (GitHub/GitLab sign-in, the GitHub App webhook, the queue that validates tagged releases), and
-security scans with the review queue (scanner, verdicts, publishing, reviewer decisions, emails).
+security scans with the review queue (scanner, verdicts, publishing, reviewer decisions, emails), and GitLab support
+with sync (connecting GitLab projects, GitLab webhooks and CI templates, and a poller that catches missed tags, renames,
+archiving and deleted repositories).
 To connect real GitHub and GitLab apps, follow [docs/publishing-setup.md](docs/publishing-setup.md).
 
 | Folder | What it is |
@@ -76,4 +78,6 @@ bash scripts/e2e-real.sh
 - Smoke tests run offline unless the manifest declares `network.egress: true`; then they keep the network, on a disposable
   runner with no secrets in the container. Fully offline smoke tests would fail most OSINT tools.
 - Wheels are scanned for vulnerabilities in their Python packages only; the base image the scanner wraps them in is not the author's.
+- Release templates sign on the default branch before creating the tag, so the expected signer accepts the repository's
+  CI on a branch ref as well as on the release tag.
 - Docker images are not run through GuardDog (it reads Python packages); Trivy and the smoke test cover them.

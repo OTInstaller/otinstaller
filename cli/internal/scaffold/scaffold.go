@@ -77,7 +77,11 @@ func Files(p Params) (map[string]string, error) {
 			files[".github/workflows/otinstaller-release.yml"] = githubDockerTmpl
 		}
 	case "pipx":
-		files[".github/workflows/otinstaller-release.yml"] = githubPipxTmpl
+		if p.Host == "gitlab" {
+			files[".gitlab-ci.yml"] = gitlabPipxTmpl
+		} else {
+			files[".github/workflows/otinstaller-release.yml"] = githubPipxTmpl
+		}
 	case "guide":
 		files["docs/index.md"] = guideIndexTmpl
 		files["docs/01-scope-and-legal.md"] = guideLegalTmpl
@@ -224,7 +228,8 @@ jobs:
 `
 
 const gitlabDockerTmpl = `# Builds the image, signs it with GitLab's OIDC token, pins its digest and tags the release.
-# Run a pipeline manually with the variable VERSION set (e.g. 1.2.0).
+# Run a pipeline manually with the variable VERSION set (e.g. 1.2.0). RELEASE_TOKEN is a project
+# access token with write_repository, used to push the release commit and tag.
 otinstaller-release:
   image: docker:27
   services: [docker:27-dind]
@@ -281,6 +286,33 @@ jobs:
           git commit -am "Release ${VERSION}"
           git tag "v${VERSION}"
           git push origin HEAD "v${VERSION}"
+`
+
+const gitlabPipxTmpl = `# Publishes to PyPI with Trusted Publishing, pins the wheel hash in otinstaller.yaml and tags the release.
+# Configure a GitLab trusted publisher for this project on PyPI first, then run a pipeline manually
+# with the variable VERSION set (it must match pyproject.toml). RELEASE_TOKEN is a project access token
+# with write_repository, used to push the release commit and tag.
+otinstaller-release:
+  image: python:3.12
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web" && $VERSION
+  id_tokens:
+    PYPI_ID_TOKEN:
+      aud: pypi
+  script:
+    - python -m pip install build twine
+    - python -m build
+    - RESP=$(curl -sSf -X POST https://pypi.org/_/oidc/mint-token -d "{\"token\":\"${PYPI_ID_TOKEN}\"}")
+    - export TWINE_USERNAME=__token__
+    - export TWINE_PASSWORD=$(python -c "import json,sys; print(json.loads(sys.argv[1])['token'])" "$RESP")
+    - python -m twine upload dist/*
+    - SHA=$(sha256sum dist/*.whl | cut -d' ' -f1)
+    - sed -i -E "s|^version: .*|version: $VERSION|; s|^  package_version: .*|  package_version: \"$VERSION\"|; s|^  wheel_sha256: .*|  wheel_sha256: \"$SHA\"|" otinstaller.yaml
+    - git config user.name "otinstaller release"
+    - git config user.email "release@otinstaller.invalid"
+    - git commit -am "Release $VERSION"
+    - git tag "v$VERSION"
+    - git push "https://oauth2:${RELEASE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" HEAD:$CI_DEFAULT_BRANCH "v$VERSION"
 `
 
 const guideIndexTmpl = `# << .Summary >>

@@ -4,6 +4,7 @@ import { deps, requireSecret, type Env } from "./env";
 import { randomToken, sha256Hex, ulid } from "./lib/crypto";
 import type { Manifest } from "./lib/manifest";
 import * as github from "./hosts/github";
+import { githubRepo, gitlabRepo, type CommitState } from "./hosts/repo";
 import { audit } from "./routes/auth";
 import { ownerEmails, sendEmail, templates } from "./notify";
 
@@ -47,18 +48,21 @@ export function verdict(r: ScanResults, previouslySigned: boolean): Verdict {
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** Who must have signed a release: the repository's own CI, for this tag. */
-export function expectedSigner(repo: string, tag: string) {
-  return {
-    identityRegexp: `^https://github\\.com/${escapeRe(repo)}/\\.github/workflows/[^@]+@refs/tags/${escapeRe(tag)}$`,
-    issuer: "https://token.actions.githubusercontent.com",
-  };
+/**
+ * Who must have signed a release: the repository's own CI. The release templates sign on the default
+ * branch before creating the tag, so a branch ref is accepted as well as this tag.
+ */
+export function expectedSigner(provider: "github" | "gitlab", repo: string, tag: string) {
+  const ref = `@refs/(tags/${escapeRe(tag)}|heads/[^@]+)$`;
+  return provider === "github"
+    ? { identityRegexp: `^https://github\.com/${escapeRe(repo)}/\.github/workflows/[^@]+${ref}`, issuer: "https://token.actions.githubusercontent.com" }
+    : { identityRegexp: `^https://gitlab\.com/${escapeRe(repo)}//[^@]+${ref}`, issuer: "https://gitlab.com" };
 }
 
-export async function dispatchScan(env: Env, opts: { versionId: string; repo: string; tag: string; manifest: Manifest }) {
-  const { versionId, repo, tag, manifest: m } = opts;
+export async function dispatchScan(env: Env, opts: { versionId: string; provider: "github" | "gitlab"; repo: string; tag: string; manifest: Manifest }) {
+  const { versionId, provider, repo, tag, manifest: m } = opts;
   const token = randomToken(32);
-  const signer = expectedSigner(repo, tag);
+  const signer = expectedSigner(provider, repo, tag);
   const now = Date.now();
   await env.DB.prepare(
     `UPDATE versions SET scan_token_hash = ?, scan_token_expires_at = ?, expected_signer_regexp = ?, expected_signer_issuer = ? WHERE id = ?`,
@@ -71,7 +75,7 @@ export async function dispatchScan(env: Env, opts: { versionId: string; repo: st
   const scan = {
     version_id: versionId,
     ref: `${m.namespace}/${m.name}@${m.version}`,
-    source_repo: `github.com/${repo}`,
+    source_repo: `${provider}.com/${repo}`,
     kind: m.kind ?? "tool",
     runtime: m.runtime ?? null,
     test_input: (m.test as { input?: unknown } | undefined)?.input ?? null,
@@ -105,15 +109,18 @@ type VersionCtx = {
   name: string;
   kind: string;
   job_id: string | null;
+  provider: "github" | "gitlab" | null;
   repo: string | null;
+  repo_id: string | null;
   installation_id: number | null;
+  source_id: string | null;
   commit_sha: string | null;
 };
 
 export async function loadVersion(env: Env, where: string, ...binds: unknown[]): Promise<VersionCtx | null> {
   return env.DB.prepare(
     `SELECT v.id, v.tool_id, v.version, v.status, v.manifest_json, t.namespace_id, n.name AS namespace, n.status AS namespace_status,
-       t.name, t.kind, j.id AS job_id, j.repo, j.installation_id, j.commit_sha
+       t.name, t.kind, j.id AS job_id, j.provider, j.repo, j.repo_id, j.installation_id, j.source_id, j.commit_sha
      FROM versions v JOIN tools t ON t.id = v.tool_id JOIN namespaces n ON n.id = t.namespace_id
      LEFT JOIN publish_jobs j ON j.version_id = v.id
      WHERE ${where} ORDER BY j.created_at DESC LIMIT 1`,
@@ -122,10 +129,18 @@ export async function loadVersion(env: Env, where: string, ...binds: unknown[]):
 
 const refOf = (v: VersionCtx) => `${v.namespace}/${v.name}`;
 
-async function commitStatus(env: Env, v: VersionCtx, state: github.CommitState, description: string) {
-  if (!v.repo || !v.installation_id || !v.commit_sha) return;
-  const token = await github.installationToken(deps.fetch, requireSecret(env, "GITHUB_APP_ID"), requireSecret(env, "GITHUB_APP_PRIVATE_KEY"), v.installation_id);
-  await github.setCommitStatus(deps.fetch, token, v.repo, v.commit_sha, state, description, `${env.SITE_URL}/dashboard/publish/${v.job_id}`);
+export async function commitStatus(env: Env, v: VersionCtx, state: CommitState, description: string) {
+  if (!v.repo || !v.repo_id || !v.commit_sha) return;
+  let host;
+  if (v.provider === "gitlab") {
+    const src = await env.DB.prepare(`SELECT connected_by FROM sources WHERE id = ?`).bind(v.source_id).first<{ connected_by: string | null }>();
+    if (!src?.connected_by) return;
+    host = gitlabRepo(env, v.repo_id, src.connected_by);
+  } else {
+    if (!v.installation_id) return;
+    host = githubRepo(env, v.installation_id, v.repo, v.repo_id);
+  }
+  await host.setStatus(v.commit_sha, state, description, `${env.SITE_URL}/dashboard/publish/${v.job_id}`);
 }
 
 /** Applies scan results to a version: reject, publish, or hold for review. */

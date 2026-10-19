@@ -130,7 +130,7 @@ def check_wheel_provenance(pkg: str, version: str, filename: str, source_repo: s
     prov = http_json(f"https://pypi.org/integrity/{pkg}/{version}/{filename}/provenance")
     if not prov:
         return {"status": "absent"}
-    want = source_repo.removeprefix("github.com/").lower()
+    want = re.sub(r"^(github|gitlab)\.com/", "", source_repo).lower()
     seen = []
     for bundle in prov.get("attestation_bundles", []):
         pub = bundle.get("publisher", {})

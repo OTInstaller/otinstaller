@@ -142,7 +142,9 @@ export function authRoutes(app: App) {
     const state = randomToken(24);
     const redirect = safeRedirect(c.env, c.req.query("redirect"));
     setCookie(c, STATE_COOKIE, `${state}|${p}|${redirect}`, { httpOnly: true, secure: true, sameSite: "Lax", path: "/v1/auth", maxAge: 600 });
-    const url = p === "github" ? github.authorizeUrl(client.id, callbackUrl(c.env, p), state) : gitlab.authorizeUrl(client.id, callbackUrl(c.env, p), state);
+    const url = p === "github"
+      ? github.authorizeUrl(client.id, callbackUrl(c.env, p), state)
+      : gitlab.authorizeUrl(client.id, callbackUrl(c.env, p), state, c.req.query("scope") === "api");
     return c.redirect(url, 302);
   });
 

@@ -8,6 +8,8 @@ import { apiError } from "./lib/errors";
 import { authRoutes } from "./routes/auth";
 import { webhookRoutes } from "./routes/webhooks";
 import { reviewRoutes } from "./routes/review";
+import { sourceRoutes } from "./routes/sources";
+import { pollDueSources } from "./sync";
 import { expireStaleScans } from "./scans";
 import { handleBatch } from "./publish";
 
@@ -23,6 +25,7 @@ app.use("*", async (c, next) => {
 authRoutes(app);
 webhookRoutes(app);
 reviewRoutes(app);
+sourceRoutes(app);
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
@@ -42,11 +45,14 @@ function cached(c: { header: (k: string, v: string) => void }, seconds: number) 
 const VISIBLE = `
   t.status != 'removed' AND n.status = 'active' AND t.latest_version_id IS NOT NULL`;
 
+const LISTED = `NOT EXISTS (SELECT 1 FROM sources s WHERE s.tool_id = t.id AND s.sync_status = 'unavailable')`;
+
 const SUMMARY_COLUMNS = `
   t.id, t.rowid AS rowid, n.name AS namespace, t.name, t.kind, t.summary, t.categories, t.status,
   t.stars_count, t.installs_30d, t.health_status, t.community_packaged, n.verified,
   v.version AS latest_version, v.runtime_kind, v.signer_identity,
   (SELECT s.manifest_mode FROM sources s WHERE s.tool_id = t.id) AS manifest_mode,
+  (SELECT s.sync_status FROM sources s WHERE s.tool_id = t.id) AS source_status,
   (SELECT group_concat(type) FROM tool_io WHERE tool_id = t.id AND direction = 'in') AS inputs,
   (SELECT group_concat(type) FROM tool_io WHERE tool_id = t.id AND direction = 'out') AS outputs,
   EXISTS (SELECT 1 FROM tool_secrets WHERE tool_id = t.id AND required = 1) AS needs_keys`;
@@ -69,6 +75,7 @@ type SummaryRow = {
   runtime_kind: string | null;
   signer_identity: string | null;
   manifest_mode: string | null;
+  source_status: string | null;
   inputs: string | null;
   outputs: string | null;
   needs_keys: number;
@@ -93,6 +100,7 @@ function summary(r: SummaryRow) {
     needs_keys: r.needs_keys === 1,
     manifest_held_by_registry: r.manifest_mode === "registry",
     community_packaged: r.community_packaged === 1,
+    source_unavailable: r.source_status === "unavailable",
     status: r.status,
   };
 }
@@ -151,7 +159,8 @@ app.get("/tools", async (c) => {
   const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 25) || 25, 1), 100);
   const offset = Math.max(Number(c.req.query("cursor") ?? 0) || 0, 0);
 
-  const where = [VISIBLE];
+  // Packages whose source repository disappeared stay installable but leave search.
+  const where = [VISIBLE, LISTED];
   const params: unknown[] = [];
   if (input) {
     where.push(`EXISTS (SELECT 1 FROM tool_io WHERE tool_id = t.id AND direction = 'in' AND type = ?)`);
@@ -324,6 +333,7 @@ app.get("/tools/:ns/:name/:version/manifest", async (c) => {
     scan_status: v.scan_status,
     health: row.health_status,
     verified_publisher: row.verified === 1,
+    source_unavailable: row.source_status === "unavailable",
     moved_to: movedTo,
     manifest: removed ? null : JSON.parse(v.manifest_json),
   });
@@ -380,7 +390,7 @@ app.get("/pivots", async (c) => {
     const rows = await c.env.DB.prepare(
       `SELECT ${SUMMARY_COLUMNS} FROM tools t JOIN namespaces n ON n.id = t.namespace_id
        JOIN versions v ON v.id = t.latest_version_id
-       WHERE ${VISIBLE} AND t.kind = 'tool' AND t.health_status != 'broken'
+       WHERE ${VISIBLE} AND ${LISTED} AND t.kind = 'tool' AND t.health_status != 'broken'
        AND EXISTS (SELECT 1 FROM tool_io WHERE tool_id = t.id AND direction = 'in' AND type = ?)`,
     )
       .bind(type)
@@ -421,8 +431,9 @@ export default {
   fetch: app.fetch,
   queue: (batch: MessageBatch<PublishMessage>, env: Env) => handleBatch(batch, env),
   async scheduled(event: ScheduledController, env: Env) {
-    // Every 15 minutes: close scans that never reported back.
+    // Every 15 minutes: close scans that never reported back, and poll sources that are due.
     await expireStaleScans(env);
+    await pollDueSources(env);
     // Nightly: recompute 30-day install totals that ranking uses.
     if (event.cron === "17 3 * * *") {
       await env.DB.prepare(

@@ -1,10 +1,11 @@
-// Queue consumer: validates a tagged release and records it as a version.
-// Valid releases move to `scanning` (scans arrive in week 5); invalid ones are `rejected`, and the
-// author sees why as a failed commit status on the tagged commit.
-import { deps, requireSecret, type Env } from "./env";
+// Queue consumer: validates a tagged release (from GitHub or GitLab) and records it as a version.
+// Valid releases move to `scanning`; invalid ones are `rejected`, and the author sees why as a failed
+// commit status on the tagged commit.
+import { deps, type Env } from "./env";
 import { ulid } from "./lib/crypto";
 import { parseManifest, referencedFiles, semverParts, type Manifest, type Problem } from "./lib/manifest";
 import * as github from "./hosts/github";
+import { githubRepo, gitlabRepo, repoUrl, type RepoHost } from "./hosts/repo";
 import { checkImage, checkWheel } from "./hosts/artifacts";
 import { audit } from "./routes/auth";
 import { dispatchScan } from "./scans";
@@ -14,44 +15,60 @@ export const MANIFEST_FILE = "otinstaller.yaml";
 
 type Job = {
   id: string;
-  repo: string;
+  provider: "github" | "gitlab";
+  repo: string; // owner/name on GitHub, group/project path on GitLab
   repo_id: string;
   tag: string;
-  installation_id: number;
+  installation_id: number | null;
+  source_id: string | null;
   status: string;
   attempts: number;
 };
+
+type Namespace = { id: string; name: string; status: string };
+
+/** The repository host for a job, and the namespace it publishes into. */
+async function jobContext(env: Env, job: Job): Promise<{ host: RepoHost; ns: Namespace }> {
+  if (job.provider === "github") {
+    const ns = await env.DB.prepare(
+      `SELECT n.id, n.name, n.status FROM installations i JOIN namespaces n ON n.id = i.namespace_id WHERE i.github_installation_id = ?`,
+    ).bind(job.installation_id).first<Namespace>();
+    if (!ns) throw new Error(`installation ${job.installation_id} has no namespace`);
+    return { host: githubRepo(env, job.installation_id!, job.repo, job.repo_id), ns };
+  }
+  const src = await env.DB.prepare(
+    `SELECT s.connected_by, n.id, n.name, n.status FROM sources s JOIN namespaces n ON n.id = s.namespace_id WHERE s.id = ?`,
+  ).bind(job.source_id).first<Namespace & { connected_by: string }>();
+  if (!src) throw new Error(`job ${job.id} has no connected GitLab project`);
+  return { host: gitlabRepo(env, job.repo_id, src.connected_by), ns: { id: src.id, name: src.name, status: src.status } };
+}
 
 type Outcome = { status: "scanning" | "rejected"; problems: Problem[]; versionId?: string };
 
 export async function processJob(env: Env, jobId: string): Promise<Outcome | null> {
   const db = env.DB;
-  const job = await db.prepare(`SELECT id, repo, repo_id, tag, installation_id, status, attempts FROM publish_jobs WHERE id = ?`).bind(jobId).first<Job>();
+  const job = await db.prepare(
+    `SELECT id, provider, repo, repo_id, tag, installation_id, source_id, status, attempts FROM publish_jobs WHERE id = ?`,
+  ).bind(jobId).first<Job>();
   if (!job) return null;
   if (job.status === "scanning") {
     // Validation finished but the scan dispatch failed last time: dispatch again.
     const v = await db.prepare(
       `SELECT v.id, v.manifest_json FROM publish_jobs j JOIN versions v ON v.id = j.version_id WHERE j.id = ? AND v.status = 'scanning' AND v.scan_dispatched_at IS NULL`,
     ).bind(jobId).first<{ id: string; manifest_json: string }>();
-    if (v) await dispatchScan(env, { versionId: v.id, repo: job.repo, tag: job.tag, manifest: JSON.parse(v.manifest_json) });
+    if (v) await dispatchScan(env, { versionId: v.id, provider: job.provider, repo: job.repo, tag: job.tag, manifest: JSON.parse(v.manifest_json) });
     return null;
   }
   if (!["queued", "validating"].includes(job.status)) return null; // already handled
   await db.prepare(`UPDATE publish_jobs SET status = 'validating', attempts = attempts + 1, updated_at = ? WHERE id = ?`).bind(Date.now(), jobId).run();
 
-  const f = deps.fetch;
-  const token = await github.installationToken(f, requireSecret(env, "GITHUB_APP_ID"), requireSecret(env, "GITHUB_APP_PRIVATE_KEY"), job.installation_id);
-  const sha = await github.tagCommit(f, token, job.repo, job.tag);
+  const { host, ns } = await jobContext(env, job);
+  const sha = await host.tagCommit(job.tag);
   await db.prepare(`UPDATE publish_jobs SET commit_sha = ? WHERE id = ?`).bind(sha, jobId).run();
   const target = `${env.SITE_URL}/dashboard/publish/${jobId}`;
-  await github.setCommitStatus(f, token, job.repo, sha, "pending", "Validating otinstaller.yaml", target);
+  await host.setStatus(sha, "pending", "Validating otinstaller.yaml", target);
 
-  const ns = await db.prepare(
-    `SELECT n.id, n.name, n.status FROM installations i JOIN namespaces n ON n.id = i.namespace_id WHERE i.github_installation_id = ?`,
-  ).bind(job.installation_id).first<{ id: string; name: string; status: string }>();
-  if (!ns) throw new Error(`installation ${job.installation_id} has no namespace`);
-
-  const text = await github.fileAt(f, token, job.repo, MANIFEST_FILE, sha);
+  const text = await host.fileAt(MANIFEST_FILE, sha);
   let manifest: Manifest | undefined;
   let problems: Problem[];
   let readme = "";
@@ -64,7 +81,7 @@ export async function processJob(env: Env, jobId: string): Promise<Outcome | nul
     problems = await releaseProblems(env, manifest, job, ns.name, ns.status);
     if (problems.length === 0) {
       for (const file of referencedFiles(manifest)) {
-        const content = await github.fileAt(f, token, job.repo, file.path, sha);
+        const content = await host.fileAt(file.path, sha);
         if (content === null) problems.push({ code: "manifest_file_missing", path: file.field, message: `${file.path} does not exist at ${job.tag}` });
         else if (file.field === "/readme") readme = content;
       }
@@ -74,14 +91,14 @@ export async function processJob(env: Env, jobId: string): Promise<Outcome | nul
 
   const outcome = await record(env, job, sha, ns, manifest, problems, readme);
   if (outcome.status === "scanning") {
-    await dispatchScan(env, { versionId: outcome.versionId!, repo: job.repo, tag: job.tag, manifest: manifest! });
+    await dispatchScan(env, { versionId: outcome.versionId!, provider: job.provider, repo: job.repo, tag: job.tag, manifest: manifest! });
   } else if (manifest && outcome.versionId) {
     const first = problems[0]!;
     await sendEmail(env, { to: await ownerEmails(env, ns.id), kind: "rejected", key: `rejected:${job.id}`, ...templates.rejected(env, `${manifest.namespace}/${manifest.name}`, manifest.version, first.code, first.message) });
   }
   const first = problems[0];
-  await github.setCommitStatus(
-    f, token, job.repo, sha,
+  await host.setStatus(
+    sha,
     outcome.status === "rejected" ? "failure" : "pending",
     outcome.status === "rejected" ? `${first!.code}: ${first!.message}` : "Valid; security scans running",
     target,
@@ -110,7 +127,7 @@ async function releaseProblems(env: Env, m: Manifest, job: Job, namespace: strin
   const owner = await env.DB.prepare(
     `SELECT t.repo_url FROM tools t JOIN namespaces n ON n.id = t.namespace_id WHERE n.name = ? AND t.name = ?`,
   ).bind(namespace, m.name).first<{ repo_url: string | null }>();
-  if (owner?.repo_url && owner.repo_url !== `https://github.com/${job.repo}`) {
+  if (owner?.repo_url && owner.repo_url !== repoUrl(job.provider, job.repo)) {
     ps.push({ code: "manifest_name_taken", path: "/name", message: `${namespace}/${m.name} is published from ${owner.repo_url}` });
   }
   return ps;
@@ -124,7 +141,7 @@ async function artifactProblems(m: Manifest): Promise<Problem[]> {
 }
 
 /** Writes the tool, version and job outcome in one batch. */
-async function record(env: Env, job: Job, sha: string, ns: { id: string }, m: Manifest | undefined, problems: Problem[], readme: string): Promise<Outcome> {
+async function record(env: Env, job: Job, sha: string, ns: Namespace, m: Manifest | undefined, problems: Problem[], readme: string): Promise<Outcome> {
   const db = env.DB;
   const now = Date.now();
   const status = problems.length ? "rejected" : "scanning";
@@ -141,7 +158,18 @@ async function record(env: Env, job: Job, sha: string, ns: { id: string }, m: Ma
       stmts.push(db.prepare(
         `INSERT INTO tools (id, namespace_id, kind, name, summary, categories, tags, repo_url, readme_text, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).bind(toolId, ns.id, m.kind ?? "tool", m.name, m.summary, JSON.stringify(m.categories), JSON.stringify(m.tags ?? []), `https://github.com/${job.repo}`, readme.slice(0, 20000), now, now));
+      ).bind(toolId, ns.id, m.kind ?? "tool", m.name, m.summary, JSON.stringify(m.categories), JSON.stringify(m.tags ?? []), repoUrl(job.provider, job.repo), readme.slice(0, 20000), now, now));
+    }
+    // Link the package to its source repository, which sync keeps up to date from now on.
+    if (job.provider === "github") {
+      stmts.push(db.prepare(
+        `INSERT INTO sources (id, tool_id, namespace_id, provider, project_id, path, url, installation_id, created_at)
+         VALUES (?, ?, ?, 'github', ?, ?, ?, ?, ?)
+         ON CONFLICT (provider, project_id) DO UPDATE SET tool_id = COALESCE(sources.tool_id, excluded.tool_id),
+           path = excluded.path, url = excluded.url, installation_id = excluded.installation_id`,
+      ).bind(ulid(now), toolId, ns.id, job.repo_id, job.repo, repoUrl("github", job.repo), job.installation_id, now));
+    } else {
+      stmts.push(db.prepare(`UPDATE sources SET tool_id = COALESCE(tool_id, ?) WHERE id = ?`).bind(toolId, job.source_id));
     }
     const sv = semverParts(m.version);
     // Re-tagging a version that was rejected reuses its row.

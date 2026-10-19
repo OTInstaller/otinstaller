@@ -3,11 +3,9 @@ import type { Context } from "hono";
 import type { App, AppEnv, Env } from "../env";
 import { apiError } from "../lib/errors";
 import { sha256Hex } from "../lib/crypto";
-import { applyScanResults, loadVersion, publishVersion, type ScanResults } from "../scans";
+import { applyScanResults, commitStatus, loadVersion, publishVersion, type ScanResults } from "../scans";
 import { ownerEmails, sendEmail, templates } from "../notify";
 import { audit, requireUser } from "./auth";
-import * as github from "../hosts/github";
-import { deps, requireSecret } from "../env";
 
 const MAX_RESULTS = 256 * 1024;
 
@@ -157,10 +155,7 @@ export function reviewRoutes(app: App) {
     ]);
     for (const { id } of waiting.results) {
       const v = await loadVersion(c.env, "v.id = ?", id);
-      if (v?.repo && v.installation_id && v.commit_sha) {
-        const token = await github.installationToken(deps.fetch, requireSecret(c.env, "GITHUB_APP_ID"), requireSecret(c.env, "GITHUB_APP_PRIVATE_KEY"), v.installation_id);
-        await github.setCommitStatus(deps.fetch, token, v.repo, v.commit_sha, "failure", "namespace_rejected: see the email from the registry", `${c.env.SITE_URL}/dashboard`);
-      }
+      if (v) await commitStatus(c.env, v, "failure", "namespace_rejected: see the email from the registry");
     }
     await sendEmail(c.env, { to: await ownerEmails(c.env, ns.id), kind: "namespace_rejected", key: `ns_rejected:${ns.id}`, ...templates.namespaceRejected(c.env, ns.name, reason) });
     return c.json({ status: "rejected" });

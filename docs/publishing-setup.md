@@ -13,7 +13,7 @@ GitHub → Settings → Developer settings → GitHub Apps → New GitHub App (c
 | Webhook URL | `https://api.otinstaller.com/v1/webhooks/github` |
 | Webhook secret | a long random string → `GITHUB_WEBHOOK_SECRET` |
 | Repository permissions | Contents: Read-only · Metadata: Read-only · Commit statuses: Read and write · Pull requests: Read and write (import wizard, week 7) |
-| Subscribe to events | Create · Release · Push · Repository · Installation target |
+| Subscribe to events | Create · Release · Push · Repository · Installation target (push, release and repository keep packages in sync) |
 | Where can it be installed | Any account |
 
 Then generate a private key. GitHub gives a PKCS#1 key; convert it to PKCS#8 for Workers:
@@ -39,6 +39,11 @@ GitLab.com → Edit profile (or the group) → Applications → Add new applicat
 - Confidential: yes · Scopes: `read_user`, `read_api`
 - Application ID → `GITLAB_CLIENT_ID`, secret → `GITLAB_CLIENT_SECRET`
 - Device flow (`ot login --gitlab`) works with the same application.
+- Connecting a project creates its webhook, which needs the `api` scope. Users grant it only when they connect:
+  `POST /v1/sources/gitlab {"project": "group/name"}` answers `gitlab_scope_required` with a sign-in link that asks for it.
+- GitLab projects publish with the `.gitlab-ci.yml` that `ot init` writes: images are signed with GitLab's OIDC token
+  (cosign keyless, issuer `https://gitlab.com`) and Python packages use PyPI trusted publishing. Add a project access
+  token with `write_repository` as the CI variable `RELEASE_TOKEN` so the pipeline can push the release commit and tag.
 
 ## 4. Scanner repository (registry-ops) and email
 

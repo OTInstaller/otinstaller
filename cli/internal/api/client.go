@@ -93,6 +93,7 @@ type ManifestResponse struct {
 	ScanStatus     string          `json:"scan_status,omitempty"`
 	Health         string          `json:"health,omitempty"`
 	Verified       bool            `json:"verified_publisher"`
+	SourceGone     bool            `json:"source_unavailable"`
 	MovedTo        string          `json:"moved_to,omitempty"`
 	Manifest       json.RawMessage `json:"manifest"`
 }

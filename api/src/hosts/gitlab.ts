@@ -10,13 +10,14 @@ async function check(res: Response, what: string): Promise<Response> {
   throw new HostError(`${what} failed: ${res.status} ${body.slice(0, 200)}`, res.status, res.status >= 500 || res.status === 429);
 }
 
-export function authorizeUrl(clientId: string, redirectUri: string, state: string): string {
+/** `withApi` asks for the `api` scope too, which connecting a project (creating its webhook) needs. */
+export function authorizeUrl(clientId: string, redirectUri: string, state: string, withApi = false): string {
   const u = new URL(`${GITLAB}/oauth/authorize`);
   u.searchParams.set("client_id", clientId);
   u.searchParams.set("redirect_uri", redirectUri);
   u.searchParams.set("response_type", "code");
   u.searchParams.set("state", state);
-  u.searchParams.set("scope", SCOPES);
+  u.searchParams.set("scope", withApi ? `${SCOPES} api` : SCOPES);
   return u.toString();
 }
 
@@ -75,4 +76,56 @@ export async function pollDeviceFlow(f: Fetch, clientId: string, deviceCode: str
   if (t.access_token) return { status: "ok" as const, ...tokens(t) };
   if (res.status >= 500) throw new HostError(`GitLab device token failed: ${res.status}`, res.status, true);
   return { status: deviceStatus(t.error) };
+}
+
+// ---------- projects and webhooks (connect flow) ----------
+
+export interface GitlabProject {
+  id: number;
+  path_with_namespace: string;
+  web_url: string;
+  visibility: string;
+  default_branch: string | null;
+  archived: boolean;
+  namespace: { id: number; path: string; kind: "user" | "group"; full_path: string };
+  permissions?: { project_access?: { access_level: number } | null; group_access?: { access_level: number } | null };
+}
+
+export const MAINTAINER = 40;
+export const OWNER = 50;
+
+export async function getProject(f: Fetch, token: string, project: string): Promise<GitlabProject | null> {
+  const res = await f(`${GITLAB}/api/v4/projects/${encodeURIComponent(project)}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (res.status === 404 || res.status === 403) return null;
+  await check(res, "reading GitLab project");
+  return (await res.json()) as GitlabProject;
+}
+
+export function accessLevel(p: GitlabProject): number {
+  return Math.max(p.permissions?.project_access?.access_level ?? 0, p.permissions?.group_access?.access_level ?? 0);
+}
+
+/** Creates the project webhook. Needs the `api` scope; a 403 means the user has to re-authorize. */
+export async function createHook(f: Fetch, token: string, projectId: number, url: string, secret: string, branch: string | null) {
+  const res = await f(`${GITLAB}/api/v4/projects/${projectId}/hooks`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      url,
+      token: secret,
+      push_events: true,
+      push_events_branch_filter: branch ?? undefined,
+      tag_push_events: true,
+      releases_events: true,
+      enable_ssl_verification: true,
+    }),
+  });
+  if (res.status === 403) throw new HostError("creating the webhook needs GitLab's api scope", 403, false);
+  await check(res, "creating the GitLab webhook");
+  return String(((await res.json()) as { id: number }).id);
+}
+
+export async function deleteHook(f: Fetch, token: string, projectId: string, hookId: string) {
+  const res = await f(`${GITLAB}/api/v4/projects/${encodeURIComponent(projectId)}/hooks/${hookId}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+  if (res.status !== 404) await check(res, "deleting the GitLab webhook");
 }

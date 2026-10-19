@@ -321,6 +321,9 @@ func trustWarnings(r *api.ManifestResponse) []string {
 	if !r.Verified {
 		w = append(w, "the publisher of "+r.Ref+" is not verified")
 	}
+	if r.SourceGone {
+		w = append(w, "the source repository of "+r.Ref+" is no longer available; it will get no new versions")
+	}
 	return w
 }
 
