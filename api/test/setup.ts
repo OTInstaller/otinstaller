@@ -6,6 +6,16 @@ declare global {
       DB: D1Database;
       TEST_MIGRATIONS: import("cloudflare:test").D1Migration[];
       TEST_SEED: string[];
+      TEST_FIXTURES: { dir: string; name: string; text: string }[];
+      GITHUB_APP_ID: string;
+      GITHUB_WEBHOOK_SECRET: string;
+      GITHUB_CLIENT_ID: string;
+      GITHUB_CLIENT_SECRET: string;
+      GITLAB_CLIENT_ID: string;
+      GITLAB_CLIENT_SECRET: string;
+      TOKEN_ENC_KEY: string;
+      SITE_URL: string;
+      API_URL: string;
     }
   }
 }

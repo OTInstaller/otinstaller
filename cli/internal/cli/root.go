@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/osintverse/otinstaller/cli/internal/api"
+	"github.com/osintverse/otinstaller/cli/internal/keys"
 	"github.com/osintverse/otinstaller/cli/internal/runner"
 	"github.com/osintverse/otinstaller/cli/internal/state"
 )
@@ -57,12 +58,16 @@ type App struct {
 
 func NewApp() *App {
 	cfg := state.LoadConfig()
+	client := api.New(cfg.APIURL, Version)
+	if tok, err := keys.Get(TokenKey); err == nil {
+		client.Token = tok
+	}
 	return &App{
 		Out:    os.Stdout,
 		Err:    os.Stderr,
 		In:     os.Stdin,
 		Config: cfg,
-		API:    api.New(cfg.APIURL, Version),
+		API:    client,
 		Runner: runner.New(os.Stderr),
 	}
 }
@@ -89,6 +94,9 @@ func (a *App) Root() *cobra.Command {
 		a.uninstallCmd(),
 		a.keysCmd(),
 		a.doctorCmd(),
+		a.loginCmd(),
+		a.logoutCmd(),
+		a.whoamiCmd(),
 	)
 	return root
 }

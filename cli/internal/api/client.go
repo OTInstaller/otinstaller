@@ -17,6 +17,8 @@ type Client struct {
 	Base      string
 	HTTP      *http.Client
 	UserAgent string
+	// Token is an `ot_` API token from `ot login`; requests are anonymous without it.
+	Token string
 }
 
 func New(base, version string) *Client {
@@ -107,6 +109,9 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 	}
 	req.Header.Set("User-Agent", c.UserAgent)
 	req.Header.Set("Accept", "application/json")
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -178,4 +183,50 @@ func (c *Client) Manifest(ctx context.Context, ns, name, version string) (*Manif
 // InstallPing is anonymous: only the package and version are sent.
 func (c *Client) InstallPing(ctx context.Context, ref, version string) error {
 	return c.do(ctx, http.MethodPost, "/installs", map[string]string{"tool": ref, "version": version}, nil)
+}
+
+type DeviceStart struct {
+	Provider        string `json:"provider"`
+	DeviceCode      string `json:"device_code"`
+	UserCode        string `json:"user_code"`
+	VerificationURI string `json:"verification_uri"`
+	Interval        int    `json:"interval"`
+	ExpiresIn       int    `json:"expires_in"`
+}
+
+type DeviceToken struct {
+	Status string `json:"status"` // ok, pending, slow_down, expired, denied
+	Token  string `json:"token,omitempty"`
+	Login  string `json:"login,omitempty"`
+}
+
+func (c *Client) StartDeviceLogin(ctx context.Context, provider string) (*DeviceStart, error) {
+	var out DeviceStart
+	return &out, c.do(ctx, http.MethodPost, "/auth/device/start", map[string]string{"provider": provider}, &out)
+}
+
+func (c *Client) PollDeviceLogin(ctx context.Context, provider, deviceCode, tokenName string) (*DeviceToken, error) {
+	var out DeviceToken
+	body := map[string]string{"provider": provider, "device_code": deviceCode, "token_name": tokenName}
+	return &out, c.do(ctx, http.MethodPost, "/auth/device/token", body, &out)
+}
+
+type Me struct {
+	Login    string `json:"login"`
+	Admin    bool   `json:"admin"`
+	Reviewer bool   `json:"reviewer"`
+	Accounts []struct {
+		Provider string `json:"provider"`
+		Login    string `json:"login"`
+	} `json:"accounts"`
+	Namespaces []struct {
+		Name   string `json:"name"`
+		Status string `json:"status"`
+		Role   string `json:"role"`
+	} `json:"namespaces"`
+}
+
+func (c *Client) Me(ctx context.Context) (*Me, error) {
+	var out Me
+	return &out, c.do(ctx, http.MethodGet, "/me", nil, &out)
 }

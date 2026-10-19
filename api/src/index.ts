@@ -3,23 +3,23 @@ import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import schema from "../../spec/schema/v1.json";
 import { rank, type RankInput } from "./ranking";
+import type { AppEnv, Env, PublishMessage } from "./env";
+import { apiError } from "./lib/errors";
+import { authRoutes } from "./routes/auth";
+import { webhookRoutes } from "./routes/webhooks";
+import { handleBatch } from "./publish";
 
-export interface Env {
-  DB: D1Database;
-  SITE_URL: string;
-}
+export type { Env } from "./env";
 
-type App = { Bindings: Env };
-const app = new Hono<App>().basePath("/v1");
+const app = new Hono<AppEnv>().basePath("/v1");
 
-app.use("*", cors({ origin: "*", allowMethods: ["GET", "POST"] }));
-
-// ---------- errors ----------
-
-function apiError(status: 400 | 404 | 410 | 429 | 500, code: string, message: string, hint?: string): never {
-  const body = { error: { code, message, hint, docs: `https://otinstaller.com/docs/errors#${code}` } };
-  throw new HTTPException(status, { res: Response.json(body, { status }) });
-}
+// Public reads are open to any origin; credentialed calls only from the website.
+app.use("*", async (c, next) => {
+  const site = c.env.SITE_URL;
+  return cors({ origin: (o) => (o === site ? o : "*"), credentials: true, allowMethods: ["GET", "POST", "DELETE"] })(c, next);
+});
+authRoutes(app);
+webhookRoutes(app);
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
@@ -416,6 +416,7 @@ app.post("/installs", async (c) => {
 
 export default {
   fetch: app.fetch,
+  queue: (batch: MessageBatch<PublishMessage>, env: Env) => handleBatch(batch, env),
   // Nightly: recompute 30-day install totals that ranking uses.
   async scheduled(_event: ScheduledController, env: Env) {
     await env.DB.prepare(
@@ -423,6 +424,6 @@ export default {
          WHERE tool_id = tools.id AND day >= date('now', '-30 days')), 0)`,
     ).run();
   },
-} satisfies ExportedHandler<Env>;
+} satisfies ExportedHandler<Env, PublishMessage>;
 
 export { app };
