@@ -7,7 +7,7 @@ version: 20261007.0.0
 summary: "Breaks a URL into everything it encodes: timestamps, IDs, search terms, tracking and session data"
 readme: README.md
 license: Apache-2.0
-homepage: https://github.com/obsidianforensics/unfurl
+homepage: https://github.com/RyanDFIR/unfurl
 categories: [utilities, web-archive]
 tags: [url, forensics, timestamps]
 inputs:

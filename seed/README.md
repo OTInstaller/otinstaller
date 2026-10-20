@@ -22,7 +22,7 @@ not accept for wrappers). That makes 40 tools.
 | Package | Version | License | Upstream | Runtime | Inputs | Categories |
 | --- | --- | --- | --- | --- | --- | --- |
 | `osintverse-community/maigret` | 0.6.6 | MIT | soxoj/maigret | pipx (PyPI wheel) | `username` (username), `site` (string)?, `top_sites` (integer)? | username, social-media |
-| `osintverse-community/naminter` | 1.0.9 | MIT | 3xp0rt/Naminter | pipx (PyPI wheel) | `username` (username), `category` (string)? | username |
+| `osintverse-community/naminter` | 1.0.9 | MIT | 3xp0rt/Naminter | Docker, built in wrapper | `username` (username), `category` (string)? | username |
 | `osintverse-community/sherlock` | 0.16.2 | MIT | sherlock-project/sherlock | pipx (PyPI wheel) | `username` (username), `site` (string)? | username, social-media |
 | `osintverse-community/socialscan` | 2.0.1 | MPL-2.0 | iojw/socialscan | pipx (PyPI wheel) | `query` (username), `platforms` (string)? | username, email, social-media |
 | `osintverse/username-permutations` | 0.1.0 | MIT | first-party | Docker, built here | `name` (name), `extra` (string)? | username, people |
@@ -58,7 +58,7 @@ not accept for wrappers). That makes 40 tools.
 | `osintverse/eth-address` | 0.1.0 | MIT | first-party | Docker, built here | `address` (crypto_address) | crypto |
 | `osintverse-community/gau` | 2.2.4 | MIT | lc/gau | Docker, built in wrapper | `domain` (domain) | web-archive, domain-dns |
 | `osintverse-community/waybackpy` | 3.0.6 | MIT | akamhy/waybackpy | pipx (PyPI wheel) | `url` (url), `mode` (enum) | web-archive, utilities |
-| `osintverse-community/unfurl` | 20261007.0.0 | Apache-2.0 | obsidianforensics/unfurl | pipx (PyPI wheel) | `url` (url) | utilities, web-archive |
+| `osintverse-community/unfurl` | 20261007.0.0 | Apache-2.0 | RyanDFIR/unfurl | pipx (PyPI wheel) | `url` (url) | utilities, web-archive |
 
 Licenses were read from each repository (GitHub's detection, or the license file where GitHub says NOASSERTION) and
 match the registry's `REDISTRIBUTABLE` list for wrappers. pipx wrappers pin the exact wheel by SHA-256 from PyPI;
