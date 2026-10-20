@@ -8,6 +8,6 @@ Read it on the [OTInstaller Registry](https://otinstaller.com/guides/osintverse-
 ot guide read osintverse-community/social-media-profiles
 ```
 
-The pages are in [`docs/`](docs/index.md). Corrections and additions are welcome as pull requests; releases are published with the **otinstaller release** workflow.
+The pages are in [`docs/`](docs/index.md). Corrections and additions are welcome as pull requests; releases are published with `ot release <version>`.
 
 Licensed under [CC BY 4.0](LICENSE.md).
