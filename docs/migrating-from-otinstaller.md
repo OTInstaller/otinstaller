@@ -87,8 +87,8 @@ lists the rest.
 | `maigret` | `osintverse-community/maigret` | u: |
 | `ghunt` | none | not packaged: its license does not allow a community wrapper |
 | `theharvester` | `osintverse-community/theharvester` | d: |
-| `spiderfoot` | `osintverse-community/spiderfoot` | d: |
-| `instaloader` | `osintverse-community/instaloader` | u: |
+| `spiderfoot` | none | not packaged: a passive scan runs for more than an hour, past `ot`'s longest timeout |
+| `instaloader` | `osintverse-community/instaloader-profile` | u: (profile metadata only, no downloads) |
 | `sherlock` | `osintverse-community/sherlock` | u: |
 | `holehe` | `osintverse-community/holehe` | e: |
 | `bbot` | none | not packaged: AGPL-3.0 |
@@ -110,7 +110,7 @@ lists the rest.
 | `crosslinked` | none | not packaged: takes free-form arguments only |
 | `whatsapp-osint` | none | not packaged: needs a login or config file first |
 | `instagram-monitor` | none | not packaged: interactive or runs until stopped |
-| `mailaccess` | `osintverse-community/mailaccess` | e: |
+| `mailaccess` | none | not packaged: writes into its install folder, which `ot`'s read-only sandbox refuses |
 | `secator` | none | not packaged: no clear license |
 | `sublist3r` | `osintverse-community/sublist3r` | d: |
 | `socid-extractor` | `osintverse-community/socid-extractor` | url: |
@@ -125,8 +125,8 @@ lists the rest.
 | `blackbird` | none | not packaged: its license does not allow a community wrapper |
 | `telegram-phone-number-checker` | none | not packaged: needs a login or config file first |
 | `auto-archiver` | none | not packaged: needs a login or config file first |
-| `edgar-tool` | `osintverse-community/edgar-tool` | --query |
-| `instagram-location-search` | `osintverse-community/instagram-location-search` | --latitude --longitude |
+| `edgar-tool` | none | not packaged: writes its results only to a file |
+| `instagram-location-search` | none | not packaged: needs Chrome |
 | `telepathy` | none | not packaged: needs a login or config file first |
 | `neutrosint` | `osintverse-community/neutrosint` | e: |
 | `zen` | `osintverse-community/zen` | u: |
