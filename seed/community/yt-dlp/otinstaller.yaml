@@ -37,4 +37,4 @@ ethics:
   auth_required: false
   collects_personal_data: true
 test:
-  input: { url: "https://www.youtube.com/watch?v=jNQXAC9IVRw" }
+  input: { url: "https://archive.org/details/Popeye_forPresident" }

@@ -105,7 +105,7 @@ The exit criterion is that every seeded package is healthy in the nightly check,
 | --- | --- | --- |
 | `osintverse-community/shodan-host` | Needs `SHODAN_API_KEY`; the health job passes no secrets | Give the health job a key, or count it as not checkable |
 | `osintverse-community/instaloader-profile` | Instagram rate-limits anonymous requests from cloud IPs | Retry later; consider a different social tool |
-| `osintverse-community/yt-dlp` | YouTube often blocks cloud IPs ("confirm you're not a bot") | Change `test.input` to a Vimeo or PeerTube URL |
+| `osintverse-community/yt-dlp` | YouTube blocks cloud IPs ("Sign in to confirm") | The test input is an Internet Archive video; YouTube URLs still work for most users |
 | `osintverse/crtsh-subdomains` | crt.sh is often down | Falls back to Cert Spotter (limited to a few lookups an hour without a key) |
 | `osintverse-community/maigret`, `naminter`, `mailcat` | Not run end to end here | Run `ot validate --smoke` after the first release |
 
