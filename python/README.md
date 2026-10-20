@@ -39,10 +39,14 @@
 </p>
 
 
-> **Maintenance mode.** OTinstaller now lives in the [OTInstaller Registry](https://otinstaller.com) repository, and the
-> registry's `ot` CLI is where new work happens: it installs the same tools (now published as signed, scanned
-> registry packages) on Linux, macOS and Windows. This package still gets bug fixes and keeps working as before,
-> but it no longer installs an `ot` command, because that name now belongs to the registry CLI.
+> **Maintenance mode, end of life on 30 June 2027.** OTinstaller now lives in the
+> [OTInstaller Registry](https://otinstaller.com) repository, and the registry's `ot` CLI is where new work happens: it
+> installs the same tools (now published as signed, scanned registry packages) on Linux, macOS and Windows. Until
+> 30 June 2027 this package gets security fixes only; after that, none. It keeps working as before, but no longer
+> installs an `ot` command, because that name now belongs to the registry CLI. Every command prints this on stderr;
+> set `OTINSTALLER_NO_DEPRECATION_WARNING=1` to hide it. To switch, follow the
+> [migration guide](https://github.com/OTInstaller/otinstaller/blob/main/docs/migrating-from-otinstaller.md), which maps
+> each `otinstaller` command to `ot`.
 
 ---
 
