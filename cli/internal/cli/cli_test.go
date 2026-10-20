@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/otinstaller/otinstaller/cli/internal/api"
@@ -18,14 +19,18 @@ import (
 const fixtures = "../../../spec/fixtures"
 
 // fakeExec pretends Docker is installed and prints canned tool output for `docker run`.
+// It is safe for the parallel runs of `ot run --all`.
 type fakeExec struct {
 	stdout string
+	mu     sync.Mutex
 	calls  [][]string
 }
 
 func (f *fakeExec) LookPath(name string) (string, error) { return name, nil }
 func (f *fakeExec) Run(ctx context.Context, name string, args, env []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
+	f.mu.Lock()
 	f.calls = append(f.calls, append([]string{name}, args...))
+	f.mu.Unlock()
 	if len(args) > 0 && args[0] == "run" {
 		io.WriteString(stdout, f.stdout)
 	}
@@ -36,6 +41,7 @@ func newTestApp(t *testing.T, fx *fakeExec, stdin string) (*App, *bytes.Buffer, 
 	t.Helper()
 	t.Setenv("OT_HOME", t.TempDir())
 	t.Setenv("OT_NO_TELEMETRY", "1")
+	t.Setenv("OT_RESULTS_DIR", filepath.Join(t.TempDir(), "results"))
 	var out, errb bytes.Buffer
 	cfg := state.LoadConfig()
 	a := &App{
