@@ -33,23 +33,23 @@ only pipx packages run, with `--native`.
 | `otinstaller info <tool>`, `otinstaller <tool>` | `ot info <namespace/name>` | Inputs, keys, ethics flags and trust status. A bare name is not accepted |
 | `otinstaller install <tool>...` | `ot install <namespace/name>` | One package per command. `ot run` and `ot playbook --yes` also install missing tools |
 | `otinstaller install --all` | none | Install the packages you need one by one |
-| `otinstaller run <tool> -- u:johndoe` | `ot run <namespace/name> u:johndoe` | Typed inputs `u:` `e:` `d:` `p:` `url:` work the same, without `--` |
+| `otinstaller run <tool> -- u:johndoe` | `ot run <namespace/name> u:johndoe` | Typed inputs `u:` `e:` `d:` `p:` `url:` work the same, without `--`; `ot` adds `ip:` |
 | `otinstaller run <tool> -- <raw args>` | `ot run <namespace/name> --<input> <value>` | Only declared inputs (`ot info` lists them). A flag the manifest doesn't expose can't be passed |
 | `otinstaller run <tool1> <tool2> -- u:x` | `ot playbook <your playbook> u:x` | Or `ot run --all u:x` for every installed tool |
 | `otinstaller run --all u:johndoe` | `ot run --all u:johndoe` | Runs every installed tool with an input of that type and skips the ones that can't run unattended |
 | `otinstaller run ... -p 4` | `--parallel 4` | |
 | `otinstaller run ... --case <name>` | `--case <name>` | Same `results/cases/<case>/` layout |
 | `otinstaller run ... --output <dir>` | `--results-dir <dir>` | In `ot`, `-o` writes the result envelope to a file instead |
-| `otinstaller run ... --live` | none yet | `ot` prints a summary table when the runs finish |
+| `otinstaller run ... --live` | (always on) | `ot run --all`, playbooks and `ot auto` print a progress line as each tool finishes, then the summary. `--live` is accepted and does nothing |
 | `otinstaller run ... --json` | `--format json` | `ot run` prints a result envelope (JSON by default; also `table`, `csv`, `raw`) |
 | `otinstaller playbook --list` | `ot playbook --list` | |
-| `otinstaller playbook <name> <target>` | `ot playbook <name> <type>:<value>` | The target needs its prefix (`d:example.com`). The same two playbooks are bundled. Your own need full package names; see [typed-inputs-and-results.md](typed-inputs-and-results.md#ot-playbook) |
-| `otinstaller auto <target>` | none yet | Guessing the target type from a bare value. Use `ot run --all` with the prefix: `ot run --all d:example.com` |
+| `otinstaller playbook <name> <target>` | `ot playbook <name> <target>` | A bare target gets its type guessed as in `ot auto`, or give the prefix (`d:example.com`). The same two playbooks are bundled. Your own need full package names; see [typed-inputs-and-results.md](typed-inputs-and-results.md#ot-playbook) |
+| `otinstaller auto <target>` | `ot auto <target>` | Same guessing order (url, ip, email, domain, then username), plus phone numbers starting with `+`. `--type` and `--dry-run` work the same. `ot` doesn't ask for confirmation, and lists matching registry tools you haven't installed only through `ot search --input <type>` |
 | `otinstaller example <tool>` | none | `ot info` shows the inputs and an example command |
-| `otinstaller extract <target>` | none yet | `ot run` already extracts entities into the envelope and the sidecar's `entities` |
-| `otinstaller diff <tool> <target>` | none yet | Compare two saved runs' files, or the `sha256` in their sidecars |
-| `otinstaller check-updates` | none yet | `ot list` shows installed versions, `ot info` the latest |
-| `otinstaller update <tool>`, `--all` | `ot install <namespace/name>` | Installing again moves to the latest published version; `@<version>` pins one |
+| `otinstaller extract <tool or path>`, `--case` | `ot extract <tool or path>`, `--case` | Emails, domains, IPs and URLs from every saved output (not only `.txt`), plus the entities in the sidecars, grouped by type |
+| `otinstaller diff <tool> <target>`, `--case` | `ot diff <tool> <target>`, `--case` | Compares the two most recent runs' lines and entities. Line order is ignored, so a tool that lists results in a new order shows no change |
+| `otinstaller check-updates` | `ot outdated` | Installed and latest version of each package, and whether it was removed from the registry |
+| `otinstaller update <tool>`, `--all` | `ot update <namespace/name>`, `--all` | Installs the latest published version, with the same signature and trust checks as `ot install`. `ot install <namespace/name>@<version>` pins one |
 | `otinstaller remove <tool>` | `ot uninstall <namespace/name>` | |
 | `otinstaller remove --all` | none | Uninstall one by one |
 | `otinstaller keys check` | `ot keys list`, `ot doctor` | `ot keys set NAME` stores a key (value from stdin); `ot run` names a missing required key and exits 3 |
@@ -137,8 +137,13 @@ Tools that are not packaged keep working in `otinstaller` until its end of life.
 
 ## The deprecation date
 
-30 June 2027 is about six months after the end of 2026, when `ot` is planned to close the gaps above (`auto`, `--live`,
-`extract`, `diff`, `check-updates`). Six months covers two Kali releases and a Debian and Ubuntu point-release cycle,
-so people who install from apt see the notice for a while before support ends. If closing the gaps takes longer, the
-date moves to six months after they are closed, and this guide, the Python package's README and its notice change with
-it.
+30 June 2027 is about six months after `ot` reaches feature parity. The gaps that blocked parity (`auto`, `--live`,
+`extract`, `diff`, `check-updates` and `update`) are closed in `ot` and ship in its next release; the date leaves room
+for that release, then six months. Six months covers two Kali releases and a Debian and Ubuntu point-release cycle, so
+people who install from apt see the notice for a while before support ends. If that release slips, the date moves with
+it, and this guide, the Python package's README and its notice change too.
+
+What stays different on purpose: `ot` passes only the inputs a manifest declares (no raw arguments after `--`), installs
+and removes one package at a time, has no `resume` (installs are recorded only when they finish, and an interrupted run
+keeps its output), sends no crash reports, and doesn't package tools that need a login, a terminal or free-form
+arguments.
