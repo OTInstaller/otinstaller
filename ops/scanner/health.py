@@ -67,7 +67,8 @@ def check(target: dict) -> dict:
     try:
         with tempfile.TemporaryDirectory() as tmp:
             image = image_for(target, Path(tmp))
-            result = scan.smoke(image, target["runtime"], target["test_input"], egress=True)
+            result = scan.smoke(image, target["runtime"], target["test_input"], egress=True,
+                                expect_exit_code=int(target.get("expect_exit_code") or 0))
         ok = result.get("status") == "pass"
         return {"version_id": target["version_id"], "result": "pass" if ok else "fail", "duration_ms": result.get("duration_ms", 0),
                 "error_excerpt": "" if ok else result.get("output_excerpt", "")[-1000:]}

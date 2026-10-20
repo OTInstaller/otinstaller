@@ -19,6 +19,7 @@ export async function healthTargets(env: Env) {
     const m = JSON.parse(r.manifest_json);
     return {
       version_id: r.version_id, ref: `${r.namespace}/${r.name}`, version: r.version, runtime: m.runtime, test_input: m.test.input,
+      expect_exit_code: m.test.expect_exit_code ?? 0,
       domains: m.network?.domains ?? [],
     };
   });
