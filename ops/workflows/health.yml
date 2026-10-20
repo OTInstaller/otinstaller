@@ -1,0 +1,47 @@
+# Copy to .github/workflows/health.yml in the registry-ops repository.
+# Every night at 02:00 UTC each published tool's test input runs against its latest version, with network
+# access, in batches of 10 tools and up to 20 batches in parallel. Results go to the registry, which marks a
+# tool Possibly broken after 3 failures in a row. Needs the secret HEALTH_TOKEN and the variable REGISTRY_API.
+name: health
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: health
+  cancel-in-progress: false
+jobs:
+  targets:
+    runs-on: ubuntu-latest
+    outputs:
+      batches: ${{ steps.list.outputs.batches }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: list
+        env:
+          REGISTRY_API: ${{ vars.REGISTRY_API }}
+          HEALTH_TOKEN: ${{ secrets.HEALTH_TOKEN }}
+        run: echo "batches=$(python3 ops/scanner/health.py targets)" >> "$GITHUB_OUTPUT"
+  check:
+    needs: targets
+    if: needs.targets.outputs.batches != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        batch: ${{ fromJSON(needs.targets.outputs.batches) }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Write the batch
+        env:
+          BATCH: ${{ toJSON(matrix.batch) }}
+        run: printf '%s' "$BATCH" > "$RUNNER_TEMP/batch.json"
+      - name: Check and report
+        env:
+          REGISTRY_API: ${{ vars.REGISTRY_API }}
+          HEALTH_TOKEN: ${{ secrets.HEALTH_TOKEN }}
+        run: python3 ops/scanner/health.py run "$RUNNER_TEMP/batch.json"

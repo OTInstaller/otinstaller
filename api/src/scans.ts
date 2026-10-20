@@ -204,6 +204,43 @@ export async function applyScanResults(env: Env, v: VersionCtx, r: ScanResults):
 const cmpSemver = (a: { semver_major: number; semver_minor: number; semver_patch: number }, b: typeof a) =>
   a.semver_major - b.semver_major || a.semver_minor - b.semver_minor || a.semver_patch - b.semver_patch;
 
+type SemverRow = { id: string; semver_major: number; semver_minor: number; semver_patch: number; semver_pre: string };
+
+/** `@latest`: the highest version that is not a prerelease, or the highest prerelease when there is nothing else. */
+export function pickLatest<T extends SemverRow>(rows: T[]): T | null {
+  if (rows.length === 0) return null;
+  const stable = rows.filter((p) => p.semver_pre === "");
+  const pool = stable.length ? stable : rows;
+  return pool.reduce((a, b) => (cmpSemver(a, b) >= 0 ? a : b));
+}
+
+/** Search metadata follows the latest version: summary, categories, inputs and outputs, keys, and a guide's tools. */
+export function latestMetadata(db: D1Database, toolId: string, kind: string, versionId: string, m: Manifest): D1PreparedStatement[] {
+  const stmts = [
+    db.prepare(`UPDATE tools SET summary = ?, categories = ?, tags = ?, readme_text = COALESCE((SELECT search_text FROM versions WHERE id = ?), readme_text) WHERE id = ?`)
+      .bind(m.summary, JSON.stringify(m.categories), JSON.stringify(m.tags ?? []), versionId, toolId),
+    // Tools without a test input are never health-checked; adding one makes them eligible again.
+    db.prepare(`UPDATE tools SET health_status = CASE WHEN ? THEN (CASE WHEN health_status = 'not_checked' THEN 'unknown' ELSE health_status END) ELSE 'not_checked' END WHERE id = ?`)
+      .bind(kind === "guide" || m.test ? 1 : 0, toolId),
+    db.prepare(`DELETE FROM tool_io WHERE tool_id = ?`).bind(toolId),
+    db.prepare(`DELETE FROM tool_secrets WHERE tool_id = ?`).bind(toolId),
+  ];
+  const ins = new Set<string>([...(m.inputs ?? []).map((i) => i.type).filter((t) => !PARAMETER_TYPES.has(t)), ...(m.topics ?? [])]);
+  for (const t of ins) stmts.push(db.prepare(`INSERT INTO tool_io (tool_id, direction, type) VALUES (?, 'in', ?)`).bind(toolId, t));
+  for (const t of new Set((m.outputs ?? []).map((o) => o.type))) stmts.push(db.prepare(`INSERT INTO tool_io (tool_id, direction, type) VALUES (?, 'out', ?)`).bind(toolId, t));
+  for (const sec of m.secrets ?? []) stmts.push(db.prepare(`INSERT INTO tool_secrets (tool_id, name, required) VALUES (?, ?, ?)`).bind(toolId, sec.name, sec.required ? 1 : 0));
+  if (kind === "guide") {
+    stmts.push(db.prepare(`DELETE FROM tool_guides WHERE guide_id = ?`).bind(toolId));
+    for (const rel of m.related_tools ?? []) {
+      const [rns, rname] = rel.split("/");
+      stmts.push(db.prepare(
+        `INSERT OR IGNORE INTO tool_guides (guide_id, tool_id) SELECT ?, t.id FROM tools t JOIN namespaces n ON n.id = t.namespace_id WHERE n.name = ? AND t.name = ?`,
+      ).bind(toolId, rns, rname));
+    }
+  }
+  return stmts;
+}
+
 /** Makes a version public, updates the tool's latest version and its search metadata. */
 export async function publishVersion(env: Env, versionId: string) {
   const db = env.DB;
@@ -212,13 +249,10 @@ export async function publishVersion(env: Env, versionId: string) {
   if (!v) throw new Error(`version ${versionId} not found`);
   const m = JSON.parse(v.manifest_json) as Manifest;
 
-  type Row = { id: string; semver_major: number; semver_minor: number; semver_patch: number; semver_pre: string };
   const published = (await db.prepare(
     `SELECT id, semver_major, semver_minor, semver_patch, semver_pre FROM versions WHERE tool_id = ? AND (status = 'published' OR id = ?)`,
-  ).bind(v.tool_id, versionId).all<Row>()).results;
-  const stable = published.filter((p) => p.semver_pre === "");
-  const pool = stable.length ? stable : published;
-  const latest = pool.reduce((a, b) => (cmpSemver(a, b) >= 0 ? a : b));
+  ).bind(v.tool_id, versionId).all<SemverRow>()).results;
+  const latest = pickLatest(published)!;
   const isLatest = latest.id === versionId;
 
   const stmts: D1PreparedStatement[] = [
@@ -227,28 +261,7 @@ export async function publishVersion(env: Env, versionId: string) {
     db.prepare(`UPDATE tools SET latest_version_id = ?, updated_at = ? WHERE id = ?`).bind(latest.id, now, v.tool_id),
     audit(db, null, "system", "version.published", "version", versionId, { ref: refOf(v), version: v.version }),
   ];
-  // Search metadata follows the latest version only.
-  if (isLatest) {
-    stmts.push(
-      db.prepare(`UPDATE tools SET summary = ?, categories = ?, tags = ?, readme_text = COALESCE((SELECT search_text FROM versions WHERE id = ?), readme_text) WHERE id = ?`)
-        .bind(m.summary, JSON.stringify(m.categories), JSON.stringify(m.tags ?? []), versionId, v.tool_id),
-      db.prepare(`DELETE FROM tool_io WHERE tool_id = ?`).bind(v.tool_id),
-      db.prepare(`DELETE FROM tool_secrets WHERE tool_id = ?`).bind(v.tool_id),
-    );
-    const ins = new Set<string>([...(m.inputs ?? []).map((i) => i.type).filter((t) => !PARAMETER_TYPES.has(t)), ...(m.topics ?? [])]);
-    for (const t of ins) stmts.push(db.prepare(`INSERT INTO tool_io (tool_id, direction, type) VALUES (?, 'in', ?)`).bind(v.tool_id, t));
-    for (const t of new Set((m.outputs ?? []).map((o) => o.type))) stmts.push(db.prepare(`INSERT INTO tool_io (tool_id, direction, type) VALUES (?, 'out', ?)`).bind(v.tool_id, t));
-    for (const s of m.secrets ?? []) stmts.push(db.prepare(`INSERT INTO tool_secrets (tool_id, name, required) VALUES (?, ?, ?)`).bind(v.tool_id, s.name, s.required ? 1 : 0));
-    if (v.kind === "guide") {
-      stmts.push(db.prepare(`DELETE FROM tool_guides WHERE guide_id = ?`).bind(v.tool_id));
-      for (const rel of m.related_tools ?? []) {
-        const [rns, rname] = rel.split("/");
-        stmts.push(db.prepare(
-          `INSERT OR IGNORE INTO tool_guides (guide_id, tool_id) SELECT ?, t.id FROM tools t JOIN namespaces n ON n.id = t.namespace_id WHERE n.name = ? AND t.name = ?`,
-        ).bind(v.tool_id, rns, rname));
-      }
-    }
-  }
+  if (isLatest) stmts.push(...latestMetadata(db, v.tool_id, v.kind, versionId, m));
   await db.batch(stmts);
   if (v.kind === "guide" && isLatest) await updateLinkHealth(env, v.tool_id);
   const scan = await db.prepare(`SELECT scan_status FROM versions WHERE id = ?`).bind(versionId).first<{ scan_status: string }>();
