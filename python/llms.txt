@@ -107,7 +107,6 @@ otinstaller keys check --json
 - Stable exit codes: 0=success, 1=error, 2=invalid input, 130=interrupted
 - No prompts in CI: Commands detect non-interactive stdin and fail with clear error unless --yes is used
 - No prompts with --yes: Use -y or --yes to skip all confirmations
-- Short alias: ot works everywhere otinstaller works
 - Bare tool names: otinstaller sherlock == otinstaller info sherlock
 
 ## Exit Codes

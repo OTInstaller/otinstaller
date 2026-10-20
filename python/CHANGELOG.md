@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Maintenance mode: OTinstaller moved into the OTInstaller Registry repository, whose `ot` CLI takes over new work. Its tools are published there as community packages
+
+### Removed
+- The `ot` command alias, and its man page link. `ot` is now the registry's CLI; use `otinstaller`
+
 ## [0.1.1] - 2026-10-18
 
 ### Fixed

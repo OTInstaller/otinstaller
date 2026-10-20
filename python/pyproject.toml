@@ -49,7 +49,6 @@ pipeline = [
 
 [project.scripts]
 otinstaller = "otinstaller.cli:run_cli"
-ot = "otinstaller.cli:run_cli"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/otinstaller"]

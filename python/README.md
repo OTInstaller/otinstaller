@@ -39,20 +39,23 @@
 </p>
 
 
+> **Maintenance mode.** OTinstaller now lives in the [OTInstaller Registry](https://otinstaller.com) repository, and the
+> registry's `ot` CLI is where new work happens: it installs the same tools (now published as signed, scanned
+> registry packages) on Linux, macOS and Windows. This package still gets bug fixes and keeps working as before,
+> but it no longer installs an `ot` command, because that name now belongs to the registry CLI.
+
 ---
 
 ## What it does
 
 Every open-source tool installs and runs a little differently. OTinstaller gives them one interface:
 
-- **Install by name.** `ot install sherlock` creates an isolated virtualenv for the tool. Nothing touches your system Python.
+- **Install by name.** `otinstaller install sherlock` creates an isolated virtualenv for the tool. Nothing touches your system Python.
 - **Run with typed inputs.** `u:johndoe`, `e:john@example.com` or `d:example.com` are translated into each tool's own flags.
-- **Run many tools at once.** `ot run --all u:johndoe` runs every installed tool that accepts a username, in parallel.
+- **Run many tools at once.** `otinstaller run --all u:johndoe` runs every installed tool that accepts a username, in parallel.
 - **Keep every result.** Output is saved under `./results/<tool>/<target>/` with a `.meta.json` sidecar (command, timing, exit code, SHA-256).
 - **Update and remove cleanly.** One command each, for one tool or all of them.
 - **Script it.** Every command supports `--json`, and nothing prompts when `--yes` is given.
-
-`ot` is a short alias for `otinstaller`. Both work everywhere.
 
 ## Why OTinstaller
 
@@ -69,8 +72,8 @@ python3 sf.py -u passive -s example.com
 The same thing with OTinstaller:
 
 ```bash
-ot install spiderfoot
-ot run spiderfoot -- d:example.com
+otinstaller install spiderfoot
+otinstaller run spiderfoot -- d:example.com
 ```
 
 The same install-and-run pattern works for every tool in the catalogue. Each tool is pinned to a tested version, gets its own virtualenv, has its typed inputs turned into its own flags, and saves its output with a timestamp and a SHA-256.
@@ -80,8 +83,8 @@ The same install-and-run pattern works for every tool in the catalogue. Each too
 ```bash
 pipx install otinstaller
 ot init
-ot install sherlock
-ot run sherlock -- u:johndoe
+otinstaller install sherlock
+otinstaller run sherlock -- u:johndoe
 ```
 
 <p align="center">
@@ -128,7 +131,7 @@ Some managed tools only work on some Python versions. otinstaller checks before 
 
 ## Install OTinstaller
 
-For system-wide installation, use `pipx install otinstaller`. This provides the `otinstaller` and `ot` commands on your PATH without a virtualenv.
+For system-wide installation, use `pipx install otinstaller`. This provides the `otinstaller` command on your PATH without a virtualenv.
 
 Alternatively, create a virtualenv and install from PyPI:
 
@@ -411,7 +414,7 @@ No. Root is only needed once, for `sudo apt install python3-venv git`. Everythin
 OTinstaller itself contacts GitHub and PyPI to install and update tools. It has no usage tracking. Crash reports are off unless you say yes: `otinstaller init` asks once, and Enter means no. If you turn them on, a report is sent only when otinstaller itself crashes, and it holds the error, where in otinstaller's code it happened, and the otinstaller, Python and OS versions, never your targets, command arguments, tool output, results, API keys, file paths or user name. Turn them on or off with `otinstaller crash-reports on` or `off`, and send a test report with `otinstaller crash-reports test`; `DO_NOT_TRACK=1` or `OTINSTALLER_CRASH_REPORTS=off` always turns them off. The tools you run contact the services they are built to query.
 
 **How do I uninstall it?**
-`ot remove --all` removes every tool, then `pipx uninstall otinstaller` removes OTinstaller itself. `rm -rf ~/.otinstaller` deletes the config, the API key file and the logs. Results stay wherever you ran your commands.
+`otinstaller remove --all` removes every tool, then `pipx uninstall otinstaller` removes OTinstaller itself. `rm -rf ~/.otinstaller` deletes the config, the API key file and the logs. Results stay wherever you ran your commands.
 
 **Is it legal to use?**
 The tools are legal to install. Whether a particular use is legal depends on where you are and what you are investigating. Read [Responsible use](#responsible-use) before running anything against a real person.
