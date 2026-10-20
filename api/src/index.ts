@@ -182,6 +182,7 @@ app.get("/tools", async (c) => {
   cached(c, 60);
   return c.json({
     results: page.map((s) => summary(s.r)),
+    total: scored.length,
     next_cursor: offset + limit < scored.length ? String(offset + limit) : undefined,
   });
 });
