@@ -4,7 +4,7 @@ import { deps, type Env } from "../src/env";
 import { hmacSha256Hex } from "../src/lib/crypto";
 
 type Reply = Response | object | string | null;
-type Handler = Reply | ((req: Request) => Reply | Promise<Reply>);
+export type Handler = Reply | ((req: Request) => Reply | Promise<Reply>);
 
 /**
  * Stands in for GitHub, GitLab, PyPI and image registries. Routes are "METHOD url-prefix"; the

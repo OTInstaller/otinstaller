@@ -4,6 +4,7 @@ import { apiError } from "./lib/errors";
 export interface Env {
   DB: D1Database;
   PUBLISH_QUEUE: Queue<PublishMessage>;
+  CONTENT: R2Bucket; // rendered READMEs, guide pages and tool docs
   SITE_URL: string;
   API_URL: string;
   GITHUB_APP_ID?: string;
@@ -19,10 +20,19 @@ export interface Env {
   OPS_INSTALLATION_ID?: string; // the GitHub App's installation on that repo
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
+  CF_ACCOUNT_ID?: string; // with CF_URLSCAN_TOKEN, guide links are checked with Cloudflare URL Scanner
+  CF_URLSCAN_TOKEN?: string;
 }
 
-/** The queue carries publish jobs and bulk-import detection. */
-export type PublishMessage = { jobId: string } | { importId: string };
+/**
+ * The queue carries publish jobs, bulk-import detection, guide content checks (the guide's equivalent
+ * of a security scan; `attempt` counts rounds of waiting for URL Scanner) and nightly link checks.
+ */
+export type PublishMessage =
+  | { jobId: string }
+  | { importId: string }
+  | { checkVersionId: string; attempt?: number }
+  | { linkCheckToolId: string };
 
 export interface User {
   id: string;

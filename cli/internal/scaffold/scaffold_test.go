@@ -16,6 +16,8 @@ func TestFilesPerHost(t *testing.T) {
 		{"docker", "gitlab", ".gitlab-ci.yml"},
 		{"pipx", "github", ".github/workflows/otinstaller-release.yml"},
 		{"pipx", "gitlab", ".gitlab-ci.yml"},
+		{"guide", "github", ".github/workflows/otinstaller-release.yml"},
+		{"guide", "gitlab", ".gitlab-ci.yml"},
 	}
 	for _, c := range cases {
 		files, err := Files(Params{Kind: c.kind, Host: c.host, Name: "demo-tool", Namespace: "dheeraj", Summary: "Demo package for tests",
@@ -28,9 +30,12 @@ func TestFilesPerHost(t *testing.T) {
 			t.Fatalf("%s/%s: missing %s", c.kind, c.host, c.workflow)
 		}
 		// Release workflows must sign (Docker) or use trusted publishing (pipx), and tag after pinning.
-		want := map[string]string{"docker": "cosign sign", "pipx": "pypi"}[c.kind]
+		want := map[string]string{"docker": "cosign sign", "pipx": "pypi", "guide": "version: "}[c.kind]
 		if !strings.Contains(strings.ToLower(wf), want) || !strings.Contains(wf, "git tag") {
 			t.Errorf("%s/%s workflow lacks %q or tagging", c.kind, c.host, want)
+		}
+		if !strings.Contains(files["README.md"], "Demo package for tests") {
+			t.Errorf("%s/%s: README.md missing or without the summary", c.kind, c.host)
 		}
 		doc, m, err := manifest.Parse([]byte(files["otinstaller.yaml"]))
 		if err != nil {
@@ -44,7 +49,7 @@ func TestFilesPerHost(t *testing.T) {
 
 // The CLI embeds copies of the spec's release templates, which the registry's import wizard also uses.
 func TestTemplatesMatchSpec(t *testing.T) {
-	for _, name := range []string{"github-docker.yml", "github-pipx.yml", "gitlab-docker.yml", "gitlab-pipx.yml"} {
+	for _, name := range []string{"github-docker.yml", "github-pipx.yml", "github-guide.yml", "gitlab-docker.yml", "gitlab-pipx.yml", "gitlab-guide.yml"} {
 		spec, err := os.ReadFile("../../../spec/templates/" + name)
 		if err != nil {
 			t.Fatal(err)
@@ -57,7 +62,7 @@ func TestTemplatesMatchSpec(t *testing.T) {
 			t.Errorf("templates/%s differs from spec/templates; run `go generate ./...`", name)
 		}
 	}
-	if ReleaseTemplate("gitlab", "pipx") != gitlabPipxTmpl || ReleaseTemplate("github", "docker") != githubDockerTmpl {
+	if ReleaseTemplate("gitlab", "pipx") != gitlabPipxTmpl || ReleaseTemplate("github", "docker") != githubDockerTmpl || ReleaseTemplate("gitlab", "guide") != gitlabGuideTmpl {
 		t.Error("ReleaseTemplate picks the wrong template")
 	}
 }

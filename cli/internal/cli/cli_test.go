@@ -80,8 +80,8 @@ func TestInitThenValidate(t *testing.T) {
 	for _, kind := range []string{"docker", "pipx", "guide"} {
 		t.Run(kind, func(t *testing.T) {
 			a, out, errb := newTestApp(t, &fakeExec{}, "")
+			// A fresh directory: everything the manifest points at is created, README.md included.
 			dir := t.TempDir()
-			os.WriteFile(filepath.Join(dir, "README.md"), []byte("# x"), 0o644)
 			code := run(a, "init", dir, "-y", "--kind", kind, "--name", "demo-tool", "--namespace", "dheeraj",
 				"--summary", "Demo package used in tests")
 			if code != 0 {

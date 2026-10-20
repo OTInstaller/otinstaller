@@ -54,6 +54,8 @@ type App struct {
 	Config   *state.Config
 	API      *api.Client
 	Runner   *runner.Runner
+	// OpenURL opens a link in the user's browser.
+	OpenURL func(string) error
 }
 
 func NewApp() *App {
@@ -63,12 +65,13 @@ func NewApp() *App {
 		client.Token = tok
 	}
 	return &App{
-		Out:    os.Stdout,
-		Err:    os.Stderr,
-		In:     os.Stdin,
-		Config: cfg,
-		API:    client,
-		Runner: runner.New(os.Stderr),
+		Out:     os.Stdout,
+		Err:     os.Stderr,
+		In:      os.Stdin,
+		Config:  cfg,
+		API:     client,
+		Runner:  runner.New(os.Stderr),
+		OpenURL: openInBrowser,
 	}
 }
 
@@ -99,6 +102,8 @@ func (a *App) Root() *cobra.Command {
 		a.whoamiCmd(),
 		a.importCmd(),
 		a.syncCmd(),
+		a.guideCmd(),
+		a.docsCmd(),
 	)
 	return root
 }

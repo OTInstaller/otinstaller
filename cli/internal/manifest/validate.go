@@ -289,6 +289,8 @@ func checkFiles(m *Manifest, dir string) []*Problem {
 			if rel := pg.p.Root + page; !exists(rel) {
 				ps = append(ps, &Problem{Code: CodeFileMissing, Path: fmt.Sprintf("%s/nav/%d", pg.field, i),
 					Message: rel + " does not exist"})
+			} else {
+				ps = append(ps, checkContent(dir, rel)...)
 			}
 		}
 	}

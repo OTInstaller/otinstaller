@@ -79,11 +79,19 @@ var (
 	gitlabDockerTmpl string
 	//go:embed templates/gitlab-pipx.yml
 	gitlabPipxTmpl string
+	//go:embed templates/github-guide.yml
+	githubGuideTmpl string
+	//go:embed templates/gitlab-guide.yml
+	gitlabGuideTmpl string
 )
 
-// ReleaseTemplate is the release workflow for a host ("github" or "gitlab") and runtime ("docker" or "pipx").
+// ReleaseTemplate is the release workflow for a host ("github" or "gitlab") and kind ("docker", "pipx" or "guide").
 func ReleaseTemplate(host, kind string) string {
 	switch {
+	case host == "gitlab" && kind == "guide":
+		return gitlabGuideTmpl
+	case kind == "guide":
+		return githubGuideTmpl
 	case host == "gitlab" && kind == "pipx":
 		return gitlabPipxTmpl
 	case host == "gitlab":
@@ -96,26 +104,24 @@ func ReleaseTemplate(host, kind string) string {
 
 // Files returns path -> content for everything `ot init` creates.
 func Files(p Params) (map[string]string, error) {
-	files := map[string]string{"otinstaller.yaml": manifestTmpl}
+	// The manifest points tools at README.md, so it is created too; existing files are never overwritten
+	// without --force.
+	files := map[string]string{"otinstaller.yaml": manifestTmpl, "README.md": toolReadmeTmpl}
 	switch p.Kind {
 	case "docker":
 		files["Dockerfile.otinstaller-example"] = dockerfileTmpl
-		if p.Host == "gitlab" {
-			files[".gitlab-ci.yml"] = gitlabDockerTmpl
-		} else {
-			files[".github/workflows/otinstaller-release.yml"] = githubDockerTmpl
-		}
 	case "pipx":
-		if p.Host == "gitlab" {
-			files[".gitlab-ci.yml"] = gitlabPipxTmpl
-		} else {
-			files[".github/workflows/otinstaller-release.yml"] = githubPipxTmpl
-		}
 	case "guide":
+		files["README.md"] = guideReadmeTmpl
 		files["docs/index.md"] = guideIndexTmpl
 		files["docs/01-scope-and-legal.md"] = guideLegalTmpl
 	default:
 		return nil, fmt.Errorf("unknown kind %q", p.Kind)
+	}
+	if p.Host == "gitlab" {
+		files[".gitlab-ci.yml"] = ReleaseTemplate("gitlab", p.Kind)
+	} else {
+		files[".github/workflows/otinstaller-release.yml"] = ReleaseTemplate("github", p.Kind)
 	}
 	out := map[string]string{}
 	for path, src := range files {
@@ -206,6 +212,33 @@ COPY . .
 RUN pip install --no-cache-dir .
 USER app
 ENTRYPOINT ["<< .Name >>"]
+`
+
+const toolReadmeTmpl = `# << .Name >>
+
+<< .Summary >>
+
+## Install and run
+
+    ot install << .Namespace >>/<< .Name >>
+    ot run << .Namespace >>/<< .Name >> --target <value>
+
+## What it does and what data it touches
+
+Describe what the tool looks up, which sites or APIs it contacts, and what personal data it returns.
+A reviewer reads this before your first release goes public.
+`
+
+const guideReadmeTmpl = `# << .Summary >>
+
+The guide << .Namespace >>/<< .Name >> on the OTInstaller Registry. Its pages are in docs/, in the order
+listed under content.nav in otinstaller.yaml.
+
+Read it in a terminal with:
+
+    ot guide read << .Namespace >>/<< .Name >>
+
+To release a new version, run the otinstaller release workflow with the version number; it tags vX.Y.Z.
 `
 
 const guideIndexTmpl = `# << .Summary >>

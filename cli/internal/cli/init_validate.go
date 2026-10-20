@@ -110,7 +110,11 @@ func (a *App) initCmd() *cobra.Command {
 				}
 				fmt.Fprintf(a.Out, "  created %s\n", path)
 			}
-			fmt.Fprintln(a.Out, "\nNext: edit otinstaller.yaml (inputs, outputs, command, ethics), then run `ot validate`.")
+			if p.Kind == "guide" {
+				fmt.Fprintln(a.Out, "\nNext: write the pages in docs/, list them under content.nav and the tools they use under related_tools, then run `ot validate`.")
+			} else {
+				fmt.Fprintln(a.Out, "\nNext: edit otinstaller.yaml (inputs, outputs, command, ethics) and README.md, then run `ot validate`.")
+			}
 			return nil
 		},
 	}

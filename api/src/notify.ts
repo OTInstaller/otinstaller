@@ -56,6 +56,11 @@ export const templates = {
     subject: `${ref} ${version} is waiting for review`,
     text: `${ref} ${version} passed validation and security scans. Because this is a new publisher, a reviewer checks it before it goes public. Reviews usually take up to 3 business days.` + footer(env),
   }),
+  contentReview: (env: Env, ref: string, version: string, hits: number) => ({
+    subject: `${ref} ${version} is waiting for review`,
+    text: `${ref} ${version} passed its checks, but ${hits} line(s) look like they contain personal data (email addresses, phone numbers, or names next to addresses). ` +
+      `A reviewer checks them before the guide goes public. Examples should use fictional data, your own data, or public figures in their public role.` + footer(env),
+  }),
   rejected: (env: Env, ref: string, version: string, code: string, message: string) => ({
     subject: `${ref} ${version} was not published`,
     text: `${ref} ${version} was not published.\n\nReason: ${code}\n${message}\n\nDocs: https://otinstaller.com/docs/errors#${code}\n\nFix it and push a new tag.` + footer(env),
