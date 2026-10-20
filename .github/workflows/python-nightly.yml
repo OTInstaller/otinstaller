@@ -1,9 +1,14 @@
-name: Nightly Registry Verification
+# Nightly checks of the otinstaller Python package's tool catalog (python/).
+name: otinstaller (python) nightly
 
 on:
   schedule:
     - cron: '0 2 * * *'  # Daily at 2 AM UTC
   workflow_dispatch:  # Allow manual trigger
+
+defaults:
+  run:
+    working-directory: python
 
 jobs:
   nightly-verify:
