@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -171,6 +172,12 @@ func (a *App) ensureInstalled(cmd *cobra.Command, ref pkgRef, ra *runArgs) (*sta
 		return nil, err
 	}
 	if inst, ok := st.Installed[ref.Ref()]; ok && (ref.Version == "" || ref.Version == inst.Version) {
+		// An installed version the registry has since removed is refused (the list is refreshed at most hourly).
+		if a.CheckRemovals {
+			if r := removal(a.removedList(cmd.Context(), time.Hour), inst.Ref, inst.Version); r != nil {
+				return nil, exitErr(ExitTrust, "%s@%s was removed from the registry (%s); remove it with `ot uninstall %s`", inst.Ref, inst.Version, r.Category, inst.Ref)
+			}
+		}
 		return inst, nil
 	}
 	if !ra.Yes {

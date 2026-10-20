@@ -18,6 +18,7 @@ import { opsRoutes } from "./routes/ops";
 import { alertStuckJobs, dailyDigest, purgeRateLimits, reportError } from "./ops";
 import { queueNightlyLinkChecks } from "./guides";
 import { ulid } from "./lib/crypto";
+import { overLimit } from "./trust";
 import { pollDueSources } from "./sync";
 import { expireStaleScans } from "./scans";
 import { handleBatch } from "./publish";
@@ -35,6 +36,16 @@ app.use("*", async (c, next) => {
   return cors({ origin: c.env.SITE_URL, credentials: true, allowMethods: METHODS })(c, next);
 });
 authRoutes(app);
+// Writes (stars, yanks, tokens, imports, reports, ...) are limited to 30 a minute per signed-in user;
+// reviewers and admins are exempt so takedowns are never throttled.
+app.use("*", async (c, next) => {
+  const u = c.get("user");
+  if (u && !u.is_reviewer && !u.is_admin && !["GET", "HEAD", "OPTIONS"].includes(c.req.method)
+    && (await overLimit(c.env, "write", u.id, 30, 60_000))) {
+    apiError(429, "too_many_requests", "at most 30 changes a minute", "wait a minute and try again");
+  }
+  await next();
+});
 webhookRoutes(app);
 reviewRoutes(app);
 sourceRoutes(app);

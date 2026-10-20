@@ -127,8 +127,13 @@ export async function findTool(db: D1Database, ns: string, name: string): Promis
 
 /** Not found: removed packages answer 410 with why, so the CLI and site can say so instead of "not found". */
 export async function notFound(db: D1Database, ns: string, name: string): Promise<never> {
+  // The package itself was removed, or every version it had published was.
   const removed = await db.prepare(
-    `SELECT t.removed_category, t.removed_at FROM tools t JOIN namespaces n ON n.id = t.namespace_id WHERE n.name = ? AND t.name = ? AND t.status = 'removed'`,
+    `SELECT COALESCE(t.removed_category, v.removed_category) AS removed_category, COALESCE(t.removed_at, v.removed_at) AS removed_at
+     FROM tools t JOIN namespaces n ON n.id = t.namespace_id
+     LEFT JOIN versions v ON v.id = (SELECT id FROM versions WHERE tool_id = t.id AND status = 'removed' ORDER BY removed_at DESC LIMIT 1)
+     WHERE n.name = ? AND t.name = ? AND (t.status = 'removed' OR (v.id IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM versions WHERE tool_id = t.id AND status IN ('published', 'yanked'))))`,
   ).bind(ns, name).first<{ removed_category: string | null; removed_at: number | null }>();
   if (removed) {
     apiError(410, "tool_removed", `${ns}/${name} was removed from the registry (${removed.removed_category ?? "policy"}) on ${new Date(removed.removed_at ?? 0).toISOString().slice(0, 10)}`,

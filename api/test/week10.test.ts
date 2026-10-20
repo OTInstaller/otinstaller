@@ -358,3 +358,29 @@ describe("monitoring", () => {
     expect(sent).not.toContain("secret");
   });
 });
+
+describe("removing the last version", () => {
+  it("answers 410 with the reason, not 404, once nothing published is left", async () => {
+    const owner = await person();
+    const reviewer = await person({ reviewer: true });
+    const p = await pkg(await namespace(owner), ["1.0.0"]);
+    await post(`/admin/tools/${p.ref}/1.0.0/remove`, reviewer.auth, { category: "malware", reason: "Bundles a miner" });
+    const res = await call(`/tools/${p.ref}/latest/manifest`);
+    expect(res.status).toBe(410);
+    expect(((await res.json()) as any).error.message).toContain("(malware)");
+  });
+});
+
+describe("write limits", () => {
+  it("limits signed-in users to 30 changes a minute, but not reviewers", async () => {
+    const owner = await person();
+    const p = await pkg(await namespace(owner), ["1.0.0", "1.1.0"]);
+    const codes: number[] = [];
+    for (let i = 0; i < 31; i++) codes.push((await post(`/tools/${p.ref}/1.1.0/${i % 2 ? "unyank" : "yank"}`, owner.auth)).status);
+    expect(codes.slice(0, 30).every((c) => c === 200)).toBe(true);
+    expect(codes[30]).toBe(429);
+    const reviewer = await person({ reviewer: true });
+    for (let i = 0; i < 31; i++) await post(`/admin/reports/none/resolve`, reviewer.auth, { status: "dismissed" });
+    expect((await post(`/admin/reports/none/resolve`, reviewer.auth, { status: "dismissed" })).status).toBe(404);
+  });
+});
