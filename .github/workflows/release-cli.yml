@@ -3,7 +3,7 @@
 #
 # Secrets: RELEASE_GITHUB_TOKEN (contents: write on the release repository), OT_RELEASE_KEY (the Ed25519 private
 # key, PEM), optional TAP_GITHUB_TOKEN (homebrew-tap and scoop-bucket). Variables: OT_RELEASE_PUBLIC_KEY (base64
-# raw public key), optional RELEASE_REPO (default otinstaller/ot).
+# raw public key), optional RELEASE_OWNER and RELEASE_NAME (default otinstaller/ot).
 name: release ot
 on:
   push:
@@ -42,7 +42,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
           OT_RELEASE_PUBLIC_KEY: ${{ vars.OT_RELEASE_PUBLIC_KEY }}
-          RELEASE_REPO: ${{ vars.RELEASE_REPO }}
+          RELEASE_OWNER: ${{ vars.RELEASE_OWNER }}
+          RELEASE_NAME: ${{ vars.RELEASE_NAME }}
       - name: Remove the release key
         if: always()
         run: rm -f "$RUNNER_TEMP/release-key.pem"

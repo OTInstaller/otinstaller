@@ -1,6 +1,6 @@
 # GoReleaser v2 config for ot. Run by .github/workflows/release-cli.yml on a vX.Y.Z tag.
 #
-# Releases are published to a public repository (RELEASE_REPO, default otinstaller/ot) because the source
+# Releases are published to a public repository (RELEASE_OWNER/RELEASE_NAME, default otinstaller/ot) because the source
 # repository is private. checksums.txt is signed with the Ed25519 release key (checksums.txt.sig, which
 # `ot self-update` and the install scripts verify) and with cosign keyless (for the transparency log).
 # Homebrew and Scoop are only updated when their tokens are set.
@@ -22,7 +22,7 @@ builds:
     ldflags:
       - -s -w
       - -X github.com/otinstaller/otinstaller/cli/internal/cli.Version=v{{ .Version }}
-      - -X github.com/otinstaller/otinstaller/cli/internal/selfupdate.Repo={{ envOrDefault "RELEASE_REPO" "otinstaller/ot" }}
+      - -X github.com/otinstaller/otinstaller/cli/internal/selfupdate.Repo={{ envOrDefault "RELEASE_OWNER" "otinstaller" }}/{{ envOrDefault "RELEASE_NAME" "ot" }}
       - -X github.com/otinstaller/otinstaller/cli/internal/selfupdate.PublicKey={{ .Env.OT_RELEASE_PUBLIC_KEY }}
 
 archives:
@@ -65,7 +65,7 @@ nfpms:
     formats: [deb, rpm]
     bindir: /usr/bin
 
-brews:
+homebrew_casks:
   - name: ot
     repository:
       owner: otinstaller
@@ -74,8 +74,6 @@ brews:
     skip_upload: '{{ if index .Env "TAP_GITHUB_TOKEN" }}false{{ else }}true{{ end }}'
     homepage: https://otinstaller.com
     description: Install and run OSINT tools and guides from the OTInstaller Registry
-    license: Apache-2.0
-    test: system "#{bin}/ot --version"
 
 scoops:
   - name: ot
@@ -90,8 +88,8 @@ scoops:
 
 release:
   github:
-    owner: '{{ index (splitList "/" (envOrDefault "RELEASE_REPO" "otinstaller/ot")) 0 }}'
-    name: '{{ index (splitList "/" (envOrDefault "RELEASE_REPO" "otinstaller/ot")) 1 }}'
+    owner: '{{ envOrDefault "RELEASE_OWNER" "otinstaller" }}'
+    name: '{{ envOrDefault "RELEASE_NAME" "ot" }}'
   extra_files:
     - glob: ../scripts/install/install.sh
     - glob: ../scripts/install/install.ps1
