@@ -25,7 +25,12 @@ const tabs = [
   <p class="lead">{t.summary}</p>
   <Badges tool={t} scanStatus={scanStatus} />
   <p class="small muted stats">★ {formatCount(t.stars)} stars · {formatCount(t.installs_30d)} installs in the last 30 days</p>
-  {t.deprecated_message && <p class="notice warn">Deprecated: {t.deprecated_message}</p>}
+  {t.deprecated_message && (
+    <p class="notice warn">Deprecated: {t.deprecated_message}{t.deprecated_replacement && <> Use <a href={`/${t.deprecated_replacement}`}>{t.deprecated_replacement}</a> instead.</>}</p>
+  )}
+  {t.community_packaged && (
+    <p class="notice small">Packaged by the community from <a href={t.homepage ?? t.repo_url ?? "#"} rel="nofollow noopener">its upstream project</a>. Maintain that project? <a href={`/${t.namespace}/${t.name}/claim`}>Claim this package</a>.</p>
+  )}
   {t.source_unavailable && <p class="notice bad">The source repository is gone or private. Installed copies keep working, but no new versions will come.</p>}
   <nav class="tabs" aria-label="Tool sections">
     {tabs.map((tab) => <a href={tab.href} aria-current={tab.key === active ? "page" : undefined}>{tab.label}</a>)}

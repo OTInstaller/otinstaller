@@ -1,5 +1,6 @@
 // Queries shared by the public read endpoints: what is visible, how a package is summarised, and
 // looking packages and versions up by address.
+import { apiError } from "./lib/errors";
 import type { RankInput } from "./ranking";
 
 export function cached(c: { header: (k: string, v: string) => void }, seconds: number) {
@@ -100,10 +101,11 @@ export type ToolRow = SummaryRow & {
   namespace_status: string;
   latest_version_id: string;
   dead_link_ratio: number | null;
+  deprecated_replacement: string | null;
 };
 
 export async function findTool(db: D1Database, ns: string, name: string): Promise<{ row: ToolRow | null; movedTo?: string }> {
-  const sql = `SELECT ${SUMMARY_COLUMNS}, t.repo_url, t.deprecated_message, t.latest_version_id, t.dead_link_ratio, v.manifest_json, n.status AS namespace_status
+  const sql = `SELECT ${SUMMARY_COLUMNS}, t.repo_url, t.deprecated_message, t.deprecated_replacement, t.latest_version_id, t.dead_link_ratio, v.manifest_json, n.status AS namespace_status
     FROM tools t JOIN namespaces n ON n.id = t.namespace_id JOIN versions v ON v.id = t.latest_version_id
     WHERE n.name = ? AND t.name = ? AND ${VISIBLE}`;
   const row = await db.prepare(sql).bind(ns, name).first<ToolRow>();
@@ -121,6 +123,23 @@ export async function findTool(db: D1Database, ns: string, name: string): Promis
     return { row: moved.row, movedTo: `${alias.ns}/${alias.name}` };
   }
   return { row: null };
+}
+
+/** Not found: removed packages answer 410 with why, so the CLI and site can say so instead of "not found". */
+export async function notFound(db: D1Database, ns: string, name: string): Promise<never> {
+  // The package itself was removed, or every version it had published was.
+  const removed = await db.prepare(
+    `SELECT COALESCE(t.removed_category, v.removed_category) AS removed_category, COALESCE(t.removed_at, v.removed_at) AS removed_at
+     FROM tools t JOIN namespaces n ON n.id = t.namespace_id
+     LEFT JOIN versions v ON v.id = (SELECT id FROM versions WHERE tool_id = t.id AND status = 'removed' ORDER BY removed_at DESC LIMIT 1)
+     WHERE n.name = ? AND t.name = ? AND (t.status = 'removed' OR (v.id IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM versions WHERE tool_id = t.id AND status IN ('published', 'yanked'))))`,
+  ).bind(ns, name).first<{ removed_category: string | null; removed_at: number | null }>();
+  if (removed) {
+    apiError(410, "tool_removed", `${ns}/${name} was removed from the registry (${removed.removed_category ?? "policy"}) on ${new Date(removed.removed_at ?? 0).toISOString().slice(0, 10)}`,
+      "uninstall it with `ot uninstall`; see otinstaller.com/policy/transparency");
+  }
+  apiError(404, "tool_not_found", `${ns}/${name} is not in the registry`);
 }
 
 export type VersionRow = {

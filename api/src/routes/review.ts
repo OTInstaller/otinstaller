@@ -29,13 +29,13 @@ export function parseResults(body: unknown): ScanResults {
   return r;
 }
 
-function requireReviewer(c: Context<AppEnv>) {
+export function requireReviewer(c: Context<AppEnv>) {
   const u = requireUser(c);
   if (!u.is_reviewer && !u.is_admin) apiError(403, "forbidden", "reviewers only");
   return u;
 }
 
-function requireAdmin(c: Context<AppEnv>) {
+export function requireAdmin(c: Context<AppEnv>) {
   const u = requireUser(c);
   if (!u.is_admin) apiError(403, "forbidden", "admins only");
   return u;

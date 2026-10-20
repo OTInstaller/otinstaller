@@ -1,0 +1,10 @@
+---
+import Base from "../../layouts/Base.astro";
+import TransferView from "../../islands/TransferView";
+
+Astro.response.headers.set("Cache-Control", "private, no-store");
+---
+<Base title="Transfer" noindex>
+  <h1>Package transfer</h1>
+  <TransferView client:load id={Astro.params.id!} back={`${Astro.site}transfers/${Astro.params.id}`} />
+</Base>
