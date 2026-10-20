@@ -34,10 +34,18 @@ type runArgs struct {
 	NoSave     bool
 	ResultsDir string
 	Case       string
+	// DryRun lists what --all, a playbook or auto would run, without running it.
+	DryRun bool
+	// Detect turns bare targets (example.com) into typed inputs, for auto and playbooks.
+	Detect bool
 }
 
 func parseRunArgs(args []string) (*runArgs, error) {
-	ra := &runArgs{Inputs: map[string]string{}, Parallel: 4}
+	return parseArgs(args, false)
+}
+
+func parseArgs(args []string, detect bool) (*runArgs, error) {
+	ra := &runArgs{Inputs: map[string]string{}, Parallel: 4, Detect: detect}
 	var positional []string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -61,6 +69,12 @@ func parseRunArgs(args []string) (*runArgs, error) {
 			continue
 		case "no-save":
 			ra.NoSave = true
+			continue
+		case "dry-run":
+			ra.DryRun = true
+			continue
+		case "live":
+			// otinstaller's live table; ot always shows progress with --all, playbooks and auto.
 			continue
 		}
 		if !hasVal {
@@ -102,8 +116,11 @@ func parseRunArgs(args []string) (*runArgs, error) {
 		if err != nil {
 			return nil, err
 		}
+		if !ok && ra.Detect {
+			t, ok = runner.DetectTyped(arg), true
+		}
 		if !ok {
-			return nil, &runner.UsageError{Msg: fmt.Sprintf("unexpected argument %q; inputs are passed as --name value or as u:, d:, e:, p:, url:", arg)}
+			return nil, &runner.UsageError{Msg: fmt.Sprintf("unexpected argument %q; inputs are passed as --name value or as u:, d:, e:, p:, ip:, url:", arg)}
 		}
 		if seen[t.Prefix] {
 			return nil, &runner.UsageError{Msg: fmt.Sprintf("%s: is given twice", t.Prefix)}
@@ -121,7 +138,7 @@ Usage:
   ot run --all <type>:<value> [...] [flags]
 
 Typed inputs fill the tool's input of that type:
-  u:<username>  d:<domain>  e:<email>  p:<phone>  url:<url>
+  u:<username>  d:<domain>  e:<email>  p:<phone>  ip:<ip>  url:<url>
 
 Flags:
   -f, --format string       json (default), table, csv or raw; with --all, table (default) or json
@@ -134,6 +151,7 @@ Flags:
       --no-save             don't save the run
       --all                 run every installed tool that has an input of the given types
       --parallel int        how many tools --all runs at once (default 4)
+      --dry-run             with --all, list the tools that would run, without running them
 
 Run ` + "`ot info <tool>`" + ` to see a tool's inputs.
 `
@@ -153,7 +171,10 @@ func (a *App) runCmd() *cobra.Command {
 				return nil
 			}
 			if ra.All {
-				return a.runAll(cmd.Context(), ra)
+				return a.runAll(cmd.Context(), ra, "--all", nil)
+			}
+			if ra.DryRun {
+				return exitErr(ExitUsage, "--dry-run goes with --all; `ot info` shows what a single run needs")
 			}
 			if ra.Pkg == "" {
 				fmt.Fprint(a.Out, runHelp)

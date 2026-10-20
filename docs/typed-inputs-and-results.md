@@ -1,4 +1,4 @@
-# Typed inputs, saved results and `ot run --all`
+# Typed inputs, saved results, `ot run --all`, playbooks, `ot auto`, `extract` and `diff`
 
 The Python package manager (`otinstaller`, now in maintenance) had three run features `ot` lacked: typed inputs
 (`u:johndoe`), results saved to disk with a sidecar, and `run --all`. This note says how they map onto the manifest and
@@ -14,6 +14,7 @@ A typed input is a positional argument `<prefix>:<value>` after the package:
 | `d:`   | `domain`            |
 | `e:`   | `email`             |
 | `p:`   | `phone`             |
+| `ip:`  | `ip`                |
 | `url:` | `url`               |
 
 Manifests already declare a `type` for every input, so no manifest change is needed: `u:johndoe` is assigned to the
@@ -105,3 +106,66 @@ Each run is saved as above (`--no-save` is refused, since the summary is the onl
 the `.stderr.txt` file instead of the terminal, where parallel runs would interleave. stdout gets a summary table (tool,
 status, entities, saved file), or with `--format json` the same as a JSON array. The exit code is 0 when every run
 completed and 1 otherwise.
+
+## `ot playbook`
+
+A playbook is a named list of tools run together against the same typed inputs, like `otinstaller playbook`:
+
+```
+ot playbook --list
+ot playbook domain-recon d:example.com
+ot playbook username-investigation u:johndoe --parallel 2
+```
+
+It works like `ot run --all` restricted to the playbook's tools (same flags, summary, saving and exit codes), with two
+differences: a listed tool with no input of the given types is shown as skipped rather than left out, and runs are
+saved under the case `playbook-<name>` (or the playbook's `case:`, or `--case`). Tools that are not installed stop the
+run with the `ot install` commands to fix it; `--yes` installs them first.
+
+Two playbooks are bundled: `domain-recon` (`osintverse-community/dnstwist`, `osintverse-community/ctfr`) and
+`username-investigation` (`osintverse-community/sherlock`, `osintverse-community/maigret`), the same tools as
+otinstaller's. Your own go in `<ot home>/playbooks/` or `./playbooks/` as `<name>.yaml` (`./playbooks` wins, then the
+ot home, then the bundled ones):
+
+```yaml
+name: my-recon            # optional, defaults to the file name
+description: "What it is for"
+case: my-case             # optional, defaults to playbook-<name>
+tools:
+  - osintverse-community/dnstwist
+  - osintverse-community/ctfr
+```
+
+otinstaller playbooks list bare tool names (`sherlock`); `ot` needs the full package name and says which one to use.
+`requires_target` is accepted and ignored, since `ot playbook` always takes typed inputs. otinstaller guessed the
+target type from a bare target (`example.com`); `ot` needs the prefix (`d:example.com`).
+
+## `ot auto`
+
+`ot auto <target>` guesses the target's type and runs every installed tool that takes it, like `otinstaller auto`. The
+guess, first match wins: `url` (starts with `http://` or `https://`), `ip` (IPv4 or IPv6), `email`, `phone` (starts with
+`+`, 7 to 15 digits), `domain` (ends in an IANA top-level domain, from the same list otinstaller used), otherwise
+`username`. `--type username` (or `email`, `domain`, `phone`, `ip`, `url`) skips the guess. Then it behaves like
+`ot run --all` with that typed input. A prefixed target (`d:example.com`) is never second-guessed, and bare targets in
+`ot playbook` are guessed the same way.
+
+`--dry-run` (with `ot auto`, `ot run --all` or `ot playbook`) lists what would run and what would be skipped, and runs
+nothing. While a batch runs, a line such as `[2/5] osintverse-community/sherlock complete` goes to stderr as each tool
+finishes; otinstaller's `--live` is accepted and changes nothing.
+
+## `ot extract` and `ot diff`
+
+`ot extract <tool | path>` (or `--case <name>`) reads every saved output under the tool's results folder, a file or a
+folder, and lists the emails, domains (IANA top-level domains only), IPv4 addresses and URLs in them, plus the entities
+their sidecars hold, grouped by type. `--json` prints `{"emails":[],"domains":[],"ips":[],"urls":[],"entities":{}}`.
+
+`ot diff <tool> <target>` (with `--case` for a case) compares the two most recent saved runs of a tool against a target:
+lines and entities that appeared (`+`) or disappeared (`-`). Line order is ignored, since most tools list results in a
+different order each run; repeated lines count. Runs are ordered by the timestamp in their file name, then by when their
+output was written.
+
+## `ot outdated` and `ot update`
+
+`ot outdated` compares each installed package with the registry's latest version and changes nothing. `ot update
+<namespace/name>...` or `ot update --all` installs the newer versions, through the same checks as `ot install`.
+Packages installed from a local manifest show as "not in registry".
