@@ -3,12 +3,12 @@
 schema: 1
 kind: guide
 name: domain-investigation
-namespace: osintverse
+namespace: osintverse-community
 version: 1.0.0
 title: "Domain investigation playbook"
 summary: "DNS, subdomains, certificates, history and look-alikes of a domain, passively first"
 license: CC-BY-4.0
-homepage: https://github.com/osintverse/domain-investigation
+homepage: https://github.com/osintverse-community/domain-investigation
 categories: [domain-dns, web-archive]
 level: intermediate
 format: guide
@@ -24,8 +24,8 @@ content:
     - 05-lookalikes.md
     - 06-live-hosts.md
 related_tools:
-  - osintverse/dns-records
-  - osintverse/crtsh-subdomains
+  - osintverse-community/dns-records
+  - osintverse-community/crtsh-subdomains
   - osintverse-community/subfinder
   - osintverse-community/gau
   - osintverse-community/waybackpy

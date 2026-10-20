@@ -15,7 +15,7 @@ Write down the exact handle, then the variants people commonly use for the same 
 Let `username-permutations` generate the common patterns. It runs offline and only builds a list:
 
 ```
-ot run osintverse/username-permutations --name "Jane Doe" --extra 1990 --format table
+ot run osintverse-community/username-permutations --name "Jane Doe" --extra 1990 --format table
 ```
 
 You get handles such as `janedoe`, `jane.doe`, `jdoe`, `doe_jane` and `janedoe1990`, each with the pattern that made
@@ -28,7 +28,7 @@ it. Accents are folded to ASCII, so "Zoë" also gives `zoe`.
 Save the list for the next step:
 
 ```
-ot run osintverse/username-permutations --name "Jane Doe" --format json -o candidates.json
+ot run osintverse-community/username-permutations --name "Jane Doe" --format json -o candidates.json
 ```
 
 Next: [find accounts](03-find-accounts.md).
