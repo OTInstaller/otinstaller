@@ -72,7 +72,7 @@ Docker wrappers pin the upstream version (Go tools by module version, phoneinfog
 
 11 more wrappers come from the catalog of `otinstaller`, the older package manager in [`../python`](../python), written
 by `python scripts/pm-catalog-to-wrappers.py`. They follow the same rules as the launch wrappers (outreach first,
-then publish), but were generated rather than hand-tuned. Docker ones are built for `linux/amd64` only. Git installs
+then publish), but were generated rather than hand-tuned. Docker ones build for `linux/amd64` and `linux/arm64` (each was built and run on arm64 under emulation). Git installs
 pinned to a commit get the version `0.0.0-git.<commit>`.
 
 Each was built and run with its `test.input` under `ot`'s own sandbox flags (read-only root, only `/tmp` writable, user
