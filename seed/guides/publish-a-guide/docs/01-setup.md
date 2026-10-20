@@ -6,7 +6,7 @@ In a new repository on GitHub or GitLab:
 ot init --guide
 ```
 
-You get `otinstaller.yaml`, a README, `docs/index.md`, a starter `docs/01-scope-and-legal.md` and a release workflow.
+You get `otinstaller.yaml`, a README, `docs/index.md`, a starter `docs/01-scope-and-legal.md` and an optional release workflow.
 
 ## The manifest
 
