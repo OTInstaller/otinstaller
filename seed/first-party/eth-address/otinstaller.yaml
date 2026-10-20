@@ -2,12 +2,12 @@
 # yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
 schema: 1
 name: eth-address
-namespace: osintverse
+namespace: osintverse-community
 version: 0.1.0
 summary: "Looks up an Ethereum address: balance, ENS name, contract info, recent transactions"
 readme: README.md
 license: MIT
-homepage: https://github.com/osintverse/eth-address
+homepage: https://github.com/osintverse-community/eth-address
 categories: [crypto]
 tags: [ethereum, blockchain, blockscout, ens]
 inputs:
@@ -20,7 +20,7 @@ outputs:
 runtime:
   kind: docker
   # Filled in by the release workflow with the pushed image's digest.
-  image: ghcr.io/osintverse/eth-address@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  image: ghcr.io/osintverse-community/eth-address@sha256:0000000000000000000000000000000000000000000000000000000000000000
   platforms: [linux/amd64, linux/arm64]
   command: ["eth-address", "{address}"]
   output_format: json

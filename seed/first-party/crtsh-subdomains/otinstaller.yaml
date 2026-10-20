@@ -2,12 +2,12 @@
 # yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
 schema: 1
 name: crtsh-subdomains
-namespace: osintverse
+namespace: osintverse-community
 version: 0.1.0
 summary: "Finds a domain's subdomains in Certificate Transparency logs through crt.sh or Cert Spotter"
 readme: README.md
 license: MIT
-homepage: https://github.com/osintverse/crtsh-subdomains
+homepage: https://github.com/osintverse-community/crtsh-subdomains
 categories: [domain-dns]
 tags: [subdomains, certificate-transparency, passive]
 inputs:
@@ -19,7 +19,7 @@ outputs:
 runtime:
   kind: docker
   # Filled in by the release workflow with the pushed image's digest.
-  image: ghcr.io/osintverse/crtsh-subdomains@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  image: ghcr.io/osintverse-community/crtsh-subdomains@sha256:0000000000000000000000000000000000000000000000000000000000000000
   platforms: [linux/amd64, linux/arm64]
   command: ["crtsh-subdomains", "{domain}"]
   output_format: json

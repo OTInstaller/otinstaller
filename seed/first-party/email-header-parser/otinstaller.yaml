@@ -2,12 +2,12 @@
 # yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
 schema: 1
 name: email-header-parser
-namespace: osintverse
+namespace: osintverse-community
 version: 0.1.0
 summary: "Parses raw email headers into senders, relay hops, IPs and SPF/DKIM/DMARC results"
 readme: README.md
 license: MIT
-homepage: https://github.com/osintverse/email-header-parser
+homepage: https://github.com/osintverse-community/email-header-parser
 categories: [email]
 tags: [email, headers, phishing, offline]
 inputs:
@@ -22,7 +22,7 @@ outputs:
 runtime:
   kind: docker
   # Filled in by the release workflow with the pushed image's digest.
-  image: ghcr.io/osintverse/email-header-parser@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  image: ghcr.io/osintverse-community/email-header-parser@sha256:0000000000000000000000000000000000000000000000000000000000000000
   platforms: [linux/amd64, linux/arm64]
   command: ["email-header-parser", "{headers}"]
   output_format: json

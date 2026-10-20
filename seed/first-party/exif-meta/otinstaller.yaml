@@ -2,12 +2,12 @@
 # yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
 schema: 1
 name: exif-meta
-namespace: osintverse
+namespace: osintverse-community
 version: 0.1.0
 summary: "Reads an online image or document's metadata with ExifTool: GPS, camera, authors, dates"
 readme: README.md
 license: MIT
-homepage: https://github.com/osintverse/exif-meta
+homepage: https://github.com/osintverse-community/exif-meta
 categories: [images-geo, documents-metadata]
 tags: [exif, exiftool, metadata, gps]
 inputs:
@@ -24,7 +24,7 @@ outputs:
 runtime:
   kind: docker
   # Filled in by the release workflow with the pushed image's digest.
-  image: ghcr.io/osintverse/exif-meta@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  image: ghcr.io/osintverse-community/exif-meta@sha256:0000000000000000000000000000000000000000000000000000000000000000
   platforms: [linux/amd64, linux/arm64]
   command: ["exif-meta", "{url}"]
   output_format: json

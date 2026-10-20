@@ -3,12 +3,12 @@
 schema: 1
 kind: guide
 name: crypto-address-tracing
-namespace: osintverse
+namespace: osintverse-community
 version: 1.0.0
 title: "Cryptocurrency address tracing playbook"
 summary: "Balance, history and counterparties of a Bitcoin or Ethereum address, one hop at a time"
 license: CC-BY-4.0
-homepage: https://github.com/osintverse/crypto-address-tracing
+homepage: https://github.com/osintverse-community/crypto-address-tracing
 categories: [crypto]
 level: intermediate
 format: guide
@@ -21,6 +21,6 @@ content:
     - 02-lookup.md
     - 03-follow.md
 related_tools:
-  - osintverse/btc-address
-  - osintverse/eth-address
+  - osintverse-community/btc-address
+  - osintverse-community/eth-address
 topics: [crypto_address]

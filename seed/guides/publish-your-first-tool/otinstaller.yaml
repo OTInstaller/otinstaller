@@ -3,12 +3,12 @@
 schema: 1
 kind: guide
 name: publish-your-first-tool
-namespace: osintverse
+namespace: osintverse-community
 version: 1.0.0
 title: "Publish your first tool"
 summary: "Package a command-line OSINT tool and publish it to the OTInstaller Registry in about 20 minutes"
 license: CC-BY-4.0
-homepage: https://github.com/osintverse/publish-your-first-tool
+homepage: https://github.com/osintverse-community/publish-your-first-tool
 categories: [utilities]
 level: beginner
 format: guide
@@ -21,5 +21,5 @@ content:
     - 02-test.md
     - 03-release.md
 related_tools:
-  - osintverse/username-permutations
+  - osintverse-community/username-permutations
 topics: []

@@ -4,7 +4,7 @@ Turns a person's name into the usernames they are likely to use (`ada.lovelace`,
 …), so you can check them with a username search tool. Runs offline and contacts nothing.
 
 ```
-ot run osintverse/username-permutations --name "Ada Lovelace" --extra 1815
+ot run osintverse-community/username-permutations --name "Ada Lovelace" --extra 1815
 ```
 
 Each result is a `username` entity with the pattern that produced it. Confidence is always `low`: these are
