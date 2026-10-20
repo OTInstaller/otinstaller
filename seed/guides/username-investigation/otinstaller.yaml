@@ -3,12 +3,12 @@
 schema: 1
 kind: guide
 name: username-investigation
-namespace: osintverse
+namespace: osintverse-community
 version: 1.0.0
 title: "Username investigation playbook"
 summary: "From a name or one handle to verified accounts across thousands of sites"
 license: CC-BY-4.0
-homepage: https://github.com/osintverse/username-investigation
+homepage: https://github.com/osintverse-community/username-investigation
 categories: [username, social-media]
 level: beginner
 format: guide
@@ -22,11 +22,11 @@ content:
     - 03-find-accounts.md
     - 04-verify-and-pivot.md
 related_tools:
-  - osintverse/username-permutations
+  - osintverse-community/username-permutations
   - osintverse-community/sherlock
   - osintverse-community/maigret
   - osintverse-community/socialscan
   - osintverse-community/naminter
   - osintverse-community/mailcat
-  - osintverse/image-hash
+  - osintverse-community/image-hash
 topics: [username]

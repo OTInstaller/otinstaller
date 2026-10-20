@@ -30,7 +30,7 @@ content:
     - 01-scope-and-legal.md
     - 02-headers.md
 related_tools:
-  - osintverse/email-header-parser
+  - osintverse-community/email-header-parser
   - osintverse-community/holehe
 topics: [email]
 ```

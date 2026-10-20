@@ -16,7 +16,7 @@ words) and reports the ones that are registered, with their A, NS and MX records
 | Has MX records | It can send and receive email, the most common use for fraud |
 | Resolves to the same hosting as other suspicious domains | Same operator |
 | Registered recently | Recent registrations are rarely defensive |
-| Has a certificate for the name (check with `osintverse/crtsh-subdomains`) | Someone set up HTTPS, so it is likely in use |
+| Has a certificate for the name (check with `osintverse-community/crtsh-subdomains`) | Someone set up HTTPS, so it is likely in use |
 
 > [!NOTE]
 > Many look-alikes are registered defensively by the brand itself, or parked by domain resellers. Check the name

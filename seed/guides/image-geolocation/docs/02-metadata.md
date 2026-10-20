@@ -4,7 +4,7 @@ Cameras and phones write a lot into the file: GPS coordinates, the device, the s
 timestamps.
 
 ```
-ot run osintverse/exif-meta --url "https://raw.githubusercontent.com/ianare/exif-samples/master/jpg/gps/DSCN0010.jpg"
+ot run osintverse-community/exif-meta --url "https://raw.githubusercontent.com/ianare/exif-samples/master/jpg/gps/DSCN0010.jpg"
 ```
 
 The result has a `location` entity when GPS is present (with an OpenStreetMap link), the device, the authors and the

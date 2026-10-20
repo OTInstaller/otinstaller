@@ -17,8 +17,8 @@ ot run osintverse-community/gallery-dl --url "https://commons.wikimedia.org/wiki
 ```
 
 gallery-dl lists the files of a post, album or profile (the first 20) with the post metadata and the URL of each
-original file. Feed those URLs to [osintverse/exif-meta](https://otinstaller.com/osintverse/exif-meta) and the
-[image playbook](https://otinstaller.com/guides/osintverse/image-geolocation).
+original file. Feed those URLs to [osintverse-community/exif-meta](https://otinstaller.com/osintverse-community/exif-meta) and the
+[image playbook](https://otinstaller.com/guides/osintverse-community/image-geolocation).
 
 ## IDs hidden in URLs
 

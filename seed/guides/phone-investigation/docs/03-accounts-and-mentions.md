@@ -25,5 +25,5 @@ what you open.
 ## Pivot
 
 Names, usernames and emails found here go to the
-[username](https://otinstaller.com/guides/osintverse/username-investigation) and
-[email](https://otinstaller.com/guides/osintverse/email-investigation) playbooks.
+[username](https://otinstaller.com/guides/osintverse-community/username-investigation) and
+[email](https://otinstaller.com/guides/osintverse-community/email-investigation) playbooks.

@@ -12,7 +12,7 @@ gau collects the URLs the Wayback Machine, AlienVault OTX and urlscan.io have se
 fonts left out. Look for:
 
 - documents (`.pdf`, `.docx`, `.xlsx`): read their metadata with
-  [osintverse/exif-meta](https://otinstaller.com/osintverse/exif-meta)
+  [osintverse-community/exif-meta](https://otinstaller.com/osintverse-community/exif-meta)
 - parameters that leak structure (`?user=`, `/api/v1/`)
 - paths that no longer exist on the live site
 

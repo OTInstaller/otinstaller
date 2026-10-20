@@ -3,12 +3,12 @@
 schema: 1
 kind: guide
 name: email-investigation
-namespace: osintverse
+namespace: osintverse-community
 version: 1.0.0
 title: "Email investigation playbook"
 summary: "Trace a suspicious message and find where an address is registered, without alerting its owner"
 license: CC-BY-4.0
-homepage: https://github.com/osintverse/email-investigation
+homepage: https://github.com/osintverse-community/email-investigation
 categories: [email]
 level: beginner
 format: guide
@@ -23,9 +23,9 @@ content:
     - 04-accounts.md
     - 05-pivot.md
 related_tools:
-  - osintverse/email-header-parser
+  - osintverse-community/email-header-parser
   - osintverse-community/checkdmarc
-  - osintverse/dns-records
+  - osintverse-community/dns-records
   - osintverse-community/holehe
   - osintverse-community/socialscan
   - osintverse-community/mailcat
