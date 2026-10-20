@@ -95,7 +95,9 @@ describe("scan dispatch", () => {
       runtime: { kind: "docker" },
       callback_url: "https://api.otinstaller.com/v1/internal/scans",
       expected_signer: { issuer: "https://token.actions.githubusercontent.com" },
+      expect_exit_code: 0,
     });
+    expect(scan.upstream_repo).toBeUndefined();
     expect(new RegExp(scan.expected_signer.identityRegexp).test(`https://github.com/${p.repo}/.github/workflows/release.yml@refs/tags/v1.0.0`)).toBe(true);
     expect(new RegExp(scan.expected_signer.identityRegexp).test(`https://github.com/attacker/${p.repo}/.github/workflows/release.yml@refs/tags/v1.0.0`)).toBe(false);
   });

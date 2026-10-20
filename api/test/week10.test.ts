@@ -303,6 +303,7 @@ describe("health checks", () => {
     const targets = ((await (await call("/internal/health/targets", { headers: { authorization: "Bearer health-secret" } }, e)).json()) as any).targets;
     expect(targets.map((t: any) => t.ref)).toContain(p.ref);
     expect(targets.map((t: any) => t.ref)).not.toContain(untested.ref);
+    expect(targets.find((t: any) => t.ref === p.ref).expect_exit_code).toBe(0);
     expect(((await (await call(`/tools/${untested.ref}`)).json()) as any).health).toBe("not_checked");
 
     const vid = targets.find((t: any) => t.ref === p.ref).version_id;
