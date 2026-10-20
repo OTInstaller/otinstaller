@@ -48,7 +48,8 @@ export default defineConfig({
     csp: {
       directives: [
         "default-src 'self'",
-        `connect-src 'self' ${api}`,
+        // cloudflareinsights is Cloudflare Web Analytics, which the zone injects into every page.
+        `connect-src 'self' ${api} https://cloudflareinsights.com`,
         // Guide images come from the API; README images that were not copied load from the repository host.
         `img-src 'self' data: ${api} https://avatars.githubusercontent.com https://gitlab.com https://secure.gravatar.com https://raw.githubusercontent.com`,
         "font-src 'self'",
@@ -56,7 +57,7 @@ export default defineConfig({
         "base-uri 'self'",
         `form-action 'self' ${api}`,
       ],
-      scriptDirective: { hashes: [bootHash] },
+      scriptDirective: { hashes: [bootHash], resources: ["'self'", "https://static.cloudflareinsights.com"] },
     },
   },
 });
