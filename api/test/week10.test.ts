@@ -1,0 +1,360 @@
+import { env } from "cloudflare:test";
+import { beforeEach, describe, expect, it } from "vitest";
+import { sha256Hex, ulid } from "../src/lib/crypto";
+import { recomputeLatest } from "../src/trust";
+import { alertStuckJobs, applyHealth, businessDays, dailyDigest } from "../src/ops";
+import { call, fakeHosts, testEnv } from "./helpers";
+
+const DB = () => env.DB;
+let n = 0;
+// A fixed-width counter keeps IDs from colliding ("12" + "34" vs "123" + "4").
+const uniq = () => `${Date.now() % 1e6}${String(++n).padStart(4, "0")}`;
+const emails: { to: string[]; subject: string; text: string }[] = [];
+const githubAdmins = new Set<string>();
+const claimFiles: Record<string, string> = {};
+
+beforeEach(() => {
+  emails.length = 0;
+  fakeHosts({
+    "POST https://api.resend.com/emails": async (req) => (emails.push(await req.json() as any), { id: "e" }),
+    "GET https://api.github.com/repos/": (req) => {
+      const repo = new URL(req.url).pathname.replace("/repos/", "");
+      return { id: 1, full_name: repo, private: false, permissions: { admin: githubAdmins.has(repo) } };
+    },
+    "GET https://raw.githubusercontent.com/": (req) => {
+      const repo = new URL(req.url).pathname.split("/").slice(1, 3).join("/");
+      return claimFiles[repo] ?? null;
+    },
+  });
+});
+
+// ---------- fixtures ----------
+
+async function person(flags: { reviewer?: boolean; admin?: boolean; github?: boolean } = {}) {
+  const id = ulid();
+  const login = `u${uniq()}`;
+  const token = `ot_test_${id}`;
+  await DB().batch([
+    DB().prepare(`INSERT INTO users (id, login, email, is_reviewer, is_admin, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .bind(id, login, `${login}@example.com`, flags.reviewer ? 1 : 0, flags.admin ? 1 : 0, Date.now()),
+    DB().prepare(`INSERT INTO api_tokens (id, user_id, name, token_hash, created_at) VALUES (?, ?, 'test', ?, ?)`).bind(ulid(), id, await sha256Hex(token), Date.now()),
+  ]);
+  if (flags.github) {
+    const { encrypt } = await import("../src/lib/crypto");
+    await DB().prepare(`INSERT INTO accounts (id, user_id, provider, provider_user_id, login, access_token_enc, created_at) VALUES (?, ?, 'github', ?, ?, ?, ?)`)
+      .bind(ulid(), id, uniq(), login, await encrypt(env.TOKEN_ENC_KEY, `gho_${login}`), Date.now()).run();
+  }
+  return { id, login, auth: { authorization: `Bearer ${token}`, "content-type": "application/json" } };
+}
+
+async function namespace(owner: { id: string }, status = "active") {
+  const id = ulid();
+  const name = `ns${uniq()}`;
+  await DB().batch([
+    DB().prepare(`INSERT INTO namespaces (id, provider, provider_owner_id, name, kind, status, created_at) VALUES (?, 'github', ?, ?, 'user', ?, ?)`)
+      .bind(id, uniq(), name, status, Date.now()),
+    DB().prepare(`INSERT INTO namespace_members (namespace_id, user_id, role) VALUES (?, ?, 'owner')`).bind(id, owner.id),
+  ]);
+  return { id, name };
+}
+
+const manifest = (ns: string, name: string, version: string, over: Record<string, unknown> = {}) => ({
+  schema: 1, kind: "tool", name, namespace: ns, version, summary: "Looks things up for the week 10 tests", readme: "README.md", license: "MIT",
+  categories: ["utilities"], inputs: [{ name: "domain", type: "domain", required: true }], outputs: [{ type: "organization" }],
+  runtime: { kind: "docker", image: `ghcr.io/${ns}/${name}@sha256:${"a".repeat(64)}`, platforms: ["linux/amd64"], command: [name, "{domain}"], output_format: "json" },
+  ethics: { touches_target: false, auth_required: false, collects_personal_data: false }, test: { input: { domain: "example.com" } }, ...over,
+});
+
+/** A published package with the given versions (all published unless marked). */
+async function pkg(ns: { id: string; name: string }, versions: string[], opts: { community?: boolean; over?: Record<string, unknown> } = {}) {
+  const toolId = ulid();
+  const name = `tool${uniq()}`;
+  const now = Date.now();
+  await DB().prepare(
+    `INSERT INTO tools (id, namespace_id, kind, name, summary, community_packaged, repo_url, created_at, updated_at) VALUES (?, ?, 'tool', ?, 'x', ?, ?, ?, ?)`,
+  ).bind(toolId, ns.id, name, opts.community ? 1 : 0, `https://github.com/${ns.name}/${name}`, now, now).run();
+  for (const v of versions) {
+    const [maj, min, pat] = v.split(".").map(Number);
+    await DB().prepare(
+      `INSERT INTO versions (id, tool_id, version, semver_major, semver_minor, semver_patch, manifest_json, runtime_kind, status, published_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'docker', 'published', ?, ?)`,
+    ).bind(ulid(), toolId, v, maj, min, pat, JSON.stringify(manifest(ns.name, name, v, opts.over)), now, now).run();
+  }
+  await recomputeLatest(await testEnv(), toolId);
+  return { id: toolId, name, ref: `${ns.name}/${name}` };
+}
+
+const post = (path: string, headers: Record<string, string>, body: unknown = {}) => call(path, { method: "POST", headers, body: JSON.stringify(body) });
+
+// ---------- owners ----------
+
+describe("yank and deprecate", () => {
+  it("lets owners yank a version out of @latest while it stays installable by exact version", async () => {
+    const owner = await person();
+    const ns = await namespace(owner);
+    const p = await pkg(ns, ["1.0.0", "1.1.0"]);
+    expect(((await (await call(`/tools/${p.ref}/latest/manifest`)).json()) as any).version).toBe("1.1.0");
+
+    const stranger = await person();
+    expect((await post(`/tools/${p.ref}/1.1.0/yank`, stranger.auth)).status).toBe(403);
+    expect(await (await post(`/tools/${p.ref}/1.1.0/yank`, owner.auth)).json()).toEqual({ ref: p.ref, version: "1.1.0", status: "yanked" });
+    expect(((await (await call(`/tools/${p.ref}/latest/manifest`)).json()) as any).version).toBe("1.0.0");
+    expect(((await (await call(`/tools/${p.ref}/1.1.0/manifest`)).json()) as any).status).toBe("yanked");
+    expect((await post(`/tools/${p.ref}/1.1.0/yank`, owner.auth)).status).toBe(409);
+
+    await post(`/tools/${p.ref}/1.1.0/unyank`, owner.auth);
+    expect(((await (await call(`/tools/${p.ref}/latest/manifest`)).json()) as any).version).toBe("1.1.0");
+  });
+
+  it("deprecates with a message and a replacement, and undoes it", async () => {
+    const owner = await person();
+    const ns = await namespace(owner);
+    const [old, next] = [await pkg(ns, ["1.0.0"]), await pkg(ns, ["2.0.0"])];
+    expect((await post(`/tools/${old.ref}/deprecate`, owner.auth, { message: "Use the new one", replacement: "nobody/nothing" })).status).toBe(400);
+    await post(`/tools/${old.ref}/deprecate`, owner.auth, { message: "Use the new one", replacement: next.ref });
+    expect(await (await call(`/tools/${old.ref}`)).json()).toMatchObject({ status: "deprecated", deprecated_message: "Use the new one", deprecated_replacement: next.ref });
+    await call(`/tools/${old.ref}/deprecate`, { method: "DELETE", headers: owner.auth });
+    expect(((await (await call(`/tools/${old.ref}`)).json()) as any).status).toBe("active");
+  });
+});
+
+// ---------- reviewers ----------
+
+describe("removal", () => {
+  it("removes a version: it stops resolving, owners are told, and it is listed publicly", async () => {
+    const owner = await person();
+    const reviewer = await person({ reviewer: true });
+    const ns = await namespace(owner);
+    const p = await pkg(ns, ["1.0.0", "1.1.0"]);
+    expect((await post(`/admin/tools/${p.ref}/1.1.0/remove`, owner.auth, { category: "malware", reason: "x" })).status).toBe(403);
+    expect((await post(`/admin/tools/${p.ref}/1.1.0/remove`, reviewer.auth, { category: "spam", reason: "x" })).status).toBe(400);
+    const res = await post(`/admin/tools/${p.ref}/1.1.0/remove`, reviewer.auth, { category: "malware", reason: "Exfiltrates environment variables" });
+    expect(await res.json()).toMatchObject({ status: "removed", version: "1.1.0" });
+
+    const m = (await (await call(`/tools/${p.ref}/1.1.0/manifest`)).json()) as any;
+    expect(m).toMatchObject({ status: "removed", removed_reason: "Exfiltrates environment variables", manifest: null });
+    expect(((await (await call(`/tools/${p.ref}/latest/manifest`)).json()) as any).version).toBe("1.0.0");
+    expect(emails.at(-1)).toMatchObject({ to: [`${owner.login}@example.com`], subject: `${p.ref} 1.1.0 was removed from the registry` });
+
+    const t = (await (await call("/removed")).json()) as any;
+    expect(t.removed).toContainEqual({ ref: p.ref, version: "1.1.0", category: "malware", removed_at: expect.any(Number) });
+    expect(t.quarters[0]).toMatchObject({ removals: expect.any(Number) });
+    const log = (await (await call("/admin/audit-log", { headers: reviewer.auth })).json()) as any;
+    expect(log.entries.find((e: any) => e.action === "version.remove")).toMatchObject({ actor: reviewer.login, metadata: { category: "malware" } });
+  });
+
+  it("removes a whole tool and can suspend its namespace; the tool then answers 410", async () => {
+    const owner = await person();
+    const reviewer = await person({ reviewer: true });
+    const ns = await namespace(owner);
+    const p = await pkg(ns, ["1.0.0"]);
+    await post(`/admin/tools/${p.ref}/remove`, reviewer.auth, { category: "policy", reason: "Stalkerware", suspend_namespace: true });
+    const res = await call(`/tools/${p.ref}`);
+    expect(res.status).toBe(410);
+    expect(((await res.json()) as any).error.code).toBe("tool_removed");
+    expect((await call(`/tools/${p.ref}/latest/manifest`)).status).toBe(410);
+    expect((await DB().prepare(`SELECT status FROM namespaces WHERE id = ?`).bind(ns.id).first<any>()).status).toBe("suspended");
+    expect(((await (await call("/removed")).json()) as any).removed).toContainEqual(expect.objectContaining({ ref: p.ref, version: null, category: "policy" }));
+  });
+});
+
+describe("reports", () => {
+  it("takes anonymous reports with a per-address limit and alerts reviewers to malware at once", async () => {
+    const owner = await person();
+    const reviewer = await person({ reviewer: true });
+    const ns = await namespace(owner);
+    const p = await pkg(ns, ["1.0.0"]);
+    const anon = (body: unknown, ip = "203.0.113.7") => call(`/tools/${p.ref}/reports`, { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": ip }, body: JSON.stringify(body) });
+
+    expect((await anon({ reason: "nonsense", details: "x" })).status).toBe(400);
+    const first = await anon({ reason: "malware", details: "It uploads ~/.ssh", version: "1.0.0" });
+    expect(first.status).toBe(201);
+    expect(emails.at(-1)).toMatchObject({ to: expect.arrayContaining([`${reviewer.login}@example.com`]), subject: `[URGENT malware] ${p.ref}@1.0.0` });
+    for (let i = 0; i < 4; i++) expect((await anon({ reason: "broken" })).status).toBe(201);
+    expect((await anon({ reason: "broken" })).status).toBe(429);
+    expect((await anon({ reason: "broken" }, "198.51.100.1")).status).toBe(201);
+    // Only a hash of the address is kept, never the address.
+    expect(JSON.stringify((await DB().prepare(`SELECT * FROM rate_limits`).all()).results)).not.toContain("203.0.113.7");
+
+    const queue = (await (await call("/admin/reports", { headers: reviewer.auth })).json()) as any;
+    const mine = queue.reports.filter((r: any) => r.ref === p.ref);
+    expect(mine[0]).toMatchObject({ reason: "malware", version: "1.0.0", status: "open" });
+    const id = mine[0].id;
+    expect((await post(`/admin/reports/${id}/resolve`, reviewer.auth, { status: "actioned", action: "removed version", note: "confirmed" })).status).toBe(200);
+    const after = (await (await call("/admin/reports?status=actioned", { headers: reviewer.auth })).json()) as any;
+    expect(after.reports.find((r: any) => r.id === id)).toMatchObject({ action: "removed version", resolved_by: reviewer.login });
+  });
+});
+
+describe("bans", () => {
+  it("lets admins ban a user, which ends their sessions and tokens", async () => {
+    const admin = await person({ admin: true });
+    const reviewer = await person({ reviewer: true });
+    const bad = await person();
+    expect((await call("/me", { headers: bad.auth })).status).toBe(200);
+    expect((await post(`/admin/users/${bad.login}/ban`, reviewer.auth, { reason: "x" })).status).toBe(403);
+    expect((await post(`/admin/users/${bad.login}/ban`, admin.auth, { reason: "Credential stuffing tools" })).status).toBe(200);
+    expect((await call("/me", { headers: bad.auth })).status).toBe(401);
+  });
+});
+
+// ---------- claims and transfers ----------
+
+describe("claims", () => {
+  async function wrapper(upstream: string) {
+    const curator = await person();
+    const community = await namespace(curator);
+    await DB().prepare(`UPDATE namespaces SET name = ? WHERE id = ?`).bind(`osintverse-community-${uniq()}`, community.id).run();
+    const ns = await DB().prepare(`SELECT id, name FROM namespaces WHERE id = ?`).bind(community.id).first<{ id: string; name: string }>();
+    return pkg(ns!, ["1.0.0"], { community: true, over: { homepage: upstream } });
+  }
+
+  it("moves a wrapper to the upstream owner after a linked-account check and an admin's confirmation", async () => {
+    const upstream = `upstream${uniq()}/tool`;
+    const w = await wrapper(`https://github.com/${upstream}`);
+    const maintainer = await person({ github: true });
+    const theirs = await namespace(maintainer);
+    const admin = await person({ admin: true });
+
+    githubAdmins.add(upstream);
+    const res = await post(`/tools/${w.ref}/claim`, maintainer.auth, { to: theirs.name });
+    const claim = (await res.json()) as any;
+    expect(res.status).toBe(201);
+    expect(claim).toMatchObject({ kind: "claim", status: "verified", verification: "linked_account", to: theirs.name, upstream_url: `https://github.com/${upstream}` });
+    expect(emails.at(-1)?.subject).toBe(`Claim of ${w.ref} by ${theirs.name} is verified`);
+
+    expect((await post(`/admin/transfers/${claim.id}/complete`, maintainer.auth)).status).toBe(403);
+    const done = (await (await post(`/admin/transfers/${claim.id}/complete`, admin.auth)).json()) as any;
+    const newRef = `${theirs.name}/${w.name}`;
+    expect(done).toMatchObject({ status: "completed", ref: newRef, alias: w.ref });
+    const moved = (await (await call(`/tools/${w.ref}`)).json()) as any;
+    expect(moved).toMatchObject({ namespace: theirs.name, moved_to: newRef, community_packaged: false });
+    expect(((await (await call(`/tools/${w.ref}/latest/manifest`)).json()) as any).moved_to).toBe(newRef);
+    expect(emails.at(-1)?.subject).toBe(`${w.ref} is now ${newRef}`);
+  });
+
+  it("verifies with a claim file when the account is not an upstream admin", async () => {
+    const upstream = `upstream${uniq()}/tool`;
+    const w = await wrapper(`https://github.com/${upstream}`);
+    const maintainer = await person({ github: true });
+    const theirs = await namespace(maintainer);
+    const claim = (await (await post(`/tools/${w.ref}/claim`, maintainer.auth, { to: theirs.name })).json()) as any;
+    expect(claim).toMatchObject({ status: "pending", claim_file: ".otinstaller-claim" });
+    expect(claim.verification_error).toContain("not an admin");
+    expect(claim.claim_token).toMatch(/^otclaim_/);
+
+    claimFiles[upstream] = `${claim.claim_token}\n`;
+    const v = (await (await post(`/transfers/${claim.id}/verify`, maintainer.auth)).json()) as any;
+    expect(v).toMatchObject({ status: "verified", verification: "claim_file" });
+    // Someone not involved cannot see it.
+    expect((await call(`/transfers/${claim.id}`, { headers: (await person()).auth })).status).toBe(404);
+  });
+
+  it("refuses claims on packages that are not community wrappers", async () => {
+    const owner = await person();
+    const p = await pkg(await namespace(owner), ["1.0.0"]);
+    const other = await person();
+    await namespace(other);
+    expect(((await (await post(`/tools/${p.ref}/claim`, other.auth)).json()) as any).error.code).toBe("not_community_packaged");
+  });
+});
+
+describe("transfers", () => {
+  it("moves a package once the receiving owner accepts, and keeps the old address working", async () => {
+    const a = await person();
+    const b = await person();
+    const nsA = await namespace(a);
+    const nsB = await namespace(b);
+    const p = await pkg(nsA, ["1.0.0"]);
+    expect((await post(`/tools/${p.ref}/transfer`, b.auth, { to: nsB.name })).status).toBe(403);
+    const offer = (await (await post(`/tools/${p.ref}/transfer`, a.auth, { to: nsB.name })).json()) as any;
+    expect(offer).toMatchObject({ kind: "transfer", status: "pending", from: nsA.name, to: nsB.name });
+    expect(emails.at(-1)).toMatchObject({ to: [`${b.login}@example.com`], subject: `${nsA.name} offers ${p.ref} to ${nsB.name}` });
+    expect(((await (await call("/me/transfers", { headers: b.auth })).json()) as any).transfers.map((t: any) => t.id)).toContain(offer.id);
+
+    expect((await post(`/transfers/${offer.id}/accept`, a.auth)).status).toBe(403);
+    const done = (await (await post(`/transfers/${offer.id}/accept`, b.auth)).json()) as any;
+    expect(done).toMatchObject({ status: "completed", ref: `${nsB.name}/${p.name}` });
+    expect(((await (await call(`/tools/${p.ref}`)).json()) as any).moved_to).toBe(`${nsB.name}/${p.name}`);
+  });
+
+  it("refuses to overwrite a package of the same name", async () => {
+    const a = await person();
+    const b = await person();
+    const nsA = await namespace(a);
+    const nsB = await namespace(b);
+    const p = await pkg(nsA, ["1.0.0"]);
+    await DB().prepare(`INSERT INTO tools (id, namespace_id, name, summary, created_at, updated_at) VALUES (?, ?, ?, 'x', 0, 0)`).bind(ulid(), nsB.id, p.name).run();
+    const offer = (await (await post(`/tools/${p.ref}/transfer`, a.auth, { to: nsB.name })).json()) as any;
+    expect(((await (await post(`/transfers/${offer.id}/accept`, b.auth)).json()) as any).error.code).toBe("name_taken");
+  });
+});
+
+// ---------- operations ----------
+
+describe("health checks", () => {
+  it("lists tools with a test input and marks them broken after 3 failures in a row", async () => {
+    const owner = await person();
+    const ns = await namespace(owner);
+    const p = await pkg(ns, ["1.0.0"]);
+    const untested = await pkg(ns, ["1.0.0"], { over: { test: undefined } });
+    const e = { ...(await testEnv()), HEALTH_TOKEN: "health-secret" };
+    expect((await call("/internal/health/targets", {}, e)).status).toBe(401);
+    const targets = ((await (await call("/internal/health/targets", { headers: { authorization: "Bearer health-secret" } }, e)).json()) as any).targets;
+    expect(targets.map((t: any) => t.ref)).toContain(p.ref);
+    expect(targets.map((t: any) => t.ref)).not.toContain(untested.ref);
+    expect(((await (await call(`/tools/${untested.ref}`)).json()) as any).health).toBe("not_checked");
+
+    const vid = targets.find((t: any) => t.ref === p.ref).version_id;
+    const report = (result: string) => call("/internal/health", { method: "POST", headers: { authorization: "Bearer health-secret", "content-type": "application/json" }, body: JSON.stringify({ results: [{ version_id: vid, result, error_excerpt: "site changed" }] }) }, e);
+    await report("fail");
+    expect(emails.filter((m) => m.subject.includes("failed its health check"))).toHaveLength(1);
+    await report("fail");
+    expect(((await (await call(`/tools/${p.ref}`)).json()) as any).health).not.toBe("broken");
+    await report("fail");
+    expect(((await (await call(`/tools/${p.ref}`)).json()) as any).health).toBe("broken");
+    // One email per run of failures, not every night.
+    expect(emails.filter((m) => m.subject.includes("failed its health check"))).toHaveLength(1);
+    await report("pass");
+    expect(((await (await call(`/tools/${p.ref}`)).json()) as any).health).toBe("healthy");
+    expect(await applyHealth(e, [{ version_id: "nope", result: "pass" }])).toBe(0);
+  });
+});
+
+describe("monitoring", () => {
+  it("alerts admins to stuck publish jobs once, and sends the reviewers' digest", async () => {
+    const admin = await person({ admin: true });
+    const now = Date.now();
+    const jobId = ulid();
+    await DB().prepare(`INSERT INTO publish_jobs (id, delivery_id, provider, repo, tag, status, created_at) VALUES (?, ?, 'github', 'a/b', 'v1.0.0', 'validating', ?)`)
+      .bind(jobId, `d-${jobId}`, now - 45 * 60_000).run();
+    expect(await alertStuckJobs(await testEnv(), now)).toBeGreaterThan(0);
+    const alert = emails.find((m) => m.subject.includes("stuck"))!;
+    expect(alert.to).toContain(`${admin.login}@example.com`);
+    expect(alert.text).toContain(`a/b v1.0.0: validating for 45 min (job ${jobId})`);
+    await alertStuckJobs(await testEnv(), now);
+    expect(emails.filter((m) => m.subject.includes("stuck"))).toHaveLength(1);
+    await DB().prepare(`UPDATE publish_jobs SET status = 'error' WHERE id = ?`).bind(jobId).run();
+
+    expect(businessDays(Date.UTC(2026, 9, 16), Date.UTC(2026, 9, 20))).toBe(2); // Fri -> Tue
+    await person({ reviewer: true });
+    const owner = await person();
+    const ns = await namespace(owner);
+    const p = await pkg(ns, ["1.0.0"]);
+    await DB().prepare(`INSERT INTO reports (id, tool_id, reason, details, created_at) VALUES (?, ?, 'policy', 'x', ?)`).bind(ulid(), p.id, now - 50 * 3_600_000).run();
+    expect(await dailyDigest(await testEnv(), now)).toMatchObject({ reports: expect.any(Number) });
+    expect(emails.at(-1)?.text).toContain(`${p.ref}: policy (50 h)`);
+  });
+
+  it("reports server errors to Sentry with the request ID and no request data", async () => {
+    let sent = "";
+    fakeHosts({ "POST https://sentry.example/api/42/envelope/": async (req) => ((sent = await req.text()), { id: "x" }) });
+    const e = { ...(await testEnv()), CONTENT: undefined as unknown as R2Bucket, SENTRY_DSN: "https://pubkey@sentry.example/42" };
+    const res = await call("/tools/dheeraj/whois-lite/readme", { headers: { "cf-ray": "abc-LHR", cookie: "ot_session=secret" } }, e);
+    expect(res.status).toBe(500);
+    const [header, , event] = sent.trim().split("\n").map((l) => JSON.parse(l));
+    expect(header.dsn).toBe("https://pubkey@sentry.example/42");
+    expect(event).toMatchObject({ level: "error", tags: { request_id: "abc-LHR" }, transaction: "GET /v1/tools/dheeraj/whois-lite/readme" });
+    expect(sent).not.toContain("secret");
+  });
+});
