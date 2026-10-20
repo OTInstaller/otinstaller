@@ -4,6 +4,8 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
+  // Cloudflare creates the DNS record for the custom domain on deploy.
+  "routes": [{ "pattern": "api.otinstaller.com", "custom_domain": true }],
   "d1_databases": [
     {
       "binding": "DB",
