@@ -9,7 +9,7 @@ summary: "Download pictures (or videos) along with their captions and other meta
 readme: README.md
 license: MIT
 homepage: https://github.com/instaloader/instaloader
-categories: [username, web-archive, social-media]
+categories: [username, utilities, social-media]
 tags: [instagram, social-media, metadata, username, metadata-extraction, username-search]
 inputs:
   - name: username

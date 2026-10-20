@@ -9,7 +9,7 @@ summary: "Mining URLs from dark corners of Web Archives for bug hunting/fuzzing/
 readme: README.md
 license: MIT
 homepage: https://github.com/devanshbatham/ParamSpider
-categories: [domain-dns, web-archive, documents-metadata]
+categories: [domain-dns, utilities, documents-metadata]
 tags: [google, metadata, url, domain, google-recon, metadata-extraction, domain-recon]
 inputs:
   - name: domain

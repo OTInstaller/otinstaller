@@ -9,7 +9,7 @@ summary: "All In One Web Recon"
 readme: README.md
 license: MIT
 homepage: https://github.com/thewhiteh4t/FinalRecon
-categories: [domain-dns, ip-network, web-archive]
+categories: [domain-dns, ip-network, utilities]
 tags: [domain, subdomain, ip, google, metadata, domain-recon, subdomain-enum, ip-recon, google-recon, metadata-extraction]
 inputs:
   - name: url

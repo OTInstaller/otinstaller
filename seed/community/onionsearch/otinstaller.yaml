@@ -9,7 +9,7 @@ summary: "OnionSearch is a script that scrapes urls on different"
 readme: README.md
 license: GPL-3.0
 homepage: https://github.com/megadose/OnionSearch
-categories: [web-archive]
+categories: [utilities]
 tags: [darkweb, tor, onion, google-recon]
 inputs:
   - name: query

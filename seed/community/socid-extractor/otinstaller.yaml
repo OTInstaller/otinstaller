@@ -9,7 +9,7 @@ summary: "The extraction engine behind Maigret: turn any profile URL into a stru
 readme: README.md
 license: MIT
 homepage: https://github.com/soxoj/socid-extractor
-categories: [web-archive, username, documents-metadata]
+categories: [utilities, username, documents-metadata]
 tags: [metadata, username, social-media, profile, metadata-extraction, username-search]
 inputs:
   - name: url
