@@ -38,12 +38,17 @@ type Error struct {
 	Docs    string `json:"docs,omitempty"`
 	// Problems lists what is wrong with a manifest, for errors about one.
 	Problems []Problem `json:"problems,omitempty"`
+	// RequestID identifies a failed request in the registry's logs (server errors only).
+	RequestID string `json:"request_id,omitempty"`
 }
 
 func (e *Error) Error() string {
 	s := e.Message
 	if e.Hint != "" {
 		s += " (" + e.Hint + ")"
+	}
+	if e.RequestID != "" {
+		s += " If it keeps happening, report it to support@otinstaller.com with request ID " + e.RequestID + "."
 	}
 	return s
 }
@@ -66,6 +71,12 @@ type ToolSummary struct {
 	NeedsKeys     bool     `json:"needs_keys"`
 	ManifestHeld  bool     `json:"manifest_held_by_registry"`
 	Status        string   `json:"status"`
+	// Guides only.
+	Title       string `json:"title,omitempty"`
+	Level       string `json:"level,omitempty"`
+	Format      string `json:"format,omitempty"`
+	Language    string `json:"language,omitempty"`
+	NeedsUpdate bool   `json:"needs_update,omitempty"`
 }
 
 type SearchResult struct {
@@ -132,7 +143,11 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 			e.Error.Status = resp.StatusCode
 			return e.Error
 		}
-		return &Error{Status: resp.StatusCode, Code: "http_error", Message: resp.Status}
+		msg := "the registry answered " + resp.Status
+		if ray := resp.Header.Get("Cf-Ray"); ray != "" && resp.StatusCode >= 500 {
+			return &Error{Status: resp.StatusCode, Code: "http_error", Message: msg + ".", RequestID: ray}
+		}
+		return &Error{Status: resp.StatusCode, Code: "http_error", Message: msg}
 	}
 	if out == nil {
 		return nil
@@ -142,8 +157,10 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 
 type SearchParams struct {
 	Query, Input, Output, Category, Runtime, Kind string
-	NoKeys                                        bool
-	Limit                                         int
+	// Guides only.
+	Level, Format, Lang string
+	NoKeys              bool
+	Limit               int
 }
 
 func (c *Client) Search(ctx context.Context, p SearchParams) (*SearchResult, error) {

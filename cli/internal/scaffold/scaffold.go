@@ -22,8 +22,21 @@ type Params struct {
 	Category  string
 	Input     string // first input type, tools only
 	Package   string // pipx only
-	Repo      string // e.g. github.com/dheeraj/holehe-lite
-	Host      string // github | gitlab
+	// PythonProject is set when the repo already has pyproject.toml or setup.py; the example Dockerfile
+	// then installs it, and otherwise ships a starter script that builds and runs as is.
+	PythonProject bool
+	Repo          string // e.g. github.com/dheeraj/holehe-lite
+	Host          string // github | gitlab
+}
+
+// HasPythonProject reports whether pip can install the repository.
+func HasPythonProject(dir string) bool {
+	for _, f := range []string{"pyproject.toml", "setup.py"} {
+		if _, err := os.Stat(filepath.Join(dir, f)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // Detect guesses the package kind from files already in the repo.
@@ -79,11 +92,19 @@ var (
 	gitlabDockerTmpl string
 	//go:embed templates/gitlab-pipx.yml
 	gitlabPipxTmpl string
+	//go:embed templates/github-guide.yml
+	githubGuideTmpl string
+	//go:embed templates/gitlab-guide.yml
+	gitlabGuideTmpl string
 )
 
-// ReleaseTemplate is the release workflow for a host ("github" or "gitlab") and runtime ("docker" or "pipx").
+// ReleaseTemplate is the release workflow for a host ("github" or "gitlab") and kind ("docker", "pipx" or "guide").
 func ReleaseTemplate(host, kind string) string {
 	switch {
+	case host == "gitlab" && kind == "guide":
+		return gitlabGuideTmpl
+	case kind == "guide":
+		return githubGuideTmpl
 	case host == "gitlab" && kind == "pipx":
 		return gitlabPipxTmpl
 	case host == "gitlab":
@@ -96,26 +117,29 @@ func ReleaseTemplate(host, kind string) string {
 
 // Files returns path -> content for everything `ot init` creates.
 func Files(p Params) (map[string]string, error) {
-	files := map[string]string{"otinstaller.yaml": manifestTmpl}
+	// The manifest points tools at README.md, so it is created too; existing files are never overwritten
+	// without --force.
+	files := map[string]string{"otinstaller.yaml": manifestTmpl, "README.md": toolReadmeTmpl}
 	switch p.Kind {
 	case "docker":
-		files["Dockerfile.otinstaller-example"] = dockerfileTmpl
-		if p.Host == "gitlab" {
-			files[".gitlab-ci.yml"] = gitlabDockerTmpl
+		if p.PythonProject {
+			files["Dockerfile.otinstaller-example"] = dockerfilePipTmpl
 		} else {
-			files[".github/workflows/otinstaller-release.yml"] = githubDockerTmpl
+			files["Dockerfile.otinstaller-example"] = dockerfileStarterTmpl
+			files["tool.py.otinstaller-example"] = starterScriptTmpl
 		}
 	case "pipx":
-		if p.Host == "gitlab" {
-			files[".gitlab-ci.yml"] = gitlabPipxTmpl
-		} else {
-			files[".github/workflows/otinstaller-release.yml"] = githubPipxTmpl
-		}
 	case "guide":
+		files["README.md"] = guideReadmeTmpl
 		files["docs/index.md"] = guideIndexTmpl
 		files["docs/01-scope-and-legal.md"] = guideLegalTmpl
 	default:
 		return nil, fmt.Errorf("unknown kind %q", p.Kind)
+	}
+	if p.Host == "gitlab" {
+		files[".gitlab-ci.yml"] = ReleaseTemplate("gitlab", p.Kind)
+	} else {
+		files[".github/workflows/otinstaller-release.yml"] = ReleaseTemplate("github", p.Kind)
 	}
 	out := map[string]string{}
 	for path, src := range files {
@@ -198,7 +222,45 @@ test:
 <<- end >>
 `
 
-const dockerfileTmpl = `# Example only: keep your own Dockerfile if you have one.
+// The registry runs the image with --entrypoint set to the first word of runtime.command (the package
+// name), so both Dockerfiles put an executable of that name on the PATH.
+const dockerfileStarterTmpl = `# Example only: replace tool.py with your tool, or this file with your own Dockerfile.
+FROM python:3.12-slim
+RUN useradd --uid 10001 --create-home app
+COPY tool.py /usr/local/bin/<< .Name >>
+RUN chmod 755 /usr/local/bin/<< .Name >>
+USER app
+ENTRYPOINT ["<< .Name >>"]
+`
+
+// starterScriptTmpl answers the scaffolded command ("<name> --json <target>") with an empty result.
+const starterScriptTmpl = `#!/usr/bin/env python3
+"""Starter for << .Name >>: replace the lookup with your tool's logic.
+
+Prints {"entities": [...]} so ot can turn the output into its result envelope.
+"""
+import argparse
+import json
+
+
+def lookup(target):
+    # Return entities such as {"type": "account", "value": "...", "source": "..."}.
+    return []
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="<< .Name >>")
+    parser.add_argument("--json", action="store_true", help="print JSON")
+    parser.add_argument("target")
+    args = parser.parse_args()
+    print(json.dumps({"entities": lookup(args.target)}))
+
+
+if __name__ == "__main__":
+    main()
+`
+
+const dockerfilePipTmpl = `# Example only: keep your own Dockerfile if you have one.
 FROM python:3.12-slim
 RUN useradd --uid 10001 --create-home app
 WORKDIR /app
@@ -206,6 +268,33 @@ COPY . .
 RUN pip install --no-cache-dir .
 USER app
 ENTRYPOINT ["<< .Name >>"]
+`
+
+const toolReadmeTmpl = `# << .Name >>
+
+<< .Summary >>
+
+## Install and run
+
+    ot install << .Namespace >>/<< .Name >>
+    ot run << .Namespace >>/<< .Name >> --target <value>
+
+## What it does and what data it touches
+
+Describe what the tool looks up, which sites or APIs it contacts, and what personal data it returns.
+A reviewer reads this before your first release goes public.
+`
+
+const guideReadmeTmpl = `# << .Summary >>
+
+The guide << .Namespace >>/<< .Name >> on the OTInstaller Registry. Its pages are in docs/, in the order
+listed under content.nav in otinstaller.yaml.
+
+Read it in a terminal with:
+
+    ot guide read << .Namespace >>/<< .Name >>
+
+To release a new version, run the otinstaller release workflow with the version number; it tags vX.Y.Z.
 `
 
 const guideIndexTmpl = `# << .Summary >>

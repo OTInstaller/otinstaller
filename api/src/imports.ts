@@ -713,12 +713,12 @@ export async function editImport(env: Env, row: ImportRow, body: { manifest?: Re
 
 // ---------- finishing ----------
 
-/** The files a pull or merge request adds: the manifest and, for tools, the release workflow. */
+/** The files a pull or merge request adds: the manifest and the release workflow. */
 export function changeFiles(provider: Provider, draft: Record<string, unknown>, hasGitlabCi: boolean, workflowExists = false): { files: (FileChange & { exists?: boolean })[]; notes: string[] } {
   const files: (FileChange & { exists?: boolean })[] = [{ path: MANIFEST_FILE, content: manifestYaml(draft) }];
   const notes: string[] = [];
-  const kind = (draft.runtime as { kind?: string } | undefined)?.kind;
-  if (draft.kind !== "guide" && (kind === "docker" || kind === "pipx")) {
+  const kind = draft.kind === "guide" ? "guide" : (draft.runtime as { kind?: string } | undefined)?.kind;
+  if (kind === "docker" || kind === "pipx" || kind === "guide") {
     const template = RELEASE_TEMPLATES[`${provider}-${kind}`]!;
     if (provider === "github") {
       if (!workflowExists) files.push({ path: ".github/workflows/otinstaller-release.yml", content: template });
@@ -737,15 +737,16 @@ export function changeFiles(provider: Provider, draft: Record<string, unknown>, 
 function changeBody(env: Env, provider: Provider, draft: Record<string, unknown>, login: string, notes: string[]): string {
   const ref = `${draft.namespace}/${draft.name}`;
   const guide = draft.kind === "guide";
-  const steps = guide
-    ? [`Merge this ${provider === "github" ? "pull" : "merge"} request.`, `Push a tag \`v${draft.version}\` (or the next version, matching \`version:\` in otinstaller.yaml).`]
-    : provider === "github"
-      ? ["Merge this pull request.", "Run the **otinstaller release** workflow from the Actions tab with the version to release. It builds the release, signs or pins it, updates `otinstaller.yaml` and pushes the tag."]
-      : ["Add a project access token with `write_repository` as the CI/CD variable `RELEASE_TOKEN`.", "Merge this merge request.",
-        "Run a pipeline manually with the variable `VERSION` set to the version to release. It builds the release, signs or pins it, updates `otinstaller.yaml` and pushes the tag."];
+  // A guide's workflow only sets the version and tags; a tool's also builds and signs or pins the release.
+  const does = guide ? "It updates `version:` in `otinstaller.yaml` and pushes the tag." : "It builds the release, signs or pins it, updates `otinstaller.yaml` and pushes the tag.";
+  const steps = provider === "github"
+    ? ["Merge this pull request.", `Run the **otinstaller release** workflow from the Actions tab with the version to release. ${does}`]
+    : ["Add a project access token with `write_repository` as the CI/CD variable `RELEASE_TOKEN`.", "Merge this merge request.",
+      `Run a pipeline manually with the variable \`VERSION\` set to the version to release. ${does}`];
+  if (guide) steps.push(`Or push a tag such as \`v${draft.version}\` yourself, matching \`version:\` in otinstaller.yaml.`);
   steps.push("The tag publishes that version to the registry. A new publisher's first release is checked by a reviewer before it goes public.");
   return [
-    `This adds \`otinstaller.yaml\`${guide ? "" : " and a release workflow"} so **${ref}** can be published on the [OTInstaller Registry](${env.SITE_URL}).`,
+    `This adds \`otinstaller.yaml\` and a release workflow so **${ref}** can be published on the [OTInstaller Registry](${env.SITE_URL}).`,
     "",
     "**To publish**",
     "",

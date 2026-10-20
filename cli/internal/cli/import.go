@@ -58,7 +58,7 @@ func (a *App) importCmd() *cobra.Command {
 				}
 			}
 			if err != nil {
-				return a.importError(err)
+				return a.requestError(err)
 			}
 			return a.runWizard(ctx, imp, wizardOptions{file: file, save: save, wrapper: wrapper, registry: registry, draftOnly: draftOnly, yes: yes, asJSON: asJSON})
 		},
@@ -108,7 +108,7 @@ func (a *App) runWizard(ctx context.Context, imp *api.Import, o wizardOptions) e
 			return err
 		}
 		if imp, err = a.API.EditImport(ctx, imp.ID, map[string]any{"yaml": string(text)}); err != nil {
-			return a.importError(err)
+			return a.requestError(err)
 		}
 	}
 	if slices.Contains(imp.Missing, "kind") {
@@ -120,7 +120,7 @@ func (a *App) runWizard(ctx context.Context, imp *api.Import, o wizardOptions) e
 			return err
 		}
 		if imp, err = a.API.EditImport(ctx, imp.ID, map[string]any{"kind": strings.TrimSpace(kind)}); err != nil {
-			return a.importError(err)
+			return a.requestError(err)
 		}
 	}
 	if len(imp.Missing) > 0 || len(imp.Suggested) > 0 {
@@ -134,7 +134,7 @@ func (a *App) runWizard(ctx context.Context, imp *api.Import, o wizardOptions) e
 			}
 			if len(change) > 0 {
 				if imp, err = a.API.EditImport(ctx, imp.ID, map[string]any{"manifest": change}); err != nil {
-					return a.importError(err)
+					return a.requestError(err)
 				}
 			}
 		}
@@ -177,7 +177,7 @@ func (a *App) runWizard(ctx context.Context, imp *api.Import, o wizardOptions) e
 		}
 	}
 	if imp, err = a.API.FinishImport(ctx, imp.ID, mode); err != nil {
-		return a.importError(err)
+		return a.requestError(err)
 	}
 	if o.asJSON {
 		return writeJSON(a.Out, imp)
@@ -356,7 +356,7 @@ func (a *App) finishWrapper(ctx context.Context, imp *api.Import, o wizardOption
 		return err
 	}
 	if imp, err = a.API.FinishWrapper(ctx, imp.ID, repo); err != nil {
-		return a.importError(err)
+		return a.requestError(err)
 	}
 	if o.asJSON {
 		return writeJSON(a.Out, imp)
@@ -398,8 +398,8 @@ func printProblems(w io.Writer, ps []api.Problem) {
 	}
 }
 
-// importError prints a draft's problems when the registry refuses because of them.
-func (a *App) importError(err error) error {
+// requestError turns registry refusals (4xx) into usage errors, printing a draft's problems when there are any.
+func (a *App) requestError(err error) error {
 	var e *api.Error
 	if errors.As(err, &e) && len(e.Problems) > 0 {
 		printProblems(a.Out, e.Problems)
@@ -414,7 +414,7 @@ func (a *App) importError(err error) error {
 func (a *App) bulkImport(ctx context.Context, repos []string, community, asJSON bool) error {
 	b, err := a.API.StartImports(ctx, repos, community)
 	if err != nil {
-		return a.importError(err)
+		return a.requestError(err)
 	}
 	if asJSON {
 		return writeJSON(a.Out, b)
@@ -430,7 +430,7 @@ func (a *App) bulkImport(ctx context.Context, repos []string, community, asJSON 
 func (a *App) listImports(ctx context.Context, asJSON bool) error {
 	imps, err := a.API.Imports(ctx)
 	if err != nil {
-		return a.importError(err)
+		return a.requestError(err)
 	}
 	if asJSON {
 		return writeJSON(a.Out, imps)

@@ -7,6 +7,7 @@ import * as github from "./hosts/github";
 import { githubRepo, gitlabRepo, type CommitState } from "./hosts/repo";
 import { audit } from "./routes/auth";
 import { ownerEmails, sendEmail, templates } from "./notify";
+import { updateLinkHealth } from "./guides";
 
 export const SCAN_TOKEN_TTL = 60 * 60 * 1000;
 const PARAMETER_TYPES = new Set(["string", "integer", "boolean", "enum"]);
@@ -227,7 +228,8 @@ export async function publishVersion(env: Env, versionId: string) {
   // Search metadata follows the latest version only.
   if (isLatest) {
     stmts.push(
-      db.prepare(`UPDATE tools SET summary = ?, categories = ?, tags = ? WHERE id = ?`).bind(m.summary, JSON.stringify(m.categories), JSON.stringify(m.tags ?? []), v.tool_id),
+      db.prepare(`UPDATE tools SET summary = ?, categories = ?, tags = ?, readme_text = COALESCE((SELECT search_text FROM versions WHERE id = ?), readme_text) WHERE id = ?`)
+        .bind(m.summary, JSON.stringify(m.categories), JSON.stringify(m.tags ?? []), versionId, v.tool_id),
       db.prepare(`DELETE FROM tool_io WHERE tool_id = ?`).bind(v.tool_id),
       db.prepare(`DELETE FROM tool_secrets WHERE tool_id = ?`).bind(v.tool_id),
     );
@@ -246,6 +248,7 @@ export async function publishVersion(env: Env, versionId: string) {
     }
   }
   await db.batch(stmts);
+  if (v.kind === "guide" && isLatest) await updateLinkHealth(env, v.tool_id);
   const scan = await db.prepare(`SELECT scan_status FROM versions WHERE id = ?`).bind(versionId).first<{ scan_status: string }>();
   await commitStatus(env, v, "success", `Published ${refOf(v)}@${v.version}`);
   await sendEmail(env, { to: await ownerEmails(env, v.namespace_id), kind: "published", key: `published:${versionId}`, ...templates.published(env, refOf(v), v.version, scan?.scan_status === "warn") });

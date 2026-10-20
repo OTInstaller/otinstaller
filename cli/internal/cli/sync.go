@@ -32,7 +32,7 @@ func (a *App) syncCmd() *cobra.Command {
 			if showLog {
 				log, err := a.API.SyncLog(ctx, ref.NS, ref.Name)
 				if err != nil {
-					return a.importError(err)
+					return a.requestError(err)
 				}
 				if asJSON {
 					return writeJSON(a.Out, log)
@@ -60,7 +60,7 @@ func (a *App) syncCmd() *cobra.Command {
 			}
 			res, err := a.API.Sync(ctx, ref.NS, ref.Name)
 			if err != nil {
-				return a.importError(err)
+				return a.requestError(err)
 			}
 			if asJSON {
 				return writeJSON(a.Out, res)

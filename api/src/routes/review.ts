@@ -101,7 +101,23 @@ export function reviewRoutes(app: App) {
         waiting_since: n.created_at, previous_notes: n.review_notes, versions: items,
       });
     }
-    return c.json({ queue });
+    // Releases from approved publishers held for a content review (a guide with possible personal data).
+    const held = await db.prepare(
+      `SELECT v.id, n.name AS namespace, t.name, v.version, t.repo_url, t.summary, v.manifest_json, v.scan_status, v.created_at
+       FROM versions v JOIN tools t ON t.id = v.tool_id JOIN namespaces n ON n.id = t.namespace_id
+       WHERE v.status = 'awaiting_review' AND n.status = 'active' ORDER BY v.created_at`,
+    ).all<any>();
+    const content_review = [];
+    for (const v of held.results) {
+      const scans = await db.prepare(`SELECT kind, result, summary_json FROM scans WHERE version_id = ? ORDER BY ran_at`).bind(v.id).all<any>();
+      const m = JSON.parse(v.manifest_json);
+      content_review.push({
+        version_id: v.id, ref: `${v.namespace}/${v.name}`, version: v.version, repo_url: v.repo_url, summary: v.summary,
+        license: m.license, kind: m.kind ?? "tool", scan_status: v.scan_status, waiting_since: v.created_at,
+        scans: scans.results.map((s) => ({ kind: s.kind, result: s.result, summary: JSON.parse(s.summary_json ?? "null") })),
+      });
+    }
+    return c.json({ queue, content_review });
   });
 
   app.post("/admin/namespaces/:ns/approve", async (c) => {
@@ -158,6 +174,44 @@ export function reviewRoutes(app: App) {
       if (v) await commitStatus(c.env, v, "failure", "namespace_rejected: see the email from the registry");
     }
     await sendEmail(c.env, { to: await ownerEmails(c.env, ns.id), kind: "namespace_rejected", key: `ns_rejected:${ns.id}`, ...templates.namespaceRejected(c.env, ns.name, reason) });
+    return c.json({ status: "rejected" });
+  });
+
+  // ---------- single releases (content review) ----------
+
+  const heldVersion = async (c: Context<AppEnv>) => {
+    const v = await loadVersion(c.env, "v.id = ?", c.req.param("id"));
+    if (!v) apiError(404, "version_not_found", "no such version");
+    if (v.status !== "awaiting_review") apiError(409, "not_pending", `this version is ${v.status}`);
+    // A new publisher's releases are decided with the namespace, so the whole first release is seen together.
+    if (v.namespace_status !== "active") apiError(409, "namespace_in_review", `${v.namespace} is ${v.namespace_status}; decide on the namespace instead`);
+    return v;
+  };
+
+  app.post("/admin/versions/:id/approve", async (c) => {
+    const reviewer = requireReviewer(c);
+    const v = await heldVersion(c);
+    const note = await notes(c, "notes", false);
+    await audit(c.env.DB, reviewer.id, "user", "version.approve", "version", v.id, { notes: note }).run();
+    await publishVersion(c.env, v.id);
+    return c.json({ status: "published" });
+  });
+
+  app.post("/admin/versions/:id/reject", async (c) => {
+    const reviewer = requireReviewer(c);
+    const v = await heldVersion(c);
+    const reason = await notes(c, "reason", true);
+    const now = Date.now();
+    await c.env.DB.batch([
+      c.env.DB.prepare(`UPDATE versions SET status = 'rejected', rejected_reason = 'review_rejected' WHERE id = ?`).bind(v.id),
+      c.env.DB.prepare(`UPDATE publish_jobs SET status = 'rejected', error_code = 'review_rejected', error_detail = ?, updated_at = ? WHERE version_id = ?`).bind(reason, now, v.id),
+      audit(c.env.DB, reviewer.id, "user", "version.reject", "version", v.id, { reason }),
+    ]);
+    await commitStatus(c.env, v, "failure", "review_rejected: see the email from the registry");
+    await sendEmail(c.env, {
+      to: await ownerEmails(c.env, v.namespace_id), kind: "rejected", key: `review_rejected:${v.id}`,
+      ...templates.rejected(c.env, `${v.namespace}/${v.name}`, v.version, "review_rejected", reason),
+    });
     return c.json({ status: "rejected" });
   });
 

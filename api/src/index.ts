@@ -2,7 +2,8 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import schema from "../../spec/schema/v1.json";
-import { rank, type RankInput } from "./ranking";
+import { rank } from "./ranking";
+import { cached, findTool, findVersion, LISTED, rankInput, summary, SUMMARY_COLUMNS, VISIBLE, type SummaryRow } from "./catalog";
 import type { AppEnv, Env, PublishMessage } from "./env";
 import { apiError } from "./lib/errors";
 import { authRoutes } from "./routes/auth";
@@ -10,6 +11,9 @@ import { webhookRoutes } from "./routes/webhooks";
 import { reviewRoutes } from "./routes/review";
 import { sourceRoutes } from "./routes/sources";
 import { importRoutes } from "./routes/imports";
+import { guideRoutes } from "./routes/guides";
+import { queueNightlyLinkChecks } from "./guides";
+import { ulid } from "./lib/crypto";
 import { pollDueSources } from "./sync";
 import { expireStaleScans } from "./scans";
 import { handleBatch } from "./publish";
@@ -18,107 +22,31 @@ export type { Env } from "./env";
 
 const app = new Hono<AppEnv>().basePath("/v1");
 
-// Public reads are open to any origin; credentialed calls only from the website.
+// Public reads are open to any origin; credentialed calls only from the website. Browsers refuse
+// `*` together with credentials, so other origins get `*` without them.
+const METHODS = ["GET", "POST", "PATCH", "PUT", "DELETE"];
+const publicCors = cors({ origin: "*", allowMethods: METHODS });
 app.use("*", async (c, next) => {
-  const site = c.env.SITE_URL;
-  return cors({ origin: (o) => (o === site ? o : "*"), credentials: true, allowMethods: ["GET", "POST", "PATCH", "PUT", "DELETE"] })(c, next);
+  if (c.req.header("origin") !== c.env.SITE_URL) return publicCors(c, next);
+  return cors({ origin: c.env.SITE_URL, credentials: true, allowMethods: METHODS })(c, next);
 });
 authRoutes(app);
 webhookRoutes(app);
 reviewRoutes(app);
 sourceRoutes(app);
 importRoutes(app);
+// Registered before the /tools/:ns/:name/:version routes below, which would otherwise take /docs, /guides and /readme.
+guideRoutes(app);
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
-  console.error(err);
-  return c.json({ error: { code: "internal_error", message: "Something went wrong on our side." } }, 500);
+  // The request ID ties a user's report to the log line; behind Cloudflare it is the cf-ray.
+  const requestId = c.req.header("cf-ray") ?? ulid();
+  console.error(`request ${requestId}:`, err);
+  return c.json({ error: { code: "internal_error", message: "Something went wrong on our side.", request_id: requestId } }, 500);
 });
 
 app.notFound((c) => c.json({ error: { code: "not_found", message: "No such endpoint." } }, 404));
-
-function cached(c: { header: (k: string, v: string) => void }, seconds: number) {
-  c.header("Cache-Control", `public, max-age=${seconds}`);
-}
-
-// ---------- shared queries ----------
-
-// A tool is visible when its namespace is active, it is not removed and it has a published version.
-const VISIBLE = `
-  t.status != 'removed' AND n.status = 'active' AND t.latest_version_id IS NOT NULL`;
-
-const LISTED = `NOT EXISTS (SELECT 1 FROM sources s WHERE s.tool_id = t.id AND s.sync_status = 'unavailable')`;
-
-const SUMMARY_COLUMNS = `
-  t.id, t.rowid AS rowid, n.name AS namespace, t.name, t.kind, t.summary, t.categories, t.status,
-  t.stars_count, t.installs_30d, t.health_status, t.community_packaged, n.verified,
-  v.version AS latest_version, v.runtime_kind, v.signer_identity,
-  (SELECT s.manifest_mode FROM sources s WHERE s.tool_id = t.id) AS manifest_mode,
-  (SELECT s.sync_status FROM sources s WHERE s.tool_id = t.id) AS source_status,
-  (SELECT group_concat(type) FROM tool_io WHERE tool_id = t.id AND direction = 'in') AS inputs,
-  (SELECT group_concat(type) FROM tool_io WHERE tool_id = t.id AND direction = 'out') AS outputs,
-  EXISTS (SELECT 1 FROM tool_secrets WHERE tool_id = t.id AND required = 1) AS needs_keys`;
-
-type SummaryRow = {
-  id: string;
-  rowid: number;
-  namespace: string;
-  name: string;
-  kind: string;
-  summary: string;
-  categories: string;
-  status: string;
-  stars_count: number;
-  installs_30d: number;
-  health_status: string;
-  community_packaged: number;
-  verified: number;
-  latest_version: string;
-  runtime_kind: string | null;
-  signer_identity: string | null;
-  manifest_mode: string | null;
-  source_status: string | null;
-  inputs: string | null;
-  outputs: string | null;
-  needs_keys: number;
-};
-
-function summary(r: SummaryRow) {
-  return {
-    namespace: r.namespace,
-    name: r.name,
-    kind: r.kind,
-    summary: r.summary,
-    latest_version: r.latest_version,
-    categories: JSON.parse(r.categories) as string[],
-    inputs: r.inputs ? r.inputs.split(",").sort() : [],
-    outputs: r.outputs ? r.outputs.split(",").sort() : [],
-    runtime: r.runtime_kind,
-    stars: r.stars_count,
-    installs_30d: r.installs_30d,
-    health: r.health_status,
-    verified: r.verified === 1,
-    // Registry-held manifests never get the Signed badge.
-    signed: !!r.signer_identity && r.manifest_mode !== "registry",
-    needs_keys: r.needs_keys === 1,
-    manifest_held_by_registry: r.manifest_mode === "registry",
-    community_packaged: r.community_packaged === 1,
-    source_unavailable: r.source_status === "unavailable",
-    status: r.status,
-  };
-}
-
-function rankInput(r: SummaryRow, bm25?: number): RankInput {
-  return {
-    bm25,
-    installs30d: r.installs_30d,
-    stars: r.stars_count,
-    healthy: r.health_status === "healthy",
-    broken: r.health_status === "broken",
-    verified: r.verified === 1,
-    manifestHeld: r.manifest_mode === "registry",
-  };
-}
 
 // Turns free text into a safe FTS5 query: each word becomes a quoted prefix term.
 export function ftsQuery(q: string): string | null {
@@ -157,6 +85,11 @@ app.get("/tools", async (c) => {
   const category = oneOf(c.req.query("category"), CATEGORIES, "category");
   const runtime = oneOf(c.req.query("runtime"), ["docker", "pipx"], "runtime");
   const kind = oneOf(c.req.query("kind"), ["tool", "guide"], "kind");
+  // Guide filters; they match nothing but guides.
+  const level = oneOf(c.req.query("level"), ["beginner", "intermediate", "advanced"], "level");
+  const format = oneOf(c.req.query("format"), ["guide", "reference"], "format");
+  const lang = c.req.query("lang")?.trim() || undefined;
+  if (lang && !/^[a-z]{2}(-[A-Z]{2})?$/.test(lang)) apiError(400, "invalid_parameter", "lang must be a language code such as en or pt-BR");
   const sort = oneOf(c.req.query("sort"), ["relevance", "installs", "stars", "updated"], "sort") ?? "relevance";
   const noKeys = c.req.query("no_keys") === "1" || c.req.query("no_keys") === "true";
   const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 25) || 25, 1), 100);
@@ -184,6 +117,15 @@ app.get("/tools", async (c) => {
   if (kind) {
     where.push(`t.kind = ?`);
     params.push(kind);
+  }
+  for (const [field, value] of [["level", level], ["format", format]] as const) {
+    if (!value) continue;
+    where.push(`t.kind = 'guide' AND json_extract(v.manifest_json, '$.${field}') = ?`);
+    params.push(value);
+  }
+  if (lang) {
+    where.push(`t.kind = 'guide' AND COALESCE(json_extract(v.manifest_json, '$.language'), 'en') = ?`);
+    params.push(lang);
   }
   if (noKeys) where.push(`NOT EXISTS (SELECT 1 FROM tool_secrets WHERE tool_id = t.id AND required = 1)`);
 
@@ -230,36 +172,9 @@ app.get("/guides", (c) => {
   const url = new URL(c.req.url);
   url.pathname = "/v1/tools";
   url.searchParams.set("kind", "guide");
-  return app.fetch(new Request(url, c.req.raw), c.env);
+  // Pass the execution context on: signed-in requests use it (waitUntil) while authenticating.
+  return app.fetch(new Request(url, c.req.raw), c.env, c.executionCtx);
 });
-
-type ToolRow = SummaryRow & {
-  repo_url: string | null;
-  deprecated_message: string | null;
-  manifest_json: string;
-  namespace_status: string;
-};
-
-async function findTool(db: D1Database, ns: string, name: string): Promise<{ row: ToolRow | null; movedTo?: string }> {
-  const sql = `SELECT ${SUMMARY_COLUMNS}, t.repo_url, t.deprecated_message, v.manifest_json, n.status AS namespace_status
-    FROM tools t JOIN namespaces n ON n.id = t.namespace_id JOIN versions v ON v.id = t.latest_version_id
-    WHERE n.name = ? AND t.name = ? AND ${VISIBLE}`;
-  const row = await db.prepare(sql).bind(ns, name).first<ToolRow>();
-  if (row) return { row };
-  // Transferred packages keep working at their old address.
-  const alias = await db
-    .prepare(
-      `SELECT n.name AS ns, t.name AS name FROM aliases a JOIN tools t ON t.id = a.tool_id
-       JOIN namespaces n ON n.id = t.namespace_id WHERE a.old_namespace = ? AND a.old_name = ?`,
-    )
-    .bind(ns, name)
-    .first<{ ns: string; name: string }>();
-  if (alias) {
-    const moved = await findTool(db, alias.ns, alias.name);
-    return { row: moved.row, movedTo: `${alias.ns}/${alias.name}` };
-  }
-  return { row: null };
-}
 
 app.get("/tools/:ns/:name", async (c) => {
   const { ns, name } = c.req.param();
@@ -291,31 +206,6 @@ app.get("/tools/:ns/:name/versions", async (c) => {
   cached(c, 60);
   return c.json({ versions: versions.results.map((v: any) => ({ ...v, signed: v.signed === 1 && row.manifest_mode !== "registry" })) });
 });
-
-type VersionRow = {
-  version: string;
-  status: string;
-  manifest_json: string;
-  signer_identity: string | null;
-  signer_issuer: string | null;
-  scan_status: string;
-  removed_reason: string | null;
-  published_at: number | null;
-};
-
-async function findVersion(db: D1Database, toolId: string, version: string): Promise<VersionRow | null> {
-  const cols = `version, status, manifest_json, signer_identity, signer_issuer, scan_status, removed_reason, published_at`;
-  if (version === "latest") {
-    return db
-      .prepare(`SELECT ${cols} FROM versions WHERE id = (SELECT latest_version_id FROM tools WHERE id = ?)`)
-      .bind(toolId)
-      .first<VersionRow>();
-  }
-  return db
-    .prepare(`SELECT ${cols} FROM versions WHERE tool_id = ? AND version = ? AND status IN ('published', 'yanked', 'removed')`)
-    .bind(toolId, version)
-    .first<VersionRow>();
-}
 
 app.get("/tools/:ns/:name/:version/manifest", async (c) => {
   const { ns, name, version } = c.req.param();
@@ -437,8 +327,9 @@ export default {
     // Every 15 minutes: close scans that never reported back, and poll sources that are due.
     await expireStaleScans(env);
     await pollDueSources(env);
-    // Nightly: recompute 30-day install totals that ranking uses.
+    // Nightly: recompute 30-day install totals that ranking uses, and re-check guides' links.
     if (event.cron === "17 3 * * *") {
+      await queueNightlyLinkChecks(env);
       await env.DB.prepare(
         `UPDATE tools SET installs_30d = COALESCE((SELECT SUM(count) FROM install_counts
            WHERE tool_id = tools.id AND day >= date('now', '-30 days')), 0)`,

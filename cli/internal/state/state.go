@@ -95,11 +95,15 @@ func (s *State) Sorted() []*Installed {
 // Config is ~/.ot/config.json. Environment variables override it.
 type Config struct {
 	APIURL    string `json:"api_url,omitempty"`
+	SiteURL   string `json:"site_url,omitempty"`
 	Telemetry *bool  `json:"telemetry,omitempty"`
 	Format    string `json:"format,omitempty"`
 }
 
-const DefaultAPIURL = "https://api.otinstaller.com/v1"
+const (
+	DefaultAPIURL  = "https://api.otinstaller.com/v1"
+	DefaultSiteURL = "https://otinstaller.com"
+)
 
 func LoadConfig() *Config {
 	c := &Config{}
@@ -111,6 +115,12 @@ func LoadConfig() *Config {
 	}
 	if c.APIURL == "" {
 		c.APIURL = DefaultAPIURL
+	}
+	if v := os.Getenv("OT_SITE_URL"); v != "" {
+		c.SiteURL = v
+	}
+	if c.SiteURL == "" {
+		c.SiteURL = DefaultSiteURL
 	}
 	if os.Getenv("OT_NO_TELEMETRY") != "" {
 		f := false

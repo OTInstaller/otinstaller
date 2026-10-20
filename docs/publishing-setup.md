@@ -83,6 +83,7 @@ docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/request.js
 cd api
 npx wrangler d1 create otinstaller            # put the ID in wrangler.jsonc
 npx wrangler queues create otinstaller-publish
+npx wrangler r2 bucket create otinstaller-content  # rendered READMEs, guide pages and tool docs
 openssl rand -base64 32                        # → TOKEN_ENC_KEY
 for s in GITHUB_APP_ID GITHUB_APP_PRIVATE_KEY GITHUB_WEBHOOK_SECRET GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET \
          GITLAB_CLIENT_ID GITLAB_CLIENT_SECRET TOKEN_ENC_KEY; do npx wrangler secret put $s; done
@@ -92,6 +93,10 @@ npx wrangler deploy
 
 For local development, copy `api/.dev.vars.example` to `api/.dev.vars` and fill it in. Use a tunnel
 (for example `cloudflared tunnel --url http://127.0.0.1:8787`) as the staging app's webhook URL.
+
+Optional: to check guide links with Cloudflare URL Scanner, create an API token with *URL Scanner: Edit* and set
+`CF_ACCOUNT_ID` and `CF_URLSCAN_TOKEN` (`wrangler secret put`). Without them the link check still finds dead links, but
+nothing is marked malicious.
 
 ## 6. Import wizard
 
@@ -127,3 +132,27 @@ right, then merge one pull request and one merge request, run their release work
 5. Make yourself a reviewer (`UPDATE users SET is_reviewer = 1 WHERE login = '...'` in D1), then
    `POST /v1/admin/namespaces/<ns>/approve` with your API token: the release is published, the commit status turns green,
    and `ot install <ns>/<name>` works.
+
+## 8. Guides and tool docs
+
+A guide is a repository with `kind: guide` in `otinstaller.yaml` (`ot init --guide` scaffolds one, with a release workflow
+that sets the version and pushes the tag). Tagging it publishes it the same way as a tool, but without the scanner:
+
+1. Validation renders every page in `content.nav` (and a tool's `docs.nav` and README) to sanitized HTML in R2. Raw
+   `<script>`, `<iframe>`, forms and styles (`content_raw_html`), pages over 200 KB (`content_page_too_large`), images
+   that are not PNG, JPEG, WebP or SVG files in the repository (`content_image_type`), images over 2 MB
+   (`content_image_too_large`) or 50 MB in all (`content_images_too_large`), and `related_tools` that are not published
+   tools (`guide_related_tool_unknown`) reject the release. `ot validate` runs the same checks locally. Images are copied
+   to R2 with EXIF/XMP/text metadata removed (SVGs sanitized) and served from `/v1/assets/<sha256>.<ext>`. READMEs keep
+   allow-listed layout HTML (alignment, `<details>`, badges' links); external images show their alt text.
+2. The commit status says *"Valid; content checks running"* while the queue fetches every external link once (dead
+   links and links to pages outside the guide are warnings; URL Scanner's malicious verdict rejects) and looks for
+   personal data in examples.
+3. Possible personal data holds the release for review even from an approved publisher: it shows under
+   `content_review` in `GET /v1/admin/review-queue` with the lines marked, and `POST /v1/admin/versions/<id>/approve`
+   or `/reject {"reason"}` decides it.
+4. Every night the latest version's links are checked again; more than 20% dead marks the guide *Needs update*.
+
+Read them with `ot guide search|read|open|get|tools` and `ot docs <ns>/<tool>`, or `GET /v1/guides/<ns>/<name>`,
+`/v1/guides/<ns>/<name>/<version>/pages/<path>?format=html|md`, `/v1/tools/<ns>/<name>/docs[/<path>]`,
+`/v1/tools/<ns>/<name>/guides` and `/v1/tools/<ns>/<name>/readme`.
