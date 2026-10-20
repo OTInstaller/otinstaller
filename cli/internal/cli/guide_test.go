@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -134,6 +135,21 @@ func TestGuideSearchAndRead(t *testing.T) {
 	}
 	if code := run(a, "guide", "read", "./otinstaller.yaml"); code != ExitUsage {
 		t.Errorf("a local path is not a guide: exit %d", code)
+	}
+}
+
+func TestForTerminal(t *testing.T) {
+	md := "> [!WARNING]\n> Lawful targets only.\n\n![Map](../img/map.png) ![Badge](https://img.example/b.svg)\n\n" +
+		"See [pivoting](02-pivot.md#scope), [home](../index.md), [gone](99-gone.md) and [the spec](https://example.org/spec.md).\n"
+	got := forTerminal(md, "sub/01-scope.md", []string{"index.md", "sub/01-scope.md", "sub/02-pivot.md"})
+	want := "> **Warning:** \n> Lawful targets only.\n\n(image: Map) [image: Badge](https://img.example/b.svg)\n\n" +
+		"See pivoting (page 3), home (page 1), gone and [the spec](https://example.org/spec.md).\n"
+	if got != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+	out := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(renderWith(got, 80, glamour.WithStandardStyle("dark")), "")
+	if !strings.Contains(out, "Warning: Lawful targets only.") || !strings.Contains(out, "(image: Map)") || strings.Contains(out, "**") {
+		t.Errorf("rendered:\n%s", out)
 	}
 }
 

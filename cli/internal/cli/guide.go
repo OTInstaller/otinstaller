@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -130,7 +132,13 @@ func (a *App) guideReadCmd() *cobra.Command {
 				fmt.Fprintf(a.Err, "note: the registry is unreachable; showing the copy saved by `ot guide get`\n")
 				p = off
 			}
-			fmt.Fprint(a.Out, a.renderMarkdown(p.Body, plain))
+			fmt.Fprint(a.Out, a.renderMarkdown(p.Body, plain, p.Path, func() []api.NavEntry {
+				if g, err := a.API.Guide(ctx, ref.NS, ref.Name, p.Version); err == nil {
+					return g.Nav
+				}
+				nav, _ := offlineNav(pkgRef{NS: ref.NS, Name: ref.Name, Version: p.Version})
+				return nav
+			}))
 			pin := ref.Ref()
 			if ref.Version != "" {
 				pin += "@" + p.Version
@@ -159,8 +167,9 @@ func printNav(a *App, ref pkgRef, nav []api.NavEntry) {
 	}
 }
 
-// renderMarkdown formats Markdown for a terminal with Glamour; piped output stays as written.
-func (a *App) renderMarkdown(md string, plain bool) string {
+// renderMarkdown formats a page for a terminal with Glamour; piped output stays as written. nav is
+// only fetched for a terminal, to number links to other pages.
+func (a *App) renderMarkdown(md string, plain bool, page string, nav func() []api.NavEntry) string {
 	f, ok := a.Out.(*os.File)
 	if plain || !ok || !term.IsTerminal(int(f.Fd())) {
 		return md
@@ -169,7 +178,48 @@ func (a *App) renderMarkdown(md string, plain bool) string {
 	if w, _, err := term.GetSize(int(f.Fd())); err == nil && w > 20 {
 		width = min(w-2, 120)
 	}
-	return renderWith(md, width, glamour.WithAutoStyle())
+	var paths []string
+	if mdLink.MatchString(md) {
+		for _, n := range nav() {
+			paths = append(paths, n.Path)
+		}
+	}
+	return renderWith(forTerminal(md, page, paths), width, glamour.WithAutoStyle())
+}
+
+var (
+	admonition = regexp.MustCompile(`(?m)^([ \t]*>[ \t]*)\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*`)
+	mdImage    = regexp.MustCompile(`!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)`)
+	mdLink     = regexp.MustCompile(`\[([^\]]+)\]\(\s*<?([^)\s>#]+\.md)(#[^)\s>]*)?>?\s*\)`)
+)
+
+// forTerminal rewrites what only makes sense on the website: admonitions become a bold label, links
+// to other pages say which page number to read, and images (which a terminal cannot show) their alt text.
+func forTerminal(md, page string, nav []string) string {
+	md = admonition.ReplaceAllStringFunc(md, func(m string) string {
+		s := admonition.FindStringSubmatch(m)
+		return s[1] + "**" + s[2][:1] + strings.ToLower(s[2][1:]) + ":** "
+	})
+	md = mdImage.ReplaceAllStringFunc(md, func(m string) string {
+		s := mdImage.FindStringSubmatch(m)
+		if strings.Contains(s[2], "://") {
+			return "[image: " + s[1] + "](" + s[2] + ")"
+		}
+		return "(image: " + s[1] + ")"
+	})
+	return mdLink.ReplaceAllStringFunc(md, func(m string) string {
+		s := mdLink.FindStringSubmatch(m)
+		if strings.Contains(s[2], "://") {
+			return m
+		}
+		target := path.Clean(path.Join(path.Dir(page), s[2]))
+		for i, p := range nav {
+			if p == target {
+				return fmt.Sprintf("%s (page %d)", s[1], i+1)
+			}
+		}
+		return s[1]
+	})
 }
 
 func renderWith(md string, width int, style glamour.TermRendererOption) string {
@@ -464,7 +514,13 @@ func (a *App) docsCmd() *cobra.Command {
 			if err != nil {
 				return a.requestError(err)
 			}
-			fmt.Fprint(a.Out, a.renderMarkdown(p.Body, plain))
+			fmt.Fprint(a.Out, a.renderMarkdown(p.Body, plain, p.Path, func() []api.NavEntry {
+				d, err := a.API.ToolDocs(ctx, ref.NS, ref.Name)
+				if err != nil {
+					return nil
+				}
+				return d.Nav
+			}))
 			footer := fmt.Sprintf("Page %d of %d of the %s %s docs", p.Position, p.Pages, p.Ref, p.Version)
 			if p.Next != nil {
 				footer += fmt.Sprintf(" · next: ot docs %s %d (%s)", ref.Ref(), p.Position+1, p.Next.Title)
