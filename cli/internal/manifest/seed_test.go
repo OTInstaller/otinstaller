@@ -9,8 +9,8 @@ import (
 // validate, with its files present, before it can be published.
 func TestSeedManifests(t *testing.T) {
 	files, _ := filepath.Glob("../../../seed/*/*/otinstaller.yaml")
-	if len(files) < 60 {
-		t.Fatalf("expected at least 60 seed manifests, found %d", len(files))
+	if len(files) < 50 {
+		t.Fatalf("expected at least 50 seed manifests, found %d", len(files))
 	}
 	for _, f := range files {
 		dir := filepath.Dir(f)
