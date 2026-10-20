@@ -1,0 +1,36 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: dnsrecon
+namespace: osintverse-community
+version: 1.6.3
+summary: "Enumerates a domain's DNS: standard records, SRV services, zone transfer checks and DNSSEC"
+readme: README.md
+license: GPL-2.0
+homepage: https://github.com/darkoperator/dnsrecon
+categories: [domain-dns]
+tags: [dns, recon, zone-transfer]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+outputs:
+  - type: dns_record
+  - type: ip
+  - type: domain
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/dnsrecon@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["dnsrecon", "-d", "{domain}", "-t", "std"]
+  output_format: text
+  timeout_seconds: 600
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+test:
+  input: { domain: "example.com" }

@@ -1,0 +1,39 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: username-permutations
+namespace: osintverse
+version: 0.1.0
+summary: Generates likely usernames from a person's name to search with username tools
+readme: README.md
+license: MIT
+homepage: https://github.com/osintverse/username-permutations
+categories: [username, people]
+tags: [username, enumeration, offline]
+inputs:
+  - name: name
+    type: name
+    required: true
+    description: The person's full name
+  - name: extra
+    type: string
+    required: false
+    description: A year, number or nickname to append, such as a birth year
+outputs:
+  - type: username
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse/username-permutations@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["username-permutations", "--extra", "{extra}", "{name}"]
+  output_format: json
+  timeout_seconds: 30
+network:
+  egress: false
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+test:
+  input: { name: "Ada Lovelace", extra: "1815" }

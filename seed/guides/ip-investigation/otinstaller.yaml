@@ -1,0 +1,30 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/guides
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+kind: guide
+name: ip-investigation
+namespace: osintverse
+version: 1.0.0
+title: "IP address investigation playbook"
+summary: "Who holds an IP, what it exposes and what runs next to it, without scanning it"
+license: CC-BY-4.0
+homepage: https://github.com/osintverse/ip-investigation
+categories: [ip-network]
+level: intermediate
+format: guide
+language: en
+content:
+  root: docs/
+  nav:
+    - index.md
+    - 01-scope-and-legal.md
+    - 02-ownership.md
+    - 03-exposure.md
+    - 04-ranges.md
+related_tools:
+  - osintverse-community/ipwhois
+  - osintverse-community/cdncheck
+  - osintverse-community/naabu
+  - osintverse-community/shodan-host
+  - osintverse-community/mapcidr
+topics: [ip]

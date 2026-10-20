@@ -1,0 +1,42 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: ignorant
+namespace: osintverse-community
+version: 1.2.0
+summary: "Checks whether a phone number is registered on Amazon, Instagram and Snapchat"
+readme: README.md
+license: GPL-3.0
+homepage: https://github.com/megadose/ignorant
+categories: [phone, social-media]
+tags: [phone, accounts]
+inputs:
+  - name: country_code
+    type: string
+    required: true
+    description: "Country calling code without +, such as 33"
+  - name: phone
+    type: phone
+    required: true
+    description: "The national number without the country code"
+outputs:
+  - type: account
+runtime:
+  kind: pipx
+  package: ignorant
+  package_version: "1.2"
+  index: pypi
+  python: ">=3.9"
+  entrypoint: ignorant
+  wheel_sha256: "74c24159233d17fb11ac0b98a4aa0bce0709a20aa8163450ed677199f81af72c"
+  command: ["ignorant", "--no-color", "--no-clear", "--only-used", "{country_code}", "{phone}"]
+  output_format: text
+  timeout_seconds: 300
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+test:
+  input: { country_code: "1", phone: "2025550123" }

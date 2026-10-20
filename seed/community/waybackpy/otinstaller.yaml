@@ -1,0 +1,43 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: waybackpy
+namespace: osintverse-community
+version: 3.0.6
+summary: "Finds the oldest or newest Wayback Machine capture of a URL, or every archived URL of a site"
+readme: README.md
+license: MIT
+homepage: https://github.com/akamhy/waybackpy
+categories: [web-archive, utilities]
+tags: [wayback-machine, archive, url]
+inputs:
+  - name: url
+    type: url
+    required: true
+  - name: mode
+    type: enum
+    required: true
+    values: [oldest, newest, known-urls]
+    default: "oldest"
+    description: "oldest, newest or known-urls (every archived URL under it)"
+outputs:
+  - type: url
+runtime:
+  kind: pipx
+  package: waybackpy
+  package_version: "3.0.6"
+  index: pypi
+  python: ">=3.6"
+  entrypoint: waybackpy
+  wheel_sha256: "c568b0db9056fbe42a1a7e56b4f1d1919bd3f76bd62da58d9ee2e577297be284"
+  command: ["waybackpy", "--url", "{url}", "--{mode}"]
+  output_format: text
+  timeout_seconds: 600
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+test:
+  input: { url: "https://example.com", mode: "oldest" }

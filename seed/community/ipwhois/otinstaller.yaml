@@ -1,0 +1,35 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: ipwhois
+namespace: osintverse-community
+version: 1.3.0
+summary: "Looks up who holds an IP address through RDAP: network, ASN, organisation and contacts"
+readme: README.md
+license: BSD-2-Clause
+homepage: https://github.com/secynic/ipwhois
+categories: [ip-network]
+tags: [rdap, whois, asn, ip]
+inputs:
+  - name: ip
+    type: ip
+    required: true
+outputs:
+  - type: organization
+  - type: other
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/ipwhois@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["ipwhois-rdap", "--json", "--addr", "{ip}"]
+  output_format: json
+  timeout_seconds: 120
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+test:
+  input: { ip: "1.1.1.1" }

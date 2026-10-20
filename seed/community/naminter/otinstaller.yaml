@@ -1,0 +1,42 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: naminter
+namespace: osintverse-community
+version: 1.0.9
+summary: "Enumerates a username across the WhatsMyName site list with browser-like requests"
+readme: README.md
+license: MIT
+homepage: https://github.com/3xp0rt/Naminter
+categories: [username]
+tags: [username, whatsmyname, accounts]
+inputs:
+  - name: username
+    type: username
+    required: true
+  - name: category
+    type: string
+    required: false
+    description: "Only check sites in this WhatsMyName category, such as coding or social"
+outputs:
+  - type: account
+  - type: url
+runtime:
+  kind: pipx
+  package: naminter
+  package_version: "1.0.9"
+  index: pypi
+  python: ">=3.11"
+  entrypoint: naminter
+  wheel_sha256: "99057e39eb3c0e2292354f3e5211a290d76a7552475e1b1420e4a04a926f110f"
+  command: ["naminter", "--username", "{username}", "--include-categories", "{category}"]
+  output_format: text
+  timeout_seconds: 900
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+test:
+  input: { username: "github", category: "coding" }

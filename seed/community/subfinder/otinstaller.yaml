@@ -1,0 +1,34 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: subfinder
+namespace: osintverse-community
+version: 2.17.0
+summary: "Finds a domain's subdomains passively from dozens of public sources"
+readme: README.md
+license: MIT
+homepage: https://github.com/projectdiscovery/subfinder
+categories: [domain-dns]
+tags: [subdomains, passive, recon]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+outputs:
+  - type: subdomain
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/subfinder@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["subfinder", "-d", "{domain}", "-silent", "-oJ", "-duc"]
+  output_format: jsonl
+  timeout_seconds: 600
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+test:
+  input: { domain: "otinstaller.com" }

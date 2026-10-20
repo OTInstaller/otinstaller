@@ -1,0 +1,35 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: crtsh-subdomains
+namespace: osintverse
+version: 0.1.0
+summary: "Finds a domain's subdomains in Certificate Transparency logs through crt.sh or Cert Spotter"
+readme: README.md
+license: MIT
+homepage: https://github.com/osintverse/crtsh-subdomains
+categories: [domain-dns]
+tags: [subdomains, certificate-transparency, passive]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+outputs:
+  - type: subdomain
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse/crtsh-subdomains@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["crtsh-subdomains", "{domain}"]
+  output_format: json
+  timeout_seconds: 300
+network:
+  egress: true
+  domains: ["crt.sh", "api.certspotter.com"]
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+test:
+  input: { domain: "otinstaller.com" }

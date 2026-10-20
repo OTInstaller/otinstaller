@@ -1,0 +1,38 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/guides
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+kind: guide
+name: domain-investigation
+namespace: osintverse
+version: 1.0.0
+title: "Domain investigation playbook"
+summary: "DNS, subdomains, certificates, history and look-alikes of a domain, passively first"
+license: CC-BY-4.0
+homepage: https://github.com/osintverse/domain-investigation
+categories: [domain-dns, web-archive]
+level: intermediate
+format: guide
+language: en
+content:
+  root: docs/
+  nav:
+    - index.md
+    - 01-scope-and-legal.md
+    - 02-dns.md
+    - 03-subdomains.md
+    - 04-history.md
+    - 05-lookalikes.md
+    - 06-live-hosts.md
+related_tools:
+  - osintverse/dns-records
+  - osintverse/crtsh-subdomains
+  - osintverse-community/subfinder
+  - osintverse-community/gau
+  - osintverse-community/waybackpy
+  - osintverse-community/dnstwist
+  - osintverse-community/httpx
+  - osintverse-community/tlsx
+  - osintverse-community/tldextract
+  - osintverse-community/checkdmarc
+  - osintverse-community/unfurl
+topics: [domain]

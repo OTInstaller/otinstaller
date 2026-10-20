@@ -1,0 +1,38 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: checkdmarc
+namespace: osintverse-community
+version: 6.0.4
+summary: "Checks a domain's SPF, DMARC, MX, BIMI and DNSSEC records and reports problems"
+readme: README.md
+license: Apache-2.0
+homepage: https://github.com/domainaware/checkdmarc
+categories: [email, domain-dns]
+tags: [spf, dmarc, email-security, dns]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+outputs:
+  - type: dns_record
+  - type: domain
+runtime:
+  kind: pipx
+  package: checkdmarc
+  package_version: "6.0.4"
+  index: pypi
+  python: ">=3.10"
+  entrypoint: checkdmarc
+  wheel_sha256: "5b17606aea365bbc52498b3e1c2705d3fdcd6ef5c8952b7fcab3bd61dc428bc2"
+  command: ["checkdmarc", "--retries", "2", "--timeout", "5", "{domain}"]
+  output_format: json
+  timeout_seconds: 300
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+test:
+  input: { domain: "example.com" }

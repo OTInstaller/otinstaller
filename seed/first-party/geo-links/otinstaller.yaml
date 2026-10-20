@@ -1,0 +1,36 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: geo-links
+namespace: osintverse
+version: 0.1.0
+summary: "Turns coordinates into map, satellite, street-level and sun-position links for checking a place"
+readme: README.md
+license: MIT
+homepage: https://github.com/osintverse/geo-links
+categories: [images-geo]
+tags: [geolocation, maps, satellite, offline]
+inputs:
+  - name: coordinates
+    type: string
+    required: true
+    description: "\"lat,lon\" in decimal degrees, or degrees-minutes-seconds"
+outputs:
+  - type: location
+  - type: url
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse/geo-links@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["geo-links", "{coordinates}"]
+  output_format: json
+  timeout_seconds: 30
+network:
+  egress: false
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+test:
+  input: { coordinates: "48.8584,2.2945" }

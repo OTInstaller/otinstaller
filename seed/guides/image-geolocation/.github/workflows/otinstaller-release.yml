@@ -1,0 +1,26 @@
+# Sets the version in otinstaller.yaml and tags the release; the registry renders and checks the guide.
+# Run it from the Actions tab with the version to release.
+name: otinstaller release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release (e.g. 1.2.0)
+        required: true
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set version and tag
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          sed -i -E "s|^version: .*|version: ${VERSION}|" otinstaller.yaml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Release ${VERSION}"
+          git tag "v${VERSION}"
+          git push origin HEAD "v${VERSION}"

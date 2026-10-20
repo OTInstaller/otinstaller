@@ -1,0 +1,32 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/guides
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+kind: guide
+name: email-investigation
+namespace: osintverse
+version: 1.0.0
+title: "Email investigation playbook"
+summary: "Trace a suspicious message and find where an address is registered, without alerting its owner"
+license: CC-BY-4.0
+homepage: https://github.com/osintverse/email-investigation
+categories: [email]
+level: beginner
+format: guide
+language: en
+content:
+  root: docs/
+  nav:
+    - index.md
+    - 01-scope-and-legal.md
+    - 02-headers.md
+    - 03-domain.md
+    - 04-accounts.md
+    - 05-pivot.md
+related_tools:
+  - osintverse/email-header-parser
+  - osintverse-community/checkdmarc
+  - osintverse/dns-records
+  - osintverse-community/holehe
+  - osintverse-community/socialscan
+  - osintverse-community/mailcat
+topics: [email]

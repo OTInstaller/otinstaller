@@ -1,0 +1,39 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: image-hash
+namespace: osintverse
+version: 0.1.0
+summary: "Computes perceptual hashes of an online image to match copies and near-duplicates"
+readme: README.md
+license: MIT
+homepage: https://github.com/osintverse/image-hash
+categories: [images-geo]
+tags: [image, perceptual-hash, duplicates]
+inputs:
+  - name: url
+    type: url
+    required: true
+    description: "URL of the image"
+  - name: compare
+    type: url
+    required: false
+    description: "URL of a second image to compare with"
+outputs:
+  - type: image
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse/image-hash@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["image-hash", "--compare", "{compare}", "{url}"]
+  output_format: json
+  timeout_seconds: 120
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+test:
+  input: { url: "https://raw.githubusercontent.com/ianare/exif-samples/master/jpg/gps/DSCN0010.jpg" }
