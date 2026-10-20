@@ -1,0 +1,18 @@
+---
+import Base from "../../layouts/Base.astro";
+import Results from "../../components/Results.astro";
+import { api, type Types } from "../../lib/api";
+import { categoryLabel } from "../../lib/format";
+import { cacheFor, searchFrom } from "../../lib/page";
+
+const slug = Astro.params.slug!;
+const types = await api<Types>("/types");
+if (!types.categories.includes(slug)) return new Response(null, { status: 404, statusText: "Not found" });
+const { result } = await searchFrom(Astro.url, { kind: "tool", category: slug });
+const label = categoryLabel(slug);
+cacheFor(Astro, 600);
+---
+<Base title={`${label} OSINT tools`} description={`OSINT tools in the ${label} category.`}>
+  <h1>{label}</h1>
+  <Results result={result} types={types} fixed={["category"]} />
+</Base>

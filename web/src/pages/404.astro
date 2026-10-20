@@ -1,0 +1,14 @@
+---
+import Base from "../layouts/Base.astro";
+
+Astro.response.status = 404;
+---
+<Base title="Not found" noindex>
+  <h1>Not found</h1>
+  <p>Nothing lives at this address. If you followed a link to a tool, it may have been renamed or removed.</p>
+  <form action="/search" method="get" role="search" class="row">
+    <label class="sr-only" for="nf-q">Search the registry</label>
+    <input id="nf-q" type="search" name="q" placeholder="Search tools" />
+    <button class="btn btn-primary" type="submit">Search</button>
+  </form>
+</Base>

@@ -1,0 +1,104 @@
+---
+import Base from "../../../layouts/Base.astro";
+import ToolHeader from "../../../components/ToolHeader.astro";
+import CopyCommand from "../../../components/CopyCommand.astro";
+import ToolCard from "../../../components/ToolCard.astro";
+import { apiOrNull, type SearchResult, type Scans } from "../../../lib/api";
+import { entityLabel, exampleRun, formatDate, inputLabel } from "../../../lib/format";
+import { loadTool } from "../../../lib/tool";
+import { cacheFor } from "../../../lib/page";
+
+const loaded = await loadTool(Astro);
+if ("response" in loaded) return loaded.response;
+const { tool: t, hasDocs } = loaded;
+const ref = `${t.namespace}/${t.name}`;
+const m = t.manifest;
+const [readme, guides, scans, latest] = await Promise.all([
+  apiOrNull<{ html: string }>(`/tools/${ref}/readme`),
+  apiOrNull<{ guides: SearchResult["results"] }>(`/tools/${ref}/guides`),
+  apiOrNull<Scans>(`/tools/${ref}/${t.latest_version}/scans`),
+  apiOrNull<{ published_at: number | null }>(`/tools/${ref}/${t.latest_version}`),
+]);
+const e = m.ethics;
+cacheFor(Astro, 60);
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: ref,
+  description: t.summary,
+  softwareVersion: t.latest_version,
+  applicationCategory: "SecurityApplication",
+  operatingSystem: "Windows, macOS, Linux",
+  license: t.license,
+  url: `${Astro.site}${ref}`,
+  ...(t.repo_url ? { codeRepository: t.repo_url } : {}),
+  offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+};
+---
+<Base title={ref} description={t.summary} jsonLd={jsonLd}>
+  <ToolHeader tool={t} active="overview" hasDocs={hasDocs} scanStatus={scans?.scan_status} />
+  <div class="two-col">
+    <div class="stack">
+      <section aria-labelledby="install">
+        <h2 id="install" class="sr-only">Install and run</h2>
+        <CopyCommand label="Install" command={`ot install ${ref}`} />
+        <CopyCommand label="Run" command={exampleRun(ref, m.inputs)} />
+        <p class="small muted">New to <code>ot</code>? <a href="/docs/getting-started">Install the CLI</a>.</p>
+      </section>
+      <section class="prose" aria-label="README">
+        {readme ? <Fragment set:html={readme.html} /> : <p class="muted">This version has no rendered README yet.</p>}
+      </section>
+      {guides && guides.guides.length > 0 && (
+        <section aria-labelledby="guides">
+          <h2 id="guides">Guides using this tool</h2>
+          <div class="grid">{guides.guides.map((g) => <ToolCard tool={g} />)}</div>
+        </section>
+      )}
+    </div>
+    <aside class="stack">
+      <section class="panel" aria-labelledby="io">
+        <h2 id="io">Inputs and outputs</h2>
+        <ul class="list-plain small">
+          {(m.inputs ?? []).map((i) => (
+            <li><code>--{i.name}</code> {inputLabel(i.type)}{i.required ? "" : " (optional)"}{i.description && <span class="muted"> · {i.description}</span>}</li>
+          ))}
+        </ul>
+        <p class="small"><strong>Finds:</strong> {(m.outputs ?? []).map((o) => entityLabel(o.type)).join(", ")}</p>
+      </section>
+      {m.secrets && m.secrets.length > 0 && (
+        <section class="panel" aria-labelledby="keys">
+          <h2 id="keys">API keys</h2>
+          <ul class="list-plain small">
+            {m.secrets.map((s) => (
+              <li><code>{s.name}</code> {s.required ? "required" : "optional"}{s.url && <> · <a href={s.url} rel="nofollow noopener">get one</a></>}{s.description && <div class="muted">{s.description}</div>}</li>
+            ))}
+          </ul>
+          <p class="small muted">Store keys with <code>ot keys set NAME</code>; they stay in your OS keychain.</p>
+        </section>
+      )}
+      {e && (
+        <section class="panel" aria-labelledby="ethics">
+          <h2 id="ethics">What it does</h2>
+          <ul class="list-plain small">
+            <li>{e.touches_target ? "Contacts the target directly" : "Does not contact the target"}</li>
+            <li>{e.auth_required ? "Logs in to accounts" : "Does not log in to accounts"}</li>
+            <li>{e.collects_personal_data ? "Collects personal data" : "Does not collect personal data"}</li>
+          </ul>
+          {m.network?.domains && m.network.domains.length > 0 && <p class="small muted">Talks to: {m.network.domains.join(", ")}</p>}
+        </section>
+      )}
+      <section class="panel" aria-labelledby="facts">
+        <h2 id="facts">Details</h2>
+        <dl>
+          <dt>License</dt><dd>{t.license}</dd>
+          <dt>Runtime</dt><dd>{t.runtime === "docker" ? "Docker" : "pipx"}</dd>
+          {t.repo_url && <><dt>Source</dt><dd><a href={t.repo_url} rel="nofollow noopener">{t.repo_url.replace(/^https:\/\//, "")}</a></dd></>}
+          {t.homepage && t.homepage !== t.repo_url && <><dt>Homepage</dt><dd><a href={t.homepage} rel="nofollow noopener">{t.homepage.replace(/^https:\/\//, "")}</a></dd></>}
+          <dt>Categories</dt><dd>{t.categories.map((c, i) => <>{i > 0 && ", "}<a href={`/category/${c}`}>{c}</a></>)}</dd>
+          <dt>Published</dt><dd>{formatDate(latest?.published_at)}</dd>
+        </dl>
+      </section>
+      <p class="small"><a href={`/${ref}/security`}>Security details</a> · <a href={`mailto:abuse@otinstaller.com?subject=${encodeURIComponent(`Report: ${ref}`)}`}>Report this tool</a></p>
+    </aside>
+  </div>
+</Base>

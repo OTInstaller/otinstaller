@@ -1,0 +1,53 @@
+---
+import Base from "../../layouts/Base.astro";
+import ToolCard from "../../components/ToolCard.astro";
+import { api, type Types } from "../../lib/api";
+import { categoryLabel, inputLabel } from "../../lib/format";
+import { cacheFor, searchFrom, withParam } from "../../lib/page";
+
+const url = Astro.url;
+const [{ result }, types] = await Promise.all([searchFrom(url, {}, "/guides"), api<Types>("/types")]);
+const current = (k: string) => url.searchParams.get(k);
+const facets = [
+  { key: "input", label: "Investigating", values: types.inputs.filter((t) => !["string", "integer", "boolean", "enum"].includes(t)), name: inputLabel },
+  { key: "category", label: "Category", values: types.categories, name: categoryLabel },
+  { key: "level", label: "Level", values: ["beginner", "intermediate", "advanced"], name: (v: string) => v[0]!.toUpperCase() + v.slice(1) },
+  { key: "format", label: "Format", values: ["guide", "reference"], name: (v: string) => (v === "guide" ? "Guide" : "Reference") },
+];
+const sorts = [["relevance", "Best match"], ["stars", "Most starred"], ["updated", "Newest"]];
+const next = result.next_cursor ? `/guides?${new URLSearchParams({ ...Object.fromEntries(url.searchParams), cursor: result.next_cursor })}` : null;
+cacheFor(Astro, 300);
+---
+<Base title="OSINT investigation guides" description="Step-by-step investigation playbooks and references that use registry tools.">
+  <h1>Guides</h1>
+  <p class="muted">Investigation playbooks and references, versioned like tools. Read them here or in a terminal with <code>ot guide read</code>.</p>
+  <form method="get" action="/guides" role="search" class="row gsearch">
+    <label class="sr-only" for="gq">Search guides</label>
+    <input id="gq" type="search" name="q" value={current("q") ?? ""} placeholder="Search guides" />
+    <button class="btn" type="submit">Search</button>
+  </form>
+  <div class="filters">
+    {facets.map((f) => (
+      <div class="row facet" role="group" aria-label={f.label}>
+        <span class="small muted">{f.label}:</span>
+        {f.values.map((v) => <a class="chip" href={withParam(url, f.key, current(f.key) === v ? null : v)} aria-current={current(f.key) === v ? "page" : undefined}>{f.name(v)}</a>)}
+      </div>
+    ))}
+    <div class="row facet" role="group" aria-label="Sort">
+      <span class="small muted">Sort:</span>
+      {sorts.map(([k, label]) => <a class="chip" href={withParam(url, "sort", k)} aria-current={(current("sort") ?? "relevance") === k ? "page" : undefined}>{label}</a>)}
+    </div>
+  </div>
+  {result.results.length === 0
+    ? <p class="notice">No guides match these filters yet.</p>
+    : <div class="grid">{result.results.map((g) => <ToolCard tool={g} level={2} />)}</div>}
+  {next && <p><a class="btn" href={next} rel="next">More guides</a></p>}
+  <p class="small muted">Write one: <code>ot init --guide</code> scaffolds a guide repository. <a href="/docs/guides">How guides are published</a>.</p>
+</Base>
+
+<style>
+  .gsearch { margin: 12px 0; }
+  .gsearch input { flex: 1 1 260px; }
+  .filters { margin: 8px 0 20px; display: grid; gap: 8px; }
+  .facet { gap: 6px; }
+</style>

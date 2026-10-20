@@ -232,6 +232,31 @@ app.get("/tools/:ns/:name/:version/manifest", async (c) => {
   });
 });
 
+// Scan and check results for the security page. Personal-data hits are for reviewers only: the public sees
+// whether the check passed, not the lines it flagged.
+app.get("/tools/:ns/:name/:version/scans", async (c) => {
+  const { ns, name, version } = c.req.param();
+  const { row } = await findTool(c.env.DB, ns, name);
+  if (!row) apiError(404, "tool_not_found", `${ns}/${name} is not in the registry`);
+  const v = await findVersion(c.env.DB, row.id, version);
+  if (!v || v.status === "removed") apiError(404, "version_not_found", `${ns}/${name} has no version ${version}`);
+  const scans = await c.env.DB.prepare(`SELECT kind, result, summary_json, ran_at FROM scans WHERE version_id = ? ORDER BY ran_at, kind`)
+    .bind(v.id).all<{ kind: string; result: string; summary_json: string | null; ran_at: number }>();
+  cached(c, 300);
+  return c.json({
+    ref: `${row.namespace}/${row.name}`,
+    version: v.version,
+    scan_status: v.scan_status,
+    signed: !!v.signer_identity && row.manifest_mode !== "registry",
+    signer_identity: v.signer_identity ?? undefined,
+    signer_issuer: v.signer_issuer ?? undefined,
+    scans: scans.results.map((s) => {
+      const summary = JSON.parse(s.summary_json ?? "null");
+      return { kind: s.kind, result: s.result, ran_at: s.ran_at, summary: s.kind === "pii" ? { hits: summary?.hits?.length ?? 0 } : summary };
+    }),
+  });
+});
+
 app.get("/tools/:ns/:name/:version", async (c) => {
   const { ns, name, version } = c.req.param();
   const { row } = await findTool(c.env.DB, ns, name);

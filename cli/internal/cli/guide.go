@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
@@ -244,10 +245,8 @@ func (a *App) guideOpenCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// The site's guide reader: /guides/{ns}/{name}[/{page}], with ?v= for a pinned version.
 			u := strings.TrimRight(a.Config.SiteURL, "/") + "/guides/" + ref.Ref()
-			if ref.Version != "" {
-				u += "/" + ref.Version
-			}
 			if len(args) == 2 {
 				path := args[1]
 				if n, err := strconv.Atoi(path); err == nil {
@@ -260,10 +259,10 @@ func (a *App) guideOpenCmd() *cobra.Command {
 					}
 					path = g.Nav[n-1].Path
 				}
-				if ref.Version == "" {
-					u += "/latest"
-				}
 				u += "/" + strings.TrimSuffix(path, ".md")
+			}
+			if ref.Version != "" {
+				u += "?v=" + url.QueryEscape(ref.Version)
 			}
 			fmt.Fprintf(a.Out, "Opening %s\n", u)
 			if err := a.OpenURL(u); err != nil {
