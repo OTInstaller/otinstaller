@@ -50,6 +50,15 @@ func TestPlaybook(t *testing.T) {
 		t.Errorf("saved runs: %v", runs)
 	}
 
+	// A bare target gets its type guessed.
+	out.Reset()
+	if code := run(a, "playbook", "people", "janedoe", "--format", "json"); code != 0 {
+		t.Fatalf("bare target: exit %d: %s", code, errb)
+	}
+	if err := json.Unmarshal(out.Bytes(), &rows); err != nil || rows[0].Status != "complete" {
+		t.Fatalf("bare target: %v %+v", err, rows)
+	}
+
 	for _, c := range []struct {
 		args []string
 		want string

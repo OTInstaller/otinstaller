@@ -43,7 +43,7 @@ func (a *App) runAll(ctx context.Context, ra *runArgs, what string, selection []
 		return exitErr(ExitUsage, "%s needs at least one typed input, such as u:johndoe or d:example.com", what)
 	}
 	if len(ra.Inputs) > 0 || ra.Output != "" || ra.OutDir != "" {
-		return exitErr(ExitUsage, "%s takes only typed inputs (u:, d:, e:, p:, url:), not --<input>, -o or --out-dir", what)
+		return exitErr(ExitUsage, "%s takes only typed inputs (u:, d:, e:, p:, ip:, url:), not --<input>, -o or --out-dir", what)
 	}
 	if ra.NoSave {
 		return exitErr(ExitUsage, "%s always saves its runs; the summary only points at the saved files", what)
@@ -128,6 +128,12 @@ func (a *App) runAll(ctx context.Context, ra *runArgs, what string, selection []
 		return exitErr(ExitUsage, "none of the playbook's tools can run with a %s input", typedTypes(ra.Typed))
 	}
 
+	if ra.DryRun {
+		for _, j := range jobs {
+			j.row.Status = "would run"
+		}
+		return a.printAllRows(rows, format)
+	}
 	if format == "table" {
 		fmt.Fprintf(a.Err, "Running %d tools, %d at a time...\n", len(jobs), ra.Parallel)
 	}
@@ -174,25 +180,8 @@ func (a *App) runAll(ctx context.Context, ra *runArgs, what string, selection []
 	}
 	wg.Wait()
 
-	if format == "json" {
-		if err := newJSONEncoder(a.Out).Encode(rows); err != nil {
-			return err
-		}
-	} else {
-		tw := tabwriter.NewWriter(a.Out, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(tw, "TOOL\tSTATUS\tENTITIES\tSAVED")
-		for _, r := range rows {
-			saved := r.OutputPath
-			if r.Reason != "" {
-				saved = r.Reason
-			}
-			status := r.Status
-			if r.ExitCode != nil && *r.ExitCode != 0 {
-				status = fmt.Sprintf("%s (exit %d)", status, *r.ExitCode)
-			}
-			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\n", r.Tool, status, r.Entities, saved)
-		}
-		tw.Flush()
+	if err := a.printAllRows(rows, format); err != nil {
+		return err
 	}
 	if ctx.Err() != nil {
 		return &ExitError{Code: ExitInterrupted}
@@ -203,6 +192,27 @@ func (a *App) runAll(ctx context.Context, ra *runArgs, what string, selection []
 		}
 	}
 	return nil
+}
+
+// printAllRows prints the summary of --all, a playbook or auto.
+func (a *App) printAllRows(rows []*allResult, format string) error {
+	if format == "json" {
+		return newJSONEncoder(a.Out).Encode(rows)
+	}
+	tw := tabwriter.NewWriter(a.Out, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "TOOL\tSTATUS\tENTITIES\tSAVED")
+	for _, r := range rows {
+		saved := r.OutputPath
+		if r.Reason != "" {
+			saved = r.Reason
+		}
+		status := r.Status
+		if r.ExitCode != nil && *r.ExitCode != 0 {
+			status = fmt.Sprintf("%s (exit %d)", status, *r.ExitCode)
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%d\t%s\n", r.Tool, status, r.Entities, saved)
+	}
+	return tw.Flush()
 }
 
 // typedTypes names the input types of typed inputs: "username or email".

@@ -18,7 +18,8 @@ Usage:
   ot playbook <name> <type>:<value> [...] [flags]
 
 Typed inputs fill each tool's input of that type:
-  u:<username>  d:<domain>  e:<email>  p:<phone>  url:<url>
+  u:<username>  d:<domain>  e:<email>  p:<phone>  ip:<ip>  url:<url>
+A bare target (example.com) gets its type guessed, as in ` + "`ot auto`" + `.
 
 Tools in the playbook with no input of those types are skipped. Runs are saved under
 <results-dir>/cases/playbook-<name>/ unless the playbook or --case names another case.
@@ -34,6 +35,7 @@ Playbooks are bundled with ot, or are YAML files in <ot home>/playbooks or ./pla
 
 Flags:
   -l, --list                list the playbooks
+      --dry-run             list the tools that would run, without running them
   -f, --format string       summary as table (default) or json
   -y, --yes                 install the playbook's tools that are not installed yet
       --native              install and run pipx tools on the host instead of in a container
@@ -60,7 +62,7 @@ func (a *App) playbookCmd() *cobra.Command {
 				}
 				rest = append(rest, arg)
 			}
-			ra, err := parseRunArgs(rest)
+			ra, err := parseArgs(rest, true)
 			if err != nil {
 				return err
 			}
