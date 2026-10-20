@@ -1,0 +1,12 @@
+{
+  // The website Worker. The Cloudflare Vite plugin merges this into dist/server/wrangler.json at build time
+  // (adding the entry point and the static assets); deploy with `npm run deploy`.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "otinstaller-registry-web",
+  "compatibility_date": "2026-10-12",
+  "routes": [
+    { "pattern": "otinstaller.com", "custom_domain": true },
+    { "pattern": "www.otinstaller.com", "custom_domain": true }
+  ],
+  "observability": { "enabled": true }
+}

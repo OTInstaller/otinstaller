@@ -8,7 +8,8 @@
     "preview": "astro preview",
     "check": "astro check",
     "test": "vitest run",
-    "og": "node scripts/og.mjs"
+    "og": "node scripts/og.mjs",
+    "deploy": "astro build && wrangler deploy"
   },
   "dependencies": {
     "@astrojs/cloudflare": "14.3.3",
