@@ -111,6 +111,8 @@ func (a *App) Root() *cobra.Command {
 		a.playbookCmd(),
 		a.autoCmd(),
 		a.listCmd(),
+		a.outdatedCmd(),
+		a.updateCmd(),
 		a.uninstallCmd(),
 		a.keysCmd(),
 		a.doctorCmd(),
