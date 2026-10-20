@@ -59,7 +59,7 @@ GitLab.com → Edit profile (or the group) → Applications → Add new applicat
 
 Security scans run as a GitHub Actions workflow in a private repository the registry dispatches to.
 
-1. Create `osintverse/registry-ops` (private) and copy into it: `ops/scanner/scan.py` → `ops/scanner/scan.py`,
+1. Create `OTInstaller/registry-ops` (private) and copy into it: `ops/scanner/scan.py` → `ops/scanner/scan.py`,
    and `ops/workflows/scan.yml` → `.github/workflows/scan.yml`.
 2. Install the GitHub App on that repository too. Add **Contents: Read and write** for it only if your org
    requires it for `repository_dispatch`; otherwise the permissions above are enough. Note the installation

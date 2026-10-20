@@ -8,8 +8,7 @@
     {
       "binding": "DB",
       "database_name": "otinstaller",
-      // Replace with the real ID from `wrangler d1 create otinstaller` before deploying.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "77c26f27-5605-4e1f-a3e1-616acd3129d1",
       "migrations_dir": "migrations"
     }
   ],
@@ -23,7 +22,7 @@
   "vars": {
     "SITE_URL": "https://otinstaller.com",
     "API_URL": "https://api.otinstaller.com",
-    "OPS_REPO": "osintverse/registry-ops",
+    "OPS_REPO": "OTInstaller/registry-ops",
     "EMAIL_FROM": "OTInstaller Registry <registry@otinstaller.com>"
     // "GITHUB_APP_SLUG": "otinstaller" is the App's URL name for install links (this is the default)
   }
