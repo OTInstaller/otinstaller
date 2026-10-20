@@ -226,7 +226,9 @@ func TestGuideOpenAndDocs(t *testing.T) {
 	a.OpenURL = func(u string) error { opened = append(opened, u); return nil }
 	run(a, "guide", "open", "alice/email-playbook")
 	run(a, "guide", "open", "alice/email-playbook", "3")
-	want := []string{"https://otinstaller.com/guides/alice/email-playbook", "https://otinstaller.com/guides/alice/email-playbook/latest/sub/02-pivot"}
+	run(a, "guide", "open", "alice/email-playbook@1.0.0")
+	want := []string{"https://otinstaller.com/guides/alice/email-playbook", "https://otinstaller.com/guides/alice/email-playbook/sub/02-pivot",
+		"https://otinstaller.com/guides/alice/email-playbook?v=1.0.0"}
 	if fmt.Sprint(opened) != fmt.Sprint(want) {
 		t.Fatalf("opened %v, want %v", opened, want)
 	}

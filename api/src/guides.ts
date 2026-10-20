@@ -45,12 +45,15 @@ export interface StoredImage {
   bytes: Uint8Array;
 }
 
-/** Where readers see a guide page or a tool's docs page on the website. */
+/**
+ * Where readers see a guide page or a tool's docs page on the website (its /guides/{ns}/{name}/{page} and
+ * /{ns}/{name}/docs/{page} routes). Guide links keep the version they were rendered for.
+ */
 export function pageUrl(env: Env, m: Manifest, path: string): string {
   const slug = path.replace(/\.md$/i, "");
   return m.kind === "guide"
-    ? `${env.SITE_URL}/guides/${m.namespace}/${m.name}/${m.version}/${slug}`
-    : `${env.SITE_URL}/tools/${m.namespace}/${m.name}/docs/${slug}`;
+    ? `${env.SITE_URL}/guides/${m.namespace}/${m.name}/${slug}?v=${m.version}`
+    : `${env.SITE_URL}/${m.namespace}/${m.name}/docs/${slug}`;
 }
 
 /** A file in the repository at the released commit, for images and other links into the repository. */
