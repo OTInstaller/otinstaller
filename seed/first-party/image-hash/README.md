@@ -3,7 +3,7 @@
 Downloads an image and computes its average, perceptual, difference, wavelet and colour hashes, plus the SHA-256 of the exact file. Perceptual hashes stay nearly the same when a picture is resized, recompressed or lightly edited, so they show whether two images are the same photo.
 
 ```
-ot run osintverse/image-hash --url https://example.com/a.jpg --compare https://example.org/b.jpg
+ot run osintverse-community/image-hash --url https://example.com/a.jpg --compare https://example.org/b.jpg
 ```
 
 ## Inputs
@@ -19,7 +19,7 @@ With `--compare`, the second image carries the Hamming distance for each hash; a
 
 ## Next steps
 
-Search the web for copies with [osintverse/reverse-image-links](https://otinstaller.com/osintverse/reverse-image-links).
+Search the web for copies with [osintverse-community/reverse-image-links](https://otinstaller.com/osintverse-community/reverse-image-links).
 
 ## Development
 

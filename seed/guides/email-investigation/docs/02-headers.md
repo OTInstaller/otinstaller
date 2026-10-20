@@ -9,7 +9,7 @@ Get the full headers from the mail client:
 Save them to `headers.txt` and run:
 
 ```
-ot run osintverse/email-header-parser --headers "$(cat headers.txt)" --format table
+ot run osintverse-community/email-header-parser --headers "$(cat headers.txt)" --format table
 ```
 
 On Windows PowerShell use `--headers (Get-Content -Raw headers.txt)`.
@@ -25,6 +25,6 @@ On Windows PowerShell use `--headers (Get-Content -Raw headers.txt)`.
 | `Message-ID` domain | The system that created the message. It should match the sending service. |
 
 > [!TIP]
-> Look up the hop IPs with the [IP investigation playbook](https://otinstaller.com/guides/osintverse/ip-investigation).
+> Look up the hop IPs with the [IP investigation playbook](https://otinstaller.com/guides/osintverse-community/ip-investigation).
 
 Next: [check the domain](03-domain.md).

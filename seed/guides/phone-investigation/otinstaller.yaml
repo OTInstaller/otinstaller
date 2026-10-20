@@ -3,12 +3,12 @@
 schema: 1
 kind: guide
 name: phone-investigation
-namespace: osintverse
+namespace: osintverse-community
 version: 1.0.0
 title: "Phone number investigation playbook"
 summary: "Parse a number offline, then find accounts and mentions linked to it"
 license: CC-BY-4.0
-homepage: https://github.com/osintverse/phone-investigation
+homepage: https://github.com/osintverse-community/phone-investigation
 categories: [phone]
 level: beginner
 format: guide
@@ -21,7 +21,7 @@ content:
     - 02-parse.md
     - 03-accounts-and-mentions.md
 related_tools:
-  - osintverse/phone-parse
+  - osintverse-community/phone-parse
   - osintverse-community/phoneinfoga
   - osintverse-community/ignorant
 topics: [phone]

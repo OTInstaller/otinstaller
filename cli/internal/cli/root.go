@@ -131,6 +131,7 @@ func (a *App) Root() *cobra.Command {
 		a.yankCmd(),
 		a.deprecateCmd(),
 		a.selfUpdateCmd(),
+		a.releaseCmd(),
 	)
 	return root
 }

@@ -6,7 +6,7 @@ and 40 hexadecimal characters.
 ## Bitcoin
 
 ```
-ot run osintverse/btc-address --address 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
+ot run osintverse-community/btc-address --address 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
 ```
 
 You get the balance, total received and sent, the number of transactions, the 25 most recent transactions (with
@@ -16,7 +16,7 @@ out to. Data comes from the public Blockstream Esplora API.
 ## Ethereum
 
 ```
-ot run osintverse/eth-address --address 0x314159265dD8dbb310642f98f50C066173C1259b
+ot run osintverse-community/eth-address --address 0x314159265dD8dbb310642f98f50C066173C1259b
 ```
 
 You get the ETH balance, the ENS name if one points back to the address, whether it is a contract (and which token),

@@ -13,7 +13,7 @@ This guide takes a command-line OSINT tool in a GitHub repository to a published
 2. [Test it locally](02-test.md)
 3. [Release](03-release.md)
 
-The example is [osintverse/username-permutations](https://otinstaller.com/osintverse/username-permutations), a small
+The example is [osintverse-community/username-permutations](https://otinstaller.com/osintverse-community/username-permutations), a small
 Python script packaged as a Docker tool.
 
 > [!TIP]

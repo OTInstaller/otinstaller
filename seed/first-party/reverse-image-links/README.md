@@ -3,7 +3,7 @@
 Gives you ready-made reverse image search links for one image URL on Google Lens, Bing Visual Search, Yandex, TinEye, Baidu, SauceNAO and IQDB. It only builds the links, so it runs offline and nothing is uploaded until you open them.
 
 ```
-ot run osintverse/reverse-image-links --url https://example.com/a.jpg --format table
+ot run osintverse-community/reverse-image-links --url https://example.com/a.jpg --format table
 ```
 
 ## Inputs
@@ -19,7 +19,7 @@ Engines differ a lot: Yandex is strongest on faces and places in Eastern Europe,
 
 ## Next steps
 
-Compare the matches you find with [osintverse/image-hash](https://otinstaller.com/osintverse/image-hash).
+Compare the matches you find with [osintverse-community/image-hash](https://otinstaller.com/osintverse-community/image-hash).
 
 ## Development
 

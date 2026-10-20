@@ -14,12 +14,12 @@ services use it for sign-up. This playbook covers two common cases:
 4. [Find registered accounts](04-accounts.md)
 5. [Pivot](05-pivot.md)
 
-**Tools used** (`ot guide tools osintverse/email-investigation` installs them all):
+**Tools used** (`ot guide tools osintverse-community/email-investigation` installs them all):
 
 | Tool | Used for |
 | --- | --- |
-| [osintverse/email-header-parser](https://otinstaller.com/osintverse/email-header-parser) | Senders, relay hops, IPs and authentication results |
+| [osintverse-community/email-header-parser](https://otinstaller.com/osintverse-community/email-header-parser) | Senders, relay hops, IPs and authentication results |
 | [osintverse-community/checkdmarc](https://otinstaller.com/osintverse-community/checkdmarc) | The domain's SPF, DMARC and MX setup |
-| [osintverse/dns-records](https://otinstaller.com/osintverse/dns-records) | The domain's other DNS records |
+| [osintverse-community/dns-records](https://otinstaller.com/osintverse-community/dns-records) | The domain's other DNS records |
 | [osintverse-community/holehe](https://otinstaller.com/osintverse-community/holehe) | Sites where the address has an account |
 | [osintverse-community/socialscan](https://otinstaller.com/osintverse-community/socialscan) | Accurate checks on major platforms |

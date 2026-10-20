@@ -3,12 +3,12 @@
 schema: 1
 kind: guide
 name: image-geolocation
-namespace: osintverse
+namespace: osintverse-community
 version: 1.0.0
 title: "Image verification and geolocation playbook"
 summary: "Check a photo's metadata, find earlier copies, and work out where and when it was taken"
 license: CC-BY-4.0
-homepage: https://github.com/osintverse/image-geolocation
+homepage: https://github.com/osintverse-community/image-geolocation
 categories: [images-geo]
 level: intermediate
 format: guide
@@ -22,9 +22,9 @@ content:
     - 03-copies.md
     - 04-place-and-time.md
 related_tools:
-  - osintverse/exif-meta
-  - osintverse/reverse-image-links
-  - osintverse/image-hash
-  - osintverse/geo-links
+  - osintverse-community/exif-meta
+  - osintverse-community/reverse-image-links
+  - osintverse-community/image-hash
+  - osintverse-community/geo-links
   - osintverse-community/gallery-dl
 topics: [image, url]

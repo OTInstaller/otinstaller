@@ -25,4 +25,4 @@ to infrastructure owned by the same operator. The issuer and validity dates help
 ## Wrap-up
 
 You now have the domain's DNS, its subdomains (current and historical), archived content, look-alikes, and what
-the live servers run. Continue with the IPs in the [IP playbook](https://otinstaller.com/guides/osintverse/ip-investigation).
+the live servers run. Continue with the IPs in the [IP playbook](https://otinstaller.com/guides/osintverse-community/ip-investigation).

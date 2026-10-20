@@ -3,12 +3,12 @@
 schema: 1
 kind: guide
 name: ip-investigation
-namespace: osintverse
+namespace: osintverse-community
 version: 1.0.0
 title: "IP address investigation playbook"
 summary: "Who holds an IP, what it exposes and what runs next to it, without scanning it"
 license: CC-BY-4.0
-homepage: https://github.com/osintverse/ip-investigation
+homepage: https://github.com/osintverse-community/ip-investigation
 categories: [ip-network]
 level: intermediate
 format: guide
