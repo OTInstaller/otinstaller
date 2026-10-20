@@ -18,6 +18,7 @@ export interface Env {
   TOKEN_ENC_KEY?: string;
   OPS_REPO?: string; // e.g. "OTInstaller/registry-ops", where the scan workflow runs
   OPS_INSTALLATION_ID?: string; // the GitHub App's installation on that repo
+  OPS_DISPATCH_TOKEN?: string; // optional fine-grained token with Contents: write on OPS_REPO only; used instead of the App
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
   CF_URLSCAN_ACCOUNT_ID?: string; // with CF_URLSCAN_TOKEN, guide links are checked with Cloudflare URL Scanner
