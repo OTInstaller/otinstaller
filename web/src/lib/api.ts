@@ -43,7 +43,7 @@ export async function apiOrNull<T>(path: string): Promise<T | null> {
 }
 
 /** Sign-in goes through the API, which returns to `back` on this site. */
-export function signInUrl(provider: "github" | "gitlab", back: string): string {
+export function signInUrl(provider: "github" | "gitlab" | "osintverse", back: string): string {
   return `${API_URL}/v1/auth/${provider}/login?redirect=${encodeURIComponent(back)}`;
 }
 
