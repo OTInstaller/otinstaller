@@ -44,6 +44,15 @@ export async function ownerEmails(env: Env, namespaceId: string): Promise<string
   return rows.results.map((r) => r.email).filter((e): e is string => !!e);
 }
 
+/** Emails of reviewers (and admins), or of admins only. */
+export async function staffEmails(env: Env, who: "reviewers" | "admins"): Promise<string[]> {
+  const rows = await env.DB.prepare(
+    `SELECT COALESCE(u.email, (SELECT a.email FROM accounts a WHERE a.user_id = u.id AND a.email IS NOT NULL LIMIT 1)) AS email
+     FROM users u WHERE u.banned_at IS NULL AND (u.is_admin = 1 ${who === "reviewers" ? "OR u.is_reviewer = 1" : ""})`,
+  ).all<{ email: string | null }>();
+  return rows.results.map((r) => r.email).filter((e): e is string => !!e);
+}
+
 const footer = (env: Env) => `\n\n--\nOTInstaller Registry · ${env.SITE_URL}/dashboard\nQuestions about a decision: reply to this email or write to abuse@otinstaller.com.`;
 
 export const templates = {
@@ -68,6 +77,48 @@ export const templates = {
   changesRequested: (env: Env, ns: string, notes: string) => ({
     subject: `Changes requested for ${ns}`,
     text: `A reviewer looked at the first release from ${ns} and asked for changes before it can be published:\n\n${notes}\n\nPush a new tag once you've made them.` + footer(env),
+  }),
+  removed: (env: Env, ref: string, version: string | null, category: string, reason: string) => ({
+    subject: `${ref}${version ? ` ${version}` : ""} was removed from the registry`,
+    text: `${version ? `Version ${version} of ${ref}` : `${ref} and all its versions`} ${version ? "was" : "were"} removed from the OTInstaller Registry.\n\n` +
+      `Category: ${category}\nReason: ${reason}\n\nIt no longer installs, and people who have it installed are warned. ` +
+      `You can appeal once by replying to this email.` + footer(env),
+  }),
+  reportReceived: (env: Env, ref: string, reason: string, details: string, id: string) => ({
+    subject: `[${reason === "malware" ? "URGENT malware" : "report"}] ${ref}`,
+    text: `A ${reason} report was filed against ${ref}:\n\n${details || "(no details)"}\n\nReview it: ${env.SITE_URL}/admin/reports#${id}` +
+      (reason === "malware" ? "\n\nMalware reports have a 24-hour response target. With evidence, any reviewer can remove the version now." : ""),
+  }),
+  transferOffered: (env: Env, ref: string, from: string, to: string, id: string) => ({
+    subject: `${from} offers ${ref} to ${to}`,
+    text: `${from} wants to transfer ${ref} to your namespace ${to}. Its versions, stars and installs move with it, and the old address keeps working.\n\n` +
+      `Accept or decline: ${env.SITE_URL}/transfers/${id}` + footer(env),
+  }),
+  transferCompleted: (env: Env, oldRef: string, newRef: string) => ({
+    subject: `${oldRef} is now ${newRef}`,
+    text: `${oldRef} moved to ${newRef}. Installs from the old address keep working and print the new name; the website redirects.` + footer(env),
+  }),
+  claimToReview: (env: Env, ref: string, to: string, id: string) => ({
+    subject: `Claim of ${ref} by ${to} is verified`,
+    text: `The upstream owner verified their claim of ${ref} for the namespace ${to}. Complete it: ${env.SITE_URL}/admin/transfers#${id}`,
+  }),
+  healthFailing: (env: Env, ref: string, version: string, excerpt: string) => ({
+    subject: `${ref} ${version} failed its health check`,
+    text: `Tonight's health check ran ${ref} ${version} with its test input and it failed:\n\n${excerpt || "(no output)"}\n\n` +
+      `After 3 failures in a row the tool is marked Possibly broken in search. One passing run clears it. Usually a site the tool queries changed; ` +
+      `publish a fixed version when you can. You get this email once per run of failures.` + footer(env),
+  }),
+  stuckJobs: (env: Env, jobs: { id: string; repo: string; tag: string; status: string; age_min: number }[]) => ({
+    subject: `${jobs.length} publish job(s) stuck for over 30 minutes`,
+    text: jobs.map((j) => `${j.repo} ${j.tag}: ${j.status} for ${j.age_min} min (job ${j.id})`).join("\n") + `\n\n${env.SITE_URL}/admin`,
+  }),
+  dailyDigest: (env: Env, waiting: { name: string; days: number }[], reports: { ref: string; reason: string; hours: number }[]) => ({
+    subject: `Review digest: ${waiting.length} namespace(s) waiting, ${reports.length} old report(s)`,
+    text: [
+      waiting.length ? `Namespaces waiting more than 2 business days:\n${waiting.map((w) => `  ${w.name} (${w.days} days)`).join("\n")}` : "",
+      reports.length ? `Reports open more than 48 hours:\n${reports.map((r) => `  ${r.ref}: ${r.reason} (${r.hours} h)`).join("\n")}` : "",
+      `${env.SITE_URL}/admin`,
+    ].filter(Boolean).join("\n\n"),
   }),
   namespaceRejected: (env: Env, ns: string, reason: string) => ({
     subject: `${ns} was not approved`,

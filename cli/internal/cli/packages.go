@@ -264,6 +264,9 @@ func (a *App) install(ctx context.Context, ref pkgRef, native bool) (*state.Inst
 	} else {
 		resp, err := a.API.Manifest(ctx, ref.NS, ref.Name, ref.Version)
 		if err != nil {
+			if ae, ok := isRemoved(err); ok {
+				return nil, exitErr(ExitTrust, "%s", ae.Message)
+			}
 			var ae *api.Error
 			if errors.As(err, &ae) && ae.Status == 404 {
 				return nil, exitErr(ExitUsage, "%s not found in the registry", ref.Ref())

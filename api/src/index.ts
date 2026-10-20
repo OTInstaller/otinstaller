@@ -3,7 +3,7 @@ import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import schema from "../../spec/schema/v1.json";
 import { rank } from "./ranking";
-import { cached, findTool, findVersion, LISTED, rankInput, summary, SUMMARY_COLUMNS, VISIBLE, type SummaryRow } from "./catalog";
+import { cached, findTool, findVersion, notFound, LISTED, rankInput, summary, SUMMARY_COLUMNS, VISIBLE, type SummaryRow } from "./catalog";
 import type { AppEnv, Env, PublishMessage } from "./env";
 import { apiError } from "./lib/errors";
 import { authRoutes } from "./routes/auth";
@@ -12,8 +12,13 @@ import { reviewRoutes } from "./routes/review";
 import { sourceRoutes } from "./routes/sources";
 import { importRoutes } from "./routes/imports";
 import { guideRoutes } from "./routes/guides";
+import { trustRoutes } from "./routes/trust";
+import { transferRoutes } from "./routes/transfers";
+import { opsRoutes } from "./routes/ops";
+import { alertStuckJobs, dailyDigest, purgeRateLimits, reportError } from "./ops";
 import { queueNightlyLinkChecks } from "./guides";
 import { ulid } from "./lib/crypto";
+import { overLimit } from "./trust";
 import { pollDueSources } from "./sync";
 import { expireStaleScans } from "./scans";
 import { handleBatch } from "./publish";
@@ -31,17 +36,31 @@ app.use("*", async (c, next) => {
   return cors({ origin: c.env.SITE_URL, credentials: true, allowMethods: METHODS })(c, next);
 });
 authRoutes(app);
+// Writes (stars, yanks, tokens, imports, reports, ...) are limited to 30 a minute per signed-in user;
+// reviewers and admins are exempt so takedowns are never throttled.
+app.use("*", async (c, next) => {
+  const u = c.get("user");
+  if (u && !u.is_reviewer && !u.is_admin && !["GET", "HEAD", "OPTIONS"].includes(c.req.method)
+    && (await overLimit(c.env, "write", u.id, 30, 60_000))) {
+    apiError(429, "too_many_requests", "at most 30 changes a minute", "wait a minute and try again");
+  }
+  await next();
+});
 webhookRoutes(app);
 reviewRoutes(app);
 sourceRoutes(app);
 importRoutes(app);
 // Registered before the /tools/:ns/:name/:version routes below, which would otherwise take /docs, /guides and /readme.
 guideRoutes(app);
+trustRoutes(app);
+transferRoutes(app);
+opsRoutes(app);
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
   // The request ID ties a user's report to the log line; behind Cloudflare it is the cf-ray.
   const requestId = c.req.header("cf-ray") ?? ulid();
+  c.executionCtx.waitUntil(reportError(c.env, err, { requestId, method: c.req.method, path: new URL(c.req.url).pathname }));
   console.error(`request ${requestId}:`, err);
   return c.json({ error: { code: "internal_error", message: "Something went wrong on our side.", request_id: requestId } }, 500);
 });
@@ -179,10 +198,11 @@ app.get("/guides", (c) => {
 app.get("/tools/:ns/:name", async (c) => {
   const { ns, name } = c.req.param();
   const { row, movedTo } = await findTool(c.env.DB, ns, name);
-  if (!row) apiError(404, "tool_not_found", `${ns}/${name} is not in the registry`);
+  if (!row) return notFound(c.env.DB, ns, name);
   cached(c, 60);
   return c.json({
     ...summary(row),
+    deprecated_replacement: row.deprecated_replacement ?? undefined,
     repo_url: row.repo_url,
     homepage: JSON.parse(row.manifest_json).homepage ?? null,
     license: JSON.parse(row.manifest_json).license,
@@ -210,7 +230,7 @@ app.get("/tools/:ns/:name/versions", async (c) => {
 app.get("/tools/:ns/:name/:version/manifest", async (c) => {
   const { ns, name, version } = c.req.param();
   const { row, movedTo } = await findTool(c.env.DB, ns, name);
-  if (!row) apiError(404, "tool_not_found", `${ns}/${name} is not in the registry`);
+  if (!row) return notFound(c.env.DB, ns, name);
   const v = await findVersion(c.env.DB, row.id, version);
   if (!v) apiError(404, "version_not_found", `${ns}/${name} has no version ${version}`);
   // Removed versions return their status so the CLI can explain why it refuses, but no manifest.
@@ -352,9 +372,12 @@ export default {
     // Every 15 minutes: close scans that never reported back, and poll sources that are due.
     await expireStaleScans(env);
     await pollDueSources(env);
+    await alertStuckJobs(env);
     // Nightly: recompute 30-day install totals that ranking uses, and re-check guides' links.
     if (event.cron === "17 3 * * *") {
       await queueNightlyLinkChecks(env);
+      await dailyDigest(env);
+      await purgeRateLimits(env);
       await env.DB.prepare(
         `UPDATE tools SET installs_30d = COALESCE((SELECT SUM(count) FROM install_counts
            WHERE tool_id = tools.id AND day >= date('now', '-30 days')), 0)`,
