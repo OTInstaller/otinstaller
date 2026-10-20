@@ -1,0 +1,37 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: email-header-parser
+namespace: osintverse
+version: 0.1.0
+summary: "Parses raw email headers into senders, relay hops, IPs and SPF/DKIM/DMARC results"
+readme: README.md
+license: MIT
+homepage: https://github.com/osintverse/email-header-parser
+categories: [email]
+tags: [email, headers, phishing, offline]
+inputs:
+  - name: headers
+    type: string
+    required: true
+    description: "The raw headers, as copied from \"Show original\"; \\n escapes are accepted"
+outputs:
+  - type: email
+  - type: domain
+  - type: ip
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse/email-header-parser@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["email-header-parser", "{headers}"]
+  output_format: json
+  timeout_seconds: 30
+network:
+  egress: false
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+test:
+  input: { headers: "Received: from mail.example.org (mail.example.org [93.184.216.34]) by mx.example.net; Mon, 6 Jan 2025 10:00:05 +0000\nFrom: Example <sender@example.org>\nAuthentication-Results: mx.example.net; spf=pass; dkim=pass; dmarc=pass" }

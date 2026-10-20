@@ -1,0 +1,3 @@
+#!/bin/sh
+# Runs the ipwhois CLI module directly: its console script imports a main() the module does not define.
+exec python -m ipwhois.scripts.ipwhois_cli "$@"

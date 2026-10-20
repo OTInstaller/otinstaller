@@ -1,0 +1,41 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: theharvester
+namespace: osintverse-community
+version: 4.11.1
+summary: "Gathers emails, subdomains, hosts and IPs for a domain from public search engines and datasets"
+readme: README.md
+license: GPL-2.0
+homepage: https://github.com/laramies/theHarvester
+categories: [domain-dns, email]
+tags: [recon, subdomains, emails]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+  - name: sources
+    type: string
+    required: false
+    default: "crtsh,certspotter,duckduckgo,hackertarget,otx,rapiddns,urlscan"
+    description: "Comma-separated sources (default: free ones that need no key)"
+outputs:
+  - type: email
+  - type: subdomain
+  - type: ip
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/theharvester@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["theHarvester", "-d", "{domain}", "-b", "{sources}", "-l", "200"]
+  output_format: text
+  timeout_seconds: 900
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+test:
+  input: { domain: "otinstaller.com", sources: "crtsh,hackertarget" }

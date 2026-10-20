@@ -1,0 +1,32 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/guides
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+kind: guide
+name: username-investigation
+namespace: osintverse
+version: 1.0.0
+title: "Username investigation playbook"
+summary: "From a name or one handle to verified accounts across thousands of sites"
+license: CC-BY-4.0
+homepage: https://github.com/osintverse/username-investigation
+categories: [username, social-media]
+level: beginner
+format: guide
+language: en
+content:
+  root: docs/
+  nav:
+    - index.md
+    - 01-scope-and-legal.md
+    - 02-candidates.md
+    - 03-find-accounts.md
+    - 04-verify-and-pivot.md
+related_tools:
+  - osintverse/username-permutations
+  - osintverse-community/sherlock
+  - osintverse-community/maigret
+  - osintverse-community/socialscan
+  - osintverse-community/naminter
+  - osintverse-community/mailcat
+  - osintverse/image-hash
+topics: [username]

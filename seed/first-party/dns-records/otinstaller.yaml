@@ -1,0 +1,40 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: dns-records
+namespace: osintverse
+version: 0.1.0
+summary: "Looks up a domain's A, AAAA, CNAME, MX, NS, TXT, SOA and CAA records"
+readme: README.md
+license: MIT
+homepage: https://github.com/osintverse/dns-records
+categories: [domain-dns]
+tags: [dns, domain, passive]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+  - name: types
+    type: string
+    required: false
+    description: "Comma-separated record types, such as MX,TXT"
+outputs:
+  - type: dns_record
+  - type: ip
+  - type: domain
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse/dns-records@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["dns-records", "--types", "{types}", "{domain}"]
+  output_format: json
+  timeout_seconds: 60
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+test:
+  input: { domain: "example.com" }

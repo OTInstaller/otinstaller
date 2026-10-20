@@ -1,0 +1,40 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: yt-dlp
+namespace: osintverse-community
+version: 2026.8.19
+summary: "Extracts metadata from videos and channels on YouTube, TikTok, X, Instagram and 1,000+ other sites"
+readme: README.md
+license: Unlicense
+homepage: https://github.com/yt-dlp/yt-dlp
+categories: [social-media]
+tags: [video, metadata, youtube, tiktok]
+inputs:
+  - name: url
+    type: url
+    required: true
+    description: "A video, channel or playlist URL"
+outputs:
+  - type: url
+  - type: account
+  - type: other
+runtime:
+  kind: pipx
+  package: yt-dlp
+  package_version: "2026.8.19"
+  index: pypi
+  python: ">=3.10"
+  entrypoint: yt-dlp
+  wheel_sha256: "1d57897e94c6665a0a6f9bc54b34e584284e32c034ffab3a7df25d8f7b24eedf"
+  command: ["yt-dlp", "--dump-json", "--skip-download", "--no-warnings", "--playlist-items", "1:20", "{url}"]
+  output_format: jsonl
+  timeout_seconds: 600
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+test:
+  input: { url: "https://www.youtube.com/watch?v=jNQXAC9IVRw" }

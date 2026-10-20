@@ -1,0 +1,26 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/guides
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+kind: guide
+name: crypto-address-tracing
+namespace: osintverse
+version: 1.0.0
+title: "Cryptocurrency address tracing playbook"
+summary: "Balance, history and counterparties of a Bitcoin or Ethereum address, one hop at a time"
+license: CC-BY-4.0
+homepage: https://github.com/osintverse/crypto-address-tracing
+categories: [crypto]
+level: intermediate
+format: guide
+language: en
+content:
+  root: docs/
+  nav:
+    - index.md
+    - 01-scope-and-legal.md
+    - 02-lookup.md
+    - 03-follow.md
+related_tools:
+  - osintverse/btc-address
+  - osintverse/eth-address
+topics: [crypto_address]
