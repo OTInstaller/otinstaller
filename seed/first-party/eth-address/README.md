@@ -3,7 +3,7 @@
 Looks up an Ethereum address on the public Blockscout API and reports its ETH balance, ENS name, whether it is a contract (and which token), its transaction counts, its 25 most recent transactions and the addresses on the other side of them.
 
 ```
-ot run osintverse/eth-address --address 0x314159265dD8dbb310642f98f50C066173C1259b
+ot run osintverse-community/eth-address --address 0x314159265dD8dbb310642f98f50C066173C1259b
 ```
 
 ## Inputs
@@ -18,7 +18,7 @@ Token transfers are counted but not listed. No API key is needed; Blockscout see
 
 ## Next steps
 
-For Bitcoin, use [osintverse/btc-address](https://otinstaller.com/osintverse/btc-address).
+For Bitcoin, use [osintverse-community/btc-address](https://otinstaller.com/osintverse-community/btc-address).
 
 ## Development
 

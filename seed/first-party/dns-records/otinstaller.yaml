@@ -2,12 +2,12 @@
 # yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
 schema: 1
 name: dns-records
-namespace: osintverse
+namespace: osintverse-community
 version: 0.1.0
 summary: "Looks up a domain's A, AAAA, CNAME, MX, NS, TXT, SOA and CAA records"
 readme: README.md
 license: MIT
-homepage: https://github.com/osintverse/dns-records
+homepage: https://github.com/osintverse-community/dns-records
 categories: [domain-dns]
 tags: [dns, domain, passive]
 inputs:
@@ -25,7 +25,7 @@ outputs:
 runtime:
   kind: docker
   # Filled in by the release workflow with the pushed image's digest.
-  image: ghcr.io/osintverse/dns-records@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  image: ghcr.io/osintverse-community/dns-records@sha256:0000000000000000000000000000000000000000000000000000000000000000
   platforms: [linux/amd64, linux/arm64]
   command: ["dns-records", "--types", "{types}", "{domain}"]
   output_format: json

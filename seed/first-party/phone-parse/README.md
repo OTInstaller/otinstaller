@@ -3,7 +3,7 @@
 Checks a phone number against Google's libphonenumber data and reports whether it is valid, its E.164 and national formats, the country and area, the carrier the range was assigned to, the line type (mobile, fixed line, VoIP, toll free…) and its time zones. Runs offline.
 
 ```
-ot run osintverse/phone-parse --phone "+44 20 7946 0958"
+ot run osintverse-community/phone-parse --phone "+44 20 7946 0958"
 ```
 
 ## Inputs

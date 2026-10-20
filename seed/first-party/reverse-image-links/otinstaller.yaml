@@ -2,12 +2,12 @@
 # yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
 schema: 1
 name: reverse-image-links
-namespace: osintverse
+namespace: osintverse-community
 version: 0.1.0
 summary: "Builds reverse image search links for an image URL: Google Lens, Bing, Yandex, TinEye and more"
 readme: README.md
 license: MIT
-homepage: https://github.com/osintverse/reverse-image-links
+homepage: https://github.com/osintverse-community/reverse-image-links
 categories: [images-geo]
 tags: [reverse-image-search, image, offline]
 inputs:
@@ -24,7 +24,7 @@ outputs:
 runtime:
   kind: docker
   # Filled in by the release workflow with the pushed image's digest.
-  image: ghcr.io/osintverse/reverse-image-links@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  image: ghcr.io/osintverse-community/reverse-image-links@sha256:0000000000000000000000000000000000000000000000000000000000000000
   platforms: [linux/amd64, linux/arm64]
   command: ["reverse-image-links", "--engines", "{engines}", "{url}"]
   output_format: json
