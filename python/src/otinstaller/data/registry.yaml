@@ -1446,7 +1446,7 @@ tools:
   display_name: Blackbird
   description: OSINT tool to search for accounts by username and email across social networks.
   repo: antoniaci/blackbird
-  license: GPL-3.0
+  license: NOASSERTION
   stars: 8628
   tier: community
   install:
