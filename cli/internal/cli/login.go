@@ -28,15 +28,20 @@ var pollSleep = func(ctx context.Context, d time.Duration) error {
 }
 
 func (a *App) loginCmd() *cobra.Command {
-	var gitlab bool
+	var gitlab, osintverse bool
 	cmd := &cobra.Command{
 		Use:   "login",
-		Short: "Sign in with GitHub (or GitLab) to star tools and publish",
+		Short: "Sign in with GitHub (or GitLab, or OSINTverse) to star tools and publish",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if gitlab && osintverse {
+				return exitErr(ExitUsage, "choose one of --gitlab and --osintverse")
+			}
 			provider := "github"
 			if gitlab {
 				provider = "gitlab"
+			} else if osintverse {
+				provider = "osintverse"
 			}
 			ctx := cmd.Context()
 			start, err := a.API.StartDeviceLogin(ctx, provider)
@@ -74,6 +79,7 @@ func (a *App) loginCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&gitlab, "gitlab", false, "sign in with GitLab instead of GitHub")
+	cmd.Flags().BoolVar(&osintverse, "osintverse", false, "sign in with an OSINTverse account (publishing still needs GitHub or GitLab)")
 	return cmd
 }
 
