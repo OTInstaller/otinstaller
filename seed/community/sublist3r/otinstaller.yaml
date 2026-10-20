@@ -1,0 +1,35 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+# Converted from the package manager's catalog by scripts/pm-catalog-to-wrappers.py.
+schema: 1
+name: sublist3r
+namespace: osintverse-community
+version: 1.0.0
+summary: "Fast subdomain enumeration tool using multiple search engines and certificate transparency logs"
+readme: README.md
+license: GPL-2.0
+homepage: https://github.com/aboul3la/Sublist3r
+categories: [domain-dns]
+tags: [subdomain, domain, subdomain-enum, domain-recon]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+outputs:
+  - type: subdomain
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/sublist3r@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64]
+  command: ["sublist3r", "--domain", "{domain}"]
+  output_format: text
+  timeout_seconds: 900
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+test:
+  input: {"domain": "example.com"}
