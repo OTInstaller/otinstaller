@@ -9,12 +9,18 @@ archiving and deleted repositories), and the import wizard (detecting what a rep
 opening a pull or merge request, registry-held manifests, and bulk imports of up to 50 repositories).
 To connect real GitHub and GitLab apps, follow [docs/publishing-setup.md](docs/publishing-setup.md).
 
+It also holds `otinstaller`, the older Python package manager (from OSINTVerseHQ/OTinstaller, imported with its
+history into `python/`). `ot` is the one CLI going forward; `otinstaller` is in maintenance, and its tool catalog has
+been converted into registry packages (see [otinstaller (python/)](#otinstaller-python)).
+
 | Folder | What it is |
 | --- | --- |
 | `spec/` | Manifest JSON Schema (`schema/v1.json`), example manifests (3 valid, 24 invalid with expected error codes) and the release workflow templates (`templates/`) that `ot init` and the import wizard both use |
 | `cli/` | The `ot` CLI (Go): `init`, `validate`, `search`, `info`, `install`, `run`, `list`, `uninstall`, `keys`, `doctor`, `login`, `logout`, `whoami`, `import`, `sync` |
 | `api/` | Registry API (Cloudflare Workers + Hono + D1 + Queues): search and read endpoints, GitHub/GitLab sign-in and device flow, API tokens, GitHub App webhooks, publish validation, the import wizard |
 | `web/` | The website (Astro on Cloudflare, Preact islands): home, search, tool and guide pages, docs, policies, the import wizard, dashboard and admin console. `npm run dev` for a dev server, `npm run og` to re-render the social preview image |
+| `python/` | `otinstaller`, the older package manager (Python, Linux): installs tools from pip or git into per-tool virtualenvs, typed inputs, saved results, Debian packaging. In maintenance; see below |
+| `seed/` | The launch seed: first-party tools, community wrappers (including those converted from `otinstaller`'s catalog), guides |
 | `ops/` | The scanner (`scanner/scan.py` + its Docker image) and the GitHub Actions workflow for the registry-ops repo |
 | `examples/dns-lookup/` | A tiny real tool used by the end-to-end test |
 | `examples/tldextract/`, `examples/cosign/` | Real packages (a PyPI wheel and Sigstore's signed image) used by `scripts/e2e-real.sh` |
@@ -82,6 +88,44 @@ Against real artifacts (a keyless-signed image and a real PyPI wheel), with Dock
 ```bash
 bash scripts/e2e-real.sh
 ```
+
+## otinstaller (python/)
+
+`python/` is the OTinstaller package manager, imported with `git subtree` so its full history is kept (`git log
+python/` shows the import; `git log 3c3bfb5` the original commits). It keeps its own conventions in
+[python/AGENTS.md](python/AGENTS.md), its changelog and its Debian packaging (`python/debian/`, built from
+`python/`).
+
+How it fits with the registry:
+
+- **One CLI.** New work goes into `ot`. `otinstaller` gets bug fixes, still ships on PyPI and as a Debian package
+  for existing users, and no longer installs an `ot` command, since that name belongs to the registry CLI.
+- **Catalog.** `otinstaller`'s tested catalog (`python/src/otinstaller/data/registry.yaml`) is converted into
+  `osintverse-community` wrappers in `seed/community/` by `python scripts/pm-catalog-to-wrappers.py`: a pinned pip
+  release with a pure-Python wheel on PyPI becomes a pipx package pinned by the wheel's SHA-256; git installs, extra
+  packages, Playwright browsers and releases without a wheel become Docker wrappers built at the same pinned
+  version. Typed inputs (`u:`, `e:`, `d:`, `url:`, `p:`) become manifest inputs, and the flags they map to become
+  the command template. Existing seed folders are never overwritten. Tools that need a login or a terminal, take no
+  typed input, or whose license doesn't allow a wrapper are listed and skipped; see [seed/README.md](seed/README.md).
+- **Install paths.** apt (Debian/Kali) and pip/pipx installs of `otinstaller` stay as they are. Through the
+  registry, the same tools install with `ot` as Docker images or sandboxed pipx wheels; the bare per-tool
+  virtualenvs and unpinned git checkouts don't carry over.
+
+Tests (Linux only, so on Windows run them in a container):
+
+```bash
+cd python
+pip install -e ".[dev,pipeline]"
+ruff check . && ruff format --check . && pytest
+```
+
+CI for it is `.github/workflows/python-ci.yml` and `python-nightly.yml`, scoped to `python/**`.
+
+## Licenses
+
+`python/` is under the Apache License 2.0; its [LICENSE](python/LICENSE) and [NOTICE](python/NOTICE) must be kept with
+any redistribution or derived work ("OTinstaller by OSINTverse"). The rest of this repository has no license file
+yet. Tools installed by either CLI keep their own licenses.
 
 ## Notes on the plan
 
