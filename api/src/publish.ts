@@ -12,7 +12,7 @@ import { audit } from "./routes/auth";
 import { commitStatus, dispatchScan, loadVersion } from "./scans";
 import { copyImages, queueContentChecks, recheckLinks, relatedToolProblems, renderRelease, runContentChecks, storeContent, type RenderedRelease } from "./guides";
 import { ownerEmails, sendEmail, templates } from "./notify";
-import { COMMUNITY_NAMESPACE, detectQueued, failImport, heldManifestFor } from "./imports";
+import { COMMUNITY_NAMESPACE, detectQueued, failImport, heldManifestFor, parseRepoRef } from "./imports";
 
 export const MANIFEST_FILE = "otinstaller.yaml";
 
@@ -138,7 +138,18 @@ export async function processJob(env: Env, jobId: string): Promise<Outcome | nul
 /** Tools go to the security scanner; guides get content checks in the Worker. */
 async function startChecks(env: Env, versionId: string, job: Job, m: Manifest) {
   if (m.kind === "guide") await queueContentChecks(env, versionId);
-  else await dispatchScan(env, { versionId, provider: job.provider, repo: job.repo, tag: job.tag, manifest: m });
+  else await dispatchScan(env, { versionId, provider: job.provider, repo: job.repo, tag: job.tag, manifest: m, upstream: upstreamOf(job, m) });
+}
+
+/**
+ * A community wrapper repackages another project's release, so that release (a PyPI wheel, say) carries the
+ * upstream repository's provenance, not the wrapper's. The scanner accepts either.
+ */
+export function upstreamOf(job: { repo: string }, m: Manifest): string | undefined {
+  if (m.namespace !== COMMUNITY_NAMESPACE || typeof m.homepage !== "string") return undefined;
+  const ref = parseRepoRef(m.homepage);
+  if (!ref || ref.path.toLowerCase() === job.repo.toLowerCase()) return undefined;
+  return `${ref.provider}.com/${ref.path}`;
 }
 
 async function releaseProblems(env: Env, m: Manifest, job: Job, namespace: string, nsStatus: string): Promise<Problem[]> {

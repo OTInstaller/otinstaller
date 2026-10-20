@@ -22,13 +22,10 @@ outputs:
   - type: account
   - type: url
 runtime:
-  kind: pipx
-  package: naminter
-  package_version: "1.0.9"
-  index: pypi
-  python: ">=3.11"
-  entrypoint: naminter
-  wheel_sha256: "99057e39eb3c0e2292354f3e5211a290d76a7552475e1b1420e4a04a926f110f"
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/naminter@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
   command: ["naminter", "--username", "{username}", "--include-categories", "{category}"]
   output_format: text
   timeout_seconds: 900

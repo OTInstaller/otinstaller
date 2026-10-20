@@ -4,7 +4,7 @@ This repository packages [github.com/3xp0rt/Naminter](https://github.com/3xp0rt/
 
 Report problems with the tool upstream, and problems with the packaging here. If you maintain the upstream project and want to publish it yourself, open an issue or run `ot claim osintverse-community/naminter`: the package is transferred to you.
 
-It installs the upstream project's own release from PyPI, pinned by version and hash; nothing here is rebuilt.
+The `Dockerfile` here installs the upstream release from PyPI at a pinned version, plus the Pango libraries its PDF export needs, and the `otinstaller release` workflow builds, signs and publishes the image.
 
 ```
 ot run osintverse-community/naminter --username …

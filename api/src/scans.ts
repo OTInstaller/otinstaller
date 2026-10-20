@@ -60,8 +60,8 @@ export function expectedSigner(provider: "github" | "gitlab", repo: string, tag:
     : { identityRegexp: `^https://gitlab\.com/${escapeRe(repo)}//[^@]+${ref}`, issuer: "https://gitlab.com" };
 }
 
-export async function dispatchScan(env: Env, opts: { versionId: string; provider: "github" | "gitlab"; repo: string; tag: string; manifest: Manifest }) {
-  const { versionId, provider, repo, tag, manifest: m } = opts;
+export async function dispatchScan(env: Env, opts: { versionId: string; provider: "github" | "gitlab"; repo: string; tag: string; manifest: Manifest; upstream?: string }) {
+  const { versionId, provider, repo, tag, manifest: m, upstream } = opts;
   const token = randomToken(32);
   const signer = expectedSigner(provider, repo, tag);
   const now = Date.now();
@@ -79,6 +79,8 @@ export async function dispatchScan(env: Env, opts: { versionId: string; provider
     version_id: versionId,
     ref: `${m.namespace}/${m.name}@${m.version}`,
     source_repo: `${provider}.com/${repo}`,
+    // Community wrappers: the upstream project, whose own PyPI provenance is also accepted.
+    ...(upstream ? { upstream_repo: upstream } : {}),
     kind: m.kind ?? "tool",
     runtime: m.runtime ?? null,
     test_input: (m.test as { input?: unknown } | undefined)?.input ?? null,
