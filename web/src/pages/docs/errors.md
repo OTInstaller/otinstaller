@@ -168,6 +168,34 @@ A query parameter has a value the API does not accept; the message lists the all
 ### invalid_body
 The request body is malformed; the message says what to send.
 
+### tool_removed
+The package, or every version it had, was removed from the registry; the message gives the reason category. See the
+[transparency page](/policy/transparency).
+
+### too_many_requests
+At most 30 changes a minute per account.
+
+### too_many_reports
+At most 5 reports an hour from one address, or 20 a day per account. Write to abuse@otinstaller.com for more.
+
+### invalid_reason
+Report reasons are malware, policy, impersonation, license, broken and other.
+
+### not_community_packaged
+Only community wrappers can be claimed; ask the package's owners for a transfer instead.
+
+### destination_required
+Say which of your namespaces should receive the package, or get one first by installing the GitHub App or connecting GitLab.
+
+### upstream_unknown
+The wrapper does not name its upstream repository, so the claim cannot be checked automatically. Write to support@otinstaller.com.
+
+### name_taken
+The receiving namespace already has a package with this name. Rename one of them first.
+
+### invalid_state
+The version or transfer is not in a state that allows this (for example, yanking a version that is already yanked).
+
 ### sync_rate_limited
 At most 10 manual syncs per package per hour.
 

@@ -186,3 +186,41 @@ that sets the version and pushes the tag). Tagging it publishes it the same way 
 Read them with `ot guide search|read|open|get|tools` and `ot docs <ns>/<tool>`, or `GET /v1/guides/<ns>/<name>`,
 `/v1/guides/<ns>/<name>/<version>/pages/<path>?format=html|md`, `/v1/tools/<ns>/<name>/docs[/<path>]`,
 `/v1/tools/<ns>/<name>/guides` and `/v1/tools/<ns>/<name>/readme`.
+
+## 9. Trust, health and operations
+
+**Reviewers and admins.** Set `is_reviewer` (review queue, reports, takedowns, audit log) or `is_admin` (also bans and
+completing claims) on a user in D1. The console is at `/admin` on the site.
+
+**Health checks.** Generate a long random `HEALTH_TOKEN` and set it on the Worker (`wrangler secret put HEALTH_TOKEN`) and as
+the secret `HEALTH_TOKEN` in registry-ops, with the repository variable `REGISTRY_API` (`https://api.otinstaller.com`).
+Copy `ops/workflows/health.yml` and `ops/scanner/health.py` (with `scan.py`) into registry-ops. Every night at 02:00 UTC it
+runs each tool's test input with network access; 3 failures in a row mark a tool Possibly broken, one pass clears it.
+
+**Monitoring.** Stuck publish jobs (over 30 minutes) are emailed to admins every 15 minutes, and reviewers get a daily
+digest of namespaces waiting more than 2 business days and reports older than 48 hours. Set `SENTRY_DSN` (optional) to
+send server errors to Sentry with their request ID; request headers and bodies are never sent.
+
+**Migration 0009** adds takedowns, claims and health columns: `npx wrangler d1 migrations apply otinstaller --remote`.
+
+## 10. Releasing ot
+
+`ot` releases come from `.github/workflows/release-cli.yml` on a `vX.Y.Z` tag, built by GoReleaser (`cli/.goreleaser.yaml`).
+
+1. Create a **public** repository for releases (default `otinstaller/ot`; another name goes in the variable `RELEASE_REPO`).
+   The source repository is private, so downloads cannot come from it.
+2. Create the release signing key, once, on a trusted machine, and keep the private key offline as well:
+   ```bash
+   openssl genpkey -algorithm ed25519 -out ot-release-key.pem
+   openssl pkey -in ot-release-key.pem -pubout -outform DER | tail -c 32 | openssl base64 -A   # → OT_RELEASE_PUBLIC_KEY
+   ```
+3. In this repository's Actions settings: secret `OT_RELEASE_KEY` (the PEM), secret `RELEASE_GITHUB_TOKEN` (a token with
+   contents: write on the release repository), variable `OT_RELEASE_PUBLIC_KEY`. Optional: `TAP_GITHUB_TOKEN` with write
+   access to `otinstaller/homebrew-tap` and `otinstaller/scoop-bucket` (create both repositories first) for
+   `brew install otinstaller/tap/ot` and `scoop install ot`.
+4. Push a tag `v1.0.0`. The release has archives for Windows, macOS and Linux (amd64 and arm64), deb and rpm packages,
+   `checksums.txt` signed with the release key (`checksums.txt.sig`) and with cosign, and the install scripts with the
+   public key filled in. Serve those scripts at `get.otinstaller.com/ot` and `get.otinstaller.com/ot.ps1`.
+
+`ot self-update` and the install scripts refuse a release whose checksums are not signed by the key built into them.
+winget, macOS notarization and Windows code signing need accounts of their own and are not set up yet.

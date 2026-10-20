@@ -1,0 +1,33 @@
+---
+import Policy from "../../layouts/Policy.astro";
+import { api } from "../../lib/api";
+import { formatDate } from "../../lib/format";
+
+interface Transparency {
+  removed: { ref: string; version: string | null; category: string; removed_at: number }[];
+  quarters: { quarter: string; reports: number; actioned: number; dismissed: number; removals: number }[];
+}
+const data = await api<Transparency>("/removed");
+Astro.response.headers.set("Cache-Control", "public, max-age=60, s-maxage=600");
+---
+<Policy frontmatter={{ title: "Transparency", description: "Removed tools and quarterly report numbers for the OTInstaller Registry." }}>
+  <p>Every removal from the registry, with its reason category, and how many reports we received and acted on each quarter.</p>
+  <h2>Removed packages</h2>
+  {data.removed.length === 0 ? <p>Nothing has been removed.</p> : (
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th scope="col">Package</th><th scope="col">Version</th><th scope="col">Reason</th><th scope="col">Removed</th></tr></thead>
+        <tbody>{data.removed.map((r) => <tr><td>{r.ref}</td><td>{r.version ?? "all versions"}</td><td>{r.category}</td><td>{formatDate(r.removed_at)}</td></tr>)}</tbody>
+      </table>
+    </div>
+  )}
+  <h2>Reports by quarter</h2>
+  {data.quarters.length === 0 ? <p>No reports yet.</p> : (
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th scope="col">Quarter</th><th scope="col">Reports</th><th scope="col">Acted on</th><th scope="col">Dismissed</th><th scope="col">Removals</th></tr></thead>
+        <tbody>{data.quarters.map((q) => <tr><td>{q.quarter}</td><td>{q.reports}</td><td>{q.actioned}</td><td>{q.dismissed}</td><td>{q.removals}</td></tr>)}</tbody>
+      </table>
+    </div>
+  )}
+</Policy>

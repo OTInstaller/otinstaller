@@ -1,0 +1,20 @@
+---
+import Base from "../../../layouts/Base.astro";
+import ToolHeader from "../../../components/ToolHeader.astro";
+import ReportForm from "../../../islands/ReportForm";
+import { api, type Version } from "../../../lib/api";
+import { loadTool } from "../../../lib/tool";
+
+const loaded = await loadTool(Astro, "/report");
+if ("response" in loaded) return loaded.response;
+const { tool: t, hasDocs } = loaded;
+const ref = `${t.namespace}/${t.name}`;
+const { versions } = await api<{ versions: Version[] }>(`/tools/${ref}/versions`);
+Astro.response.headers.set("Cache-Control", "private, no-store");
+---
+<Base title={`Report ${ref}`} noindex>
+  <ToolHeader tool={t} active="overview" hasDocs={hasDocs} />
+  <h2>Report this package</h2>
+  <p class="muted">Reports go to the registry's reviewers. You don't need an account. Read the <a href="/policy/acceptable-use">acceptable use policy</a> for what isn't allowed.</p>
+  <ReportForm client:load refName={ref} versions={versions.filter((v) => v.status !== "removed").map((v) => v.version)} version={Astro.url.searchParams.get("v") ?? undefined} />
+</Base>

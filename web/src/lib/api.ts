@@ -102,6 +102,7 @@ export interface ToolDetail extends ToolSummary {
   homepage: string | null;
   license: string;
   deprecated_message?: string;
+  deprecated_replacement?: string;
   manifest: Manifest;
   moved_to?: string;
 }

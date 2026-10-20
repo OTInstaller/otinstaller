@@ -1,0 +1,97 @@
+# GoReleaser v2 config for ot. Run by .github/workflows/release-cli.yml on a vX.Y.Z tag.
+#
+# Releases are published to a public repository (RELEASE_REPO, default otinstaller/ot) because the source
+# repository is private. checksums.txt is signed with the Ed25519 release key (checksums.txt.sig, which
+# `ot self-update` and the install scripts verify) and with cosign keyless (for the transparency log).
+# Homebrew and Scoop are only updated when their tokens are set.
+version: 2
+project_name: ot
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: ot
+    main: ./cmd/ot
+    binary: ot
+    env: [CGO_ENABLED=0]
+    goos: [windows, darwin, linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+      - -X github.com/otinstaller/otinstaller/cli/internal/cli.Version=v{{ .Version }}
+      - -X github.com/otinstaller/otinstaller/cli/internal/selfupdate.Repo={{ envOrDefault "RELEASE_REPO" "otinstaller/ot" }}
+      - -X github.com/otinstaller/otinstaller/cli/internal/selfupdate.PublicKey={{ .Env.OT_RELEASE_PUBLIC_KEY }}
+
+archives:
+  - id: ot
+    # ot self-update and the install scripts look for exactly this name.
+    name_template: "ot_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files: [README.md, LICENSE*]
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+signs:
+  # Ed25519 over checksums.txt; the public half is built into ot.
+  - id: release-key
+    artifacts: checksum
+    signature: "${artifact}.sig"
+    cmd: openssl
+    args: [pkeyutl, -sign, -rawin, -inkey, "{{ .Env.OT_RELEASE_KEY_FILE }}", -in, "${artifact}", -out, "${signature}"]
+  # Keyless cosign, recorded in the public transparency log.
+  - id: cosign
+    artifacts: checksum
+    cmd: cosign
+    signature: "${artifact}.cosign.sig"
+    certificate: "${artifact}.pem"
+    args: [sign-blob, --yes, "--output-signature=${signature}", "--output-certificate=${certificate}", "${artifact}"]
+
+nfpms:
+  - id: packages
+    package_name: ot
+    vendor: OSINTverse
+    homepage: https://otinstaller.com
+    maintainer: OTInstaller Registry <support@otinstaller.com>
+    description: Install and run OSINT tools and guides from the OTInstaller Registry.
+    license: Apache-2.0
+    formats: [deb, rpm]
+    bindir: /usr/bin
+
+brews:
+  - name: ot
+    repository:
+      owner: otinstaller
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    skip_upload: '{{ if index .Env "TAP_GITHUB_TOKEN" }}false{{ else }}true{{ end }}'
+    homepage: https://otinstaller.com
+    description: Install and run OSINT tools and guides from the OTInstaller Registry
+    license: Apache-2.0
+    test: system "#{bin}/ot --version"
+
+scoops:
+  - name: ot
+    repository:
+      owner: otinstaller
+      name: scoop-bucket
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    skip_upload: '{{ if index .Env "TAP_GITHUB_TOKEN" }}false{{ else }}true{{ end }}'
+    homepage: https://otinstaller.com
+    description: Install and run OSINT tools and guides from the OTInstaller Registry
+    license: Apache-2.0
+
+release:
+  github:
+    owner: '{{ index (splitList "/" (envOrDefault "RELEASE_REPO" "otinstaller/ot")) 0 }}'
+    name: '{{ index (splitList "/" (envOrDefault "RELEASE_REPO" "otinstaller/ot")) 1 }}'
+  extra_files:
+    - glob: ../scripts/install/install.sh
+    - glob: ../scripts/install/install.ps1

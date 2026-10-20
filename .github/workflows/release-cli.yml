@@ -1,0 +1,48 @@
+# Releases ot when a vX.Y.Z tag is pushed: builds for Windows, macOS and Linux (amd64 and arm64), signs
+# checksums.txt with the release key and with cosign, and publishes to the public release repository.
+#
+# Secrets: RELEASE_GITHUB_TOKEN (contents: write on the release repository), OT_RELEASE_KEY (the Ed25519 private
+# key, PEM), optional TAP_GITHUB_TOKEN (homebrew-tap and scoop-bucket). Variables: OT_RELEASE_PUBLIC_KEY (base64
+# raw public key), optional RELEASE_REPO (default otinstaller/ot).
+name: release ot
+on:
+  push:
+    tags: ["v*.*.*"]
+permissions:
+  contents: read
+  id-token: write # cosign keyless
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: cli/go.mod
+      - uses: sigstore/cosign-installer@v3
+      - name: Write the release key
+        env:
+          OT_RELEASE_KEY: ${{ secrets.OT_RELEASE_KEY }}
+        run: |
+          umask 077
+          printf '%s\n' "$OT_RELEASE_KEY" > "$RUNNER_TEMP/release-key.pem"
+          echo "OT_RELEASE_KEY_FILE=$RUNNER_TEMP/release-key.pem" >> "$GITHUB_ENV"
+      - name: Put the public key in the install scripts
+        env:
+          OT_RELEASE_PUBLIC_KEY: ${{ vars.OT_RELEASE_PUBLIC_KEY }}
+        run: sed -i "s|__OT_RELEASE_PUBLIC_KEY__|${OT_RELEASE_PUBLIC_KEY}|" scripts/install/install.sh scripts/install/install.ps1
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: release --clean
+          workdir: cli
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          OT_RELEASE_PUBLIC_KEY: ${{ vars.OT_RELEASE_PUBLIC_KEY }}
+          RELEASE_REPO: ${{ vars.RELEASE_REPO }}
+      - name: Remove the release key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release-key.pem"

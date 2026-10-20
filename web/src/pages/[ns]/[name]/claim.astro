@@ -1,0 +1,18 @@
+---
+import Base from "../../../layouts/Base.astro";
+import ToolHeader from "../../../components/ToolHeader.astro";
+import ClaimFlow from "../../../islands/ClaimFlow";
+import { loadTool } from "../../../lib/tool";
+
+const loaded = await loadTool(Astro, "/claim");
+if ("response" in loaded) return loaded.response;
+const { tool: t, hasDocs } = loaded;
+if (!t.community_packaged) return Astro.redirect(`/${t.namespace}/${t.name}`, 302);
+const ref = `${t.namespace}/${t.name}`;
+Astro.response.headers.set("Cache-Control", "private, no-store");
+---
+<Base title={`Claim ${ref}`} noindex>
+  <ToolHeader tool={t} active="overview" hasDocs={hasDocs} />
+  <h2>Claim this package</h2>
+  <ClaimFlow client:load refName={ref} upstream={t.homepage} back={`${Astro.site}${ref}/claim`} />
+</Base>

@@ -12,6 +12,7 @@ import (
 	"github.com/otinstaller/otinstaller/cli/internal/api"
 	"github.com/otinstaller/otinstaller/cli/internal/keys"
 	"github.com/otinstaller/otinstaller/cli/internal/runner"
+	"github.com/otinstaller/otinstaller/cli/internal/selfupdate"
 	"github.com/otinstaller/otinstaller/cli/internal/state"
 )
 
@@ -56,6 +57,11 @@ type App struct {
 	Runner   *runner.Runner
 	// OpenURL opens a link in the user's browser.
 	OpenURL func(string) error
+	// CheckRemovals warns, once a day, about installed versions the registry has removed.
+	CheckRemovals bool
+	// Updater and SelfPath let tests stand in for GitHub releases and the running binary.
+	Updater  *selfupdate.Updater
+	SelfPath string
 }
 
 func NewApp() *App {
@@ -65,13 +71,14 @@ func NewApp() *App {
 		client.Token = tok
 	}
 	return &App{
-		Out:     os.Stdout,
-		Err:     os.Stderr,
-		In:      os.Stdin,
-		Config:  cfg,
-		API:     client,
-		Runner:  runner.New(os.Stderr),
-		OpenURL: openInBrowser,
+		Out:           os.Stdout,
+		Err:           os.Stderr,
+		In:            os.Stdin,
+		Config:        cfg,
+		API:           client,
+		Runner:        runner.New(os.Stderr),
+		OpenURL:       openInBrowser,
+		CheckRemovals: true,
 	}
 }
 
@@ -83,6 +90,11 @@ func (a *App) Root() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       Version,
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			if a.CheckRemovals && cmd.Name() != "help" && cmd.Name() != "uninstall" {
+				a.warnRemoved(cmd.Context())
+			}
+		},
 	}
 	root.SetOut(a.Out)
 	root.SetErr(a.Err)
@@ -104,6 +116,12 @@ func (a *App) Root() *cobra.Command {
 		a.syncCmd(),
 		a.guideCmd(),
 		a.docsCmd(),
+		a.reportCmd(),
+		a.claimCmd(),
+		a.transferCmd(),
+		a.yankCmd(),
+		a.deprecateCmd(),
+		a.selfUpdateCmd(),
 	)
 	return root
 }

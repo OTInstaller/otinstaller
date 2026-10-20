@@ -1,0 +1,13 @@
+---
+// Shown (with status 410) for a package the registry removed.
+import Base from "../layouts/Base.astro";
+
+const why = Astro.url.searchParams.get("why") ?? "This package was removed from the registry.";
+Astro.response.status = 410;
+---
+<Base title="Removed" noindex>
+  <h1>Removed from the registry</h1>
+  <p class="notice bad">{why}</p>
+  <p>Removed packages no longer install, and <code>ot</code> warns anyone who still has them. If you installed it, remove it with <code>ot uninstall</code>.</p>
+  <p>Every removal is listed on the <a href="/policy/transparency">transparency page</a> with its reason category.</p>
+</Base>

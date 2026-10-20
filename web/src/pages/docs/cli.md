@@ -19,6 +19,8 @@ Run `ot <command> --help` for all flags. Packages are written `namespace/name`, 
 | `ot uninstall <ns/name>` | Remove a tool |
 | `ot keys set\|list\|rm <NAME>` | API keys in the OS keychain |
 | `ot doctor` | Check Docker, pipx, Python and the keychain |
+| `ot report <ns/name> [--reason … --details …]` | Report a package to the reviewers (opens the form without `--reason`) |
+| `ot self-update [--check]` | Update ot itself; the release signature is checked first |
 
 ## Guides and docs
 
@@ -40,6 +42,10 @@ Run `ot <command> --help` for all flags. Packages are written `namespace/name`, 
 | `ot login [--gitlab]` · `ot logout` · `ot whoami` | Sign in with GitHub or GitLab |
 | `ot import <repository URL>` | The import wizard in the terminal |
 | `ot sync <ns/name> [--log]` | Check the source repository now, or show recent sync events |
+| `ot yank <ns/name@version> [--undo]` | Hide a version from search and `@latest` (still installable by exact version) |
+| `ot deprecate <ns/name> --message … [--replacement ns/name] [--undo]` | Mark a package deprecated |
+| `ot claim <ns/name> [--to ns]` · `ot claim --verify <id>` | Take over a community wrapper of your own project |
+| `ot transfer <ns/name> --to <ns>` · `--accept <id>` · `--decline <id>` | Move a package to another namespace |
 
 ## Exit codes
 

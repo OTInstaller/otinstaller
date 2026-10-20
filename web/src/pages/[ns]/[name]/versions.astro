@@ -1,6 +1,7 @@
 ---
 import Base from "../../../layouts/Base.astro";
 import ToolHeader from "../../../components/ToolHeader.astro";
+import VersionActions from "../../../islands/VersionActions";
 import { api, type Version } from "../../../lib/api";
 import { formatDate } from "../../../lib/format";
 import { loadTool } from "../../../lib/tool";
@@ -34,5 +35,6 @@ const scanLabel: Record<string, string> = { pass: "Passed", warn: "Warnings", fa
       </tbody>
     </table>
   </div>
+  <VersionActions client:idle refName={ref} versions={versions.map((v) => ({ version: v.version, status: v.status }))} />
   <p class="small muted">Yanked versions stay installable by exact version so existing scripts keep working; they are hidden from search and <code>@latest</code>.</p>
 </Base>
