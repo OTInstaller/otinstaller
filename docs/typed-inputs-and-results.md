@@ -1,4 +1,4 @@
-# Typed inputs, saved results and `ot run --all`
+# Typed inputs, saved results, `ot run --all` and playbooks
 
 The Python package manager (`otinstaller`, now in maintenance) had three run features `ot` lacked: typed inputs
 (`u:johndoe`), results saved to disk with a sidecar, and `run --all`. This note says how they map onto the manifest and
@@ -105,3 +105,36 @@ Each run is saved as above (`--no-save` is refused, since the summary is the onl
 the `.stderr.txt` file instead of the terminal, where parallel runs would interleave. stdout gets a summary table (tool,
 status, entities, saved file), or with `--format json` the same as a JSON array. The exit code is 0 when every run
 completed and 1 otherwise.
+
+## `ot playbook`
+
+A playbook is a named list of tools run together against the same typed inputs, like `otinstaller playbook`:
+
+```
+ot playbook --list
+ot playbook domain-recon d:example.com
+ot playbook username-investigation u:johndoe --parallel 2
+```
+
+It works like `ot run --all` restricted to the playbook's tools (same flags, summary, saving and exit codes), with two
+differences: a listed tool with no input of the given types is shown as skipped rather than left out, and runs are
+saved under the case `playbook-<name>` (or the playbook's `case:`, or `--case`). Tools that are not installed stop the
+run with the `ot install` commands to fix it; `--yes` installs them first.
+
+Two playbooks are bundled: `domain-recon` (`osintverse-community/dnstwist`, `osintverse-community/ctfr`) and
+`username-investigation` (`osintverse-community/sherlock`, `osintverse-community/maigret`), the same tools as
+otinstaller's. Your own go in `<ot home>/playbooks/` or `./playbooks/` as `<name>.yaml` (`./playbooks` wins, then the
+ot home, then the bundled ones):
+
+```yaml
+name: my-recon            # optional, defaults to the file name
+description: "What it is for"
+case: my-case             # optional, defaults to playbook-<name>
+tools:
+  - osintverse-community/dnstwist
+  - osintverse-community/ctfr
+```
+
+otinstaller playbooks list bare tool names (`sherlock`); `ot` needs the full package name and says which one to use.
+`requires_target` is accepted and ignored, since `ot playbook` always takes typed inputs. otinstaller guessed the
+target type from a bare target (`example.com`); `ot` needs the prefix (`d:example.com`).

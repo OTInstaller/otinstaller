@@ -1,0 +1,5 @@
+name: domain-recon
+description: "Domain reconnaissance: lookalike domains and subdomains"
+tools:
+  - osintverse-community/dnstwist
+  - osintverse-community/ctfr
