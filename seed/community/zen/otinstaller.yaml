@@ -9,7 +9,7 @@ summary: "Find email addresses of GitHub users, repositories and organizations"
 readme: README.md
 license: Apache-2.0
 homepage: https://github.com/s0md3v/Zen
-categories: [username, web-archive]
+categories: [username, utilities]
 tags: [github, email, email-search]
 inputs:
   - name: username

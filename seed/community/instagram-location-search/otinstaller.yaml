@@ -9,7 +9,7 @@ summary: "Find Instagram location IDs near specified coordinates"
 readme: README.md
 license: MIT
 homepage: https://github.com/bellingcat/instagram-location-search
-categories: [web-archive, images-geo, social-media]
+categories: [utilities, images-geo, social-media]
 tags: [instagram, location, social-media, location-search]
 inputs:
   - name: latitude

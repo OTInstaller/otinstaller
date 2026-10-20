@@ -61,7 +61,7 @@ CATEGORY_BY_ACCEPTS = {
     "phone": "phone",
     "domain": "domain-dns",
     "ip": "ip-network",
-    "url": "web-archive",
+    "url": "utilities",
     "name": "people",
 }
 CATEGORY_BY_CAPABILITY = {
