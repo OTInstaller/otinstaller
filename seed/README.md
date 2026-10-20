@@ -9,7 +9,7 @@ content checks → review → published). Never seed production from `api/script
 | Folder | What | Count |
 | --- | --- | --- |
 | [`first-party/`](first-party) | Tools written for the registry, namespace `osintverse`, on the result envelope | 11 |
-| [`community/`](community) | Wrapper repositories for third-party tools, namespace `osintverse-community` (27 for launch, 18 converted from `otinstaller`) | 45 |
+| [`community/`](community) | Wrapper repositories for third-party tools, namespace `osintverse-community` (27 for launch, 13 converted from `otinstaller`) | 40 |
 | [`guides/`](guides) | Launch guides, namespace `osintverse` | 10 |
 | [`outreach/`](outreach) | Issue and pull request texts for maintainer outreach | 2 |
 
@@ -66,29 +66,29 @@ Docker wrappers pin the upstream version (Go tools by module version, phoneinfog
 
 ## Converted from the otinstaller catalog
 
-18 more wrappers come from the catalog of `otinstaller`, the older package manager in [`../python`](../python), written
+13 more wrappers come from the catalog of `otinstaller`, the older package manager in [`../python`](../python), written
 by `python scripts/pm-catalog-to-wrappers.py`. They follow the same rules as the launch wrappers (outreach first,
-then publish), but were generated rather than hand-tuned: check each command against the upstream `--help` and run
-`ot validate --smoke` after the first release. Docker ones are built for `linux/amd64` only. Git installs pinned to
-a commit get the version `0.0.0-git.<commit>`.
+then publish), but were generated rather than hand-tuned. Docker ones are built for `linux/amd64` only. Git installs
+pinned to a commit get the version `0.0.0-git.<commit>`.
+
+Each was built and run with its `test.input` under `ot`'s own sandbox flags (read-only root, only `/tmp` writable, user
+65534, no capabilities, 1 GB, 2 CPUs) before release. All 13 exit as expected except `ctfr`, which exits 1 while
+crt.sh answers 502. Three exit 0 while their upstream service fails, so their health checks will look fine but their
+output is empty: `neutrosint` (ProtonMail's API errors), `zen` (GitHub answers with an HTML page) and `paramspider` (the
+Wayback Machine refuses the query). Run `ot validate --smoke` again after the first release.
 
 | Package | Version | License | Upstream | Runtime | Inputs | Categories |
 | --- | --- | --- | --- | --- | --- | --- |
 | `osintverse-community/aliens-eye` | 2.7.0 | MIT | arxhr007/Aliens_eye | Docker, built in wrapper | `username` (username) | username, social-media |
 | `osintverse-community/ctfr` | 0.0.0-git.6c7fecd | GPL-3.0 | UnaPibaGeek/ctfr | Docker, built in wrapper | `domain` (domain) | domain-dns |
-| `osintverse-community/edgar-tool` | 2.1.2 | MIT | bellingcat/edgar | pipx (PyPI wheel) | `query` (string) | people, company |
 | `osintverse-community/fierce` | 1.6.0 | GPL-3.0 | mschwager/fierce | pipx (PyPI wheel) | `domain` (domain) | domain-dns, ip-network |
 | `osintverse-community/finalrecon` | 0.0.0-git.b5db3a4 | MIT | thewhiteh4t/FinalRecon | Docker, built in wrapper | `url` (url) | domain-dns, ip-network, utilities |
-| `osintverse-community/instagram-location-search` | 1.5.2 | MIT | bellingcat/instagram-location-search | pipx (PyPI wheel) | `latitude` (string), `longitude` (string) | utilities, images-geo, social-media |
-| `osintverse-community/instaloader` | 4.15.4 | MIT | instaloader/instaloader | pipx (PyPI wheel) | `username` (username) | username, utilities, social-media |
 | `osintverse-community/linkook` | 1.1.3 | MIT | JackJuly/linkook | pipx (PyPI wheel) | `username` (username) | username, email, social-media |
-| `osintverse-community/mailaccess` | 0.18.7 | MIT | KatrielMoses/MailAccess | Docker, built in wrapper | `email` (email) | email, domain-dns, breach-data |
 | `osintverse-community/neutrosint` | 0.0.0-git.a51a133 | MIT | Kr0wZ/NeutrOSINT | Docker, built in wrapper | `email` (email) | email, username |
 | `osintverse-community/nexfil` | 1.0.6 | MIT | thewhiteh4t/nexfil | pipx (PyPI wheel) | `username` (username) | username, social-media |
 | `osintverse-community/onionsearch` | 1.3.0 | GPL-3.0 | megadose/OnionSearch | pipx (PyPI wheel) | `query` (string) | utilities |
 | `osintverse-community/paramspider` | 0.1.0 | MIT | devanshbatham/ParamSpider | Docker, built in wrapper | `domain` (domain) | domain-dns, utilities, documents-metadata |
 | `osintverse-community/socid-extractor` | 0.1.1 | MIT | soxoj/socid-extractor | pipx (PyPI wheel) | `url` (url) | utilities, username, documents-metadata |
-| `osintverse-community/spiderfoot` | 0.0.0-git.0f815a2 | MIT | smicallef/spiderfoot | Docker, built in wrapper | `domain` (domain) | domain-dns, ip-network, username |
 | `osintverse-community/sublist3r` | 1.0.0 | GPL-2.0 | aboul3la/Sublist3r | Docker, built in wrapper | `domain` (domain) | domain-dns |
 | `osintverse-community/thebigbrother` | 7.0.0 | MIT | chadi0x/TheBigBrother | Docker, built in wrapper | `username` (username) | username |
 | `osintverse-community/zen` | 0.0.0-git.b9018b4 | Apache-2.0 | s0md3v/Zen | Docker, built in wrapper | `username` (username) | username, utilities |
@@ -97,7 +97,8 @@ Not converted (the script prints the same reasons):
 
 | Reason | Tools |
 | --- | --- |
-| Already in the launch seed | maigret, theharvester, sherlock, holehe, dnstwist, ignorant, socialscan |
+| Already in the launch seed | maigret, theharvester, sherlock, holehe, dnstwist, ignorant, socialscan, instaloader (as `instaloader-profile`) |
+| Found broken by the smoke test | edgar-tool (writes results only to a file), instagram-location-search (needs Chrome), mailaccess (writes into its install folder, which the read-only sandbox refuses), spiderfoot (a passive scan runs for more than an hour) |
 | Outreach only, or a license that doesn't allow a wrapper (AGPL-3.0, NOASSERTION) | ghunt, blackbird, bbot, h8mail, torbot, secator |
 | Needs a login or config file first | toutatis, whatsapp-osint, telegram-phone-number-checker, auto-archiver, telepathy |
 | Prompts for input or runs until stopped | fsociety, instagram-monitor, sitedorks |

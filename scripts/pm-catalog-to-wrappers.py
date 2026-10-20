@@ -41,6 +41,18 @@ REDISTRIBUTABLE = re.compile(
 # seed/README.md: their licenses don't allow a wrapper, so they are outreach only.
 OUTREACH_ONLY = {"blackbird", "ghunt"}
 
+# What the catalog can't say, found by building each wrapper and running its test input.
+OVERRIDES: dict[str, dict] = {
+    # Prints nothing without at least one module flag; these are the ones that don't brute-force.
+    "finalrecon": {"default_args": ["--headers", "--sslinfo", "--whois", "--dns", "--wayback"], "touches_target": True},
+    # Queries the domain's own name servers and tries a zone transfer.
+    "fierce": {"touches_target": True},
+    "edgar-tool": {"skip": "writes its results only to a file, not to stdout"},
+    "instagram-location-search": {"skip": "drives Chrome through Selenium, which the wrapper image lacks"},
+    "spiderfoot": {"skip": "a passive scan runs for more than an hour, past ot's longest timeout"},
+    "mailaccess": {"skip": "writes into its own install folder at startup, which ot's read-only sandbox refuses"},
+}
+
 # Typed-input prefix -> (manifest input name, input type, sample value for test.input).
 PREFIXES = {
     "u": ("username", "username", "github"),
@@ -202,7 +214,6 @@ def docker_plan(tool: dict) -> tuple[list[str], list[str]]:
         f"RUN git clone --quiet {repo}.git {src} && git -C {src} checkout --quiet {ref} "
         f"&& pip install --no-cache-dir -r {src}/{install['requirements']}"
     )
-    lines.append(f"WORKDIR {src}")
     return lines, ["python", f"{src}/{entry['script']}"]
 
 
@@ -211,6 +222,9 @@ def build(tool: dict, offline: bool) -> tuple[str, dict[str, str]]:
     name = tool["name"]
     if name in OUTREACH_ONLY:
         raise Skip("outreach only (see seed/README.md)")
+    override = OVERRIDES.get(name, {})
+    if "skip" in override:
+        raise Skip(override["skip"])
     if tool.get("needs_config"):
         raise Skip("needs a login or config file first, which a wrapper can't provide")
     if tool.get("interactive") or tool.get("long_running"):
@@ -226,7 +240,7 @@ def build(tool: dict, offline: bool) -> tuple[str, dict[str, str]]:
     version = version_of(tool)
     inputs, args, test = inputs_and_args(tool)
     install = tool["install"]
-    default_args = tool.get("default_args", [])
+    default_args = override.get("default_args", tool.get("default_args", []))
 
     wheel = None
     simple_pip = (
@@ -256,7 +270,9 @@ def build(tool: dict, offline: bool) -> tuple[str, dict[str, str]]:
         kind = "docker"
         lines, start = docker_plan(tool)
         command = [*start, *default_args, *args]
-        lines += ["USER app", f"ENTRYPOINT {json.dumps(start)}"]
+        # ot runs the image read-only with only /tmp writable, so tools that write into their
+        # working folder start there.
+        lines += ["USER app", "WORKDIR /tmp", f"ENTRYPOINT {json.dumps(start)}"]
         dockerfile = "\n".join(lines) + "\n"
         runtime = [
             "runtime:",
@@ -309,7 +325,7 @@ def build(tool: dict, offline: bool) -> tuple[str, dict[str, str]]:
         "network:",
         "  egress: true",
         "ethics:",
-        "  touches_target: false",
+        f"  touches_target: {'true' if override.get('touches_target') else 'false'}",
         f"  auth_required: {'true' if keys.get('required') else 'false'}",
         "  collects_personal_data: "
         + ("true" if PERSONAL & set(tool.get("accepts", [])) else "false"),
@@ -359,11 +375,21 @@ def main() -> int:
 
     tools = yaml.safe_load(opts.catalog.read_text(encoding="utf-8"))["tools"]
     seeded = {p.name for d in ("community", "first-party") for p in (SEED / d).iterdir()}
+    # A seed wrapper of the same upstream under another name (instaloader-profile) counts too.
+    upstream: dict[str, set[str]] = {}
+    for manifest in SEED.glob("*/*/otinstaller.yaml"):
+        homepage = (yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}).get("homepage", "")
+        if "github.com/" in homepage:
+            upstream.setdefault(homepage.split("github.com/", 1)[1].lower(), set()).add(manifest.parent.name)
     written, kept, skipped = [], [], []
     for tool in tools:
         name = tool["name"]
         if name in seeded or (opts.out / name).exists():
             kept.append(name)
+            continue
+        same = upstream.get(str(tool.get("repo", "")).lower(), set()) - {name}
+        if same:
+            kept.append(f"{name} (as {', '.join(sorted(same))})")
             continue
         try:
             kind, files = build(tool, opts.offline)
