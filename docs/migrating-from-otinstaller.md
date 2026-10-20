@@ -85,51 +85,51 @@ lists the rest.
 | otinstaller | ot package | Input, or why there is none |
 | --- | --- | --- |
 | `maigret` | `osintverse-community/maigret` | u: |
-| `ghunt` | none | not packaged: its license does not allow a community wrapper |
+| `ghunt` | none | not packaged: needs a Google login before it can do anything |
 | `theharvester` | `osintverse-community/theharvester` | d: |
-| `spiderfoot` | none | not packaged: a passive scan runs for more than an hour, past `ot`'s longest timeout |
+| `spiderfoot` | none | not packaged: a passive scan runs for more than an hour, past ot's longest timeout |
 | `instaloader` | none | not packaged: Instagram blocks anonymous requests from cloud servers, so its health check can't pass |
 | `sherlock` | `osintverse-community/sherlock` | u: |
 | `holehe` | `osintverse-community/holehe` | e: |
-| `bbot` | none | not packaged: AGPL-3.0 |
+| `bbot` | none | not packaged: installs system packages with sudo when it runs, which ot's sandbox (no root) refuses |
 | `dnstwist` | `osintverse-community/dnstwist` | d: |
-| `h8mail` | none | not packaged: no clear license |
-| `user-scanner` | none | not packaged yet: its version is not semver |
-| `torbot` | none | not packaged: no clear license |
-| `toutatis` | none | not packaged: needs a login or config file first |
-| `ivre` | none | not packaged: takes free-form arguments only |
+| `h8mail` | none | not packaged: license NOASSERTION does not allow a community wrapper |
+| `user-scanner` | none | not packaged: pip version '1.5.2.2' is not a plain dotted version |
+| `torbot` | none | not packaged: license NOASSERTION does not allow a community wrapper |
+| `toutatis` | none | not packaged: needs a login or config file first, which a wrapper can't provide |
+| `ivre` | none | not packaged: declares no typed inputs, so there is nothing to map onto manifest inputs |
 | `aliens-eye` | `osintverse-community/aliens-eye` | u: |
 | `paramspider` | `osintverse-community/paramspider` | d: |
 | `nexfil` | `osintverse-community/nexfil` | u: |
-| `yark` | none | not packaged: takes free-form arguments only |
+| `yark` | none | not packaged: declares no typed inputs, so there is nothing to map onto manifest inputs |
 | `ignorant` | `osintverse-community/ignorant` | --country-code p: |
 | `socialscan` | `osintverse-community/socialscan` | u: |
-| `fsociety` | none | not packaged: interactive or runs until stopped |
+| `fsociety` | none | not packaged: prompts for input or runs until stopped; `ot run` has no terminal for that |
 | `onionsearch` | `osintverse-community/onionsearch` | --query |
-| `openosint` | none | not packaged: takes free-form arguments only |
-| `crosslinked` | none | not packaged: takes free-form arguments only |
-| `whatsapp-osint` | none | not packaged: needs a login or config file first |
-| `instagram-monitor` | none | not packaged: interactive or runs until stopped |
-| `mailaccess` | none | not packaged: writes into its install folder, which `ot`'s read-only sandbox refuses |
-| `secator` | none | not packaged: no clear license |
+| `openosint` | none | not packaged: declares no typed inputs, so there is nothing to map onto manifest inputs |
+| `crosslinked` | none | not packaged: declares no typed inputs, so there is nothing to map onto manifest inputs |
+| `whatsapp-osint` | none | not packaged: needs a login or config file first, which a wrapper can't provide |
+| `instagram-monitor` | none | not packaged: prompts for input or runs until stopped; `ot run` has no terminal for that |
+| `mailaccess` | none | not packaged: writes into its own install folder at startup, which ot's read-only sandbox refuses |
+| `secator` | none | not packaged: license NOASSERTION does not allow a community wrapper |
 | `sublist3r` | `osintverse-community/sublist3r` | d: |
 | `socid-extractor` | `osintverse-community/socid-extractor` | url: |
-| `dnsgen` | none | not packaged: takes free-form arguments only |
-| `sitedorks` | none | not packaged: interactive or runs until stopped |
+| `dnsgen` | none | not packaged: declares no typed inputs, so there is nothing to map onto manifest inputs |
+| `sitedorks` | none | not packaged: prompts for input or runs until stopped; `ot run` has no terminal for that |
 | `linkook` | `osintverse-community/linkook` | u: |
-| `osint-brazuca-regex` | none | not packaged: takes free-form arguments only |
+| `osint-brazuca-regex` | none | not packaged: declares no typed inputs, so there is nothing to map onto manifest inputs |
 | `finalrecon` | `osintverse-community/finalrecon` | url: |
 | `fierce` | `osintverse-community/fierce` | d: |
-| `pywerview` | none | not packaged: takes free-form arguments only |
+| `pywerview` | none | not packaged: declares no typed inputs, so there is nothing to map onto manifest inputs |
 | `ctfr` | `osintverse-community/ctfr` | d: |
-| `blackbird` | none | not packaged: its license does not allow a community wrapper |
-| `telegram-phone-number-checker` | none | not packaged: needs a login or config file first |
-| `auto-archiver` | none | not packaged: needs a login or config file first |
-| `edgar-tool` | none | not packaged: writes its results only to a file |
-| `instagram-location-search` | none | not packaged: needs Chrome |
-| `telepathy` | none | not packaged: needs a login or config file first |
-| `neutrosint` | `osintverse-community/neutrosint` | e: |
-| `zen` | `osintverse-community/zen` | u: |
+| `blackbird` | none | not packaged: its author removed its license in 2024, so it may not be redistributed |
+| `telegram-phone-number-checker` | none | not packaged: needs a login or config file first, which a wrapper can't provide |
+| `auto-archiver` | none | not packaged: needs a login or config file first, which a wrapper can't provide |
+| `edgar-tool` | none | not packaged: writes its results only to a file, not to stdout |
+| `instagram-location-search` | none | not packaged: drives Chrome through Selenium, which the wrapper image lacks |
+| `telepathy` | none | not packaged: needs a login or config file first, which a wrapper can't provide |
+| `neutrosint` | none | not packaged: ProtonMail's API rejects its requests, so it never returns a result |
+| `zen` | none | not packaged: GitHub answers its requests with an HTML page, so it never returns a result |
 | `thebigbrother` | `osintverse-community/thebigbrother` | u: |
 
 Tools that are not packaged keep working in `otinstaller` until its end of life. Their maintainers can publish them

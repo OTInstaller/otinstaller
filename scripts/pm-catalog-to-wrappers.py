@@ -38,13 +38,20 @@ REDISTRIBUTABLE = re.compile(
     r"|Artistic-2\.0|BSL-1\.0)$"
 )
 
-# seed/README.md: their licenses don't allow a wrapper, so they are outreach only.
+# seed/README.md: blackbird has no license; GHunt needs a Google login first. Outreach only.
 OUTREACH_ONLY = {"blackbird", "ghunt"}
 
 # What the catalog can't say, found by building each wrapper and running its test input.
 OVERRIDES: dict[str, dict] = {
     # Prints nothing without at least one module flag; these are the ones that don't brute-force.
     "finalrecon": {"default_args": ["--headers", "--sslinfo", "--whois", "--dns", "--wayback"], "touches_target": True},
+    "bbot": {"skip": "installs system packages with sudo when it runs, which ot's sandbox (no root) refuses"},
+    # Without --stream the URLs go only to a file inside the container, which is lost. example.com
+    # has so many archived URLs that a run takes over 15 minutes; osintverse.com has a few hundred.
+    "paramspider": {"default_args": ["--stream"], "test_input": {"domain": "osintverse.com"}},
+    # Both fail the same way on every input: their upstream services changed.
+    "neutrosint": {"skip": "ProtonMail's API rejects its requests, so it never returns a result"},
+    "zen": {"skip": "GitHub answers its requests with an HTML page, so it never returns a result"},
     # Queries the domain's own name servers and tries a zone transfer.
     "fierce": {"touches_target": True},
     # instaloader-profile was dropped from the seed for this reason.
@@ -232,8 +239,6 @@ def build(tool: dict, offline: bool) -> tuple[str, dict[str, str]]:
     if tool.get("interactive") or tool.get("long_running"):
         raise Skip("prompts for input or runs until stopped; `ot run` has no terminal for that")
     license_id = tool.get("license") or ""
-    if license_id.startswith("AGPL"):
-        raise Skip("AGPL-3.0 is not accepted for community wrappers (seed/README.md)")
     if not REDISTRIBUTABLE.match(license_id):
         raise Skip(f"license {license_id or 'unknown'} does not allow a community wrapper")
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,38}[a-z0-9]", name):
@@ -332,7 +337,7 @@ def build(tool: dict, offline: bool) -> tuple[str, dict[str, str]]:
         "  collects_personal_data: "
         + ("true" if PERSONAL & set(tool.get("accepts", [])) else "false"),
         "test:",
-        f"  input: {json.dumps(test)}",
+        f"  input: {json.dumps(override.get('test_input', test))}",
     ]
 
     files = {"otinstaller.yaml": "\n".join(manifest) + "\n", "README.md": readme(tool, version, kind, inputs)}

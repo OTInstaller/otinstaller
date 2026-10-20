@@ -9,13 +9,18 @@ content checks → review → published). Never seed production from `api/script
 | Folder | What | Count |
 | --- | --- | --- |
 | [`first-party/`](first-party) | Tools written for the registry, namespace `osintverse`, on the result envelope | 11 |
-| [`community/`](community) | Wrapper repositories for third-party tools, namespace `osintverse-community` (27 for launch, 26 published and `instaloader-profile` dropped; 13 converted from `otinstaller`) | 40 |
+| [`community/`](community) | Wrapper repositories for third-party tools, namespace `osintverse-community` (27 for launch, 26 published and `instaloader-profile` dropped; 11 converted from `otinstaller`) | 38 |
 | [`guides/`](guides) | Launch guides, namespace `osintverse` | 10 |
 | [`outreach/`](outreach) | Issue and pull request texts for maintainer outreach | 2 |
 
-Two more tools are **outreach only**, because their licenses don't allow a community wrapper:
-`p1ngul1n0/blackbird` (now `antoniaci/blackbird`, no license) and `mxrch/GHunt` (AGPL-3.0, which the registry does
-not accept for wrappers). That makes 40 tools.
+Two more tools are **outreach only**: `p1ngul1n0/blackbird` (now `antoniaci/blackbird`), whose author removed its
+license in May 2024, so nobody may redistribute it, and `mxrch/GHunt` (AGPL-3.0), which can't do anything until it is
+logged in to a Google account, so a wrapper could never run unattended. That makes 40 tools.
+
+Community wrappers accept any license in the API's redistributable list (`api/src/imports.ts`), the AGPL included: a
+wrapper installs the upstream project unmodified, credits it and links its source, which is what those licenses ask
+of a redistribution. The AGPL's network clause covers modified versions offered over a network, which wrappers are
+not.
 
 ## Tools
 
@@ -65,45 +70,49 @@ Docker wrappers pin the upstream version (Go tools by module version, phoneinfog
 
 ## Converted from the otinstaller catalog
 
-13 more wrappers come from the catalog of `otinstaller`, the older package manager in [`../python`](../python), written
+11 more wrappers come from the catalog of `otinstaller`, the older package manager in [`../python`](../python), written
 by `python scripts/pm-catalog-to-wrappers.py`. They follow the same rules as the launch wrappers (outreach first,
 then publish), but were generated rather than hand-tuned. Docker ones are built for `linux/amd64` only. Git installs
 pinned to a commit get the version `0.0.0-git.<commit>`.
 
 Each was built and run with its `test.input` under `ot`'s own sandbox flags (read-only root, only `/tmp` writable, user
-65534, no capabilities, 1 GB, 2 CPUs) before release. All 13 exit as expected except `ctfr`, which exits 1 while
-crt.sh answers 502. Three exit 0 while their upstream service fails, so their health checks will look fine but their
-output is empty: `neutrosint` (ProtonMail's API errors), `zen` (GitHub answers with an HTML page) and `paramspider` (the
-Wayback Machine refuses the query). Run `ot validate --smoke` again after the first release.
+65534, no capabilities, 1 GB, 2 CPUs). All 11 return results except `ctfr`, which exits 1 while crt.sh answers 502 (a
+known crt.sh outage, not the wrapper). Tools that failed this test the same way on a second input were left out
+rather than published broken; the table below says why. Run `ot validate --smoke` again after the first release.
 
 | Package | Version | License | Upstream | Runtime | Inputs | Categories |
 | --- | --- | --- | --- | --- | --- | --- |
 | `osintverse-community/aliens-eye` | 2.7.0 | MIT | arxhr007/Aliens_eye | Docker, built in wrapper | `username` (username) | username, social-media |
-| `osintverse-community/ctfr` | 0.0.0-git.6c7fecd | GPL-3.0 | UnaPibaGeek/ctfr | Docker, built in wrapper | `domain` (domain) | domain-dns |
-| `osintverse-community/fierce` | 1.6.0 | GPL-3.0 | mschwager/fierce | pipx (PyPI wheel) | `domain` (domain) | domain-dns, ip-network |
-| `osintverse-community/finalrecon` | 0.0.0-git.b5db3a4 | MIT | thewhiteh4t/FinalRecon | Docker, built in wrapper | `url` (url) | domain-dns, ip-network, utilities |
-| `osintverse-community/linkook` | 1.1.3 | MIT | JackJuly/linkook | pipx (PyPI wheel) | `username` (username) | username, email, social-media |
-| `osintverse-community/neutrosint` | 0.0.0-git.a51a133 | MIT | Kr0wZ/NeutrOSINT | Docker, built in wrapper | `email` (email) | email, username |
+| `osintverse-community/paramspider` | 0.1.0 | MIT | devanshbatham/ParamSpider | Docker, built in wrapper | `domain` (domain) | domain-dns, utilities, documents-metadata |
 | `osintverse-community/nexfil` | 1.0.6 | MIT | thewhiteh4t/nexfil | pipx (PyPI wheel) | `username` (username) | username, social-media |
 | `osintverse-community/onionsearch` | 1.3.0 | GPL-3.0 | megadose/OnionSearch | pipx (PyPI wheel) | `query` (string) | utilities |
-| `osintverse-community/paramspider` | 0.1.0 | MIT | devanshbatham/ParamSpider | Docker, built in wrapper | `domain` (domain) | domain-dns, utilities, documents-metadata |
-| `osintverse-community/socid-extractor` | 0.1.1 | MIT | soxoj/socid-extractor | pipx (PyPI wheel) | `url` (url) | utilities, username, documents-metadata |
 | `osintverse-community/sublist3r` | 1.0.0 | GPL-2.0 | aboul3la/Sublist3r | Docker, built in wrapper | `domain` (domain) | domain-dns |
+| `osintverse-community/socid-extractor` | 0.1.1 | MIT | soxoj/socid-extractor | pipx (PyPI wheel) | `url` (url) | utilities, username, documents-metadata |
+| `osintverse-community/linkook` | 1.1.3 | MIT | JackJuly/linkook | pipx (PyPI wheel) | `username` (username) | username, email, social-media |
+| `osintverse-community/finalrecon` | 0.0.0-git.b5db3a4 | MIT | thewhiteh4t/FinalRecon | Docker, built in wrapper | `url` (url) | domain-dns, ip-network, utilities |
+| `osintverse-community/fierce` | 1.6.0 | GPL-3.0 | mschwager/fierce | pipx (PyPI wheel) | `domain` (domain) | domain-dns, ip-network |
+| `osintverse-community/ctfr` | 0.0.0-git.6c7fecd | GPL-3.0 | UnaPibaGeek/ctfr | Docker, built in wrapper | `domain` (domain) | domain-dns |
 | `osintverse-community/thebigbrother` | 7.0.0 | MIT | chadi0x/TheBigBrother | Docker, built in wrapper | `username` (username) | username |
-| `osintverse-community/zen` | 0.0.0-git.b9018b4 | Apache-2.0 | s0md3v/Zen | Docker, built in wrapper | `username` (username) | username, utilities |
 
 Not converted (the script prints the same reasons):
 
 | Reason | Tools |
 | --- | --- |
 | Already in the launch seed | maigret, theharvester, sherlock, holehe, dnstwist, ignorant, socialscan |
-| Can't pass a health check from a cloud server (see [Dropped](#dropped)) | instaloader |
-| Found broken by the smoke test | edgar-tool (writes results only to a file), instagram-location-search (needs Chrome), mailaccess (writes into its install folder, which the read-only sandbox refuses), spiderfoot (a passive scan runs for more than an hour) |
-| Outreach only, or a license that doesn't allow a wrapper (AGPL-3.0, NOASSERTION) | ghunt, blackbird, bbot, h8mail, torbot, secator |
-| Needs a login or config file first | toutatis, whatsapp-osint, telegram-phone-number-checker, auto-archiver, telepathy |
-| Prompts for input or runs until stopped | fsociety, instagram-monitor, sitedorks |
-| No typed input to map onto manifest inputs | ivre, yark, openosint, crosslinked, dnsgen, osint-brazuca-regex, pywerview |
+| Outreach only (see above) | ghunt, blackbird |
+| No clear license (NOASSERTION) | h8mail, torbot, secator |
 | Four-part version (1.5.2.2) that isn't semver | user-scanner |
+| Needs a login or config file first | toutatis, whatsapp-osint, telegram-phone-number-checker, auto-archiver, telepathy |
+| No typed input to map onto manifest inputs | ivre, yark, openosint, crosslinked, dnsgen, osint-brazuca-regex, pywerview |
+| Prompts for input or runs until stopped | fsociety, instagram-monitor, sitedorks |
+| A passive scan runs for more than an hour, past ot's longest timeout | spiderfoot |
+| Instagram blocks anonymous requests from cloud servers, so its health check can't pass | instaloader |
+| Installs system packages with sudo when it runs, which ot's sandbox (no root) refuses | bbot |
+| Writes into its own install folder at startup, which ot's read-only sandbox refuses | mailaccess |
+| Writes its results only to a file, not to stdout | edgar-tool |
+| Drives Chrome through Selenium, which the wrapper image lacks | instagram-location-search |
+| ProtonMail's API rejects its requests, so it never returns a result | neutrosint |
+| GitHub answers its requests with an HTML page, so it never returns a result | zen |
 
 ## How each part gets published
 

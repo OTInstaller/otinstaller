@@ -22,7 +22,7 @@ runtime:
   # Filled in by the release workflow with the pushed image's digest.
   image: ghcr.io/osintverse-community/paramspider@sha256:0000000000000000000000000000000000000000000000000000000000000000
   platforms: [linux/amd64]
-  command: ["paramspider", "--domain", "{domain}"]
+  command: ["paramspider", "--stream", "--domain", "{domain}"]
   output_format: text
   timeout_seconds: 900
 network:
@@ -32,4 +32,4 @@ ethics:
   auth_required: false
   collects_personal_data: false
 test:
-  input: {"domain": "example.com"}
+  input: {"domain": "osintverse.com"}
