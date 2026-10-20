@@ -10,5 +10,5 @@ TOKEN_ENC_KEY=
 SITE_URL=http://localhost:4321
 API_URL=http://127.0.0.1:8787
 # Optional: check guide links with Cloudflare URL Scanner (account ID and an API token with URL Scanner edit).
-CF_ACCOUNT_ID=
+CF_URLSCAN_ACCOUNT_ID=
 CF_URLSCAN_TOKEN=

@@ -95,7 +95,7 @@ For local development, copy `api/.dev.vars.example` to `api/.dev.vars` and fill 
 (for example `cloudflared tunnel --url http://127.0.0.1:8787`) as the staging app's webhook URL.
 
 Optional: to check guide links with Cloudflare URL Scanner, create an API token with *URL Scanner: Edit* and set
-`CF_ACCOUNT_ID` and `CF_URLSCAN_TOKEN` (`wrangler secret put`). Without them the link check still finds dead links, but
+`CF_URLSCAN_ACCOUNT_ID` and `CF_URLSCAN_TOKEN` (`wrangler secret put`). Without them the link check still finds dead links, but
 nothing is marked malicious.
 
 ## 6. Import wizard

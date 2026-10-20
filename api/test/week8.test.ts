@@ -283,7 +283,7 @@ describe("publishing a guide", () => {
       "GET https://api.cloudflare.com/client/v4/accounts/cf-acct/urlscanner/v2/result/scan-gone.osint.dev": null, // still running
     };
     const { out, calls } = await tagGuide(p, { "otinstaller.yaml": guideManifest(p.login), ...guidePages() }, "1.0.0", scanned);
-    const e = { ...(await testEnv()), CF_ACCOUNT_ID: "cf-acct", CF_URLSCAN_TOKEN: "cf-token" };
+    const e = { ...(await testEnv()), CF_URLSCAN_ACCOUNT_ID: "cf-acct", CF_URLSCAN_TOKEN: "cf-token" };
     sent.length = 0;
     expect(await runContentChecks(e, out!.versionId!)).toBeNull();
     expect(sent).toEqual([{ checkVersionId: out!.versionId, attempt: 1 }]);
@@ -519,5 +519,59 @@ describe("/guides", () => {
     ]);
     const res = await call("/guides?level=intermediate", { headers: { authorization: `Bearer ${token}` } });
     expect(res.status).toBe(200);
+  });
+});
+
+describe("URL Scanner submissions", () => {
+  it("prefers a working link per host, and keeps the reason when a scan is refused", async () => {
+    const p = await publisher();
+    const scanned: string[] = [];
+    const fakes: Record<string, Handler> = {
+      ...links,
+      "POST https://api.cloudflare.com/client/v4/accounts/cf-acct/urlscanner/v2/scan": async (req) => {
+        const url = ((await req.json()) as any).url as string;
+        scanned.push(url);
+        if (url.startsWith("https://gone.osint.dev")) return Response.json({ success: false, errors: [{ code: 1, message: "Scan prevented: hostname blocked" }] }, { status: 400 });
+        return { uuid: "scan-ok" };
+      },
+      "GET https://api.cloudflare.com/client/v4/accounts/cf-acct/urlscanner/v2/result/scan-ok": { verdicts: { overall: { malicious: false } } },
+      "HEAD https://osint.dev/a-gone-page": new Response(null, { status: 404 }),
+    };
+    // osint.dev has a dead link that sorts first and a working one; the working one is scanned.
+    const { out } = await tagGuide(p, { "otinstaller.yaml": guideManifest(p.login), ...guidePages({ 5: "# Step 5\n\nOld: https://osint.dev/a-gone-page\n" }) }, "1.0.0", fakes);
+    const e = { ...(await testEnv()), CF_URLSCAN_ACCOUNT_ID: "cf-acct", CF_URLSCAN_TOKEN: "cf-token" };
+    // The result is ready at once here, so the check finishes in its first round.
+    const done = await runContentChecks(e, out!.versionId!);
+    expect(done?.status).toBe("published");
+    expect(scanned.sort()).toEqual(["https://gone.osint.dev/page", "https://osint.dev/handbook"]);
+    expect(done?.summary.url_scans).toEqual([
+      { url: "https://gone.osint.dev/page", verdict: "unknown", error: "400: Scan prevented: hostname blocked" },
+      { url: "https://osint.dev/handbook", verdict: "clean", error: null },
+    ]);
+  });
+});
+
+describe("URL Scanner rate limits", () => {
+  it("retries rate-limited submissions in the next round instead of giving up on them", async () => {
+    const p = await publisher();
+    let calls = 0;
+    const fakes: Record<string, Handler> = {
+      ...links,
+      // The first submission is rate limited; later ones go through.
+      "POST https://api.cloudflare.com/client/v4/accounts/cf-acct/urlscanner/v2/scan": () =>
+        ++calls === 1 ? Response.json({ success: false, errors: [{ message: "rate limited" }] }, { status: 429 }) : { uuid: `scan-${calls}` },
+      "GET https://api.cloudflare.com/client/v4/accounts/cf-acct/urlscanner/v2/result/": { verdicts: { overall: { malicious: false } } },
+    };
+    const { out } = await tagGuide(p, { "otinstaller.yaml": guideManifest(p.login), ...guidePages() }, "1.0.0", fakes);
+    const e = { ...(await testEnv()), CF_URLSCAN_ACCOUNT_ID: "cf-acct", CF_URLSCAN_TOKEN: "cf-token" };
+    sent.length = 0;
+    expect(await runContentChecks(e, out!.versionId!)).toBeNull();
+    expect(sent).toEqual([{ checkVersionId: out!.versionId, attempt: 1 }]);
+    const done = await runContentChecks(e, out!.versionId!, 1);
+    expect(done?.status).toBe("published");
+    expect(done?.summary.url_scans.map((s) => [s.url, s.verdict, s.error])).toEqual([
+      ["https://gone.osint.dev/page", "clean", null],
+      ["https://osint.dev/handbook", "clean", null],
+    ]);
   });
 });

@@ -41,13 +41,14 @@ let seq = 0;
 async function publisher(active: boolean) {
   const n = ++seq;
   const login = `pub${n}x${Date.now() % 100000}`;
-  const ghId = 20000 + n * 7 + (Date.now() % 1000);
+  // Spaced by 1000 per publisher so the millisecond part can never make two of them collide.
+  const ghId = 20000 + n * 1000 + (Date.now() % 1000);
   const userId = ulid();
   await DB().batch([
     DB().prepare(`INSERT INTO users (id, login, email, created_at) VALUES (?, ?, ?, ?)`).bind(userId, login, `${login}@example.com`, Date.now()),
     DB().prepare(`INSERT INTO accounts (id, user_id, provider, provider_user_id, login, created_at) VALUES (?, ?, 'github', ?, ?, ?)`).bind(ulid(), userId, String(ghId), login, Date.now()),
   ]);
-  const instId = 50000 + n * 13 + (Date.now() % 1000);
+  const instId = 5000000 + n * 1000 + (Date.now() % 1000);
   const repoId = 70000 + n;
   await webhook("installation", installation(instId, { id: ghId, login }, [repoId], ghId));
   if (active) await DB().prepare(`UPDATE namespaces SET status = 'active' WHERE name = ?`).bind(login).run();
