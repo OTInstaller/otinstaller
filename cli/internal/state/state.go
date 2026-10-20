@@ -40,6 +40,7 @@ type Installed struct {
 	Artifact    string             `json:"artifact"` // image digest ref or wheel hash
 	LocalImage  string             `json:"local_image,omitempty"`
 	Native      bool               `json:"native,omitempty"`
+	FromBackup  bool               `json:"from_backup,omitempty"` // installed from the registry's mirror or wheel copy
 	InstalledAt time.Time          `json:"installed_at"`
 	Manifest    *manifest.Manifest `json:"manifest"`
 	ManifestRaw json.RawMessage    `json:"manifest_raw"`

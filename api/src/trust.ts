@@ -6,6 +6,7 @@ import type { Manifest } from "./lib/manifest";
 import { latestMetadata, pickLatest } from "./scans";
 import { audit } from "./routes/auth";
 import { ownerEmails, sendEmail, templates } from "./notify";
+import { scheduleDeletion } from "./backups";
 
 export const REPORT_REASONS = ["malware", "policy", "impersonation", "license", "broken", "other"] as const;
 export const REMOVAL_CATEGORIES = ["malware", "policy", "impersonation", "license", "legal", "other"] as const;
@@ -66,10 +67,12 @@ export async function removeVersion(env: Env, actorId: string, t: ToolRef, versi
   const now = Date.now();
   const ref = `${t.namespace}/${t.name}`;
   const stmts: D1PreparedStatement[] = [];
+  let versionId: string | null = null;
   if (version) {
     const v = await db.prepare(`SELECT id, status FROM versions WHERE tool_id = ? AND version = ?`).bind(t.id, version).first<{ id: string; status: string }>();
     if (!v || v.status === "rejected") return { ok: false as const, error: `${ref} has no version ${version}` };
     if (v.status === "removed") return { ok: false as const, error: `${ref} ${version} is already removed` };
+    versionId = v.id;
     stmts.push(
       db.prepare(`UPDATE versions SET status = 'removed', removed_reason = ?, removed_category = ?, removed_at = ?, removed_by = ?, scan_token_hash = NULL WHERE id = ?`)
         .bind(reason, category, now, actorId, v.id),
@@ -92,6 +95,8 @@ export async function removeVersion(env: Env, actorId: string, t: ToolRef, versi
   }
   await db.batch(stmts);
   await recomputeLatest(env, t.id);
+  // Takedowns apply to backups: the mirror stops serving them now, and they are deleted within 30 days.
+  await scheduleDeletion(env, t.id, versionId, now);
   await sendEmail(env, { to: await ownerEmails(env, t.namespace_id), kind: "removed", key: `removed:${t.id}:${version ?? "all"}`, ...templates.removed(env, ref, version, category, reason) });
   return { ok: true as const };
 }

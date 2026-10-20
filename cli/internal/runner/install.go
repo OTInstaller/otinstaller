@@ -1,15 +1,19 @@
 package runner
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -30,6 +34,10 @@ type InstallOptions struct {
 	// Empty skips signature verification (local manifests during development).
 	SignerIdentity string
 	SignerIssuer   string
+	// MirrorImage is the same digest on the registry's mirror (mirror.otinstaller.com/<ns>/<name>@sha256:...),
+	// tried when the original registry refuses the pull. WheelBackupURL is the registry's copy of the wheel.
+	MirrorImage    string
+	WheelBackupURL string
 }
 
 // Install pulls or builds everything a package needs and returns its state record.
@@ -47,13 +55,20 @@ func (r *Runner) Install(ctx context.Context, m *manifest.Manifest, rawManifest 
 	}
 	switch m.Runtime.Kind {
 	case "docker":
-		if err := r.installDocker(ctx, m, opt); err != nil {
+		pulled, err := r.installDocker(ctx, m, opt)
+		if err != nil {
 			return nil, err
 		}
 		inst.Artifact = m.Runtime.Image
+		if pulled != m.Runtime.Image {
+			// Runs use the mirror's reference: the image is stored locally under that name.
+			inst.LocalImage = pulled
+			inst.FromBackup = true
+		}
 	case "pipx":
 		native := opt.Native || r.Engine == ""
-		wheel, err := FetchWheel(ctx, m)
+		wheel, fromBackup, err := FetchWheelWithBackup(ctx, m, opt.WheelBackupURL, r.Stderr)
+		inst.FromBackup = fromBackup
 		if err != nil {
 			return nil, err
 		}
@@ -74,29 +89,53 @@ func (r *Runner) Install(ctx context.Context, m *manifest.Manifest, rawManifest 
 	return inst, nil
 }
 
-func (r *Runner) installDocker(ctx context.Context, m *manifest.Manifest, opt InstallOptions) error {
+// unavailable matches what docker and podman print when a registry refuses an image (a banned or deleted
+// repository): 401/403/404, "denied", "unauthorized", "not found", "manifest unknown", or the daemon's "error from
+// registry: <message>", which hides the status code. Network errors (DNS, refused connections, timeouts) do not match.
+var unavailable = regexp.MustCompile(`(?i)\b(denied|forbidden|unauthorized|not found|manifest unknown|name unknown|error from registry|40[134])\b`)
+
+// sameDigest reports whether the mirror reference pins the same digest as the original.
+func sameDigest(original, mirror string) bool {
+	_, a, ok1 := strings.Cut(original, "@")
+	_, b, ok2 := strings.Cut(mirror, "@")
+	return ok1 && ok2 && a == b
+}
+
+// installDocker pulls the image by digest and verifies its signature. If the original registry refuses the
+// image, it pulls the same digest from the mirror and verifies the same signature there. It returns the
+// reference that was pulled.
+func (r *Runner) installDocker(ctx context.Context, m *manifest.Manifest, opt InstallOptions) (string, error) {
 	if err := r.requireEngine(); err != nil {
-		return err
+		return "", err
 	}
 	image := m.Runtime.Image
 	if !strings.Contains(image, "@sha256:") {
-		return &TrustError{"image " + image + " is not pinned by digest"}
+		return "", &TrustError{"image " + image + " is not pinned by digest"}
 	}
-	if code, err := r.Exec.Run(ctx, r.Engine, []string{"pull", image}, nil, nil, r.Stderr, r.Stderr); err != nil || code != 0 {
-		return fmt.Errorf("pulling %s failed (exit %d): %v", image, code, err)
+	var out bytes.Buffer
+	code, err := r.Exec.Run(ctx, r.Engine, []string{"pull", image}, nil, nil, r.Stderr, io.MultiWriter(r.Stderr, &out))
+	if err != nil || code != 0 {
+		if opt.MirrorImage == "" || !sameDigest(image, opt.MirrorImage) || !unavailable.MatchString(out.String()) {
+			return "", fmt.Errorf("pulling %s failed (exit %d): %v", image, code, err)
+		}
+		fmt.Fprintf(r.Stderr, "note: %s refused the image; pulling the same digest from the OTInstaller mirror\n", strings.SplitN(image, "/", 2)[0])
+		image = opt.MirrorImage
+		if code, err := r.Exec.Run(ctx, r.Engine, []string{"pull", image}, nil, nil, r.Stderr, r.Stderr); err != nil || code != 0 {
+			return "", fmt.Errorf("pulling %s from the mirror failed too (exit %d): %v", image, code, err)
+		}
 	}
 	if opt.SignerIdentity == "" {
-		return nil
+		return image, nil
 	}
 	if _, err := r.Exec.LookPath("cosign"); err != nil {
 		fmt.Fprintln(r.Stderr, "warning: cosign is not installed, so the image signature was not verified locally")
-		return nil
+		return image, nil
 	}
 	args := []string{"verify", "--certificate-identity", opt.SignerIdentity, "--certificate-oidc-issuer", opt.SignerIssuer, image}
 	if code, err := r.Exec.Run(ctx, "cosign", args, nil, nil, io.Discard, r.Stderr); err != nil || code != 0 {
-		return &TrustError{"signature verification failed for " + image + "; refusing to install"}
+		return "", &TrustError{"signature verification failed for " + image + "; refusing to install"}
 	}
-	return nil
+	return image, nil
 }
 
 // PipxHome and PipxBinDir keep ot's packages apart from the user's own pipx apps.
@@ -166,6 +205,50 @@ func (r *Runner) buildPythonImage(ctx context.Context, m *manifest.Manifest, whe
 // PyPIBase can be overridden in tests.
 var PyPIBase = "https://pypi.org"
 
+// statusError is an HTTP answer other than 200.
+type statusError struct {
+	URL  string
+	Code int
+}
+
+func (e *statusError) Error() string {
+	return fmt.Sprintf("%s returned %d %s", e.URL, e.Code, http.StatusText(e.Code))
+}
+
+// gone means PyPI refused or no longer has the wheel (403, 404, 410), or has no file with the manifest's hash.
+func gone(err error) bool {
+	var se *statusError
+	if errors.As(err, &se) {
+		return se.Code == http.StatusForbidden || se.Code == http.StatusNotFound || se.Code == http.StatusGone
+	}
+	var te *TrustError
+	return errors.As(err, &te) && strings.HasPrefix(te.Msg, "no wheel for")
+}
+
+// FetchWheelWithBackup is FetchWheel, falling back to the registry's copy of the wheel when PyPI no longer
+// serves it. The copy is checked against the same SHA-256. It reports whether the backup was used.
+func FetchWheelWithBackup(ctx context.Context, m *manifest.Manifest, backupURL string, stderr io.Writer) (string, bool, error) {
+	wheel, err := FetchWheel(ctx, m)
+	if err == nil || backupURL == "" || !gone(err) {
+		return wheel, false, err
+	}
+	name := path.Base(backupURL)
+	if !strings.HasSuffix(name, ".whl") || strings.ContainsAny(name, `\/:`) {
+		return "", false, err
+	}
+	fmt.Fprintf(stderr, "note: PyPI no longer serves this wheel (%v); using the registry's backup copy\n", err)
+	dir, derr := os.MkdirTemp("", "ot-wheel-")
+	if derr != nil {
+		return "", false, derr
+	}
+	p := filepath.Join(dir, name)
+	if derr := download(ctx, backupURL, p, m.Runtime.WheelSHA256); derr != nil {
+		os.RemoveAll(dir)
+		return "", false, derr
+	}
+	return p, true, nil
+}
+
 // FetchWheel downloads the wheel whose SHA-256 matches the manifest and verifies it.
 func FetchWheel(ctx context.Context, m *manifest.Manifest) (string, error) {
 	rt := m.Runtime
@@ -209,7 +292,7 @@ func getJSON(ctx context.Context, url string, v any) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s returned %s", url, resp.Status)
+		return &statusError{url, resp.StatusCode}
 	}
 	return json.NewDecoder(resp.Body).Decode(v)
 }
@@ -222,7 +305,7 @@ func download(ctx context.Context, url, path, wantSHA string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("downloading %s: %s", url, resp.Status)
+		return &statusError{url, resp.StatusCode}
 	}
 	f, err := os.Create(path)
 	if err != nil {

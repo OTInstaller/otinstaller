@@ -1,7 +1,8 @@
-// /dashboard: my namespaces, publish history with errors, and CLI tokens.
+// /dashboard: my namespaces, publish history with errors, backups, and CLI tokens.
 import { useEffect, useState } from "preact/hooks";
 import { api } from "../lib/api";
 import { ErrorNote, Loading, rememberStaff, SignIn, Status, useMe, when } from "./shared";
+import Backups from "./Backups";
 
 interface Job {
   id: string;
@@ -107,6 +108,8 @@ export default function Dashboard({ back }: { back: string }) {
           </div>
         )}
       </section>
+
+      <Backups />
 
       <section aria-labelledby="tokens">
         <h2 id="tokens">CLI tokens</h2>

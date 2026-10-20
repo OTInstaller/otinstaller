@@ -5,6 +5,7 @@ import { apiError } from "../lib/errors";
 import { sha256Hex } from "../lib/crypto";
 import { applyScanResults, commitStatus, loadVersion, publishVersion, type ScanResults } from "../scans";
 import { ownerEmails, sendEmail, templates } from "../notify";
+import { releasePlan } from "../backups";
 import { audit, requireUser } from "./auth";
 
 const MAX_RESULTS = 256 * 1024;
@@ -65,7 +66,11 @@ export function reviewRoutes(app: App) {
     if (!v) apiError(401, "invalid_scan_token", "unknown, expired or already used scan token");
     const results = parseResults(await c.req.json().catch(() => null));
     const out = await applyScanResults(c.env, v, results);
-    return c.json({ status: out.status, verdict: out.verdict });
+    // A published version is backed up by the scanner right away: these are its signed upload URLs.
+    const backup = out.status === "published"
+      ? await releasePlan(c.env, v.id).catch((e) => (console.error("backup plan failed", e), null))
+      : null;
+    return c.json({ status: out.status, verdict: out.verdict, ...(backup ? { backup } : {}) });
   });
 
   // ---------- review queue ----------

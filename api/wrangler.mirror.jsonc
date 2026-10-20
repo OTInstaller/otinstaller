@@ -1,0 +1,15 @@
+{
+  // The image mirror at mirror.otinstaller.com: deploy with `npx wrangler deploy -c wrangler.mirror.jsonc`.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "otinstaller-mirror",
+  "main": "src/mirror/index.ts",
+  "compatibility_date": "2026-10-01",
+  "routes": [{ "pattern": "mirror.otinstaller.com", "custom_domain": true }],
+  // The registry API binds the same bucket (MIRROR) to hide and delete taken-down images.
+  // Create with `wrangler r2 bucket create otinstaller-mirror`.
+  "r2_buckets": [{ "binding": "MIRROR", "bucket_name": "otinstaller-mirror" }],
+  // Blob uploads are joined and hashed in the Worker; big layers need more than the default CPU time.
+  "limits": { "cpu_ms": 300000 }
+  // Secret (wrangler secret put MIRROR_PUSH_TOKEN -c wrangler.mirror.jsonc): MIRROR_PUSH_TOKEN, the scanner credential.
+  // The scanner logs in with `crane auth login mirror.otinstaller.com -u scanner -p "$MIRROR_PUSH_TOKEN"`.
+}
