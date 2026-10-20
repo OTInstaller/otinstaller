@@ -100,6 +100,24 @@ describe("scan dispatch", () => {
     expect(new RegExp(scan.expected_signer.identityRegexp).test(`https://github.com/attacker/${p.repo}/.github/workflows/release.yml@refs/tags/v1.0.0`)).toBe(false);
   });
 
+  it("dispatches with OPS_DISPATCH_TOKEN when set, so the App can stay read-only", async () => {
+    const p = await publisher(true);
+    const res = await webhook("create", tagEvent(p.instId, p.repo, p.repoId, "v1.0.0"));
+    const jobId = ((await res.json()) as any).jobId;
+    const auth: string[] = [];
+    fakeRelease(p.repo, { "otinstaller.yaml": manifestFor(p.login), "README.md": README }, {
+      extra: {
+        "POST https://api.github.com/repos/osintverse/registry-ops/dispatches": (req) => {
+          auth.push(req.headers.get("authorization") ?? "");
+          return new Response(null, { status: 204 });
+        },
+      },
+    });
+    const out = await processJob({ ...(await testEnv()), OPS_DISPATCH_TOKEN: "github_pat_ops" }, jobId);
+    expect(out?.status).toBe("scanning");
+    expect(auth).toEqual(["Bearer github_pat_ops"]);
+  });
+
   it("retries a failed dispatch without validating again", async () => {
     const p = await publisher(true);
     const res = await webhook("create", tagEvent(p.instId, p.repo, p.repoId, "v1.0.0"));

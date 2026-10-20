@@ -61,9 +61,14 @@ Security scans run as a GitHub Actions workflow in a private repository the regi
 
 1. Create `OTInstaller/registry-ops` (private) and copy into it: `ops/scanner/scan.py` → `ops/scanner/scan.py`,
    and `ops/workflows/scan.yml` → `.github/workflows/scan.yml`.
-2. Install the GitHub App on that repository too. Add **Contents: Read and write** for it only if your org
-   requires it for `repository_dispatch`; otherwise the permissions above are enough. Note the installation
-   ID (Settings → Integrations → the app → the number in the URL) → `OPS_INSTALLATION_ID`.
+2. Starting a scan (`repository_dispatch`) needs **Contents: Read and write** on registry-ops. Pick one:
+   - Recommended: a fine-grained personal access token with access to `OTInstaller/registry-ops` only and
+     **Contents: Read and write** → `OPS_DISPATCH_TOKEN`. The App stays read-only on publishers' repositories.
+   - Or give the App **Contents: Read and write**, install it on registry-ops and note the installation ID
+     (Settings → Integrations → the app → the number in the URL) → `OPS_INSTALLATION_ID`. That permission then
+     applies to every repository the App is installed on.
+
+   When `OPS_DISPATCH_TOKEN` is set it is used; otherwise the App's installation token is.
 3. Set `OPS_REPO` in `wrangler.jsonc` if the repository has another name.
 4. Create a Resend API key with sending access for `otinstaller.com` (verify the domain in Resend first) →
    `RESEND_API_KEY`. Without it, emails are recorded in the `notifications` table as skipped.
