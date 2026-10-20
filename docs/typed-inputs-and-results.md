@@ -1,4 +1,4 @@
-# Typed inputs, saved results, `ot run --all` and playbooks
+# Typed inputs, saved results, `ot run --all`, playbooks, `ot auto`, `extract` and `diff`
 
 The Python package manager (`otinstaller`, now in maintenance) had three run features `ot` lacked: typed inputs
 (`u:johndoe`), results saved to disk with a sidecar, and `run --all`. This note says how they map onto the manifest and
@@ -14,6 +14,7 @@ A typed input is a positional argument `<prefix>:<value>` after the package:
 | `d:`   | `domain`            |
 | `e:`   | `email`             |
 | `p:`   | `phone`             |
+| `ip:`  | `ip`                |
 | `url:` | `url`               |
 
 Manifests already declare a `type` for every input, so no manifest change is needed: `u:johndoe` is assigned to the
@@ -138,3 +139,33 @@ tools:
 otinstaller playbooks list bare tool names (`sherlock`); `ot` needs the full package name and says which one to use.
 `requires_target` is accepted and ignored, since `ot playbook` always takes typed inputs. otinstaller guessed the
 target type from a bare target (`example.com`); `ot` needs the prefix (`d:example.com`).
+
+## `ot auto`
+
+`ot auto <target>` guesses the target's type and runs every installed tool that takes it, like `otinstaller auto`. The
+guess, first match wins: `url` (starts with `http://` or `https://`), `ip` (IPv4 or IPv6), `email`, `phone` (starts with
+`+`, 7 to 15 digits), `domain` (ends in an IANA top-level domain, from the same list otinstaller used), otherwise
+`username`. `--type username` (or `email`, `domain`, `phone`, `ip`, `url`) skips the guess. Then it behaves like
+`ot run --all` with that typed input. A prefixed target (`d:example.com`) is never second-guessed, and bare targets in
+`ot playbook` are guessed the same way.
+
+`--dry-run` (with `ot auto`, `ot run --all` or `ot playbook`) lists what would run and what would be skipped, and runs
+nothing. While a batch runs, a line such as `[2/5] osintverse-community/sherlock complete` goes to stderr as each tool
+finishes; otinstaller's `--live` is accepted and changes nothing.
+
+## `ot extract` and `ot diff`
+
+`ot extract <tool | path>` (or `--case <name>`) reads every saved output under the tool's results folder, a file or a
+folder, and lists the emails, domains (IANA top-level domains only), IPv4 addresses and URLs in them, plus the entities
+their sidecars hold, grouped by type. `--json` prints `{"emails":[],"domains":[],"ips":[],"urls":[],"entities":{}}`.
+
+`ot diff <tool> <target>` (with `--case` for a case) compares the two most recent saved runs of a tool against a target:
+lines and entities that appeared (`+`) or disappeared (`-`). Line order is ignored, since most tools list results in a
+different order each run; repeated lines count. Runs are ordered by the timestamp in their file name, then by when their
+output was written.
+
+## `ot outdated` and `ot update`
+
+`ot outdated` compares each installed package with the registry's latest version and changes nothing. `ot update
+<namespace/name>...` or `ot update --all` installs the newer versions, through the same checks as `ot install`.
+Packages installed from a local manifest show as "not in registry".
