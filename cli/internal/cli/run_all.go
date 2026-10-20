@@ -139,12 +139,30 @@ func (a *App) runAll(ctx context.Context, ra *runArgs, what string, selection []
 	}
 	sem := make(chan struct{}, ra.Parallel)
 	var wg sync.WaitGroup
+	// Progress on stderr as each tool finishes, so a long batch shows it is moving (otinstaller's
+	// --live table). Only with the table summary; JSON callers read the summary.
+	var progressMu sync.Mutex
+	done := 0
+	progress := func(row *allResult) {
+		if format != "table" {
+			return
+		}
+		progressMu.Lock()
+		defer progressMu.Unlock()
+		done++
+		status := row.Status
+		if row.ExitCode != nil && *row.ExitCode != 0 {
+			status = fmt.Sprintf("%s (exit %d)", status, *row.ExitCode)
+		}
+		fmt.Fprintf(a.Err, "[%d/%d] %s %s\n", done, len(jobs), row.Tool, status)
+	}
 	for _, j := range jobs {
 		wg.Add(1)
 		go func(j allJob) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
+			defer progress(j.row)
 			if ctx.Err() != nil {
 				j.row.Status, j.row.Reason = results.StatusInterrupted, "not started"
 				return

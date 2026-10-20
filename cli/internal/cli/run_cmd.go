@@ -73,6 +73,9 @@ func parseArgs(args []string, detect bool) (*runArgs, error) {
 		case "dry-run":
 			ra.DryRun = true
 			continue
+		case "live":
+			// otinstaller's live table; ot always shows progress with --all, playbooks and auto.
+			continue
 		}
 		if !hasVal {
 			if i+1 >= len(args) {
