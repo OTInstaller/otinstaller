@@ -286,7 +286,7 @@ def build(tool: dict, offline: bool) -> tuple[str, dict[str, str]]:
             "  kind: docker",
             "  # Filled in by the release workflow with the pushed image's digest.",
             f"  image: ghcr.io/{NAMESPACE}/{name}@sha256:{'0' * 64}",
-            "  platforms: [linux/amd64]",
+            "  platforms: [linux/amd64, linux/arm64]",
         ]
     runtime += [
         f"  command: {json.dumps(command)}",

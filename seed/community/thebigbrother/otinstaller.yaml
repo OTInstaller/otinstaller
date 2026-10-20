@@ -21,7 +21,7 @@ runtime:
   kind: docker
   # Filled in by the release workflow with the pushed image's digest.
   image: ghcr.io/osintverse-community/thebigbrother@sha256:0000000000000000000000000000000000000000000000000000000000000000
-  platforms: [linux/amd64]
+  platforms: [linux/amd64, linux/arm64]
   command: ["python", "-m", "the_big_brother", "{username}"]
   output_format: text
   timeout_seconds: 900
