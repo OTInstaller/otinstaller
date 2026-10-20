@@ -6,6 +6,9 @@ GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 GITLAB_CLIENT_ID=
 GITLAB_CLIENT_SECRET=
+# Sign in with OSINTverse; register http://localhost:8787/v1/auth/osintverse/callback as a redirect URI.
+OSINTVERSE_CLIENT_ID=
+OSINTVERSE_CLIENT_SECRET=
 TOKEN_ENC_KEY=
 SITE_URL=http://localhost:4321
 API_URL=http://127.0.0.1:8787

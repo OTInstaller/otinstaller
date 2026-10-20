@@ -1,4 +1,4 @@
-// /settings/accounts: linked GitHub and GitLab accounts, and the sync status of each package I publish.
+// /settings/accounts: linked GitHub, GitLab and OSINTverse accounts, and the sync status of each package I publish.
 import { useEffect, useState } from "preact/hooks";
 import { api, signInUrl } from "../lib/api";
 import type { Namespace } from "../lib/api";
@@ -8,6 +8,9 @@ interface SyncLog {
   source: { provider: string; url: string; sync_status: string; last_error: string | null; last_event_at: number | null; last_poll_at: number | null; manifest_mode: string };
   events: { kind: string; summary: string; status: string; error: string | null; received_at: number }[];
 }
+
+type Provider = "github" | "gitlab" | "osintverse";
+const PROVIDER_NAMES: Record<Provider, string> = { github: "GitHub", gitlab: "GitLab", osintverse: "OSINTverse" };
 
 export default function Accounts({ back }: { back: string }) {
   const me = useMe();
@@ -27,7 +30,7 @@ export default function Accounts({ back }: { back: string }) {
   if (me === null) return <Loading what="your account" />;
   if (me === false) return <SignIn back={back} why="Sign in to manage linked accounts." />;
 
-  const linked = (p: "github" | "gitlab") => me.accounts.find((a) => a.provider === p);
+  const linked = (p: Provider) => me.accounts.find((a) => a.provider === p);
   async function syncNow(ref: string) {
     try {
       const r = await api<{ status: string; queued: string[] }>(`/packages/${ref}/sync`, { method: "POST" });
@@ -43,10 +46,10 @@ export default function Accounts({ back }: { back: string }) {
       <section aria-labelledby="accts">
         <h2 id="accts">Linked accounts</h2>
         <ul class="list-plain">
-          {(["github", "gitlab"] as const).map((p) => (
+          {(["github", "gitlab", "osintverse"] as const).map((p) => (
             <li class="row">
-              <strong>{p === "github" ? "GitHub" : "GitLab"}</strong>
-              {linked(p) ? <span>{linked(p)!.login}</span> : <a class="btn" href={signInUrl(p, back)}>Link {p === "github" ? "GitHub" : "GitLab"}</a>}
+              <strong>{PROVIDER_NAMES[p]}</strong>
+              {linked(p) ? <span>{linked(p)!.login}</span> : <a class="btn" href={signInUrl(p, back)}>Link {PROVIDER_NAMES[p]}</a>}
             </li>
           ))}
         </ul>
