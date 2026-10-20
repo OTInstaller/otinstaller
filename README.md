@@ -136,9 +136,10 @@ CI for it is `.github/workflows/python-ci.yml` and `python-nightly.yml`, scoped 
 
 ## Licenses
 
-`python/` is under the Apache License 2.0; its [LICENSE](python/LICENSE) and [NOTICE](python/NOTICE) must be kept with
-any redistribution or derived work ("OTinstaller by OSINTverse"). The rest of this repository has no license file
-yet. Tools installed by either CLI keep their own licenses.
+The whole repository is under the Apache License 2.0 ([LICENSE](LICENSE)). `python/` keeps its own copy of the same
+[LICENSE](python/LICENSE) and its [NOTICE](python/NOTICE), which must be kept with any redistribution or derived work
+of it ("OTinstaller by OSINTverse"). Tools installed by either CLI, and the upstream projects the community wrappers in
+`seed/` package, keep their own licenses.
 
 ## Notes on the plan
 
