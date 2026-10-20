@@ -75,6 +75,12 @@ func TestAuto(t *testing.T) {
 		t.Fatalf("exit %d: %s", code, errb)
 	}
 
+	// Progress lines on stderr as each tool finishes; otinstaller's --live is accepted.
+	errb.Reset()
+	if code := run(a, "auto", "johndoe", "--live"); code != 0 || !strings.Contains(errb.String(), "[1/1] dheeraj/user-a complete") {
+		t.Fatalf("progress: exit %d: %s", code, errb)
+	}
+
 	for _, c := range []struct {
 		args []string
 		want string
