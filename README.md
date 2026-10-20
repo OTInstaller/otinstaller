@@ -11,7 +11,8 @@ To connect real GitHub and GitLab apps, follow [docs/publishing-setup.md](docs/p
 
 It also holds `otinstaller`, the older Python package manager (from OSINTVerseHQ/OTinstaller, imported with its
 history into `python/`). `ot` is the one CLI going forward; `otinstaller` is in maintenance, and its tool catalog has
-been converted into registry packages (see [otinstaller (python/)](#otinstaller-python)).
+been converted into registry packages (see [otinstaller (python/)](#otinstaller-python)). Moving from `otinstaller`
+to `ot`: [docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md).
 
 | Folder | What it is |
 | --- | --- |
@@ -108,8 +109,10 @@ python/` shows the import; `git log 3c3bfb5` the original commits). It keeps its
 
 How it fits with the registry:
 
-- **One CLI.** New work goes into `ot`. `otinstaller` gets bug fixes, still ships on PyPI and as a Debian package
-  for existing users, and no longer installs an `ot` command, since that name belongs to the registry CLI.
+- **One CLI.** New work goes into `ot`. `otinstaller` gets security fixes only until its end of life on 30 June
+  2027, still ships on PyPI and as a Debian package for existing users, and no longer installs an `ot` command, since
+  that name belongs to the registry CLI. [docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md)
+  maps every `otinstaller` command to `ot` and explains the date.
 - **Catalog.** `otinstaller`'s tested catalog (`python/src/otinstaller/data/registry.yaml`) is converted into
   `osintverse-community` wrappers in `seed/community/` by `python scripts/pm-catalog-to-wrappers.py`: a pinned pip
   release with a pure-Python wheel on PyPI becomes a pipx package pinned by the wheel's SHA-256; git installs, extra
