@@ -1,4 +1,4 @@
-// Sign-in with GitHub or GitLab (web OAuth and CLI device flow), sessions, API tokens and /me.
+// Sign-in with GitHub, GitLab or OSINTverse (web OAuth/OIDC and CLI device flow), sessions, API tokens and /me.
 import type { Context, Next } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { deps, requireSecret, type App, type AppEnv, type Env, type User } from "../env";
@@ -6,26 +6,32 @@ import { apiError } from "../lib/errors";
 import { encrypt, randomToken, sha256Hex, ulid } from "../lib/crypto";
 import * as github from "../hosts/github";
 import * as gitlab from "../hosts/gitlab";
+import * as osintverse from "../hosts/osintverse";
+import { authorizeDevice, devicePage, deviceRoutes, pollOsintverseDevice, startOsintverseDevice } from "./device";
 
-type Provider = "github" | "gitlab";
+export type Provider = "github" | "gitlab" | "osintverse";
 const SESSION_COOKIE = "ot_session";
 const STATE_COOKIE = "ot_oauth_state";
+// OSINTverse (OIDC) only: the nonce, the PKCE verifier and, for `ot login`, the device login being approved.
+const OIDC_COOKIE = "ot_oidc";
 const SESSION_TTL = 30 * 24 * 3600 * 1000;
 const TOKEN_PREFIX = "ot_";
 
 function provider(c: Context<AppEnv>): Provider {
   const p = c.req.param("provider");
-  if (p !== "github" && p !== "gitlab") apiError(404, "unknown_provider", "sign in with github or gitlab");
+  if (p !== "github" && p !== "gitlab" && p !== "osintverse") apiError(404, "unknown_provider", "sign in with github, gitlab or osintverse");
   return p;
 }
 
-function oauthClient(env: Env, p: Provider) {
+export function oauthClient(env: Env, p: Provider) {
+  if (p === "osintverse") return { id: requireSecret(env, "OSINTVERSE_CLIENT_ID"), secret: requireSecret(env, "OSINTVERSE_CLIENT_SECRET") };
   return p === "github"
     ? { id: requireSecret(env, "GITHUB_CLIENT_ID"), secret: requireSecret(env, "GITHUB_CLIENT_SECRET") }
     : { id: requireSecret(env, "GITLAB_CLIENT_ID"), secret: requireSecret(env, "GITLAB_CLIENT_SECRET") };
 }
 
-const callbackUrl = (env: Env, p: Provider) => `${env.API_URL}/v1/auth/${p}/callback`;
+export const callbackUrl = (env: Env, p: Provider) => `${env.API_URL}/v1/auth/${p}/callback`;
+export const osintverseIssuer = (env: Env) => env.OSINTVERSE_ISSUER ?? osintverse.OSINTVERSE_ISSUER;
 
 // Only same-site redirects after sign-in, so the flow cannot be used to bounce users elsewhere.
 function safeRedirect(env: Env, target: string | undefined): string {
@@ -80,13 +86,14 @@ export async function signIn(
   env: Env,
   p: Provider,
   who: github.OAuthUser,
-  tokens: { accessToken: string; refreshToken?: string | null; expiresAt?: number | null; scopes: string },
+  // OSINTverse sign-ins keep no provider token: only the identity is used.
+  tokens: { accessToken: string | null; refreshToken?: string | null; expiresAt?: number | null; scopes: string },
   currentUserId: string | null,
 ): Promise<string> {
   const db = env.DB;
   const now = Date.now();
   const encKey = requireSecret(env, "TOKEN_ENC_KEY");
-  const access = await encrypt(encKey, tokens.accessToken);
+  const access = tokens.accessToken ? await encrypt(encKey, tokens.accessToken) : null;
   const refresh = tokens.refreshToken ? await encrypt(encKey, tokens.refreshToken) : null;
   const existing = await db.prepare(`SELECT id, user_id FROM accounts WHERE provider = ? AND provider_user_id = ?`).bind(p, who.id).first<{ id: string; user_id: string }>();
   if (existing) {
@@ -94,7 +101,7 @@ export async function signIn(
       apiError(409, "account_already_linked", `this ${p} account is linked to another OTInstaller user`);
     }
     await db.prepare(
-      `UPDATE accounts SET login = ?, email = ?, access_token_enc = ?, refresh_token_enc = COALESCE(?, refresh_token_enc), scopes = ?, expires_at = ? WHERE id = ?`,
+      `UPDATE accounts SET login = ?, email = ?, access_token_enc = COALESCE(?, access_token_enc), refresh_token_enc = COALESCE(?, refresh_token_enc), scopes = ?, expires_at = ? WHERE id = ?`,
     ).bind(who.login, who.email, access, refresh, tokens.scopes, tokens.expiresAt ?? null, existing.id).run();
     return existing.user_id;
   }
@@ -124,7 +131,7 @@ export function audit(db: D1Database, actorId: string | null, actorKind: string,
   ).bind(ulid(), actorId, actorKind, action, targetKind, targetId, meta === undefined ? null : JSON.stringify(meta), Date.now());
 }
 
-async function mintApiToken(db: D1Database, userId: string, name: string) {
+export async function mintApiToken(db: D1Database, userId: string, name: string) {
   const token = TOKEN_PREFIX + randomToken(30);
   const id = ulid();
   await db.prepare(`INSERT INTO api_tokens (id, user_id, name, token_hash, scopes, created_at) VALUES (?, ?, ?, ?, 'read,publish', ?)`)
@@ -132,15 +139,67 @@ async function mintApiToken(db: D1Database, userId: string, name: string) {
   return { id, token };
 }
 
+/** Starts a session for a signed-in user (the cookie the site sends to the API). */
+async function startSession(c: Context<AppEnv>, userId: string) {
+  const session = randomToken(32);
+  await c.env.DB.prepare(`INSERT INTO sessions (id, user_id, token_hash, expires_at, user_agent) VALUES (?, ?, ?, ?, ?)`)
+    .bind(ulid(), userId, await sha256Hex(session), Date.now() + SESSION_TTL, c.req.header("user-agent")?.slice(0, 200) ?? null).run();
+  setCookie(c, SESSION_COOKIE, session, { httpOnly: true, secure: true, sameSite: "Lax", path: "/", maxAge: SESSION_TTL / 1000 });
+}
+
+/** Redirects to OSINTverse; `device` is the device login `ot login --osintverse` is waiting on, if any. */
+export async function osintverseLogin(c: Context<AppEnv>, redirect: string, device: string | null) {
+  const client = oauthClient(c.env, "osintverse");
+  const d = await osintverse.discover(deps.fetch, osintverseIssuer(c.env));
+  const state = randomToken(24);
+  const nonce = randomToken(24);
+  const { verifier, challenge } = await osintverse.pkce();
+  setCookie(c, STATE_COOKIE, `${state}|osintverse|${redirect}`, { httpOnly: true, secure: true, sameSite: "Lax", path: "/v1/auth", maxAge: 600 });
+  setCookie(c, OIDC_COOKIE, `${nonce}|${verifier}|${device ?? ""}`, { httpOnly: true, secure: true, sameSite: "Lax", path: "/v1/auth", maxAge: 600 });
+  return c.redirect(osintverse.authorizeUrl(d, { clientId: client.id, redirectUri: callbackUrl(c.env, "osintverse"), state, nonce, challenge }), 302);
+}
+
+async function osintverseCallback(c: Context<AppEnv>, state: string | undefined, stateProvider: string | undefined, redirect: string) {
+  const [nonce, verifier, device] = (getCookie(c, OIDC_COOKIE) ?? "").split("|");
+  deleteCookie(c, OIDC_COOKIE, { path: "/v1/auth" });
+  if (!state || state !== c.req.query("state") || stateProvider !== "osintverse" || !nonce || !verifier) {
+    apiError(400, "oauth_state_mismatch", "sign-in expired or was tampered with; start again");
+  }
+  const error = c.req.query("error");
+  if (error) {
+    // access_denied: the user cancelled on osintverse.com.
+    if (device) {
+      await c.env.DB.prepare(`UPDATE device_logins SET status = 'denied' WHERE id = ? AND status = 'pending'`).bind(device).run();
+      return c.html(devicePage("Sign-in cancelled", "<p>Nothing was shared. You can close this tab; <code>ot login</code> stops waiting.</p>"));
+    }
+    return c.redirect(`${c.env.SITE_URL}/?signin=${error === "access_denied" ? "cancelled" : "failed"}`, 302);
+  }
+  const code = c.req.query("code");
+  if (!code) apiError(400, "invalid_parameter", "the sign-in response has no code");
+  const client = oauthClient(c.env, "osintverse");
+  const d = await osintverse.discover(deps.fetch, osintverseIssuer(c.env));
+  const t = await osintverse.exchangeCode(deps.fetch, d, { clientId: client.id, clientSecret: client.secret, code, verifier, redirectUri: callbackUrl(c.env, "osintverse") });
+  const claims = await osintverse.verifyIdToken(deps.fetch, d, t.idToken, { clientId: client.id, nonce });
+  const who = await osintverse.fetchUser(deps.fetch, d, t.accessToken, claims.sub);
+  // No automatic linking by email: an existing user links OSINTverse by signing in with it while
+  // already signed in, the same rule as GitHub and GitLab. A device login never links.
+  const userId = await signIn(c.env, "osintverse", who, { accessToken: null, scopes: osintverse.SCOPES }, device ? null : (c.get("user")?.id ?? null));
+  if (device) return authorizeDevice(c, device, userId);
+  await startSession(c, userId);
+  return c.redirect(safeRedirect(c.env, redirect), 302);
+}
+
 export function authRoutes(app: App) {
   app.use("*", authenticate);
+  deviceRoutes(app);
 
   // ---------- web OAuth ----------
-  app.get("/auth/:provider/login", (c) => {
+  app.get("/auth/:provider/login", async (c) => {
     const p = provider(c);
+    const redirect = safeRedirect(c.env, c.req.query("redirect"));
+    if (p === "osintverse") return osintverseLogin(c, redirect, null);
     const client = oauthClient(c.env, p);
     const state = randomToken(24);
-    const redirect = safeRedirect(c.env, c.req.query("redirect"));
     setCookie(c, STATE_COOKIE, `${state}|${p}|${redirect}`, { httpOnly: true, secure: true, sameSite: "Lax", path: "/v1/auth", maxAge: 600 });
     const url = p === "github"
       ? github.authorizeUrl(client.id, callbackUrl(c.env, p), state)
@@ -150,8 +209,10 @@ export function authRoutes(app: App) {
 
   app.get("/auth/:provider/callback", async (c) => {
     const p = provider(c);
-    const [state, stateProvider, redirect] = (getCookie(c, STATE_COOKIE) ?? "").split("|");
+    const [state, stateProvider, ...rest] = (getCookie(c, STATE_COOKIE) ?? "").split("|");
+    const redirect = rest.join("|");
     deleteCookie(c, STATE_COOKIE, { path: "/v1/auth" });
+    if (p === "osintverse") return osintverseCallback(c, state, stateProvider, redirect);
     const code = c.req.query("code");
     if (!state || state !== c.req.query("state") || stateProvider !== p || !code) {
       apiError(400, "oauth_state_mismatch", "sign-in expired or was tampered with; start again");
@@ -162,11 +223,7 @@ export function authRoutes(app: App) {
       : await gitlab.exchangeCode(deps.fetch, client.id, client.secret, code, callbackUrl(c.env, p));
     const who = p === "github" ? await github.fetchUser(deps.fetch, tokens.accessToken) : await gitlab.fetchUser(deps.fetch, tokens.accessToken);
     const userId = await signIn(c.env, p, who, tokens, c.get("user")?.id ?? null);
-
-    const session = randomToken(32);
-    await c.env.DB.prepare(`INSERT INTO sessions (id, user_id, token_hash, expires_at, user_agent) VALUES (?, ?, ?, ?, ?)`)
-      .bind(ulid(), userId, await sha256Hex(session), Date.now() + SESSION_TTL, c.req.header("user-agent")?.slice(0, 200) ?? null).run();
-    setCookie(c, SESSION_COOKIE, session, { httpOnly: true, secure: true, sameSite: "Lax", path: "/", maxAge: SESSION_TTL / 1000 });
+    await startSession(c, userId);
     return c.redirect(safeRedirect(c.env, redirect), 302);
   });
 
@@ -180,7 +237,8 @@ export function authRoutes(app: App) {
   // ---------- device flow for `ot login` ----------
   app.post("/auth/device/start", async (c) => {
     const { provider: p = "github" } = await c.req.json<{ provider?: Provider }>().catch(() => ({} as { provider?: Provider }));
-    if (p !== "github" && p !== "gitlab") apiError(400, "unknown_provider", "provider must be github or gitlab");
+    if (p === "osintverse") return c.json(await startOsintverseDevice(c));
+    if (p !== "github" && p !== "gitlab") apiError(400, "unknown_provider", "provider must be github, gitlab or osintverse");
     const client = oauthClient(c.env, p);
     const d = p === "github" ? await github.startDeviceFlow(deps.fetch, client.id) : await gitlab.startDeviceFlow(deps.fetch, client.id, client.secret);
     return c.json({ provider: p, device_code: d.deviceCode, user_code: d.userCode, verification_uri: d.verificationUri, interval: d.interval, expires_in: d.expiresIn });
@@ -189,6 +247,7 @@ export function authRoutes(app: App) {
   app.post("/auth/device/token", async (c) => {
     const body = await c.req.json<{ provider?: Provider; device_code?: string; token_name?: string }>().catch(() => ({}) as any);
     const p = body.provider ?? "github";
+    if (p === "osintverse" && body.device_code) return c.json(await pollOsintverseDevice(c, body.device_code, body.token_name));
     if ((p !== "github" && p !== "gitlab") || !body.device_code) apiError(400, "invalid_body", "send {provider, device_code}");
     const client = oauthClient(c.env, p);
     const r = p === "github" ? await github.pollDeviceFlow(deps.fetch, client.id, body.device_code) : await gitlab.pollDeviceFlow(deps.fetch, client.id, client.secret, body.device_code);

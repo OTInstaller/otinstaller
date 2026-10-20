@@ -15,6 +15,9 @@ export interface Env {
   GITHUB_CLIENT_SECRET?: string;
   GITLAB_CLIENT_ID?: string;
   GITLAB_CLIENT_SECRET?: string;
+  OSINTVERSE_CLIENT_ID?: string; // Sign in with OSINTverse (OIDC); the client is confidential
+  OSINTVERSE_CLIENT_SECRET?: string;
+  OSINTVERSE_ISSUER?: string; // defaults to https://osintverse.com/api/auth
   TOKEN_ENC_KEY?: string;
   OPS_REPO?: string; // e.g. "OTInstaller/registry-ops", where the scan workflow runs
   OPS_INSTALLATION_ID?: string; // the GitHub App's installation on that repo

@@ -40,6 +40,21 @@ GitHub → Developer settings → OAuth Apps → New OAuth App. Tick **Enable De
 - Authorization callback URL: `https://api.otinstaller.com/v1/auth/github/callback`
 - Client ID → `GITHUB_CLIENT_ID`, client secret → `GITHUB_CLIENT_SECRET`
 
+## 2a. Sign in with OSINTverse (optional)
+
+OSINTverse is an OpenID Connect provider (issuer `https://osintverse.com/api/auth`). Register a confidential web app
+on osintverse.com → Dashboard → Developer, with redirect URIs `https://api.otinstaller.com/v1/auth/osintverse/callback`
+(and `http://localhost:8787/v1/auth/osintverse/callback` for local development), then:
+
+- Client ID → `OSINTVERSE_CLIENT_ID`, client secret → `OSINTVERSE_CLIENT_SECRET` (both Worker secrets).
+- Scopes `openid profile email`, authorization code with PKCE; the ID token (EdDSA) is checked for issuer, audience
+  and nonce. No OSINTverse token is stored.
+- `ot login --osintverse` needs no second client: the CLI gets a code from the API, the user signs in on the web at
+  `/v1/auth/osintverse/device` and approves the CLI there, and the CLI receives an `ot_` token.
+- Accounts are matched by OSINTverse `sub`. Nothing is linked by email: to link OSINTverse to an existing account,
+  sign in with it while already signed in (Settings → Accounts). Publishing still needs GitHub or GitLab.
+- Until OSINTverse approves the app, only its owner and listed testers can sign in.
+
 ## 3. GitLab OAuth application (sign-in)
 
 GitLab.com → Edit profile (or the group) → Applications → Add new application.
@@ -92,6 +107,8 @@ npx wrangler r2 bucket create otinstaller-content  # rendered READMEs, guide pag
 openssl rand -base64 32                        # → TOKEN_ENC_KEY
 for s in GITHUB_APP_ID GITHUB_APP_PRIVATE_KEY GITHUB_WEBHOOK_SECRET GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET \
          GITLAB_CLIENT_ID GITLAB_CLIENT_SECRET TOKEN_ENC_KEY; do npx wrangler secret put $s; done
+# Optional: Sign in with OSINTverse (section 2a).
+for s in OSINTVERSE_CLIENT_ID OSINTVERSE_CLIENT_SECRET; do npx wrangler secret put $s; done
 # Optional: URL Scanner checks of guide links (see "URL Scanner" below). Skip this line to run without them.
 for s in CF_URLSCAN_ACCOUNT_ID CF_URLSCAN_TOKEN; do npx wrangler secret put $s; done
 npx wrangler d1 migrations apply otinstaller --remote
