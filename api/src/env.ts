@@ -20,7 +20,7 @@ export interface Env {
   OPS_INSTALLATION_ID?: string; // the GitHub App's installation on that repo
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
-  CF_ACCOUNT_ID?: string; // with CF_URLSCAN_TOKEN, guide links are checked with Cloudflare URL Scanner
+  CF_URLSCAN_ACCOUNT_ID?: string; // with CF_URLSCAN_TOKEN, guide links are checked with Cloudflare URL Scanner
   CF_URLSCAN_TOKEN?: string;
 }
 

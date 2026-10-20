@@ -289,26 +289,49 @@ export async function updateLinkHealth(env: Env, toolId: string) {
 
 // ---------- Cloudflare URL Scanner ----------
 
-const urlscanConfigured = (env: Env) => !!env.CF_ACCOUNT_ID && !!env.CF_URLSCAN_TOKEN;
+const urlscanConfigured = (env: Env) => !!env.CF_URLSCAN_ACCOUNT_ID && !!env.CF_URLSCAN_TOKEN;
 const cfHeaders = (env: Env) => ({ Authorization: `Bearer ${env.CF_URLSCAN_TOKEN}`, "Content-Type": "application/json" });
 
-/** Submits one link per external host (the first one, up to URLSCAN_HOSTS hosts) to URL Scanner. */
-async function submitUrlScans(env: Env, versionId: string) {
-  const rows = (await env.DB.prepare(`SELECT DISTINCT url FROM page_links WHERE version_id = ? AND status IN ('ok', 'dead') ORDER BY url`)
-    .bind(versionId).all<{ url: string }>()).results;
+// A link chosen for URL Scanner but not submitted yet (first round, or rate limited) carries this scan_error.
+const QUEUED = "queued";
+
+/** Chooses one link per external host (up to URLSCAN_HOSTS), preferring links that answered: a dead page says little about the site. */
+async function chooseUrlScans(env: Env, versionId: string) {
+  const rows = (await env.DB.prepare(
+    `SELECT url FROM page_links WHERE version_id = ? AND status IN ('ok', 'dead') GROUP BY url ORDER BY MIN(status = 'dead'), url`,
+  ).bind(versionId).all<{ url: string }>()).results;
   const byHost = new Map<string, string>();
   for (const { url } of rows) {
     const host = new URL(url).hostname;
     if (!byHost.has(host) && byHost.size < URLSCAN_HOSTS) byHost.set(host, url);
   }
-  for (const url of byHost.values()) {
-    const res = await deps.fetch(`${CF_API}/${env.CF_ACCOUNT_ID}/urlscanner/v2/scan`, {
+  await env.DB.batch([...byHost.values()].map((url) =>
+    env.DB.prepare(`UPDATE page_links SET scan_error = ? WHERE version_id = ? AND url = ?`).bind(QUEUED, versionId, url)));
+}
+
+/**
+ * Submits the chosen links that are still queued. URL Scanner rate-limits submissions per account, so on a
+ * 429 the rest wait for the next round; any other refusal is final and keeps the API's reason. Returns how
+ * many still wait to be submitted.
+ */
+async function submitUrlScans(env: Env, versionId: string): Promise<number> {
+  const queued = (await env.DB.prepare(`SELECT DISTINCT url FROM page_links WHERE version_id = ? AND scan_error = ? ORDER BY url`)
+    .bind(versionId, QUEUED).all<{ url: string }>()).results;
+  let waiting = queued.length;
+  for (const { url } of queued) {
+    const res = await deps.fetch(`${CF_API}/${env.CF_URLSCAN_ACCOUNT_ID}/urlscanner/v2/scan`, {
       method: "POST", headers: cfHeaders(env), body: JSON.stringify({ url, visibility: "Unlisted" }),
     });
-    const scanId = res.ok ? ((await res.json()) as { uuid?: string }).uuid : undefined;
-    await env.DB.prepare(`UPDATE page_links SET scan_id = ?, scan_verdict = ? WHERE version_id = ? AND url = ?`)
-      .bind(scanId ?? null, scanId ? null : "unknown", versionId, url).run();
+    const body = (await res.json().catch(() => null)) as { uuid?: string; errors?: { message?: string }[]; message?: string } | null;
+    if (res.status === 429) break;
+    waiting--;
+    const scanId = res.ok ? body?.uuid : undefined;
+    const error = scanId ? null : `${res.status}: ${body?.errors?.map((e) => e.message).join("; ") || body?.message || "no scan ID returned"}`.slice(0, 300);
+    if (error) console.error(`URL Scanner refused ${url}: ${error}`);
+    await env.DB.prepare(`UPDATE page_links SET scan_id = ?, scan_verdict = ?, scan_error = ? WHERE version_id = ? AND url = ?`)
+      .bind(scanId ?? null, scanId ? null : "unknown", error, versionId, url).run();
   }
+  return waiting;
 }
 
 /** Collects finished URL Scanner results; returns how many are still running. */
@@ -317,7 +340,7 @@ async function collectUrlScans(env: Env, versionId: string): Promise<number> {
     .bind(versionId).all<{ url: string; scan_id: string }>()).results;
   let running = 0;
   for (const p of pending) {
-    const res = await deps.fetch(`${CF_API}/${env.CF_ACCOUNT_ID}/urlscanner/v2/result/${encodeURIComponent(p.scan_id)}`, { headers: cfHeaders(env) });
+    const res = await deps.fetch(`${CF_API}/${env.CF_URLSCAN_ACCOUNT_ID}/urlscanner/v2/result/${encodeURIComponent(p.scan_id)}`, { headers: cfHeaders(env) });
     if (res.status === 404) {
       running++;
       continue;
@@ -340,6 +363,8 @@ export interface CheckSummary {
   links: { checked: number; dead: number; missing: number; malicious: number; unchecked: number; skipped: number };
   dead_links: { page: string; line: number | null; url: string; status: string; http_status: number | null }[];
   url_scanner: "checked" | "not_configured";
+  /** Each link sent to URL Scanner: its verdict (clean, malicious, unknown) and, if it was refused, why. */
+  url_scans: { url: string; verdict: string; error: string | null }[];
   pii: PiiHit[];
 }
 
@@ -358,16 +383,21 @@ export async function runContentChecks(env: Env, versionId: string, attempt = 0)
   const scanner = urlscanConfigured(env);
   if (attempt === 0) {
     await checkPendingLinks(env, versionId);
-    if (scanner) await submitUrlScans(env, versionId);
+    if (scanner) await chooseUrlScans(env, versionId);
   }
   if (scanner) {
+    const unsubmitted = await submitUrlScans(env, versionId);
     const running = await collectUrlScans(env, versionId);
-    if (running > 0 && attempt < URLSCAN_ROUNDS) {
+    if (running + unsubmitted > 0 && attempt < URLSCAN_ROUNDS) {
       await env.PUBLISH_QUEUE.send({ checkVersionId: versionId, attempt: attempt + 1 }, { delaySeconds: 60 });
       return null;
     }
-    // Scans that never finished are not held against the author.
-    await db.prepare(`UPDATE page_links SET scan_verdict = 'unknown' WHERE version_id = ? AND scan_id IS NOT NULL AND scan_verdict IS NULL`).bind(versionId).run();
+    // Scans that never finished, or never got past the rate limit, are not held against the author.
+    await db.batch([
+      db.prepare(`UPDATE page_links SET scan_verdict = 'unknown' WHERE version_id = ? AND scan_id IS NOT NULL AND scan_verdict IS NULL`).bind(versionId),
+      db.prepare(`UPDATE page_links SET scan_verdict = 'unknown', scan_error = '429: still rate limited after ${URLSCAN_ROUNDS} rounds' WHERE version_id = ? AND scan_error = ?`)
+        .bind(versionId, QUEUED),
+    ]);
   }
   await countDeadLinks(env, versionId);
 
@@ -384,6 +414,9 @@ export async function runContentChecks(env: Env, versionId: string, attempt = 0)
     dead_links: links.filter((l) => ["dead", "missing", "malicious"].includes(l.status)).slice(0, 100)
       .map((l) => ({ page: l.page_path, line: l.line, url: l.url, status: l.status, http_status: l.http_status })),
     url_scanner: scanner ? "checked" : "not_configured",
+    url_scans: (await db.prepare(
+      `SELECT url, MAX(scan_verdict) AS verdict, MAX(scan_error) AS error FROM page_links WHERE version_id = ? AND scan_verdict IS NOT NULL GROUP BY url ORDER BY url`,
+    ).bind(versionId).all<{ url: string; verdict: string; error: string | null }>()).results,
     pii,
   };
   return { status: await settle(env, v, summary), summary };
@@ -396,7 +429,7 @@ async function settle(env: Env, v: Version, s: CheckSummary): Promise<string> {
   const now = Date.now();
   const ref = `${v.namespace}/${v.name}`;
   const linkResult = s.links.malicious > 0 ? "fail" : s.links.dead + s.links.missing > 0 ? "warn" : "pass";
-  const linkSummary = { ...s.links, dead_links: s.dead_links, url_scanner: s.url_scanner };
+  const linkSummary = { ...s.links, dead_links: s.dead_links, url_scanner: s.url_scanner, url_scans: s.url_scans };
   const stmts: D1PreparedStatement[] = [
     db.prepare(`INSERT INTO scans (id, version_id, kind, result, summary_json, ran_at) VALUES (?, ?, 'links', ?, ?, ?)`).bind(ulid(now), v.id, linkResult, JSON.stringify(linkSummary), now),
     db.prepare(`INSERT INTO scans (id, version_id, kind, result, summary_json, ran_at) VALUES (?, ?, 'pii', ?, ?, ?)`)
