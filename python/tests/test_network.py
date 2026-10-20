@@ -141,8 +141,13 @@ def test_network_crash_detection_marker_file():
             start_new_session=True,
         )
 
-        # Wait for install to start (job_start marker should be written)
-        time.sleep(0.5)
+        # Wait for the install to write its job marker; a fixed sleep raced slow machines
+        jobs_dir = os.path.join(tmp_home, "jobs")
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and not (
+            os.path.isdir(jobs_dir) and any(f.endswith(".json") for f in os.listdir(jobs_dir))
+        ):
+            time.sleep(0.1)
 
         # Send SIGKILL to the child process group (simulates crash/power loss)
         os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
@@ -154,7 +159,6 @@ def test_network_crash_detection_marker_file():
             proc.wait(timeout=5)
 
         # Verify a marker file exists in jobs/
-        jobs_dir = os.path.join(tmp_home, "jobs")
         marker_files = [f for f in os.listdir(jobs_dir) if f.endswith(".json")]
         assert len(marker_files) == 1, f"Expected 1 marker file, found {marker_files}"
 
