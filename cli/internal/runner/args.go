@@ -115,3 +115,76 @@ func BuildCommand(m *manifest.Manifest, values map[string]string) []string {
 	}
 	return out
 }
+
+// TypedPrefixes maps the typed-input prefixes `ot run` accepts (u:johndoe) to manifest input types.
+var TypedPrefixes = map[string]string{
+	"u":   "username",
+	"d":   "domain",
+	"e":   "email",
+	"p":   "phone",
+	"url": "url",
+}
+
+// TypedInput is a typed value from the command line, such as u:johndoe.
+type TypedInput struct {
+	Prefix, Value string
+}
+
+// ParseTypedInput reads "<prefix>:<value>"; ok is false when arg has no known prefix.
+func ParseTypedInput(arg string) (in TypedInput, ok bool, err error) {
+	prefix, value, found := strings.Cut(arg, ":")
+	if _, known := TypedPrefixes[prefix]; !found || !known {
+		return TypedInput{}, false, nil
+	}
+	if value == "" {
+		return TypedInput{}, true, &UsageError{fmt.Sprintf("%s: is missing its value", prefix)}
+	}
+	return TypedInput{prefix, value}, true, nil
+}
+
+// InputForType returns the name of m's input of the given type. It fails when there is none,
+// or more than one so the user has to pick with --<name>.
+func InputForType(m *manifest.Manifest, typ string) (string, error) {
+	names := InputsOfType(m, typ)
+	switch len(names) {
+	case 1:
+		return names[0], nil
+	case 0:
+		return "", &UsageError{fmt.Sprintf("%s has no %s input (inputs: %s)", m.Ref(), typ, inputList(m))}
+	}
+	return "", &UsageError{fmt.Sprintf("%s has several %s inputs (--%s); pass the one you mean by name", m.Ref(), typ, strings.Join(names, ", --"))}
+}
+
+// InputsOfType lists the names of m's inputs of the given type.
+func InputsOfType(m *manifest.Manifest, typ string) []string {
+	var names []string
+	for _, in := range m.Inputs {
+		if in.Type == typ {
+			names = append(names, in.Name)
+		}
+	}
+	return names
+}
+
+// ApplyTyped adds typed inputs to the --name inputs the user gave. target is the first typed value
+// the manifest took, which names the results folder; it is empty when there were no typed inputs.
+func ApplyTyped(m *manifest.Manifest, given map[string]string, typed []TypedInput) (out map[string]string, target string, err error) {
+	out = make(map[string]string, len(given)+len(typed))
+	for k, v := range given {
+		out[k] = v
+	}
+	for _, t := range typed {
+		name, err := InputForType(m, TypedPrefixes[t.Prefix])
+		if err != nil {
+			return nil, "", err
+		}
+		if _, dup := out[name]; dup {
+			return nil, "", &UsageError{fmt.Sprintf("--%s is given twice (%s:%s sets it too)", name, t.Prefix, t.Value)}
+		}
+		out[name] = t.Value
+		if target == "" {
+			target = t.Value
+		}
+	}
+	return out, target, nil
+}
