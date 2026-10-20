@@ -15,7 +15,6 @@ metadata, and an archived copy.
 | Tool | Used for |
 | --- | --- |
 | [osintverse-community/sherlock](https://otinstaller.com/osintverse-community/sherlock) | The same handle on other networks |
-| [osintverse-community/instaloader-profile](https://otinstaller.com/osintverse-community/instaloader-profile) | Public Instagram profiles and recent posts |
 | [osintverse-community/yt-dlp](https://otinstaller.com/osintverse-community/yt-dlp) | Video and channel metadata on YouTube, TikTok, X and 1,000+ sites |
 | [osintverse-community/gallery-dl](https://otinstaller.com/osintverse-community/gallery-dl) | Image posts and galleries on Reddit, Flickr, Imgur, Tumblr and others |
 | [osintverse-community/waybackpy](https://otinstaller.com/osintverse-community/waybackpy) | Archived copies of a profile |

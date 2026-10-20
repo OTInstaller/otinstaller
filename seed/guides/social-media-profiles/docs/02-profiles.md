@@ -1,14 +1,14 @@
 # Profiles
 
-## Instagram
+## Read the profile
 
-```
-ot run osintverse-community/instaloader-profile --username instagram
-```
+Open the profile in a browser that isn't signed in to the platform, so you see what the public sees. Note the display
+name, bio, links out, follower counts, account type (business, verified, private) and the most recent posts. Many
+platforms limit what they show signed-out visitors and block automated requests from servers, so a careful manual
+read is often the most reliable first step.
 
-For a public profile you get the display name, biography, external link, follower and following counts, account type
-(business, verified, private) and, unless it is private, the 12 most recent posts with dates, captions, likes and
-tagged locations. Instagram limits anonymous requests, so space out lookups.
+For media-heavy profiles, `gallery-dl` lists the posts and their metadata without downloading anything; see
+[media](03-media.md).
 
 ## The same person elsewhere
 

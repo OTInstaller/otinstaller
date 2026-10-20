@@ -1,15 +1,23 @@
-# Sets the version in otinstaller.yaml and tags the release; the registry renders and checks the guide.
+# Optional. `ot release 1.2.0` does the same from your computer in a few seconds, without CI.
+# Sets the version in otinstaller.yaml and pushes the tag vX.Y.Z; the registry then renders and checks the guide.
 # Run a pipeline manually with the variable VERSION set (e.g. 1.2.0). RELEASE_TOKEN is a project access
 # token with write_repository, used to push the release commit and tag.
 otinstaller-release:
   image: alpine:3.20
+  timeout: 3m
+  variables:
+    GIT_DEPTH: "1"
   rules:
     - if: $CI_PIPELINE_SOURCE == "web" && $VERSION
   script:
     - apk add --no-cache git
+    - VERSION="${VERSION#v}"
+    - echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' || { echo "'$VERSION' is not a version like 1.2.0"; exit 1; }
+    - REMOTE="https://oauth2:${RELEASE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+    - if git ls-remote --exit-code --tags "$REMOTE" "refs/tags/v$VERSION" >/dev/null; then echo "v$VERSION is already released"; exit 1; fi
     - sed -i -E "s|^version: .*|version: $VERSION|" otinstaller.yaml
     - git config user.name "otinstaller release"
     - git config user.email "release@otinstaller.invalid"
-    - git commit -am "Release $VERSION"
+    - git diff --quiet || git commit -qam "Release $VERSION"
     - git tag "v$VERSION"
-    - git push "https://oauth2:${RELEASE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" HEAD:$CI_DEFAULT_BRANCH "v$VERSION"
+    - git push --atomic "$REMOTE" HEAD:$CI_DEFAULT_BRANCH "v$VERSION"

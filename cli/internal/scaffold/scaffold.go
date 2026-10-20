@@ -294,7 +294,8 @@ Read it in a terminal with:
 
     ot guide read << .Namespace >>/<< .Name >>
 
-To release a new version, run the otinstaller release workflow with the version number; it tags vX.Y.Z.
+To release a new version, run ` + "`ot release X.Y.Z`" + ` here: it sets the version, checks the guide, commits and pushes the
+tag vX.Y.Z. The otinstaller release workflow does the same from the Actions tab if you prefer.
 `
 
 const guideIndexTmpl = `# << .Summary >>
