@@ -39,7 +39,17 @@ go build -o ../bin/ot ./cmd/ot
 Its data lives in `%APPDATA%\ot` on Windows and `~/.ot` elsewhere (override with `OT_HOME`). API keys go to the OS keychain;
 an environment variable with the same name takes precedence, which is handy in CI.
 
-Exit codes: 0 success, 1 tool error, 2 bad usage or invalid manifest, 3 missing key, 4 trust refusal, 5 runtime missing, 124 timeout.
+Exit codes: 0 success, 1 tool error, 2 bad usage or invalid manifest, 3 missing key, 4 trust refusal, 5 runtime missing, 124 timeout,
+130 interrupted.
+
+`ot run` takes inputs as `--<input> <value>` or as typed inputs after the package, which fill the tool's input of that
+type: `u:` username, `d:` domain, `e:` email, `p:` phone, `url:` url (`ot run osintverse-community/sherlock u:johndoe`).
+Every run's raw output is saved to `./results/<tool>/<target>/<timestamp>_<tool>_<target>_<runid>.<ext>` with a
+`.meta.json` sidecar (command, timing, exit code, status, SHA-256, entities); `--results-dir` or `OT_RESULTS_DIR` moves
+it (`OTINSTALLER_RESULTS_DIR` still works), `--case NAME` groups runs under `cases/NAME/`, `--no-save` skips it. The
+envelope still goes to stdout. `ot run --all u:johndoe` runs every installed tool with a username input, four at a time
+(`--parallel N`), skips those that need other inputs or a missing key, and prints a summary (`--format json` for JSON).
+These are the Python `otinstaller` features; see [docs/typed-inputs-and-results.md](docs/typed-inputs-and-results.md).
 
 The CLI embeds copies of `spec/schema/v1.json` and `spec/templates/`. After changing the spec, run `go generate ./...` in `cli/`
 and `npm run sync:templates` in `api/`; tests fail if the copies drift.

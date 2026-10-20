@@ -2,10 +2,12 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 
 	"github.com/spf13/cobra"
 
@@ -28,6 +30,7 @@ const (
 	ExitTrust          = 4
 	ExitRuntimeMissing = 5
 	ExitTimeout        = 124
+	ExitInterrupted    = 130
 )
 
 // ExitError carries an exit code up to main.
@@ -131,7 +134,10 @@ func Main(args []string) int {
 	a := NewApp()
 	root := a.Root()
 	root.SetArgs(args)
-	err := root.Execute()
+	// Ctrl-C cancels the context, so a running tool's container is stopped and its partial output saved.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	err := root.ExecuteContext(ctx)
 	if err == nil {
 		return ExitOK
 	}

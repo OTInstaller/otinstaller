@@ -93,6 +93,17 @@ type RunOptions struct {
 	Values  map[string]string // resolved inputs
 	Secrets map[string]string // secret name -> value
 	OutDir  string            // host directory mounted at /out, optional
+	// Stdout, when set, also receives the tool's stdout as it arrives (for saving results).
+	Stdout io.Writer
+	// Stderr, when set, receives the tool's stderr instead of the Runner's Stderr.
+	Stderr io.Writer
+}
+
+func (o RunOptions) stderr(r *Runner) io.Writer {
+	if o.Stderr != nil {
+		return o.Stderr
+	}
+	return r.Stderr
 }
 
 // Run executes an installed package and returns its result envelope.
@@ -108,7 +119,11 @@ func (r *Runner) Run(ctx context.Context, inst *state.Installed, opt RunOptions)
 		env = append(env, k+"="+v)
 	}
 
-	var stdout bytes.Buffer
+	var buf bytes.Buffer
+	var stdout io.Writer = &buf
+	if opt.Stdout != nil {
+		stdout = io.MultiWriter(&buf, opt.Stdout)
+	}
 	started := time.Now()
 	var exit int
 	var err error
@@ -118,9 +133,9 @@ func (r *Runner) Run(ctx context.Context, inst *state.Installed, opt RunOptions)
 		if inst.LocalImage != "" {
 			image = inst.LocalImage
 		}
-		exit, err = r.runContainer(ctx, m, image, cmd, opt, env, &stdout)
+		exit, err = r.runContainer(ctx, m, image, cmd, opt, env, stdout)
 	case inst.Runtime == "pipx" && inst.Native:
-		exit, err = r.runNative(ctx, cmd, env, &stdout)
+		exit, err = r.runNative(ctx, cmd, env, stdout, opt.stderr(r))
 	default:
 		return nil, fmt.Errorf("unknown runtime %q", inst.Runtime)
 	}
@@ -131,7 +146,7 @@ func (r *Runner) Run(ctx context.Context, inst *state.Installed, opt RunOptions)
 		return nil, err
 	}
 
-	raw, entities, warnings := envelope.ParseOutput(m.Runtime.OutputFormat, stdout.Bytes())
+	raw, entities, warnings := envelope.ParseOutput(m.Runtime.OutputFormat, buf.Bytes())
 	if warnings == nil {
 		warnings = []string{}
 	}
@@ -183,7 +198,7 @@ func (r *Runner) runContainer(ctx context.Context, m *manifest.Manifest, image s
 		secretNames = append(secretNames, k)
 	}
 	args := ContainerArgs(m, name, image, cmd, secretNames, opt.OutDir)
-	exit, err := r.Exec.Run(ctx, r.Engine, args, env, nil, stdout, r.Stderr)
+	exit, err := r.Exec.Run(ctx, r.Engine, args, env, nil, stdout, opt.stderr(r))
 	if ctx.Err() != nil {
 		// The client was killed; make sure the container goes too.
 		_, _ = r.Exec.Run(context.Background(), r.Engine, []string{"kill", name}, nil, nil, io.Discard, io.Discard)
@@ -191,7 +206,7 @@ func (r *Runner) runContainer(ctx context.Context, m *manifest.Manifest, image s
 	return exit, err
 }
 
-func (r *Runner) runNative(ctx context.Context, cmd, env []string, stdout io.Writer) (int, error) {
+func (r *Runner) runNative(ctx context.Context, cmd, env []string, stdout, stderr io.Writer) (int, error) {
 	bin := filepath.Join(PipxBinDir(), cmd[0])
 	if runtime.GOOS == "windows" {
 		bin += ".exe"
@@ -199,7 +214,7 @@ func (r *Runner) runNative(ctx context.Context, cmd, env []string, stdout io.Wri
 	if _, err := os.Stat(bin); err != nil {
 		return 0, fmt.Errorf("%s is not installed in ot's pipx environment; run `ot install` again", cmd[0])
 	}
-	return r.Exec.Run(ctx, bin, cmd[1:], env, nil, stdout, r.Stderr)
+	return r.Exec.Run(ctx, bin, cmd[1:], env, nil, stdout, stderr)
 }
 
 func randomHex(n int) string {
