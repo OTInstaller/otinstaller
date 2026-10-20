@@ -1,0 +1,38 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+# Converted from the package manager's catalog by scripts/pm-catalog-to-wrappers.py.
+schema: 1
+name: linkook
+namespace: osintverse-community
+version: 1.1.3
+summary: "An OSINT tool for discovering linked social accounts and associated emails across multiple platforms using a single username"
+readme: README.md
+license: MIT
+homepage: https://github.com/JackJuly/linkook
+categories: [username, email, social-media]
+tags: [username, email, social-media, username-search, email-search]
+inputs:
+  - name: username
+    type: username
+    required: true
+outputs:
+  - type: account
+runtime:
+  kind: pipx
+  package: linkook
+  package_version: "1.1.3"
+  index: pypi
+  python: ">=3.7"
+  entrypoint: linkook
+  wheel_sha256: "73559deafc157793afae035a3bafa0b1e92f5966b566e4a2cbfa1cb977704803"
+  command: ["linkook", "{username}"]
+  output_format: text
+  timeout_seconds: 900
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+test:
+  input: {"username": "github"}

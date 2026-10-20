@@ -142,12 +142,14 @@ func (r *Runner) installPipxNative(ctx context.Context, m *manifest.Manifest, wh
 }
 
 // pythonDockerfile wraps a verified wheel in a small non-root image so pipx packages run with the
-// same sandbox as Docker packages.
+// same sandbox as Docker packages. The container is read-only except /tmp, so tools that write
+// into their working folder (reports, caches) start there.
 const pythonDockerfile = `FROM python:3.12-slim
 RUN useradd --uid 10001 --create-home ot
 COPY *.whl /tmp/
 RUN pip install --no-cache-dir /tmp/*.whl && rm /tmp/*.whl
 USER ot
+WORKDIR /tmp
 `
 
 func (r *Runner) buildPythonImage(ctx context.Context, m *manifest.Manifest, wheel string) (string, error) {

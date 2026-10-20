@@ -122,6 +122,7 @@ var TypedPrefixes = map[string]string{
 	"d":   "domain",
 	"e":   "email",
 	"p":   "phone",
+	"ip":  "ip",
 	"url": "url",
 }
 
