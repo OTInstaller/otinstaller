@@ -10,7 +10,7 @@ metadata, and an archived copy.
 3. [Videos, images and their metadata](03-media.md)
 4. [Preserve](04-preserve.md)
 
-**Tools used** (`ot guide tools osintverse/social-media-profiles`):
+**Tools used** (`ot guide tools osintverse-community/social-media-profiles`):
 
 | Tool | Used for |
 | --- | --- |

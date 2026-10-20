@@ -2,12 +2,12 @@
 # yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
 schema: 1
 name: username-permutations
-namespace: osintverse
+namespace: osintverse-community
 version: 0.1.0
 summary: Generates likely usernames from a person's name to search with username tools
 readme: README.md
 license: MIT
-homepage: https://github.com/osintverse/username-permutations
+homepage: https://github.com/osintverse-community/username-permutations
 categories: [username, people]
 tags: [username, enumeration, offline]
 inputs:
@@ -24,7 +24,7 @@ outputs:
 runtime:
   kind: docker
   # Filled in by the release workflow with the pushed image's digest.
-  image: ghcr.io/osintverse/username-permutations@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  image: ghcr.io/osintverse-community/username-permutations@sha256:0000000000000000000000000000000000000000000000000000000000000000
   platforms: [linux/amd64, linux/arm64]
   command: ["username-permutations", "--extra", "{extra}", "{name}"]
   output_format: json

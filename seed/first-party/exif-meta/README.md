@@ -3,7 +3,7 @@
 Downloads an image or document (up to 25 MB) and reads all of its metadata with [ExifTool](https://exiftool.org): GPS coordinates, camera make, model and serial number, editing software, author and copyright fields, and when it was taken and changed.
 
 ```
-ot run osintverse/exif-meta --url https://example.com/photo.jpg
+ot run osintverse-community/exif-meta --url https://example.com/photo.jpg
 ```
 
 ## Inputs
@@ -18,7 +18,7 @@ Most social networks strip metadata on upload, so originals from websites, cloud
 
 ## Next steps
 
-Open the coordinates with [osintverse/geo-links](https://otinstaller.com/osintverse/geo-links) and look for other copies with [osintverse/reverse-image-links](https://otinstaller.com/osintverse/reverse-image-links).
+Open the coordinates with [osintverse-community/geo-links](https://otinstaller.com/osintverse-community/geo-links) and look for other copies with [osintverse-community/reverse-image-links](https://otinstaller.com/osintverse-community/reverse-image-links).
 
 ## Development
 

@@ -18,7 +18,7 @@ Profiles link to each other through bios, link-in-bio pages and repeated handles
 ot run osintverse-community/sherlock --username instagram
 ```
 
-and follow the [username playbook](https://otinstaller.com/guides/osintverse/username-investigation) to verify matches.
+and follow the [username playbook](https://otinstaller.com/guides/osintverse-community/username-investigation) to verify matches.
 
 ## What to record
 

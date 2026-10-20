@@ -13,12 +13,12 @@ the last optional step, which visits the domain's own web servers.
 5. [Look-alike domains](05-lookalikes.md)
 6. [Live hosts (active)](06-live-hosts.md)
 
-**Tools used** (`ot guide tools osintverse/domain-investigation`):
+**Tools used** (`ot guide tools osintverse-community/domain-investigation`):
 
 | Tool | Used for |
 | --- | --- |
-| [osintverse/dns-records](https://otinstaller.com/osintverse/dns-records) | A, MX, NS, TXT and other records |
-| [osintverse/crtsh-subdomains](https://otinstaller.com/osintverse/crtsh-subdomains) | Names from Certificate Transparency |
+| [osintverse-community/dns-records](https://otinstaller.com/osintverse-community/dns-records) | A, MX, NS, TXT and other records |
+| [osintverse-community/crtsh-subdomains](https://otinstaller.com/osintverse-community/crtsh-subdomains) | Names from Certificate Transparency |
 | [osintverse-community/subfinder](https://otinstaller.com/osintverse-community/subfinder) | Subdomains from dozens of passive sources |
 | [osintverse-community/gau](https://otinstaller.com/osintverse-community/gau) | Every archived URL of the domain |
 | [osintverse-community/waybackpy](https://otinstaller.com/osintverse-community/waybackpy) | The oldest and newest captures |

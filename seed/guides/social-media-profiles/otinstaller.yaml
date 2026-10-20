@@ -3,12 +3,12 @@
 schema: 1
 kind: guide
 name: social-media-profiles
-namespace: osintverse
+namespace: osintverse-community
 version: 1.0.0
 title: "Social media profiles playbook"
 summary: "Collect and preserve what a public profile shows: posts, media metadata and archived copies"
 license: CC-BY-4.0
-homepage: https://github.com/osintverse/social-media-profiles
+homepage: https://github.com/osintverse-community/social-media-profiles
 categories: [social-media]
 level: beginner
 format: guide

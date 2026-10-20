@@ -23,4 +23,4 @@ turn the block from [ownership](02-ownership.md) into a list you can look up one
 
 Record for each address: holder and ASN, whether it is an intermediary (CDN, cloud), the services seen with their
 dates, and the domains it leads to. Continue with those domains in the
-[domain playbook](https://otinstaller.com/guides/osintverse/domain-investigation).
+[domain playbook](https://otinstaller.com/guides/osintverse-community/domain-investigation).

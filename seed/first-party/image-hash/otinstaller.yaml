@@ -2,12 +2,12 @@
 # yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
 schema: 1
 name: image-hash
-namespace: osintverse
+namespace: osintverse-community
 version: 0.1.0
 summary: "Computes perceptual hashes of an online image to match copies and near-duplicates"
 readme: README.md
 license: MIT
-homepage: https://github.com/osintverse/image-hash
+homepage: https://github.com/osintverse-community/image-hash
 categories: [images-geo]
 tags: [image, perceptual-hash, duplicates]
 inputs:
@@ -24,7 +24,7 @@ outputs:
 runtime:
   kind: docker
   # Filled in by the release workflow with the pushed image's digest.
-  image: ghcr.io/osintverse/image-hash@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  image: ghcr.io/osintverse-community/image-hash@sha256:0000000000000000000000000000000000000000000000000000000000000000
   platforms: [linux/amd64, linux/arm64]
   command: ["image-hash", "--compare", "{compare}", "{url}"]
   output_format: json

@@ -3,7 +3,7 @@
 Takes coordinates in decimal or degrees-minutes-seconds form and gives you links to the same spot on OpenStreetMap, Google Maps, Earth and Street View, Bing aerial, Apple Maps, Mapillary street photos, the Copernicus satellite archive, Wikimapia, Overpass Turbo and SunCalc. Runs offline.
 
 ```
-ot run osintverse/geo-links --coordinates "48°51'30\"N 2°17'40\"E"
+ot run osintverse-community/geo-links --coordinates "48°51'30\"N 2°17'40\"E"
 ```
 
 ## Inputs
@@ -18,7 +18,7 @@ Use the satellite archive to date a photo by construction or seasons, and SunCal
 
 ## Next steps
 
-Get coordinates from a photo with [osintverse/exif-meta](https://otinstaller.com/osintverse/exif-meta).
+Get coordinates from a photo with [osintverse-community/exif-meta](https://otinstaller.com/osintverse-community/exif-meta).
 
 ## Development
 

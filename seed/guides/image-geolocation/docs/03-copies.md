@@ -5,7 +5,7 @@ Most misleading images are real photos from another time or place. Finding the e
 ## Search
 
 ```
-ot run osintverse/reverse-image-links --url "https://upload.wikimedia.org/wikipedia/commons/a/a8/Tour_Eiffel_Wikimedia_Commons.jpg" --format table
+ot run osintverse-community/reverse-image-links --url "https://upload.wikimedia.org/wikipedia/commons/a/a8/Tour_Eiffel_Wikimedia_Commons.jpg" --format table
 ```
 
 Open the links one by one. Each engine has strengths:
@@ -23,7 +23,7 @@ Crop to the interesting part (a building, a sign) and search again if the whole 
 When you find a candidate original, check it is really the same picture:
 
 ```
-ot run osintverse/image-hash --url "https://example.org/candidate.jpg" --compare "https://example.com/suspect.jpg"
+ot run osintverse-community/image-hash --url "https://example.org/candidate.jpg" --compare "https://example.com/suspect.jpg"
 ```
 
 A pHash distance of 8 or less means the same photo, even if resized or recompressed. A larger distance with the same
