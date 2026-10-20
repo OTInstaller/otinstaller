@@ -86,6 +86,20 @@ def cert_identity(der: bytes) -> tuple[str | None, str | None]:
     return identity, issuer
 
 
+def signature_cert_der(sig: dict) -> bytes | None:
+    """The signing certificate (DER) from one line of `cosign download signature` output."""
+    raw = (sig.get("verificationMaterial", {}).get("certificate", {}) or {}).get("rawBytes")
+    if raw:
+        return base64.b64decode(raw)
+    cert = sig.get("Cert")
+    if isinstance(cert, dict) and cert.get("Raw"):
+        # cosign v3 prints the parsed certificate; "Raw" is its base64 DER.
+        return base64.b64decode(cert["Raw"])
+    if isinstance(cert, str) and cert:
+        return base64.b64decode("".join(l for l in cert.splitlines() if "CERTIFICATE" not in l))
+    return None
+
+
 def signer_identities(image: str) -> list[tuple[str, str]]:
     """Identities of every signature attached to an image, read from the signing certificates."""
     out = run(["cosign", "download", "signature", image])
@@ -95,13 +109,8 @@ def signer_identities(image: str) -> list[tuple[str, str]]:
             sig = json.loads(line)
         except json.JSONDecodeError:
             continue
-        raw = (sig.get("verificationMaterial", {}).get("certificate", {}) or {}).get("rawBytes")
-        if raw:
-            der = base64.b64decode(raw)
-        elif sig.get("Cert"):
-            pem = sig["Cert"]
-            der = base64.b64decode("".join(l for l in pem.splitlines() if "CERTIFICATE" not in l))
-        else:
+        der = signature_cert_der(sig)
+        if der is None:
             continue
         ident, iss = cert_identity(der)
         if ident:
