@@ -108,6 +108,7 @@ func (a *App) Root() *cobra.Command {
 		a.infoCmd(),
 		a.installCmd(),
 		a.runCmd(),
+		a.playbookCmd(),
 		a.listCmd(),
 		a.uninstallCmd(),
 		a.keysCmd(),

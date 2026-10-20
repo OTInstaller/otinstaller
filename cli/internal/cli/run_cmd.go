@@ -153,7 +153,7 @@ func (a *App) runCmd() *cobra.Command {
 				return nil
 			}
 			if ra.All {
-				return a.runAll(cmd.Context(), ra)
+				return a.runAll(cmd.Context(), ra, "--all", nil)
 			}
 			if ra.Pkg == "" {
 				fmt.Fprint(a.Out, runHelp)

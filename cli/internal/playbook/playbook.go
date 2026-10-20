@@ -1,0 +1,144 @@
+// Package playbook loads playbooks: named lists of tools that `ot playbook` runs against the same
+// typed inputs, as otinstaller's playbooks did.
+//
+// Playbooks come from three places, later ones winning on a name clash: the ones bundled with ot,
+// <ot home>/playbooks, and ./playbooks.
+package playbook
+
+import (
+	"embed"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+
+	"gopkg.in/yaml.v3"
+)
+
+//go:embed bundled/*.yaml
+var bundled embed.FS
+
+// Playbook is one playbook file.
+type Playbook struct {
+	Name        string   `yaml:"name" json:"name"`
+	Description string   `yaml:"description" json:"description"`
+	Tools       []string `yaml:"tools" json:"tools"`
+	// Case is the results case its runs are saved under; default playbook-<name>.
+	Case string `yaml:"case" json:"case"`
+	// RequiresTarget is otinstaller's field; ot always needs a typed input, so it is ignored.
+	RequiresTarget *bool `yaml:"requires_target" json:"-"`
+	// Source is where it was loaded from: "bundled" or a file path.
+	Source string `yaml:"-" json:"source"`
+}
+
+var (
+	slug = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$`)
+	ref  = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]/[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$`)
+)
+
+// Parse reads and checks one playbook. name is the file's stem, used when the file names none.
+func Parse(data []byte, name, source string) (*Playbook, error) {
+	var p Playbook
+	if err := yaml.Unmarshal(data, &p); err != nil {
+		return nil, fmt.Errorf("playbook %s: %w", source, err)
+	}
+	if p.Name == "" {
+		p.Name = name
+	}
+	p.Source = source
+	if !slug.MatchString(p.Name) {
+		return nil, fmt.Errorf("playbook %s: name %q must be lowercase letters, digits and hyphens", source, p.Name)
+	}
+	if len(p.Tools) == 0 {
+		return nil, fmt.Errorf("playbook %s: lists no tools", p.Name)
+	}
+	seen := map[string]bool{}
+	for _, t := range p.Tools {
+		if !strings.Contains(t, "/") && slug.MatchString(t) {
+			// otinstaller playbooks name tools without a namespace.
+			return nil, fmt.Errorf("playbook %s: tool %q needs its namespace, such as osintverse-community/%s", p.Name, t, t)
+		}
+		if !ref.MatchString(t) {
+			return nil, fmt.Errorf("playbook %s: %q is not a package; use namespace/name", p.Name, t)
+		}
+		if seen[t] {
+			return nil, fmt.Errorf("playbook %s: lists %s twice", p.Name, t)
+		}
+		seen[t] = true
+	}
+	if p.Case == "" {
+		p.Case = "playbook-" + p.Name
+	}
+	return &p, nil
+}
+
+// Dirs are the folders searched after the bundled playbooks, in order.
+func Dirs(home string) []string {
+	return []string{filepath.Join(home, "playbooks"), "playbooks"}
+}
+
+// All loads every playbook, sorted by name. A broken file is an error, so a typo never silently
+// falls back to a bundled playbook of the same name.
+func All(dirs []string) ([]*Playbook, error) {
+	found := map[string]*Playbook{}
+	entries, _ := fs.ReadDir(bundled, "bundled")
+	for _, e := range entries {
+		data, err := bundled.ReadFile("bundled/" + e.Name())
+		if err != nil {
+			return nil, err
+		}
+		p, err := Parse(data, stem(e.Name()), "bundled")
+		if err != nil {
+			return nil, err
+		}
+		found[p.Name] = p
+	}
+	for _, dir := range dirs {
+		var files []string
+		for _, pattern := range []string{"*.yaml", "*.yml"} {
+			m, _ := filepath.Glob(filepath.Join(dir, pattern))
+			files = append(files, m...)
+		}
+		sort.Strings(files)
+		for _, f := range files {
+			data, err := os.ReadFile(f)
+			if err != nil {
+				return nil, err
+			}
+			p, err := Parse(data, stem(filepath.Base(f)), f)
+			if err != nil {
+				return nil, err
+			}
+			found[p.Name] = p
+		}
+	}
+	out := make([]*Playbook, 0, len(found))
+	for _, p := range found {
+		out = append(out, p)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// Find returns the playbook with this name.
+func Find(dirs []string, name string) (*Playbook, error) {
+	all, err := All(dirs)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, p := range all {
+		if p.Name == name {
+			return p, nil
+		}
+		names = append(names, p.Name)
+	}
+	return nil, fmt.Errorf("no playbook %q; there are: %s", name, strings.Join(names, ", "))
+}
+
+func stem(file string) string {
+	return strings.TrimSuffix(strings.TrimSuffix(file, ".yaml"), ".yml")
+}
