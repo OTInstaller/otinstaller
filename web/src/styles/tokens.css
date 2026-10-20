@@ -1,0 +1,51 @@
+/* Design tokens. Swap these for OSINTverse's brand values; everything else reads from them.
+   Colour pairs are chosen for WCAG 2.2 AA contrast on their background in both themes. */
+:root {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
+
+  --bg: #ffffff;
+  --bg-subtle: #f5f7fa;
+  --bg-raised: #ffffff;
+  --text: #111827;
+  --text-muted: #4b5563;
+  --border: #dde2ea;
+  --accent: #1d4ed8;
+  --accent-contrast: #ffffff;
+  --accent-soft: #e8efff;
+  --ok: #047857;
+  --ok-soft: #e6f6ef;
+  --warn: #92400e;
+  --warn-soft: #fdf3e2;
+  --bad: #b91c1c;
+  --bad-soft: #fdecec;
+  --code-bg: #f1f4f8;
+
+  --radius: 8px;
+  --radius-sm: 5px;
+  --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 1px 3px rgb(16 24 40 / 8%);
+  --page: 1120px;
+  --gutter: 16px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --bg-subtle: #151b23;
+    --bg-raised: #161c25;
+    --text: #e6edf3;
+    --text-muted: #9ba7b4;
+    --border: #2b3440;
+    --accent: #7aa7ff;
+    --accent-contrast: #0b1220;
+    --accent-soft: #17243d;
+    --ok: #4ccf95;
+    --ok-soft: #0f2a20;
+    --warn: #f2b45c;
+    --warn-soft: #2d2212;
+    --bad: #ff8a8a;
+    --bad-soft: #321718;
+    --code-bg: #1b222c;
+    --shadow: none;
+  }
+}

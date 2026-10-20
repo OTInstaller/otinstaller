@@ -1,0 +1,42 @@
+---
+import Base from "../../layouts/Base.astro";
+import ToolCard from "../../components/ToolCard.astro";
+import { apiOrNull, type Namespace } from "../../lib/api";
+import { formatDate } from "../../lib/format";
+import { cacheFor } from "../../lib/page";
+
+const ns = Astro.params.ns!;
+const n = await apiOrNull<Namespace>(`/namespaces/${encodeURIComponent(ns)}`);
+if (!n) return Astro.rewrite("/404");
+const tools = n.tools.filter((t) => t.kind === "tool");
+const guides = n.tools.filter((t) => t.kind === "guide");
+const profile = n.provider === "github" ? `https://github.com/${n.name}` : n.provider === "gitlab" ? `https://gitlab.com/${n.name}` : null;
+cacheFor(Astro, 300);
+---
+<Base title={n.display_name ?? n.name} description={`OSINT tools and guides published by ${n.display_name ?? n.name}.`}>
+  <header class="row pub">
+    {n.avatar_url && <img src={n.avatar_url} alt="" width="64" height="64" class="avatar" />}
+    <div>
+      <h1>{n.display_name ?? n.name}</h1>
+      <div class="badges">
+        {n.verified && <span class="badge ok">Verified publisher</span>}
+        <span class="badge">{n.kind === "user" ? "User" : n.kind === "group" ? "Group" : "Organization"} on {n.provider === "gitlab" ? "GitLab" : "GitHub"}</span>
+      </div>
+      <p class="small muted">Publishing since {formatDate(n.created_at)}{profile && <> · <a href={profile} rel="nofollow noopener">{profile.replace("https://", "")}</a></>}</p>
+    </div>
+  </header>
+  <h2>Tools</h2>
+  {tools.length ? <div class="grid">{tools.map((t) => <ToolCard tool={t} />)}</div> : <p class="muted">No tools yet.</p>}
+  {guides.length > 0 && (
+    <>
+      <h2>Guides</h2>
+      <div class="grid">{guides.map((t) => <ToolCard tool={t} />)}</div>
+    </>
+  )}
+</Base>
+
+<style>
+  .pub { gap: 16px; align-items: center; }
+  .pub h1 { margin: 0 0 6px; }
+  .avatar { border-radius: 50%; border: 1px solid var(--border); }
+</style>

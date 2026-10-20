@@ -1,0 +1,66 @@
+---
+import Base from "../../../layouts/Base.astro";
+import ToolHeader from "../../../components/ToolHeader.astro";
+import { apiOrNull, type Scans } from "../../../lib/api";
+import { formatDate } from "../../../lib/format";
+import { loadTool } from "../../../lib/tool";
+import { cacheFor } from "../../../lib/page";
+
+const loaded = await loadTool(Astro, "/security");
+if ("response" in loaded) return loaded.response;
+const { tool: t, hasDocs } = loaded;
+const ref = `${t.namespace}/${t.name}`;
+const version = Astro.url.searchParams.get("v") ?? t.latest_version;
+const scans = await apiOrNull<Scans>(`/tools/${ref}/${encodeURIComponent(version)}/scans`);
+cacheFor(Astro, 300);
+const title: Record<string, string> = {
+  signature: "Signature", vuln: "Vulnerabilities", malware: "Malware and secrets", smoke: "Smoke test", sbom: "Software bill of materials",
+  links: "Links", pii: "Personal data",
+};
+const resultClass = { pass: "ok", warn: "warn", fail: "bad" } as const;
+function describe(kind: string, s: any): string {
+  if (!s) return "";
+  switch (kind) {
+    case "signature": return s.status === "pass" ? `Signed by ${s.identity}` : s.status === "absent" ? "Not signed" : `Did not verify: ${s.detail ?? "identity mismatch"}`;
+    case "vuln": return `${s.critical} critical, ${s.high} high, ${s.medium} medium, ${s.low} low (${s.fixable_critical + s.fixable_high} high or critical with fixes available)`;
+    case "malware": return `${s.malware?.count ?? 0} malware heuristics, ${s.secrets?.count ?? 0} embedded secrets`;
+    case "smoke": return s.status === "skipped" ? "Skipped" : `Exit code ${s.exit_code ?? "?"}${s.duration_ms ? ` in ${(s.duration_ms / 1000).toFixed(1)} s` : ""}`;
+    case "sbom": return `${s.packages} packages`;
+    case "links": return `${s.checked} links checked, ${s.dead} dead, ${s.missing} to missing pages${s.malicious ? `, ${s.malicious} malicious` : ""}`;
+    case "pii": return s.hits ? `${s.hits} line(s) looked like personal data and were reviewed` : "Nothing that looks like personal data";
+  }
+  return "";
+}
+---
+<Base title={`${ref} security`} description={`Signature, scan results and checks for ${ref} ${version}.`}>
+  <ToolHeader tool={t} active="security" hasDocs={hasDocs} scanStatus={scans?.scan_status} />
+  {!scans
+    ? <p class="notice">No version {version} of {ref}.</p>
+    : (
+      <>
+        <p>Results for version <strong>{scans.version}</strong>. {scans.signed
+          ? <>Signed with the identity <code>{scans.signer_identity}</code> ({scans.signer_issuer}); <code>ot</code> checks this signature on every install.</>
+          : "This version is not signed, so ot installs it after a warning."}</p>
+        {scans.scans.length === 0
+          ? <p class="notice">No scan results recorded for this version.</p>
+          : (
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th scope="col">Check</th><th scope="col">Result</th><th scope="col">Details</th><th scope="col">Ran</th></tr></thead>
+                <tbody>
+                  {scans.scans.map((s) => (
+                    <tr>
+                      <th scope="row">{title[s.kind] ?? s.kind}</th>
+                      <td><span class={`badge ${resultClass[s.result]}`}>{s.result}</span></td>
+                      <td>{describe(s.kind, s.summary)}</td>
+                      <td>{formatDate(s.ran_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+      </>
+    )}
+  <p class="small muted">How releases are checked: <a href="/docs/security">security model</a>. Found a problem? Email <a href="mailto:security@otinstaller.com">security@otinstaller.com</a>.</p>
+</Base>

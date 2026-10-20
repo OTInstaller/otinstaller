@@ -1,0 +1,28 @@
+---
+import type { ToolSummary } from "../lib/api";
+
+interface Props {
+  tool: ToolSummary;
+  /** Scan result for the tool page's header; cards leave it out. */
+  scanStatus?: string;
+}
+const { tool: t, scanStatus } = Astro.props;
+const guide = t.kind === "guide";
+---
+<div class="badges">
+  {t.verified && <span class="badge ok" title="The publisher's identity was confirmed by the registry">Verified publisher</span>}
+  {!guide && t.signed && <span class="badge ok" title="The release is signed by its repository's CI">Signed</span>}
+  {!guide && scanStatus === "pass" && <span class="badge ok">Scan passed</span>}
+  {!guide && scanStatus === "warn" && <span class="badge warn" title="Fixable high or critical vulnerabilities">Scan warnings</span>}
+  {!guide && t.health === "healthy" && <span class="badge ok">Healthy</span>}
+  {!guide && t.health === "broken" && <span class="badge bad" title="Recent health checks failed">Possibly broken</span>}
+  {!guide && t.runtime && <span class="badge">{t.runtime === "docker" ? "Docker" : "pipx"}</span>}
+  {!guide && !t.needs_keys && <span class="badge info">No API key needed</span>}
+  {guide && t.level && <span class="badge">{t.level}</span>}
+  {guide && t.format === "reference" && <span class="badge info">Reference</span>}
+  {guide && t.needs_update && <span class="badge warn" title="More than 20% of its links are dead">Needs update</span>}
+  {t.manifest_held_by_registry && <span class="badge" title="The manifest is kept by the registry, not in the repository">Manifest held by registry</span>}
+  {t.community_packaged && <span class="badge" title="Packaged by the community; the upstream owner can claim it">Community-packaged</span>}
+  {t.status === "deprecated" && <span class="badge warn">Deprecated</span>}
+  {t.source_unavailable && <span class="badge bad">Source unavailable</span>}
+</div>

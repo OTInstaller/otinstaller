@@ -1,0 +1,96 @@
+---
+import Base from "../../../../layouts/Base.astro";
+import PageReader from "../../../../components/PageReader.astro";
+import Badges from "../../../../components/Badges.astro";
+import CopyCommand from "../../../../components/CopyCommand.astro";
+import { api, apiOrNull, type GuideDetail, type Page, type Version } from "../../../../lib/api";
+import { formatDate, guidePageHref, inputLabel } from "../../../../lib/format";
+import { cacheFor } from "../../../../lib/page";
+
+const { ns, name } = Astro.params as { ns: string; name: string };
+const want = Astro.params.page ?? "";
+const pinned = Astro.url.searchParams.get("v");
+const base = `/guides/${encodeURIComponent(ns)}/${encodeURIComponent(name)}`;
+const guide = await apiOrNull<GuideDetail>(`${base}${pinned ? `/${encodeURIComponent(pinned)}` : ""}`);
+if (!guide) return Astro.rewrite("/404");
+if (guide.kind !== "guide") return Astro.redirect(`/${guide.namespace}/${guide.name}`, 301);
+const ref = guide.ref;
+// The latest version is served without ?v=, so there is one canonical address per page.
+const isLatest = guide.version === guide.latest_version;
+const version = isLatest ? undefined : guide.version;
+if (pinned && isLatest) return Astro.redirect(guidePageHref(ref, want || guide.nav[0]?.path || ""), 301);
+
+const [page, versions] = await Promise.all([
+  guide.nav.length ? apiOrNull<Page>(`${base}/${encodeURIComponent(guide.version)}/pages/${want ? want.split("/").map(encodeURIComponent).join("/") : "1"}?format=html`) : null,
+  api<{ versions: Version[] }>(`/tools/${ref}/versions`),
+]);
+if (want && !page) return Astro.rewrite("/404");
+const hrefFor = (path: string) => guidePageHref(ref, path, version);
+const first = !want || page?.position === 1;
+const tools = guide.related_tools;
+cacheFor(Astro, version ? 3600 : 600);
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  headline: page?.title ?? guide.title,
+  name: guide.title,
+  description: guide.summary,
+  version: guide.version,
+  license: guide.license,
+  url: `${Astro.site}${hrefFor(page?.path ?? "").slice(1)}`,
+  author: { "@type": "Organization", name: guide.namespace },
+};
+---
+<Base title={page && !first ? `${page.title} · ${guide.title}` : guide.title ?? ref} description={guide.summary} canonical={page ? hrefFor(page.path).split("?")[0] : base} jsonLd={jsonLd}>
+  <header class="ghead">
+    <p class="small muted crumbs"><a href="/guides">Guides</a> / <a href={`/${guide.namespace}`}>{guide.namespace}</a></p>
+    <h1>{guide.title ?? ref}</h1>
+    <p class="lead">{guide.summary}</p>
+    <Badges tool={guide} />
+    <div class="row small muted meta">
+      <span>{ref}</span>
+      <span>License {guide.license}</span>
+      {guide.topics.length > 0 && <span>About: {guide.topics.map(inputLabel).join(", ")}</span>}
+      <form method="get" class="row vswitch">
+        <label for="v">Version</label>
+        <select id="v" name="v">
+          {versions.versions.filter((v) => v.status !== "removed").map((v) => <option value={v.version} selected={v.version === guide.version}>{v.version}{v.version === guide.latest_version ? " (latest)" : ""}</option>)}
+        </select>
+        <button class="btn" type="submit">Go</button>
+      </form>
+    </div>
+    {!isLatest && <p class="notice">You are reading version {guide.version}. <a href={guidePageHref(ref, page?.path ?? "")}>Read the latest ({guide.latest_version})</a>.</p>}
+    {guide.checks.needs_update && <p class="notice warn">More than 20% of this guide's links no longer work, so parts of it may be out of date.</p>}
+  </header>
+
+  {first && tools.length > 0 && (
+    <section class="panel tools" aria-labelledby="tools">
+      <h2 id="tools">Tools used in this guide</h2>
+      <ul class="list-plain">
+        {tools.map((t) => (
+          <li>{t.available
+            ? <><a href={`/${t.ref}`}>{t.ref}</a> <span class="muted small">{t.summary}</span><CopyCommand label={`Install ${t.ref}`} command={t.install} /></>
+            : <span class="muted">{t.ref} (no longer in the registry)</span>}</li>
+        ))}
+      </ul>
+      <p class="small muted">Install them all at once: <code>ot guide tools {ref}</code></p>
+    </section>
+  )}
+
+  {page
+    ? <PageReader page={page} nav={guide.nav} hrefFor={hrefFor} label={`${guide.title} pages`} />
+    : <p class="notice">This guide has no pages yet.</p>}
+  <p class="small muted">Published {formatDate(guide.published_at)}. Read offline: <code>ot guide get {ref}{version ? `@${version}` : ""}</code>{guide.repo_url && <> · <a href={guide.repo_url} rel="nofollow noopener">Source</a></>}</p>
+</Base>
+
+<style>
+  .ghead { margin-bottom: 20px; }
+  .crumbs { margin: 0; }
+  .lead { font-size: 1.08rem; margin: 0 0 10px; }
+  .meta { margin-top: 10px; gap: 6px 16px; }
+  .vswitch { gap: 6px; }
+  .vswitch select { padding: 4px 8px; }
+  .tools { margin-bottom: 24px; }
+  .tools li { display: grid; gap: 6px; }
+  .tools li + li { margin-top: 12px; }
+</style>

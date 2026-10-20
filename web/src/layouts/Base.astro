@@ -1,0 +1,91 @@
+---
+import "../styles/global.css";
+import { SITE_URL } from "../lib/api";
+
+interface Props {
+  title: string;
+  description?: string;
+  /** Path for the canonical URL; defaults to the current path. */
+  canonical?: string;
+  /** schema.org JSON-LD for the page. */
+  jsonLd?: Record<string, unknown>;
+  noindex?: boolean;
+}
+const { title, description = "Find, install and run OSINT tools and investigation guides with one command.", canonical, jsonLd, noindex } = Astro.props;
+const fullTitle = title === "OTInstaller Registry" ? title : `${title} · OTInstaller Registry`;
+const canonicalUrl = `${SITE_URL}${canonical ?? Astro.url.pathname}`;
+const q = Astro.url.searchParams.get("q") ?? "";
+const path = Astro.url.pathname;
+const nav = [
+  { href: "/search", label: "Tools" },
+  { href: "/guides", label: "Guides" },
+  { href: "/docs", label: "Docs" },
+  { href: "/import", label: "Publish" },
+];
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonicalUrl} />
+    {noindex && <meta name="robots" content="noindex" />}
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd).replace(/</g, "\\u003c")} />}
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap bar">
+        <a class="brand" href="/" aria-label="OTInstaller Registry home">
+          <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2.4" /><path d="M16 16l5 5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" /></svg>
+          <span>OTInstaller</span>
+        </a>
+        <form class="search" action="/search" method="get" role="search">
+          <label class="sr-only" for="site-search">Search tools and guides</label>
+          <input id="site-search" type="search" name="q" value={q} placeholder="Search tools, e.g. email, sherlock" autocomplete="off" />
+        </form>
+        <nav aria-label="Main">
+          <ul>
+            {nav.map((n) => <li><a href={n.href} aria-current={path.startsWith(n.href) ? "page" : undefined}>{n.label}</a></li>)}
+            <li><a href="/dashboard" aria-current={path.startsWith("/dashboard") ? "page" : undefined}>Dashboard</a></li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+    <main id="main">
+      <div class="wrap">
+        <slot />
+      </div>
+    </main>
+    <footer class="site-footer">
+      <div class="wrap row small muted">
+        <span>OTInstaller Registry by OSINTverse</span>
+        <a href="/docs">Docs</a>
+        <a href="/docs/cli">CLI reference</a>
+        <a href="/docs/security">Security</a>
+        <a href="mailto:support@otinstaller.com">Contact</a>
+      </div>
+    </footer>
+  </body>
+</html>
+
+<style>
+  .site-header { border-bottom: 1px solid var(--border); background: var(--bg); }
+  .bar { display: flex; align-items: center; gap: 16px; min-height: 60px; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; }
+  .brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; color: var(--text); text-decoration: none; font-size: 1.05rem; }
+  .search { flex: 1 1 260px; display: flex; }
+  .search input { width: 100%; }
+  nav ul { display: flex; gap: 4px; list-style: none; margin: 0; padding: 0; flex-wrap: wrap; }
+  nav a { display: block; padding: 6px 10px; border-radius: var(--radius-sm); color: var(--text); text-decoration: none; font-size: 0.95rem; }
+  nav a:hover, nav a[aria-current="page"] { background: var(--bg-subtle); color: var(--accent); }
+  .site-footer { border-top: 1px solid var(--border); padding: 20px 0; }
+  .site-footer .row { gap: 18px; }
+</style>

@@ -1,0 +1,38 @@
+---
+import Base from "../../../layouts/Base.astro";
+import ToolHeader from "../../../components/ToolHeader.astro";
+import { api, type Version } from "../../../lib/api";
+import { formatDate } from "../../../lib/format";
+import { loadTool } from "../../../lib/tool";
+import { cacheFor } from "../../../lib/page";
+
+const loaded = await loadTool(Astro, "/versions");
+if ("response" in loaded) return loaded.response;
+const { tool: t, hasDocs } = loaded;
+const ref = `${t.namespace}/${t.name}`;
+const { versions } = await api<{ versions: Version[] }>(`/tools/${ref}/versions`);
+cacheFor(Astro, 60);
+const scanLabel: Record<string, string> = { pass: "Passed", warn: "Warnings", fail: "Failed", pending: "Pending" };
+---
+<Base title={`${ref} versions`} description={`Version history of ${ref}.`}>
+  <ToolHeader tool={t} active="versions" hasDocs={hasDocs} />
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th scope="col">Version</th><th scope="col">Published</th><th scope="col">Scan</th><th scope="col">Signed</th><th scope="col">Install</th></tr></thead>
+      <tbody>
+        {versions.map((v) => (
+          <tr>
+            <td class={v.status === "yanked" || v.status === "removed" ? "struck" : undefined}>
+              {v.version}{v.status === "yanked" && <span class="badge warn">yanked</span>}{v.status === "removed" && <span class="badge bad">removed</span>}
+            </td>
+            <td>{formatDate(v.published_at)}</td>
+            <td>{scanLabel[v.scan_status] ?? v.scan_status}</td>
+            <td>{v.signed ? "Yes" : "No"}</td>
+            <td>{v.status === "removed" ? "—" : <code>ot install {ref}@{v.version}</code>}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  <p class="small muted">Yanked versions stay installable by exact version so existing scripts keep working; they are hidden from search and <code>@latest</code>.</p>
+</Base>

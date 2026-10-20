@@ -1,0 +1,34 @@
+---
+import type { ToolSummary } from "../lib/api";
+import { formatCount, inputLabel } from "../lib/format";
+import Badges from "./Badges.astro";
+
+interface Props {
+  tool: ToolSummary;
+  /** Heading level for the card title: 2 where cards sit right under the page title. */
+  level?: 2 | 3;
+}
+const { tool: t, level = 3 } = Astro.props;
+const Heading = level === 2 ? "h2" : "h3";
+const ref = `${t.namespace}/${t.name}`;
+const href = t.kind === "guide" ? `/guides/${ref}` : `/${ref}`;
+---
+<article class="card tool-card">
+  <Heading class="card-title"><a href={href}>{t.kind === "guide" ? t.title ?? ref : ref}</a></Heading>
+  {t.kind === "guide" && <p class="small muted ref">{ref}</p>}
+  <p class="summary">{t.summary}</p>
+  <Badges tool={t} />
+  <p class="small muted meta">
+    {t.inputs.length > 0 && <span>{t.kind === "guide" ? "About" : "Takes"}: {t.inputs.map(inputLabel).join(", ")}</span>}
+    <span>v{t.latest_version}</span>
+    {t.kind === "tool" && <span>{formatCount(t.installs_30d)} installs (30 days)</span>}
+    <span>★ {formatCount(t.stars)}</span>
+  </p>
+</article>
+
+<style>
+  .tool-card { display: flex; flex-direction: column; gap: 8px; }
+  .summary { margin: 0; }
+  .ref { margin: -4px 0 0; }
+  .meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; }
+</style>

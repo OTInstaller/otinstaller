@@ -1,0 +1,14 @@
+---
+import Base from "../layouts/Base.astro";
+import Results from "../components/Results.astro";
+import { api, type Types } from "../lib/api";
+import { cacheFor, searchFrom } from "../lib/page";
+
+const q = Astro.url.searchParams.get("q") ?? "";
+const [{ result }, types] = await Promise.all([searchFrom(Astro.url, { kind: "tool" }), api<Types>("/types")]);
+cacheFor(Astro, 60);
+---
+<Base title={q ? `“${q}” tools` : "OSINT tools"} description="Search OSINT tools by name, input type, output and category." noindex={!!q}>
+  <h1>{q ? <>Tools for “{q}”</> : "All tools"}</h1>
+  <Results result={result} types={types} />
+</Base>

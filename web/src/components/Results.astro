@@ -1,0 +1,60 @@
+---
+// A search result list with facets, used by /search, /input/{type} and /category/{slug}.
+import ToolCard from "./ToolCard.astro";
+import type { SearchResult, Types } from "../lib/api";
+import { categoryLabel, inputLabel } from "../lib/format";
+import { withParam } from "../lib/page";
+
+interface Props {
+  result: SearchResult;
+  types: Types;
+  /** Facets fixed by the page (e.g. input on /input/email) are not offered. */
+  fixed?: string[];
+}
+const { result, types, fixed = [] } = Astro.props;
+const url = Astro.url;
+const current = (k: string) => url.searchParams.get(k);
+const facets = [
+  { key: "input", label: "Input", values: types.inputs, name: inputLabel },
+  { key: "output", label: "Output", values: types.outputs, name: (v: string) => v.replace(/_/g, " ") },
+  { key: "category", label: "Category", values: types.categories, name: categoryLabel },
+  { key: "runtime", label: "Runtime", values: ["docker", "pipx"], name: (v: string) => (v === "docker" ? "Docker" : "pipx") },
+].filter((f) => !fixed.includes(f.key));
+const sorts = [["relevance", "Best match"], ["installs", "Most installed"], ["stars", "Most starred"], ["updated", "Recently updated"]];
+const next = result.next_cursor ? `${url.pathname}?${new URLSearchParams({ ...Object.fromEntries(url.searchParams), cursor: result.next_cursor })}` : null;
+---
+<div class="results">
+  <aside class="facets" aria-label="Filters">
+    {facets.map((f) => (
+      <details open={!!current(f.key) || f.key === "input"}>
+        <summary>{f.label}</summary>
+        <ul class="list-plain">
+          {f.values.map((v) => (
+            <li><a href={withParam(url, f.key, current(f.key) === v ? null : v)} aria-current={current(f.key) === v ? "page" : undefined}>{f.name(v)}</a></li>
+          ))}
+        </ul>
+      </details>
+    ))}
+    <p><a href={withParam(url, "no_keys", current("no_keys") ? null : "1")} aria-current={current("no_keys") ? "page" : undefined}>No API key needed</a></p>
+  </aside>
+  <div>
+    <div class="row sorts" aria-label="Sort">
+      {sorts.map(([k, label]) => <a class="chip" href={withParam(url, "sort", k)} aria-current={(current("sort") ?? "relevance") === k ? "page" : undefined}>{label}</a>)}
+    </div>
+    {result.results.length === 0
+      ? <p class="notice">Nothing matches. Try fewer filters or another word.</p>
+      : <div class="grid">{result.results.map((t) => <ToolCard tool={t} level={2} />)}</div>}
+    {next && <p><a class="btn" href={next} rel="next">More results</a></p>}
+  </div>
+</div>
+
+<style>
+  .results { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; align-items: start; }
+  @media (max-width: 860px) { .results { grid-template-columns: minmax(0, 1fr); } }
+  .facets details { border-bottom: 1px solid var(--border); padding: 8px 0; }
+  .facets summary { cursor: pointer; font-weight: 600; }
+  .facets ul { margin-top: 6px; max-height: 260px; overflow-y: auto; font-size: 0.93rem; }
+  .facets a[aria-current="page"] { font-weight: 700; }
+  .facets a[aria-current="page"]::after { content: " ✕"; }
+  .sorts { margin-bottom: 14px; }
+</style>

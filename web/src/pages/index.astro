@@ -1,0 +1,70 @@
+---
+import Base from "../layouts/Base.astro";
+import ToolCard from "../components/ToolCard.astro";
+import { api, type SearchResult } from "../lib/api";
+import { START_INPUTS, inputLabel } from "../lib/format";
+import { cacheFor } from "../lib/page";
+
+const [trending, updated, guides] = await Promise.all([
+  api<SearchResult>("/tools?kind=tool&sort=installs&limit=6"),
+  api<SearchResult>("/tools?kind=tool&sort=updated&limit=6"),
+  api<SearchResult>("/guides?sort=stars&limit=3"),
+]);
+// Featured publishers: verified namespaces among the popular tools.
+const publishers = [...new Set(trending.results.concat(updated.results).filter((t) => t.verified).map((t) => t.namespace))].slice(0, 6);
+cacheFor(Astro, 300);
+---
+<Base title="OTInstaller Registry" jsonLd={{ "@context": "https://schema.org", "@type": "WebSite", name: "OTInstaller Registry", url: Astro.site?.toString(), potentialAction: { "@type": "SearchAction", target: `${Astro.site}search?q={query}`, "query-input": "required name=query" } }}>
+  <section class="hero">
+    <h1>Find and run OSINT tools with one command</h1>
+    <p class="muted lead">Signed, scanned and health-checked tools and investigation guides. Install them with <code>ot</code> and run them on your own machine.</p>
+    <form action="/search" method="get" role="search" class="hero-search">
+      <label class="sr-only" for="hero-q">Search the registry</label>
+      <input id="hero-q" type="search" name="q" placeholder="What are you looking for? e.g. username, whois, breach" />
+      <button class="btn btn-primary" type="submit">Search</button>
+    </form>
+  </section>
+
+  <section aria-labelledby="have">
+    <h2 id="have">I have a…</h2>
+    <div class="tiles">
+      {START_INPUTS.map((t) => <a class="tile" href={`/input/${t}`}>{inputLabel(t)}</a>)}
+    </div>
+  </section>
+
+  <section aria-labelledby="trending">
+    <h2 id="trending">Trending this month</h2>
+    <div class="grid">{trending.results.map((t) => <ToolCard tool={t} />)}</div>
+  </section>
+
+  <section aria-labelledby="updated">
+    <h2 id="updated">Recently updated</h2>
+    <div class="grid">{updated.results.map((t) => <ToolCard tool={t} />)}</div>
+  </section>
+
+  {guides.results.length > 0 && (
+    <section aria-labelledby="guides">
+      <h2 id="guides">Investigation guides</h2>
+      <div class="grid">{guides.results.map((t) => <ToolCard tool={t} />)}</div>
+      <p><a href="/guides">All guides</a></p>
+    </section>
+  )}
+
+  {publishers.length > 0 && (
+    <section aria-labelledby="publishers">
+      <h2 id="publishers">Verified publishers</h2>
+      <div class="row">{publishers.map((p) => <a class="chip" href={`/${p}`}>{p}</a>)}</div>
+    </section>
+  )}
+</Base>
+
+<style>
+  .hero { padding: 24px 0 8px; max-width: 760px; }
+  .hero h1 { font-size: clamp(1.7rem, 4vw, 2.4rem); }
+  .lead { font-size: 1.1rem; }
+  .hero-search { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+  .hero-search input { flex: 1 1 280px; font-size: 1.05rem; padding: 12px 14px; }
+  .tiles { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  .tile { padding: 14px; border: 1px solid var(--border); border-radius: var(--radius); text-decoration: none; color: var(--text); font-weight: 600; background: var(--bg-raised); }
+  .tile:hover { border-color: var(--accent); color: var(--accent); }
+</style>

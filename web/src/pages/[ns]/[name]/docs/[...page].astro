@@ -1,0 +1,26 @@
+---
+import Base from "../../../../layouts/Base.astro";
+import ToolHeader from "../../../../components/ToolHeader.astro";
+import PageReader from "../../../../components/PageReader.astro";
+import { api, apiOrNull, type NavEntry, type Page } from "../../../../lib/api";
+import { loadTool } from "../../../../lib/tool";
+import { cacheFor } from "../../../../lib/page";
+
+const want = Astro.params.page ?? "";
+const loaded = await loadTool(Astro, `/docs/${want}`);
+if ("response" in loaded) return loaded.response;
+const { tool: t, hasDocs } = loaded;
+if (!hasDocs) return Astro.rewrite("/404");
+const ref = `${t.namespace}/${t.name}`;
+const [docs, page] = await Promise.all([
+  api<{ nav: NavEntry[] }>(`/tools/${ref}/docs`),
+  apiOrNull<Page>(`/tools/${ref}/docs/${want ? want.split("/").map(encodeURIComponent).join("/") : "1"}?format=html`),
+]);
+if (!page) return Astro.rewrite("/404");
+cacheFor(Astro, 600);
+const hrefFor = (path: string) => `/${ref}/docs/${path.replace(/\.md$/, "")}`;
+---
+<Base title={`${page.title} · ${ref} docs`} description={`${ref} documentation: ${page.title}.`} canonical={hrefFor(page.path)}>
+  <ToolHeader tool={t} active="docs" hasDocs={hasDocs} />
+  <PageReader page={page} nav={docs.nav} hrefFor={hrefFor} label={`${ref} docs`} />
+</Base>
