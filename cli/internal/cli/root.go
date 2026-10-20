@@ -110,6 +110,8 @@ func (a *App) Root() *cobra.Command {
 		a.runCmd(),
 		a.playbookCmd(),
 		a.autoCmd(),
+		a.extractCmd(),
+		a.diffCmd(),
 		a.listCmd(),
 		a.outdatedCmd(),
 		a.updateCmd(),
