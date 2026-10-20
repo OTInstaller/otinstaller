@@ -84,6 +84,8 @@ export async function dispatchScan(env: Env, opts: { versionId: string; provider
     kind: m.kind ?? "tool",
     runtime: m.runtime ?? null,
     test_input: (m.test as { input?: unknown } | undefined)?.input ?? null,
+    // A tool that needs an API key can declare the exit code it gives without one; the scan has no secrets.
+    expect_exit_code: (m.test as { expect_exit_code?: number } | undefined)?.expect_exit_code ?? 0,
     // Tools that declare egress get network access during the smoke test; everything else runs offline.
     network_egress: (m.network as { egress?: boolean } | undefined)?.egress === true,
     expected_signer: signer,

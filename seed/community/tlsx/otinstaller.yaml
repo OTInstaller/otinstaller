@@ -23,7 +23,7 @@ runtime:
   # Filled in by the release workflow with the pushed image's digest.
   image: ghcr.io/osintverse-community/tlsx@sha256:0000000000000000000000000000000000000000000000000000000000000000
   platforms: [linux/amd64, linux/arm64]
-  command: ["tlsx", "-u", "{host}", "-silent", "-json", "-san", "-cn", "-so", "-duc"]
+  command: ["tlsx", "-u", "{host}", "-silent", "-json", "-duc"]
   output_format: jsonl
   timeout_seconds: 120
 network:

@@ -193,9 +193,10 @@ def smoke_command(runtime: dict, test_input: dict | None) -> list[str] | None:
     return out
 
 
-def smoke(image: str, runtime: dict, test_input: dict | None, egress: bool) -> dict:
+def smoke(image: str, runtime: dict, test_input: dict | None, egress: bool, expect_exit_code: int = 0) -> dict:
     """Runs the test input in the same sandbox ot uses. Tools that declare network egress keep the
-    network (the scan runner is disposable and the container gets no secrets); others run offline."""
+    network (the scan runner is disposable and the container gets no secrets); others run offline.
+    The run passes when it exits with the manifest's test.expect_exit_code (0 unless it says otherwise)."""
     cmd = smoke_command(runtime, test_input)
     if not cmd:
         return {"status": "skipped"}
@@ -209,7 +210,7 @@ def smoke(image: str, runtime: dict, test_input: dict | None, egress: bool) -> d
         code, output = r.returncode, (r.stdout + r.stderr)
     except subprocess.TimeoutExpired:
         code, output = 124, "timed out"
-    status = "pass" if code == 0 else "fail"
+    status = "pass" if code == expect_exit_code else "fail"
     return {"status": status, "exit_code": code, "network": network, "duration_ms": int((time.time() - started) * 1000), "output_excerpt": output[-1000:]}
 
 
@@ -229,7 +230,7 @@ def scan_docker(req: dict) -> dict:
         "secrets": secrets,
         # Images are not run through GuardDog; their contents are covered by Trivy and the smoke test.
         "malware": {"count": 0, "findings": [], "note": "not applicable to images"},
-        "smoke": smoke(image, rt, req.get("test_input"), bool(req.get("network_egress"))),
+        "smoke": smoke(image, rt, req.get("test_input"), bool(req.get("network_egress")), int(req.get("expect_exit_code") or 0)),
         "sbom": {"packages": packages},
     }
 
@@ -288,7 +289,7 @@ def scan_pipx(req: dict, work: Path) -> dict:
         "vulnerabilities": vulns,
         "secrets": secrets,
         "malware": malware,
-        "smoke": smoke(tag, rt, req.get("test_input"), bool(req.get("network_egress"))),
+        "smoke": smoke(tag, rt, req.get("test_input"), bool(req.get("network_egress")), int(req.get("expect_exit_code") or 0)),
         "sbom": {"packages": packages},
     }
 
