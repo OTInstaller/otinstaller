@@ -207,7 +207,7 @@ send server errors to Sentry with their request ID; request headers and bodies a
 
 `ot` releases come from `.github/workflows/release-cli.yml` on a `vX.Y.Z` tag, built by GoReleaser (`cli/.goreleaser.yaml`).
 
-1. Create a **public** repository for releases (default `otinstaller/ot`; another name goes in the variable `RELEASE_REPO`).
+1. Create a **public** repository for releases (default `otinstaller/ot`; another one goes in the variables `RELEASE_OWNER` and `RELEASE_NAME`).
    The source repository is private, so downloads cannot come from it.
 2. Create the release signing key, once, on a trusted machine, and keep the private key offline as well:
    ```bash
@@ -217,7 +217,7 @@ send server errors to Sentry with their request ID; request headers and bodies a
 3. In this repository's Actions settings: secret `OT_RELEASE_KEY` (the PEM), secret `RELEASE_GITHUB_TOKEN` (a token with
    contents: write on the release repository), variable `OT_RELEASE_PUBLIC_KEY`. Optional: `TAP_GITHUB_TOKEN` with write
    access to `otinstaller/homebrew-tap` and `otinstaller/scoop-bucket` (create both repositories first) for
-   `brew install otinstaller/tap/ot` and `scoop install ot`.
+   `brew install --cask otinstaller/tap/ot` and `scoop install ot`.
 4. Push a tag `v1.0.0`. The release has archives for Windows, macOS and Linux (amd64 and arm64), deb and rpm packages,
    `checksums.txt` signed with the release key (`checksums.txt.sig`) and with cosign, and the install scripts with the
    public key filled in. Serve those scripts at `get.otinstaller.com/ot` and `get.otinstaller.com/ot.ps1`.
