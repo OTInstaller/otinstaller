@@ -1,0 +1,24 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/guides
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+kind: guide
+name: publish-a-guide
+namespace: osintverse
+version: 1.0.0
+title: "Publish a guide"
+summary: "Write, check and release a Markdown guide on the OTInstaller Registry"
+license: CC-BY-4.0
+homepage: https://github.com/osintverse/publish-a-guide
+categories: [utilities]
+level: beginner
+format: reference
+language: en
+content:
+  root: docs/
+  nav:
+    - index.md
+    - 01-setup.md
+    - 02-content-rules.md
+    - 03-release.md
+related_tools: []
+topics: []

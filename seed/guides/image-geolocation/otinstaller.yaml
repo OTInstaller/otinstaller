@@ -1,0 +1,30 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/guides
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+kind: guide
+name: image-geolocation
+namespace: osintverse
+version: 1.0.0
+title: "Image verification and geolocation playbook"
+summary: "Check a photo's metadata, find earlier copies, and work out where and when it was taken"
+license: CC-BY-4.0
+homepage: https://github.com/osintverse/image-geolocation
+categories: [images-geo]
+level: intermediate
+format: guide
+language: en
+content:
+  root: docs/
+  nav:
+    - index.md
+    - 01-scope-and-legal.md
+    - 02-metadata.md
+    - 03-copies.md
+    - 04-place-and-time.md
+related_tools:
+  - osintverse/exif-meta
+  - osintverse/reverse-image-links
+  - osintverse/image-hash
+  - osintverse/geo-links
+  - osintverse-community/gallery-dl
+topics: [image, url]

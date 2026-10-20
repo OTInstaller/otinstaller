@@ -1,0 +1,27 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/guides
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+kind: guide
+name: phone-investigation
+namespace: osintverse
+version: 1.0.0
+title: "Phone number investigation playbook"
+summary: "Parse a number offline, then find accounts and mentions linked to it"
+license: CC-BY-4.0
+homepage: https://github.com/osintverse/phone-investigation
+categories: [phone]
+level: beginner
+format: guide
+language: en
+content:
+  root: docs/
+  nav:
+    - index.md
+    - 01-scope-and-legal.md
+    - 02-parse.md
+    - 03-accounts-and-mentions.md
+related_tools:
+  - osintverse/phone-parse
+  - osintverse-community/phoneinfoga
+  - osintverse-community/ignorant
+topics: [phone]

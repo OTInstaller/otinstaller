@@ -1,0 +1,41 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: shodan-host
+namespace: osintverse-community
+version: 1.31.0
+summary: "Shows what Shodan has seen on an IP: open ports, services, banners, vulnerabilities, location"
+readme: README.md
+license: MIT
+homepage: https://github.com/achillean/shodan-python
+categories: [ip-network]
+tags: [shodan, ports, banners]
+inputs:
+  - name: ip
+    type: ip
+    required: true
+outputs:
+  - type: other
+  - type: location
+  - type: organization
+secrets:
+  - name: SHODAN_API_KEY
+    required: true
+    description: "Your Shodan API key"
+    url: https://account.shodan.io
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/shodan-host@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["shodan-host", "{ip}"]
+  output_format: text
+  timeout_seconds: 120
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: true
+  collects_personal_data: false
+test:
+  input: { ip: "1.1.1.1" }

@@ -1,0 +1,38 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: dnstwist
+namespace: osintverse-community
+version: 20250130.0.0
+summary: "Finds registered look-alike domains for phishing, typosquatting and brand impersonation"
+readme: README.md
+license: Apache-2.0
+homepage: https://github.com/elceef/dnstwist
+categories: [domain-dns]
+tags: [typosquatting, phishing, domain]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+outputs:
+  - type: domain
+  - type: ip
+runtime:
+  kind: pipx
+  package: dnstwist
+  package_version: "20250130"
+  index: pypi
+  python: ">=3.9"
+  entrypoint: dnstwist
+  wheel_sha256: "41dbe883097696b07f293069cf4c88cca52279d7881d90e53017062cece2ce34"
+  command: ["dnstwist", "--registered", "--format", "json", "{domain}"]
+  output_format: json
+  timeout_seconds: 900
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+test:
+  input: { domain: "example.com" }

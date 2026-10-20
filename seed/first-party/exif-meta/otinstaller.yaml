@@ -1,0 +1,39 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: exif-meta
+namespace: osintverse
+version: 0.1.0
+summary: "Reads an online image or document's metadata with ExifTool: GPS, camera, authors, dates"
+readme: README.md
+license: MIT
+homepage: https://github.com/osintverse/exif-meta
+categories: [images-geo, documents-metadata]
+tags: [exif, exiftool, metadata, gps]
+inputs:
+  - name: url
+    type: url
+    required: true
+    description: "URL of the image or document"
+outputs:
+  - type: location
+  - type: person
+  - type: image
+  - type: document
+  - type: other
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse/exif-meta@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["exif-meta", "{url}"]
+  output_format: json
+  timeout_seconds: 120
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: true
+test:
+  input: { url: "https://raw.githubusercontent.com/ianare/exif-samples/master/jpg/gps/DSCN0010.jpg" }

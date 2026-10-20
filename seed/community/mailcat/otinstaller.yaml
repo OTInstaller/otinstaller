@@ -1,0 +1,42 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: mailcat
+namespace: osintverse-community
+version: 0.1.1
+summary: "Finds existing email addresses for a nickname across 25+ mail providers"
+readme: README.md
+license: Apache-2.0
+homepage: https://github.com/sharsil/mailcat
+categories: [email, username]
+tags: [email, username, mail-providers]
+inputs:
+  - name: username
+    type: username
+    required: true
+    description: "The nickname, without @domain"
+  - name: provider
+    type: string
+    required: false
+    description: "Only check this provider, such as gmail or proton"
+outputs:
+  - type: email
+runtime:
+  kind: pipx
+  package: mailcat-osint
+  package_version: "0.1.1"
+  index: pypi
+  python: ">=3.10"
+  entrypoint: mailcat
+  wheel_sha256: "f07979c1a660c226214999e0b2999d6f8fe93127c43d9c510c4a55fe7f5295ae"
+  command: ["mailcat", "--silent", "--provider", "{provider}", "{username}"]
+  output_format: text
+  timeout_seconds: 600
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+test:
+  input: { username: "example", provider: "proton" }

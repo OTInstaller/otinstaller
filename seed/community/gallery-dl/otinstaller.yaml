@@ -1,0 +1,40 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: gallery-dl
+namespace: osintverse-community
+version: 1.32.17
+summary: "Lists the images and metadata of posts and galleries on Reddit, Flickr, Imgur, Tumblr and 300+ sites"
+readme: README.md
+license: GPL-2.0
+homepage: https://github.com/mikf/gallery-dl
+categories: [social-media, images-geo]
+tags: [images, metadata, galleries]
+inputs:
+  - name: url
+    type: url
+    required: true
+    description: "A post, gallery or profile URL"
+outputs:
+  - type: image
+  - type: url
+  - type: other
+runtime:
+  kind: pipx
+  package: gallery-dl
+  package_version: "1.32.17"
+  index: pypi
+  python: ">=3.8"
+  entrypoint: gallery-dl
+  wheel_sha256: "f88ddeb788506f33385e541dbbfba57376ed04bbf6f3f635249a9dd3a78930ed"
+  command: ["gallery-dl", "--dump-json", "--range", "1-20", "{url}"]
+  output_format: json
+  timeout_seconds: 600
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+test:
+  input: { url: "https://commons.wikimedia.org/wiki/File:Tour_Eiffel_Wikimedia_Commons.jpg" }
