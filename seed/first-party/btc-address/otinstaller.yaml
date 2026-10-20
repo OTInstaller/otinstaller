@@ -1,0 +1,36 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: btc-address
+namespace: osintverse
+version: 0.1.0
+summary: "Looks up a Bitcoin address: balance, totals, recent transactions and counterparties"
+readme: README.md
+license: MIT
+homepage: https://github.com/osintverse/btc-address
+categories: [crypto]
+tags: [bitcoin, blockchain, esplora]
+inputs:
+  - name: address
+    type: crypto_address
+    required: true
+outputs:
+  - type: crypto_address
+  - type: transaction
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse/btc-address@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["btc-address", "{address}"]
+  output_format: json
+  timeout_seconds: 60
+network:
+  egress: true
+  domains: ["blockstream.info"]
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+test:
+  input: { address: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa" }

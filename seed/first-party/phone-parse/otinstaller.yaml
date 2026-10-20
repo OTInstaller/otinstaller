@@ -1,0 +1,39 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: phone-parse
+namespace: osintverse
+version: 0.1.0
+summary: "Parses a phone number offline: validity, formats, country, original carrier, line type, time zones"
+readme: README.md
+license: MIT
+homepage: https://github.com/osintverse/phone-parse
+categories: [phone]
+tags: [phone, libphonenumber, offline]
+inputs:
+  - name: phone
+    type: phone
+    required: true
+  - name: region
+    type: string
+    required: false
+    description: "Two-letter country for numbers without a + prefix, such as US"
+outputs:
+  - type: phone
+  - type: location
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse/phone-parse@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["phone-parse", "--region", "{region}", "{phone}"]
+  output_format: json
+  timeout_seconds: 30
+network:
+  egress: false
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+test:
+  input: { phone: "+44 20 7946 0958" }

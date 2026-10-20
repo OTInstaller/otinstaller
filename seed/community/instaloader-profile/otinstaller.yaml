@@ -1,0 +1,36 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: instaloader-profile
+namespace: osintverse-community
+version: 4.15.4
+summary: "Reads a public Instagram profile with Instaloader: bio, links, counts and recent post metadata"
+readme: README.md
+license: MIT
+homepage: https://github.com/instaloader/instaloader
+categories: [social-media]
+tags: [instagram, profile]
+inputs:
+  - name: username
+    type: username
+    required: true
+outputs:
+  - type: account
+  - type: url
+  - type: person
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/instaloader-profile@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["instaloader-profile", "{username}"]
+  output_format: json
+  timeout_seconds: 300
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+test:
+  input: { username: "instagram" }

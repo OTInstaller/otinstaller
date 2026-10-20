@@ -1,0 +1,42 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: socialscan
+namespace: osintverse-community
+version: 2.0.1
+summary: "Checks whether a username or email address is in use on major platforms, accurately and quickly"
+readme: README.md
+license: MPL-2.0
+homepage: https://github.com/iojw/socialscan
+categories: [username, email, social-media]
+tags: [username, email, accounts]
+inputs:
+  - name: query
+    type: username
+    required: true
+    description: "A username or an email address"
+  - name: platforms
+    type: string
+    required: false
+    description: "Only check this platform, such as GitHub"
+outputs:
+  - type: account
+runtime:
+  kind: pipx
+  package: socialscan
+  package_version: "2.0.1"
+  index: pypi
+  python: ">=3.6"
+  entrypoint: socialscan
+  wheel_sha256: "be3075208c6e1dc577869ed27ca37fb1ad14d95e37641fc85d5c09f307e93be3"
+  command: ["socialscan", "--show-urls", "{query}", "--platforms", "{platforms}"]
+  output_format: text
+  timeout_seconds: 300
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+test:
+  input: { query: "github", platforms: "GitHub" }

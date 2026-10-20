@@ -1,0 +1,42 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: sherlock
+namespace: osintverse-community
+version: 0.16.2
+summary: "Finds accounts by username across 400+ social networks and websites"
+readme: README.md
+license: MIT
+homepage: https://github.com/sherlock-project/sherlock
+categories: [username, social-media]
+tags: [username, accounts, social-media]
+inputs:
+  - name: username
+    type: username
+    required: true
+  - name: site
+    type: string
+    required: false
+    description: "Only check this site, such as GitHub"
+outputs:
+  - type: account
+  - type: url
+runtime:
+  kind: pipx
+  package: sherlock-project
+  package_version: "0.16.2"
+  index: pypi
+  python: "<4.0,>=3.9"
+  entrypoint: sherlock
+  wheel_sha256: "7f1341dcd554a39d529bcfff14b133410e8773e3e1083fc5bdd0cd0a579fb46f"
+  command: ["sherlock", "--print-found", "--no-color", "--timeout", "20", "--site", "{site}", "{username}"]
+  output_format: text
+  timeout_seconds: 900
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+test:
+  input: { username: "github", site: "GitHub" }

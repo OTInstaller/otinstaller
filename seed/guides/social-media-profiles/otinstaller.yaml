@@ -1,0 +1,31 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/guides
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+kind: guide
+name: social-media-profiles
+namespace: osintverse
+version: 1.0.0
+title: "Social media profiles playbook"
+summary: "Collect and preserve what a public profile shows: posts, media metadata and archived copies"
+license: CC-BY-4.0
+homepage: https://github.com/osintverse/social-media-profiles
+categories: [social-media]
+level: beginner
+format: guide
+language: en
+content:
+  root: docs/
+  nav:
+    - index.md
+    - 01-scope-and-legal.md
+    - 02-profiles.md
+    - 03-media.md
+    - 04-preserve.md
+related_tools:
+  - osintverse-community/sherlock
+  - osintverse-community/instaloader-profile
+  - osintverse-community/yt-dlp
+  - osintverse-community/gallery-dl
+  - osintverse-community/waybackpy
+  - osintverse-community/unfurl
+topics: [username, url]

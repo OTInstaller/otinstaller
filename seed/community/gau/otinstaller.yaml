@@ -1,0 +1,34 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: gau
+namespace: osintverse-community
+version: 2.2.4
+summary: "Gets every known URL of a domain from the Wayback Machine, Common Crawl, OTX and urlscan"
+readme: README.md
+license: MIT
+homepage: https://github.com/lc/gau
+categories: [web-archive, domain-dns]
+tags: [urls, wayback-machine, commoncrawl]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+outputs:
+  - type: url
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/gau@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["gau", "--json", "--providers", "wayback,otx,urlscan", "--blacklist", "png,jpg,jpeg,gif,svg,ico,woff,woff2,ttf,css", "{domain}"]
+  output_format: jsonl
+  timeout_seconds: 900
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+test:
+  input: { domain: "otinstaller.com" }

@@ -1,0 +1,37 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: unfurl
+namespace: osintverse-community
+version: 20261007.0.0
+summary: "Breaks a URL into everything it encodes: timestamps, IDs, search terms, tracking and session data"
+readme: README.md
+license: Apache-2.0
+homepage: https://github.com/obsidianforensics/unfurl
+categories: [utilities, web-archive]
+tags: [url, forensics, timestamps]
+inputs:
+  - name: url
+    type: url
+    required: true
+outputs:
+  - type: other
+runtime:
+  kind: pipx
+  package: dfir-unfurl
+  package_version: "20261007"
+  index: pypi
+  python: ">=3.11"
+  entrypoint: unfurl
+  wheel_sha256: "cd355bd77f9014de3d703189a566f08cca6b433c8ebaf72b043a71fd16531434"
+  command: ["unfurl", "{url}"]
+  output_format: text
+  timeout_seconds: 60
+network:
+  egress: false
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+test:
+  input: { url: "https://www.google.com/search?q=osint&ei=Lp4pYNHzE4mn5NoP8pKTqAw" }
