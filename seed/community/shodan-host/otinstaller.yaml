@@ -38,4 +38,6 @@ ethics:
   auth_required: true
   collects_personal_data: false
 test:
+  # Scans and health checks run without secrets, so the tool reports the missing key with exit code 3.
+  expect_exit_code: 3
   input: { ip: "1.1.1.1" }
