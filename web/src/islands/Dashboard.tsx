@@ -1,7 +1,7 @@
 // /dashboard: my namespaces, publish history with errors, and CLI tokens.
 import { useEffect, useState } from "preact/hooks";
 import { api } from "../lib/api";
-import { ErrorNote, Loading, SignIn, Status, useMe, when } from "./shared";
+import { ErrorNote, Loading, rememberStaff, SignIn, Status, useMe, when } from "./shared";
 
 interface Job {
   id: string;
@@ -56,6 +56,7 @@ export default function Dashboard({ back }: { back: string }) {
   }
   async function signOut() {
     await api("/auth/logout", { method: "POST" }).catch(() => {});
+    rememberStaff(false);
     window.location.href = "/";
   }
 
@@ -63,6 +64,7 @@ export default function Dashboard({ back }: { back: string }) {
     <div class="stack">
       <div class="row">
         <p>Signed in as <strong>{me.login}</strong>{me.accounts.length > 0 && <> ({me.accounts.map((a) => `${a.provider}: ${a.login}`).join(", ")})</>}.</p>
+        {(me.admin || me.reviewer) && <a class="btn btn-primary" href="/admin">Admin console</a>}
         <a class="btn" href="/settings/accounts">Accounts</a>
         <button class="btn" type="button" onClick={signOut}>Sign out</button>
       </div>

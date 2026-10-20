@@ -78,12 +78,14 @@ const isCurrent = (href: string) => path === href || path.startsWith(href + "/")
             <kbd class="kbd">/</kbd>
           </button>
           <ThemeToggle />
+          <a class="btn btn-ghost acct" href="/admin" data-staff hidden aria-current={path.startsWith("/admin") ? "page" : undefined}>Admin</a>
           <a class="btn btn-ghost acct" href="/dashboard" aria-current={path.startsWith("/dashboard") ? "page" : undefined}>Dashboard</a>
           <details class="menu">
             <summary aria-label="Menu"><span class="burger" aria-hidden="true"><i></i><i></i><i></i></span></summary>
             <ul class="list-plain">
               {nav.map((n) => <li><a href={n.href} aria-current={isCurrent(n.href) ? "page" : undefined}>{n.label}</a></li>)}
               <li><a href="/dashboard">Dashboard</a></li>
+              <li data-staff hidden><a href="/admin">Admin</a></li>
             </ul>
           </details>
         </div>
@@ -148,6 +150,8 @@ const isCurrent = (href: string) => path === href || path.startsWith(href + "/")
 </html>
 
 <script>
+  import { API_URL } from "../lib/api";
+
   // One copy handler for every copy button on the site.
   document.addEventListener("click", async (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-copy]");
@@ -201,6 +205,28 @@ const isCurrent = (href: string) => path === href || path.startsWith(href + "/")
   onScroll();
   addEventListener("scroll", onScroll, { passive: true });
 
+  // Reviewers and admins get an Admin link. The answer is kept for 10 minutes per tab, so the API is
+  // not asked on every page; signing in or out on the dashboard refreshes it.
+  const STAFF_KEY = "ot-staff";
+  const showStaff = (on: boolean) => {
+    for (const el of document.querySelectorAll<HTMLElement>("[data-staff]")) el.hidden = !on;
+  };
+  try {
+    const cached = JSON.parse(sessionStorage.getItem(STAFF_KEY) ?? "null") as { staff: boolean; at: number } | null;
+    if (cached && Date.now() - cached.at < 10 * 60 * 1000) showStaff(cached.staff);
+    else
+      fetch(`${API_URL}/v1/me`, { credentials: "include" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((me: { admin?: boolean; reviewer?: boolean } | null) => {
+          const staff = !!(me && (me.admin || me.reviewer));
+          showStaff(staff);
+          sessionStorage.setItem(STAFF_KEY, JSON.stringify({ staff, at: Date.now() }));
+        })
+        .catch(() => {});
+  } catch {
+    // Storage unavailable (private mode): skip the link rather than call the API on every page.
+  }
+
   // Close the mobile menu after navigating or when clicking outside.
   const menu = document.querySelector<HTMLDetailsElement>("details.menu");
   document.addEventListener("click", (e) => {
@@ -209,6 +235,7 @@ const isCurrent = (href: string) => path === href || path.startsWith(href + "/")
 </script>
 
 <style>
+  [data-staff][hidden] { display: none; }
   .site-header { position: sticky; top: 0; z-index: 50; border-bottom: 1px solid transparent; transition: border-color var(--dur-2), box-shadow var(--dur-2); }
   .site-header.scrolled { border-bottom-color: var(--border); box-shadow: 0 8px 30px -20px rgb(0 0 0 / 50%); }
   .bar { display: flex; align-items: center; gap: 18px; min-height: 64px; transition: min-height var(--dur-2); }

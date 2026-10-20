@@ -9,7 +9,7 @@ import * as github from "./hosts/github";
 import { githubRepo, gitlabRepo, repoUrl, type RepoHost } from "./hosts/repo";
 import { checkImage, checkWheel } from "./hosts/artifacts";
 import { audit } from "./routes/auth";
-import { commitStatus, dispatchScan, loadVersion } from "./scans";
+import { commitStatus, dispatchScan, loadVersion, publishVersion } from "./scans";
 import { copyImages, queueContentChecks, recheckLinks, relatedToolProblems, renderRelease, runContentChecks, storeContent, type RenderedRelease } from "./guides";
 import { ownerEmails, sendEmail, templates } from "./notify";
 import { COMMUNITY_NAMESPACE, detectQueued, failImport, heldManifestFor, parseRepoRef } from "./imports";
@@ -265,6 +265,14 @@ export async function failJob(env: Env, jobId: string, error: string) {
   if (v) await commitStatus(env, v, "error", "The registry could not start the checks; push the tag again").catch(() => {});
 }
 
+/** Publishes a release approved with its namespace, unless something else got to it first. */
+export async function publishApproved(env: Env, versionId: string) {
+  const v = await env.DB.prepare(
+    `SELECT v.status, n.status AS namespace_status FROM versions v JOIN tools t ON t.id = v.tool_id JOIN namespaces n ON n.id = t.namespace_id WHERE v.id = ?`,
+  ).bind(versionId).first<{ status: string; namespace_status: string }>();
+  if (v?.status === "awaiting_review" && v.namespace_status === "active") await publishVersion(env, versionId);
+}
+
 export async function handleBatch(batch: MessageBatch<PublishMessage>, env: Env) {
   for (const msg of batch.messages) {
     const body = msg.body;
@@ -272,6 +280,7 @@ export async function handleBatch(batch: MessageBatch<PublishMessage>, env: Env)
       if ("importId" in body) await detectQueued(env, body.importId);
       else if ("checkVersionId" in body) await runContentChecks(env, body.checkVersionId, body.attempt ?? 0);
       else if ("linkCheckToolId" in body) await recheckLinks(env, body.linkCheckToolId);
+      else if ("publishVersionId" in body) await publishApproved(env, body.publishVersionId);
       else await processJob(env, body.jobId);
       msg.ack();
     } catch (e) {
@@ -281,8 +290,9 @@ export async function handleBatch(batch: MessageBatch<PublishMessage>, env: Env)
       } else {
         if ("importId" in body) await failImport(env, body.importId, "detection_failed", (e as Error).message);
         else if ("jobId" in body) await failJob(env, body.jobId, (e as Error).message);
-        // A content check that keeps failing is rejected by expireStaleScans; a nightly link check waits for the next night.
-        else console.error("content check failed", body, e);
+        // A content check that keeps failing is rejected by expireStaleScans; a nightly link check waits for the
+        // next night; an approved release that cannot be published stays awaiting review for a reviewer.
+        else console.error("queued work failed", body, e);
         msg.ack();
       }
     }

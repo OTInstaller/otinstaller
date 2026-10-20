@@ -33,13 +33,15 @@ export interface Env {
 
 /**
  * The queue carries publish jobs, bulk-import detection, guide content checks (the guide's equivalent
- * of a security scan; `attempt` counts rounds of waiting for URL Scanner) and nightly link checks.
+ * of a security scan; `attempt` counts rounds of waiting for URL Scanner), nightly link checks and the
+ * releases a reviewer approved with their namespace (published one per message, not all in one request).
  */
 export type PublishMessage =
   | { jobId: string }
   | { importId: string }
   | { checkVersionId: string; attempt?: number }
-  | { linkCheckToolId: string };
+  | { linkCheckToolId: string }
+  | { publishVersionId: string };
 
 export interface User {
   id: string;

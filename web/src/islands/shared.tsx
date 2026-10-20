@@ -6,15 +6,26 @@ export interface Me {
   login: string;
   admin: boolean;
   reviewer: boolean;
-  accounts: { provider: "github" | "gitlab"; login: string }[];
+  accounts: { provider: "github" | "gitlab" | "osintverse"; login: string }[];
   namespaces: { name: string; status: string; verified: number; role: string }[];
+}
+
+/** Keeps the header's Admin link (see Base.astro) in step with what /me just said. */
+export function rememberStaff(staff: boolean) {
+  try {
+    sessionStorage.setItem("ot-staff", JSON.stringify({ staff, at: Date.now() }));
+  } catch {
+    // Storage unavailable: the header asks again on the next page.
+  }
+  for (const el of document.querySelectorAll<HTMLElement>("[data-staff]")) el.hidden = !staff;
 }
 
 /** Loads /me; null while loading, false when signed out. */
 export function useMe(): Me | null | false {
   const [me, setMe] = useState<Me | null | false>(null);
   useEffect(() => {
-    api<Me>("/me").then(setMe).catch((e) => setMe(e instanceof ApiError && e.status === 401 ? false : (console.error(e), false)));
+    api<Me>("/me").then((m) => { rememberStaff(m.admin || m.reviewer); setMe(m); })
+      .catch((e) => { if (e instanceof ApiError && e.status === 401) rememberStaff(false); setMe(e instanceof ApiError && e.status === 401 ? false : (console.error(e), false)); });
   }, []);
   return me;
 }
