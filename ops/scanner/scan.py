@@ -134,18 +134,20 @@ def check_image_signature(image: str, expected: dict) -> dict:
     return {"status": "absent"}
 
 
-def check_wheel_provenance(pkg: str, version: str, filename: str, source_repo: str) -> dict:
-    """PyPI attestations (PEP 740): the wheel must have been published from the source repository."""
+def check_wheel_provenance(pkg: str, version: str, filename: str, source_repo: str, upstream_repo: str = "") -> dict:
+    """PyPI attestations (PEP 740): the wheel must have been published from the source repository, or for a
+    community wrapper from the upstream project it packages."""
     prov = http_json(f"https://pypi.org/integrity/{pkg}/{version}/{filename}/provenance")
     if not prov:
         return {"status": "absent"}
-    want = re.sub(r"^(github|gitlab)\.com/", "", source_repo).lower()
+    wanted = [re.sub(r"^(github|gitlab)\.com/", "", r).lower() for r in (source_repo, upstream_repo) if r]
+    want = " or ".join(wanted)
     seen = []
     for bundle in prov.get("attestation_bundles", []):
         pub = bundle.get("publisher", {})
         repo = (pub.get("repository") or "").lower()
         seen.append(f"{pub.get('kind', '?')}:{repo}")
-        if repo == want:
+        if repo in wanted:
             ident = f"pypi:{pub.get('kind', 'GitHub')}:{repo}/{pub.get('workflow', '')}"
             return {"status": "pass", "identity": ident, "issuer": "https://pypi.org"}
     return {"status": "fail", "detail": f"published by {', '.join(seen) or 'an unknown publisher'}, not {want}"}
@@ -255,7 +257,8 @@ def scan_pipx(req: dict, work: Path) -> dict:
         return {**empty_results(), "signature": {"status": "fail", "detail": "downloaded wheel does not match its sha256"}}
     path.write_bytes(data)
 
-    signature = check_wheel_provenance(rt["package"], rt["package_version"], wheel["filename"], req.get("source_repo", ""))
+    signature = check_wheel_provenance(rt["package"], rt["package_version"], wheel["filename"], req.get("source_repo", ""),
+                                       req.get("upstream_repo", ""))
 
     # Install the wheel into an image (dependencies included) so Trivy scans what users would run.
     (work / "Dockerfile").write_text(PYTHON_DOCKERFILE)
