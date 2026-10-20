@@ -204,7 +204,7 @@ describe("publishing a guide", () => {
     // Pages come back as HTML for the site and Markdown for the CLI, by path, short path or position.
     const html = (await (await call(`/guides/${p.login}/email-playbook/1.0.0/pages/index.md`)).json()) as any;
     expect(html).toMatchObject({ path: "index.md", position: 1, pages: PAGES, format: "html", prev: null, next: { path: "01-step.md", title: "Step 1" } });
-    expect(html.body).toContain(`href="https://otinstaller.com/guides/${p.login}/email-playbook/1.0.0/01-step"`);
+    expect(html.body).toContain(`href="https://otinstaller.com/guides/${p.login}/email-playbook/01-step?v=1.0.0"`);
     const md = (await (await call(`/guides/${p.login}/email-playbook/latest/pages/01-step?format=md`)).json()) as any;
     expect(md).toMatchObject({ path: "01-step.md", format: "md", prev: { path: "index.md" } });
     expect(md.body).toContain("`ot run osintverse/email-header-parser`");
@@ -335,12 +335,12 @@ describe("tool docs", () => {
     const docs = (await (await call(`/tools/${repo}/docs`)).json()) as any;
     expect(docs).toMatchObject({ ref: repo, version: "1.0.0", nav: [{ path: "usage.md", title: "Usage" }, { path: "output-fields.md", title: "Output fields" }] });
     const page = (await (await call(`/tools/${repo}/docs/usage`)).json()) as any;
-    expect(page.body).toContain(`href="https://otinstaller.com/tools/${repo}/docs/output-fields"`);
+    expect(page.body).toContain(`href="https://otinstaller.com/${repo}/docs/output-fields"`);
     expect(page.next).toEqual({ path: "output-fields.md", title: "Output fields" });
     const md = (await (await call(`/tools/${repo}/docs/output-fields.md?format=md`)).json()) as any;
     expect(md.body).toContain("| registrar | who registered it |");
     const readme = (await (await call(`/tools/${repo}/readme`)).json()) as any;
-    expect(readme.html).toContain(`href="https://otinstaller.com/tools/${repo}/docs/usage"`);
+    expect(readme.html).toContain(`href="https://otinstaller.com/${repo}/docs/usage"`);
     expect(readme.html).toContain(`https://raw.githubusercontent.com/${repo}/abc123/CONTRIBUTING.md`);
     expect((await call(`/tools/osintverse/email-header-parser/docs`)).status).toBe(404);
   });
@@ -573,5 +573,20 @@ describe("URL Scanner rate limits", () => {
       ["https://gone.osint.dev/page", "clean", null],
       ["https://osint.dev/handbook", "clean", null],
     ]);
+  });
+});
+
+describe("security page data", () => {
+  it("lists a version's checks without the personal-data lines", async () => {
+    const p = await publisher();
+    const { out } = await tagGuide(p, { "otinstaller.yaml": guideManifest(p.login), ...guidePages({ 6: "# Step 6\n\nmaria.lopez@gmail.com\n" }) });
+    await runContentChecks(await testEnv(), out!.versionId!);
+    await DB().prepare(`UPDATE versions SET status = 'published' WHERE id = ?`).bind(out!.versionId).run();
+    await DB().prepare(`UPDATE tools SET latest_version_id = ? WHERE id = (SELECT tool_id FROM versions WHERE id = ?)`).bind(out!.versionId, out!.versionId).run();
+    const res = (await (await call(`/tools/${p.login}/email-playbook/1.0.0/scans`)).json()) as any;
+    expect(res).toMatchObject({ ref: `${p.login}/email-playbook`, version: "1.0.0", scan_status: "warn", signed: false });
+    expect(res.scans.find((s: any) => s.kind === "pii")).toMatchObject({ result: "warn", summary: { hits: 1 } });
+    expect(JSON.stringify(res)).not.toContain("maria");
+    expect(res.scans.find((s: any) => s.kind === "links").summary.dead).toBe(1);
   });
 });
