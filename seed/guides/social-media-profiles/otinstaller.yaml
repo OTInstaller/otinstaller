@@ -23,7 +23,6 @@ content:
     - 04-preserve.md
 related_tools:
   - osintverse-community/sherlock
-  - osintverse-community/instaloader-profile
   - osintverse-community/yt-dlp
   - osintverse-community/gallery-dl
   - osintverse-community/waybackpy

@@ -2,8 +2,15 @@
 
 1. Install the **OTInstaller** GitHub App on the repository (or connect the GitLab project) from the
    [import page](https://otinstaller.com/import).
-2. Run the **otinstaller release** workflow with the version, for example `1.0.0`. It sets `version` in the manifest
-   and pushes the tag `v1.0.0`.
+2. From the repository on your computer, run:
+
+   ```
+   ot release 1.0.0
+   ```
+
+   It sets `version` in the manifest, checks the guide as the registry will, commits, and pushes the commit and the
+   tag `v1.0.0` together. No CI run is needed. (The workflow `ot init --guide` adds does the same from the Actions
+   tab; delete it if you don't want it.)
 
 ## Checks on every release
 

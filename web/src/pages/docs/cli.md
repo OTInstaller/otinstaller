@@ -39,6 +39,7 @@ Run `ot <command> --help` for all flags. Packages are written `namespace/name`, 
 | --- | --- |
 | `ot init [--kind docker\|pipx\|guide] [--guide]` | Create `otinstaller.yaml`, a README and a release workflow |
 | `ot validate [path] [--tag vX.Y.Z] [--smoke]` | Check the manifest and pages as the registry will; `--smoke` runs the test input |
+| `ot release <version> [path] [--no-push]` | Release a guide: set the version, check, commit, tag and push, without CI |
 | `ot login [--gitlab \| --osintverse]` · `ot logout` · `ot whoami` | Sign in with GitHub, GitLab or OSINTverse (publishing needs GitHub or GitLab) |
 | `ot import <repository URL>` | The import wizard in the terminal |
 | `ot sync <ns/name> [--log]` | Check the source repository now, or show recent sync events |
