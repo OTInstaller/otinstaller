@@ -82,3 +82,6 @@ func digits(s string) int {
 	}
 	return n
 }
+
+// KnownTLD reports whether tld (without the dot) is an IANA top-level domain.
+func KnownTLD(tld string) bool { return tlds[strings.ToLower(tld)] }
