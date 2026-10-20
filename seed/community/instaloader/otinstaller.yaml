@@ -1,0 +1,38 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+# Converted from the package manager's catalog by scripts/pm-catalog-to-wrappers.py.
+schema: 1
+name: instaloader
+namespace: osintverse-community
+version: 4.15.4
+summary: "Download pictures (or videos) along with their captions and other metadata from Instagram"
+readme: README.md
+license: MIT
+homepage: https://github.com/instaloader/instaloader
+categories: [username, web-archive, social-media]
+tags: [instagram, social-media, metadata, username, metadata-extraction, username-search]
+inputs:
+  - name: username
+    type: username
+    required: true
+outputs:
+  - type: other
+runtime:
+  kind: pipx
+  package: instaloader
+  package_version: "4.15.4"
+  index: pypi
+  python: ">=3.10"
+  entrypoint: instaloader
+  wheel_sha256: "3a859736f34f9d0bd284c50333d0f33b16bc63dd948b1efecdfdc9ebd6257713"
+  command: ["instaloader", "{username}"]
+  output_format: text
+  timeout_seconds: 900
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+test:
+  input: {"username": "github"}

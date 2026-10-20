@@ -1,0 +1,35 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+# Converted from the package manager's catalog by scripts/pm-catalog-to-wrappers.py.
+schema: 1
+name: zen
+namespace: osintverse-community
+version: 0.0.0-git.b9018b4
+summary: "Find email addresses of GitHub users, repositories and organizations"
+readme: README.md
+license: Apache-2.0
+homepage: https://github.com/s0md3v/Zen
+categories: [username, web-archive]
+tags: [github, email, email-search]
+inputs:
+  - name: username
+    type: username
+    required: true
+outputs:
+  - type: other
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/zen@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64]
+  command: ["python", "/opt/zen/zen.py", "{username}"]
+  output_format: text
+  timeout_seconds: 900
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+test:
+  input: {"username": "github"}

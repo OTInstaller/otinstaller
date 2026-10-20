@@ -1,0 +1,38 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+# Converted from the package manager's catalog by scripts/pm-catalog-to-wrappers.py.
+schema: 1
+name: fierce
+namespace: osintverse-community
+version: 1.6.0
+summary: "A DNS reconnaissance tool for locating non-contiguous IP space"
+readme: README.md
+license: GPL-3.0
+homepage: https://github.com/mschwager/fierce
+categories: [domain-dns, ip-network]
+tags: [domain, ip, subdomain, domain-recon, ip-recon, subdomain-enum]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+outputs:
+  - type: other
+runtime:
+  kind: pipx
+  package: fierce
+  package_version: "1.6.0"
+  index: pypi
+  python: "<4.0.0,>=3.8.1"
+  entrypoint: fierce
+  wheel_sha256: "76d8f5072d0af300fd4436eca0caeb37fd58c0cedbf0f00828d644c507e33b39"
+  command: ["fierce", "--domain", "{domain}"]
+  output_format: text
+  timeout_seconds: 900
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+test:
+  input: {"domain": "example.com"}

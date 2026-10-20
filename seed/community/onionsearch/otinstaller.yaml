@@ -1,0 +1,37 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+# Converted from the package manager's catalog by scripts/pm-catalog-to-wrappers.py.
+schema: 1
+name: onionsearch
+namespace: osintverse-community
+version: 1.3.0
+summary: "OnionSearch is a script that scrapes urls on different"
+readme: README.md
+license: GPL-3.0
+homepage: https://github.com/megadose/OnionSearch
+categories: [web-archive]
+tags: [darkweb, tor, onion, google-recon]
+inputs:
+  - name: query
+    type: string
+    required: true
+outputs:
+  - type: other
+runtime:
+  kind: pipx
+  package: onionsearch
+  package_version: "1.3"
+  index: pypi
+  entrypoint: onionsearch
+  wheel_sha256: "5607eeab2612342bfc384ef3acd86a4ee85f1c95086ef6fa251b99dff6d1d8f6"
+  command: ["onionsearch", "{query}"]
+  output_format: text
+  timeout_seconds: 900
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+test:
+  input: {"query": "example"}
