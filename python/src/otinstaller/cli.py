@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Annotated
 
@@ -15,7 +16,7 @@ from rich.console import Console
 from rich.live import Live
 from rich.table import Table
 
-from otinstaller import __version__, crash_reports
+from otinstaller import __version__, crash_reports, deprecation
 from otinstaller.banner import banner_enabled, render_banner
 from otinstaller.compat import incompatibility
 from otinstaller.config import (
@@ -2895,6 +2896,9 @@ def crash_reports_command(
 
 def run_cli() -> None:
     """Console entry point. If otinstaller itself crashes, send an opt-in crash report."""
+    if deprecation.should_show():
+        # stderr, so --json output on stdout stays clean
+        typer.echo(deprecation.notice(date.today()), err=True)
     try:
         app()
     except ResultsDirError as exc:

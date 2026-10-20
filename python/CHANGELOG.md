@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- End-of-life notice: every command prints on stderr that otinstaller gets security fixes only until 2027-06-30 and none after, with a link to the migration guide to `ot`. `OTINSTALLER_NO_DEPRECATION_WARNING=1` hides it
+
 ### Changed
-- Maintenance mode: OTinstaller moved into the OTInstaller Registry repository, whose `ot` CLI takes over new work. Its tools are published there as community packages
+- Maintenance mode: OTinstaller moved into the OTInstaller Registry repository, whose `ot` CLI takes over new work. Its tools are published there as community packages. Security fixes only until 2027-06-30 (end of life)
 
 ### Removed
 - The `ot` command alias, and its man page link. `ot` is now the registry's CLI; use `otinstaller`
