@@ -47,6 +47,8 @@ OVERRIDES: dict[str, dict] = {
     "finalrecon": {"default_args": ["--headers", "--sslinfo", "--whois", "--dns", "--wayback"], "touches_target": True},
     # Queries the domain's own name servers and tries a zone transfer.
     "fierce": {"touches_target": True},
+    # instaloader-profile was dropped from the seed for this reason.
+    "instaloader": {"skip": "Instagram blocks anonymous requests from cloud servers, so its health check can't pass"},
     "edgar-tool": {"skip": "writes its results only to a file, not to stdout"},
     "instagram-location-search": {"skip": "drives Chrome through Selenium, which the wrapper image lacks"},
     "spiderfoot": {"skip": "a passive scan runs for more than an hour, past ot's longest timeout"},
@@ -386,6 +388,9 @@ def main() -> int:
         name = tool["name"]
         if name in seeded or (opts.out / name).exists():
             kept.append(name)
+            continue
+        if "skip" in OVERRIDES.get(name, {}):
+            skipped.append((name, OVERRIDES[name]["skip"]))
             continue
         same = upstream.get(str(tool.get("repo", "")).lower(), set()) - {name}
         if same:

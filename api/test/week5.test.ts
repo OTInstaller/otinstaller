@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { processJob } from "../src/publish";
+import { processJob, publishApproved } from "../src/publish";
 import { expireStaleScans, verdict, type ScanResults } from "../src/scans";
 import { sha256Hex, ulid } from "../src/lib/crypto";
 import { call, testEnv, webhook } from "./helpers";
@@ -234,9 +234,16 @@ describe("manual review of new publishers", () => {
     expect(entry.versions[0]).toMatchObject({ ref: `${p.login}/whois-plus`, version: "1.0.0", signed: true });
     expect(entry.versions[0].scans.map((s: any) => s.kind)).toEqual(["signature", "vuln", "malware", "smoke", "sbom"]);
 
-    const approved = await call(`/admin/namespaces/${p.login}/approve`, { method: "POST", headers: auth, body: JSON.stringify({ notes: "Looks good" }) });
-    expect(await approved.json()).toEqual({ status: "active", published: 1 });
+    // Approval queues the waiting releases; each queue message publishes one.
+    const queued: { body: { publishVersionId: string } }[] = [];
+    const e = { ...(await testEnv()), PUBLISH_QUEUE: { send: async () => {}, sendBatch: async (m: any[]) => void queued.push(...m) } as any };
+    const approved = await call(`/admin/namespaces/${p.login}/approve`, { method: "POST", headers: auth, body: JSON.stringify({ notes: "Looks good" }) }, e);
+    expect(await approved.json()).toEqual({ status: "active", queued: 1 });
+    expect(queued.map((m) => m.body.publishVersionId)).toHaveLength(1);
+    for (const m of queued) await publishApproved(e, m.body.publishVersionId);
     expect(((await (await call(`/tools/${p.login}/whois-plus`)).json()) as any).latest_version).toBe("1.0.0");
+    // A repeated message does nothing.
+    await publishApproved(e, queued[0]!.body.publishVersionId);
 
     // After approval, later releases skip review.
     const next = await tagAndValidate(p, "1.1.0");

@@ -9,7 +9,7 @@ content checks → review → published). Never seed production from `api/script
 | Folder | What | Count |
 | --- | --- | --- |
 | [`first-party/`](first-party) | Tools written for the registry, namespace `osintverse`, on the result envelope | 11 |
-| [`community/`](community) | Wrapper repositories for third-party tools, namespace `osintverse-community` (27 for launch, 13 converted from `otinstaller`) | 40 |
+| [`community/`](community) | Wrapper repositories for third-party tools, namespace `osintverse-community` (27 for launch, 26 published and `instaloader-profile` dropped; 13 converted from `otinstaller`) | 40 |
 | [`guides/`](guides) | Launch guides, namespace `osintverse` | 10 |
 | [`outreach/`](outreach) | Issue and pull request texts for maintainer outreach | 2 |
 
@@ -52,7 +52,6 @@ not accept for wrappers). That makes 40 tools.
 | `osintverse/image-hash` | 0.1.0 | MIT | first-party | Docker, built here | `url` (url), `compare` (url)? | images-geo |
 | `osintverse/reverse-image-links` | 0.1.0 | MIT | first-party | Docker, built here | `url` (url), `engines` (string)? | images-geo |
 | `osintverse-community/gallery-dl` | 1.32.17 | GPL-2.0 | mikf/gallery-dl | pipx (PyPI wheel) | `url` (url) | social-media, images-geo |
-| `osintverse-community/instaloader-profile` | 4.15.4 | MIT | instaloader/instaloader | Docker, built in wrapper | `username` (username) | social-media |
 | `osintverse-community/yt-dlp` | 2026.8.19 | Unlicense | yt-dlp/yt-dlp | pipx (PyPI wheel) | `url` (url) | social-media |
 | `osintverse/btc-address` | 0.1.0 | MIT | first-party | Docker, built here | `address` (crypto_address) | crypto |
 | `osintverse/eth-address` | 0.1.0 | MIT | first-party | Docker, built here | `address` (crypto_address) | crypto |
@@ -97,7 +96,8 @@ Not converted (the script prints the same reasons):
 
 | Reason | Tools |
 | --- | --- |
-| Already in the launch seed | maigret, theharvester, sherlock, holehe, dnstwist, ignorant, socialscan, instaloader (as `instaloader-profile`) |
+| Already in the launch seed | maigret, theharvester, sherlock, holehe, dnstwist, ignorant, socialscan |
+| Can't pass a health check from a cloud server (see [Dropped](#dropped)) | instaloader |
 | Found broken by the smoke test | edgar-tool (writes results only to a file), instagram-location-search (needs Chrome), mailaccess (writes into its install folder, which the read-only sandbox refuses), spiderfoot (a passive scan runs for more than an hour) |
 | Outreach only, or a license that doesn't allow a wrapper (AGPL-3.0, NOASSERTION) | ghunt, blackbird, bbot, h8mail, torbot, secator |
 | Needs a login or config file first | toutatis, whatsapp-osint, telegram-phone-number-checker, auto-archiver, telepathy |
@@ -137,6 +137,11 @@ The step-by-step runbook with commands is in the session notes (`seeding.md`); i
 Not checked here (no Docker on the machine this was prepared on): building the Docker images and running
 `ot validate --smoke` on them; maigret and naminter (their dependencies don't install on Windows).
 
+## Dropped
+
+`instaloader-profile` is not published and its repository is archived: Instagram redirects anonymous requests from
+cloud servers to its login page, so the scan's smoke test and the nightly health check can never pass.
+
 ## Health risks to watch after publishing
 
 The exit criterion is that every seeded package is healthy in the nightly check, which runs each tool's
@@ -145,8 +150,7 @@ The exit criterion is that every seeded package is healthy in the nightly check,
 | Package | Risk | If it fails |
 | --- | --- | --- |
 | `osintverse-community/shodan-host` | Needs `SHODAN_API_KEY`; the health job passes no secrets | Give the health job a key, or count it as not checkable |
-| `osintverse-community/instaloader-profile` | Instagram rate-limits anonymous requests from cloud IPs | Retry later; consider a different social tool |
-| `osintverse-community/yt-dlp` | YouTube often blocks cloud IPs ("confirm you're not a bot") | Change `test.input` to a Vimeo or PeerTube URL |
+| `osintverse-community/yt-dlp` | YouTube blocks cloud IPs ("Sign in to confirm") | The test input is an Internet Archive video; YouTube URLs still work for most users |
 | `osintverse/crtsh-subdomains` | crt.sh is often down | Falls back to Cert Spotter (limited to a few lookups an hour without a key) |
 | `osintverse-community/maigret`, `naminter`, `mailcat` | Not run end to end here | Run `ot validate --smoke` after the first release |
 

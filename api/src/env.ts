@@ -15,6 +15,9 @@ export interface Env {
   GITHUB_CLIENT_SECRET?: string;
   GITLAB_CLIENT_ID?: string;
   GITLAB_CLIENT_SECRET?: string;
+  OSINTVERSE_CLIENT_ID?: string; // Sign in with OSINTverse (OIDC); the client is confidential
+  OSINTVERSE_CLIENT_SECRET?: string;
+  OSINTVERSE_ISSUER?: string; // defaults to https://osintverse.com/api/auth
   TOKEN_ENC_KEY?: string;
   OPS_REPO?: string; // e.g. "OTInstaller/registry-ops", where the scan workflow runs
   OPS_INSTALLATION_ID?: string; // the GitHub App's installation on that repo
@@ -30,13 +33,15 @@ export interface Env {
 
 /**
  * The queue carries publish jobs, bulk-import detection, guide content checks (the guide's equivalent
- * of a security scan; `attempt` counts rounds of waiting for URL Scanner) and nightly link checks.
+ * of a security scan; `attempt` counts rounds of waiting for URL Scanner), nightly link checks and the
+ * releases a reviewer approved with their namespace (published one per message, not all in one request).
  */
 export type PublishMessage =
   | { jobId: string }
   | { importId: string }
   | { checkVersionId: string; attempt?: number }
-  | { linkCheckToolId: string };
+  | { linkCheckToolId: string }
+  | { publishVersionId: string };
 
 export interface User {
   id: string;

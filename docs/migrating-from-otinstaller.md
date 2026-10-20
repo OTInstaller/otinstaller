@@ -88,7 +88,7 @@ lists the rest.
 | `ghunt` | none | not packaged: its license does not allow a community wrapper |
 | `theharvester` | `osintverse-community/theharvester` | d: |
 | `spiderfoot` | none | not packaged: a passive scan runs for more than an hour, past `ot`'s longest timeout |
-| `instaloader` | `osintverse-community/instaloader-profile` | u: (profile metadata only, no downloads) |
+| `instaloader` | none | not packaged: Instagram blocks anonymous requests from cloud servers, so its health check can't pass |
 | `sherlock` | `osintverse-community/sherlock` | u: |
 | `holehe` | `osintverse-community/holehe` | e: |
 | `bbot` | none | not packaged: AGPL-3.0 |

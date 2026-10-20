@@ -132,8 +132,12 @@ export function reviewRoutes(app: App) {
     const waiting = await c.env.DB.prepare(
       `SELECT v.id FROM versions v JOIN tools t ON t.id = v.tool_id WHERE t.namespace_id = ? AND v.status = 'awaiting_review'`,
     ).bind(ns.id).all<{ id: string }>();
-    for (const v of waiting.results) await publishVersion(c.env, v.id);
-    return c.json({ status: "active", published: waiting.results.length });
+    // Each publish makes several outgoing requests (commit status, email), so a namespace with many releases
+    // would run past the Worker's per-request limit: they are published from the queue, one per message.
+    for (let i = 0; i < waiting.results.length; i += 100) {
+      await c.env.PUBLISH_QUEUE.sendBatch(waiting.results.slice(i, i + 100).map((v) => ({ body: { publishVersionId: v.id } })));
+    }
+    return c.json({ status: "active", queued: waiting.results.length });
   });
 
   app.post("/admin/namespaces/:ns/request-changes", async (c) => {
