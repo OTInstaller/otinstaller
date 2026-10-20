@@ -140,8 +140,11 @@ that sets the version and pushes the tag). Tagging it publishes it the same way 
 
 1. Validation renders every page in `content.nav` (and a tool's `docs.nav` and README) to sanitized HTML in R2. Raw
    `<script>`, `<iframe>`, forms and styles (`content_raw_html`), pages over 200 KB (`content_page_too_large`), images
-   that are not PNG, JPEG, WebP or SVG files in the repository (`content_image_type`) and `related_tools` that are not
-   published tools (`guide_related_tool_unknown`) reject the release. `ot validate` runs the same checks locally.
+   that are not PNG, JPEG, WebP or SVG files in the repository (`content_image_type`), images over 2 MB
+   (`content_image_too_large`) or 50 MB in all (`content_images_too_large`), and `related_tools` that are not published
+   tools (`guide_related_tool_unknown`) reject the release. `ot validate` runs the same checks locally. Images are copied
+   to R2 with EXIF/XMP/text metadata removed (SVGs sanitized) and served from `/v1/assets/<sha256>.<ext>`. READMEs keep
+   allow-listed layout HTML (alignment, `<details>`, badges' links); external images show their alt text.
 2. The commit status says *"Valid; content checks running"* while the queue fetches every external link once (dead
    links and links to pages outside the guide are warnings; URL Scanner's malicious verdict rejects) and looks for
    personal data in examples.

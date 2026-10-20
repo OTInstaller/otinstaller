@@ -159,7 +159,7 @@ const links: Record<string, Handler> = {
   "HEAD https://gone.osint.dev/": new Response(null, { status: 404 }),
 };
 
-async function tagGuide(p: Awaited<ReturnType<typeof publisher>>, files: Record<string, string | null>, version = "1.0.0", extra: Record<string, Handler> = links) {
+async function tagGuide(p: Awaited<ReturnType<typeof publisher>>, files: Record<string, string | Uint8Array | null>, version = "1.0.0", extra: Record<string, Handler> = links) {
   const repo = `${p.login}/email-playbook`;
   const res = await webhook("create", tagEvent(p.instId, repo, p.repoId, `v${version}`));
   const jobId = ((await res.json()) as any).jobId as string;
@@ -377,5 +377,147 @@ describe("stuck releases", () => {
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: { code: "internal_error", message: "Something went wrong on our side.", request_id: "8f0a1b2c3d4e5f60-LHR" } });
     deps.fetch = fetch;
+  });
+});
+
+// ---------- images, README HTML, CORS ----------
+
+const bytes = (...parts: (number[] | string | Uint8Array)[]) => {
+  const chunks = parts.map((p) => (typeof p === "string" ? Uint8Array.from(p, (c) => c.charCodeAt(0)) : Uint8Array.from(p)));
+  const out = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.length;
+  }
+  return out;
+};
+const u32be = (n: number) => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
+const u32le = (n: number) => [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255];
+const pngChunk = (type: string, data: string) => bytes(u32be(data.length), type, data, [0, 0, 0, 0]);
+const PNG = bytes([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], pngChunk("IHDR", "x".repeat(13)), pngChunk("eXIf", "GPS 51.5N"),
+  pngChunk("tEXt", "Author\0Maria Lopez"), pngChunk("IDAT", "pixels"), pngChunk("IEND", ""));
+const JPEG = bytes([0xff, 0xd8], [0xff, 0xe0, 0, 7], "JFIF\0", [0xff, 0xe1, 0, 15], "Exif\0\0GPS 51N", [0xff, 0xfe, 0, 7], "Maria",
+  [0xff, 0xdb, 0, 4, 1, 2], [0xff, 0xda, 0, 4, 9, 9], "scan data", [0xff, 0xd9]);
+const webpChunk = (fourcc: string, data: number[] | string) => {
+  const b = bytes(data);
+  return bytes(fourcc, u32le(b.length), b, b.length % 2 ? [0] : []);
+};
+const webpBody = bytes("WEBP", webpChunk("VP8X", [0x0c, 0, 0, 0, 1, 0, 0, 1, 0, 0]), webpChunk("VP8L", "pixel"), webpChunk("EXIF", "GPS"), webpChunk("XMP ", "<x:xmpmeta/>"));
+const WEBP = bytes("RIFF", u32le(webpBody.length), webpBody);
+const text = (b: Uint8Array) => new TextDecoder("latin1").decode(b);
+
+describe("images", () => {
+  it("strips location and author metadata from PNG, JPEG and WebP, and sanitizes SVG", async () => {
+    const { cleanImage, sniff } = await import("../src/lib/images");
+    expect([sniff(PNG), sniff(JPEG), sniff(WEBP), sniff(bytes("<?xml version='1.0'?>\n<svg xmlns='x'/>")), sniff(bytes("GIF89a"))]).toEqual(["png", "jpeg", "webp", "svg", null]);
+    const png = text(cleanImage("png", PNG));
+    expect(png).toContain("IHDR");
+    expect(png).toContain("pixels");
+    expect(png).not.toMatch(/GPS|Maria|eXIf|tEXt/);
+    const jpeg = cleanImage("jpeg", JPEG);
+    expect(text(jpeg)).not.toMatch(/Exif|GPS|Maria/);
+    expect(text(jpeg)).toContain("JFIF");
+    expect([...jpeg.slice(-2)]).toEqual([0xff, 0xd9]);
+    const webp = cleanImage("webp", WEBP);
+    expect(text(webp)).not.toMatch(/EXIF|XMP|xmpmeta|GPS/);
+    expect(new DataView(webp.buffer).getUint32(4, true)).toBe(webp.length - 8);
+    expect(webp[20]! & 0x0c).toBe(0); // VP8X no longer claims EXIF or XMP
+    const svg = text(cleanImage("svg", bytes(`<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><script>alert(2)</script><foreignObject><iframe/></foreignObject>` +
+      `<a href="https://evil.example/x"><use xlink:href="#ok"/></a><image href="https://tracker.example/p.png"/><rect style="fill:url(https://t.example/a)"/></svg>`)));
+    expect(svg).not.toMatch(/onload|script|foreignObject|iframe|evil|tracker|t\.example/);
+    expect(svg).toContain('xlink:href="#ok"');
+  });
+
+  it("copies a guide's images to the registry and serves them from there", async () => {
+    const p = await publisher();
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><circle r="4"/></svg>`;
+    const files = {
+      "otinstaller.yaml": guideManifest(p.login), ...guidePages({ 2: "# Step 2\n\n![photo](img/street.jpg) ![logo](../logo.svg) ![again](img/street.jpg)\n" }),
+      "docs/img/street.jpg": JPEG, "logo.svg": svg,
+    };
+    const { out } = await tagGuide(p, files);
+    expect(out?.status).toBe("scanning");
+    await runContentChecks(await testEnv(), out!.versionId!);
+    const page = (await (await call(`/guides/${p.login}/email-playbook/1.0.0/pages/02-step.md`)).json()) as any;
+    const srcs = [...page.body.matchAll(/<img src="([^"]+)"/g)].map((m: RegExpMatchArray) => m[1]!);
+    expect(srcs).toHaveLength(3);
+    expect(srcs[0]).toMatch(/^https:\/\/api\.otinstaller\.com\/v1\/assets\/[0-9a-f]{64}\.jpg$/);
+    expect(srcs[2]).toBe(srcs[0]);
+    const jpg = await call(new URL(srcs[0]!).pathname.replace("/v1", ""));
+    expect(jpg.headers.get("content-type")).toBe("image/jpeg");
+    expect(jpg.headers.get("cache-control")).toContain("immutable");
+    expect(text(new Uint8Array(await jpg.arrayBuffer()))).not.toContain("GPS");
+    const logo = await call(new URL(srcs[1]!).pathname.replace("/v1", ""));
+    expect(logo.headers.get("content-security-policy")).toContain("sandbox");
+    expect(await logo.text()).toBe(`<svg xmlns="http://www.w3.org/2000/svg"><circle r="4"/></svg>`);
+    expect((await call("/assets/../../secret")).status).toBe(404);
+    expect((await call(`/assets/${"0".repeat(64)}.png`)).status).toBe(404);
+  });
+
+  it.each([
+    ["an image over 2 MB", { "docs/img/big.png": bytes(PNG, new Uint8Array(2 * 1024 * 1024)) }, "img/big.png", "content_image_too_large"],
+    ["a JPEG that is really a GIF", { "docs/img/fake.jpg": bytes("GIF89a...") }, "img/fake.jpg", "content_image_type"],
+    ["a missing image", {}, "img/none.png", "manifest_file_missing"],
+  ] as const)("rejects %s", async (_l, images, ref, code) => {
+    const p = await publisher();
+    const { out } = await tagGuide(p, { "otinstaller.yaml": guideManifest(p.login), ...guidePages({ 1: `# Step 1\n\n![x](${ref})\n` }), ...images });
+    expect(out).toMatchObject({ status: "rejected", problems: [expect.objectContaining({ code, path: `docs/${ref}` })] });
+  });
+});
+
+describe("README HTML", () => {
+  it("keeps layout HTML and badges' links, and drops everything active", () => {
+    const md = `<p align="center"><img src="docs/logo.png" width="120" onerror="alert(1)"></p>\n\n` +
+      `<a href="https://ci.example.org/x"><img src="https://img.shields.io/badge/ci-passing-green" alt="CI status"></a>\n\n` +
+      `<details open><summary>More</summary>\n\nHidden <b>bold</b> <span style="color:red">text</span>.\n\n</details>\n\n` +
+      `<script>steal()</script><style>p{}</style><iframe src="https://x"></iframe><a href="javascript:alert(1)">x</a> <img src=x onerror=alert(1)\n\n<!-- note -->`;
+    const r = renderPage(md, ctx({ file: "README.md", root: "docs/", pages: new Set(), strict: false, allowHtml: true }));
+    expect(r.html).toContain('<p align="center"><img src="https://raw.githubusercontent.com/alice/g/abc/docs/logo.png" loading="lazy" width="120"></p>');
+    expect(r.html).toContain('<a href="https://ci.example.org/x" rel="nofollow noopener noreferrer"><span class="external-image">CI status</span></a>');
+    expect(r.html).toContain("<details open><summary>More</summary>");
+    expect(r.html).toContain("<b>bold</b> <span>text</span>");
+    // Only as escaped text: no tag carries an event handler.
+    expect(r.html).not.toMatch(/<[^>]*onerror|steal|<style|<iframe|javascript:|note|shields\.io/);
+    expect(r.html).toContain("&lt;img src=x");
+    expect(r.images).toEqual(["docs/logo.png"]);
+  });
+});
+
+describe("CORS", () => {
+  it("sends credentials only to the website; anyone else gets public reads", async () => {
+    const site = await call("/types", { headers: { origin: "https://otinstaller.com" } });
+    expect(site.headers.get("access-control-allow-origin")).toBe("https://otinstaller.com");
+    expect(site.headers.get("access-control-allow-credentials")).toBe("true");
+    const other = await call("/types", { headers: { origin: "https://elsewhere.example" } });
+    expect(other.headers.get("access-control-allow-origin")).toBe("*");
+    expect(other.headers.get("access-control-allow-credentials")).toBeNull();
+  });
+});
+
+describe("sync", () => {
+  it("does not replace a guide's page text in search with its README", async () => {
+    const { refreshReadme } = await import("../src/sync");
+    const p = await publisher();
+    const { out } = await tagGuide(p, { "otinstaller.yaml": guideManifest(p.login), ...guidePages() });
+    await runContentChecks(await testEnv(), out!.versionId!);
+    const source = await DB().prepare(`SELECT s.* FROM sources s JOIN versions v ON v.tool_id = s.tool_id WHERE v.id = ?`).bind(out!.versionId).first<any>();
+    const host = { fileAt: async () => "# Just a README" } as any;
+    await refreshReadme(await testEnv(), source, host, "main");
+    const found = (await (await call(`/guides?q=holehe heuristics`)).json()) as any;
+    expect(found.results.map((r: any) => r.namespace)).toContain(p.login);
+  });
+});
+
+describe("/guides", () => {
+  it("answers signed-in requests as well as anonymous ones", async () => {
+    const id = ulid();
+    const token = `ot_signed_in_${id}`;
+    await DB().batch([
+      DB().prepare(`INSERT INTO users (id, login, created_at) VALUES (?, ?, ?)`).bind(id, `si${id.slice(-6)}`, Date.now()),
+      DB().prepare(`INSERT INTO api_tokens (id, user_id, name, token_hash, created_at) VALUES (?, ?, 'test', ?, ?)`).bind(ulid(), id, await sha256Hex(token), Date.now()),
+    ]);
+    const res = await call("/guides?level=intermediate", { headers: { authorization: `Bearer ${token}` } });
+    expect(res.status).toBe(200);
   });
 });

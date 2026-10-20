@@ -23,6 +23,8 @@ export interface RepoHost {
   provider: "github" | "gitlab";
   tagCommit(tag: string): Promise<string>;
   fileAt(path: string, sha: string): Promise<string | null>;
+  /** The same, as bytes (for images). */
+  fileBytes(path: string, sha: string): Promise<Uint8Array | null>;
   setStatus(sha: string, state: CommitState, description: string, targetUrl: string): Promise<void>;
   /** Tags, newest first as the host returns them; notModified when the ETag still matches. */
   listTags(etag?: string | null): Promise<{ notModified: boolean; tags: string[]; etag: string | null }>;
@@ -53,6 +55,7 @@ export function githubRepo(env: Env, installationId: number, repo: string, repoI
     provider: "github",
     tagCommit: async (tag) => github.tagCommit(deps.fetch, await auth(), repo, tag),
     fileAt: async (path, sha) => github.fileAt(deps.fetch, await auth(), repo, path, sha),
+    fileBytes: async (path, sha) => github.fileBytes(deps.fetch, await auth(), repo, path, sha),
     setStatus: async (sha, state, description, targetUrl) => github.setCommitStatus(deps.fetch, await auth(), repo, sha, state, description, targetUrl),
     async listTags(etag) {
       // Repository IDs survive renames and transfers; names do not.
@@ -130,6 +133,12 @@ export function gitlabRepo(env: Env, projectId: string, userId: string): RepoHos
       if (res.status === 404) return null;
       await check(res, `reading ${path}`);
       return res.text();
+    },
+    async fileBytes(path, sha) {
+      const res = await deps.fetch(`${api}/repository/files/${encodeURIComponent(path)}/raw?ref=${encodeURIComponent(sha)}`, { headers: await auth() });
+      if (res.status === 404) return null;
+      await check(res, `reading ${path}`);
+      return new Uint8Array(await res.arrayBuffer());
     },
     async setStatus(sha, state, description, targetUrl) {
       await check(

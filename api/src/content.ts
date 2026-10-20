@@ -19,6 +19,10 @@ export interface RenderContext {
   fileUrl: (repoPath: string) => string;
   /** Links to Markdown files outside the navigation count as missing pages (not for READMEs). */
   strict?: boolean;
+  /** Where a repository image is served from once copied to the registry; null falls back to fileUrl. */
+  imageUrl?: (repoPath: string) => string | null;
+  /** Keep allow-listed raw HTML (READMEs, which often lay out badges and logos with it) instead of escaping it. */
+  allowHtml?: boolean;
 }
 
 export interface TocEntry {
@@ -41,6 +45,8 @@ export interface Rendered {
   words: number;
   toc: TocEntry[];
   links: FoundLink[];
+  /** Repository paths of the images the page shows. */
+  images: string[];
   problems: Problem[];
 }
 
@@ -51,6 +57,15 @@ const stripTags = (html: string) => unesc(html.replace(/<[^>]+>/g, " ")).replace
 // Raw HTML is never rendered, but these tags or attributes mean the author tried to embed active content.
 const DANGEROUS_HTML = /<\s*\/?\s*(script|iframe|object|embed|style|form|input|button|frame|frameset|meta|link|base|svg|math)\b|\son[a-z]+\s*=|javascript:/i;
 const ADMONITION = /^<p>\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/;
+
+// README HTML: what survives, and what is removed together with its content.
+const ALLOWED_TAGS = new Set(
+  "p div span br hr img a b i u s em strong code pre kbd sub sup small details summary h1 h2 h3 h4 h5 h6 ul ol li dl dt dd table thead tbody tfoot tr th td blockquote".split(" "),
+);
+const ALLOWED_ATTRS = new Set(["href", "src", "alt", "title", "width", "height", "align", "colspan", "rowspan", "open"]);
+const REMOVED_WITH_CONTENT = /<(script|style|iframe|object|embed|noscript|template|textarea|title|form|svg|math)\b[\s\S]*?(<\/\1\s*>|$)/gi;
+const TAG = /<!--[\s\S]*?(-->|$)|<(\/?)([a-zA-Z][a-zA-Z0-9]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g;
+const ATTR = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+))?/g;
 
 /** Resolves a relative href against a directory, POSIX style; null when it leaves the repository. */
 export function resolvePath(dir: string, href: string): string | null {
@@ -91,6 +106,7 @@ export function titleFromPath(path: string): string {
 export function renderPage(md: string, ctx: RenderContext): Rendered {
   const toc: TocEntry[] = [];
   const links: FoundLink[] = [];
+  const images: string[] = [];
   const problems: Problem[] = [];
   const ids = new Map<string, number>();
   const seen = new Set<string>();
@@ -127,6 +143,76 @@ export function renderPage(md: string, ctx: RenderContext): Rendered {
     return { href: ctx.fileUrl(target), external: false };
   };
 
+  /** A repository image's URL, or null (with a problem) when it is not one. */
+  const repoImage = (h: string): string | null => {
+    const target = hasScheme(h) || h.startsWith("//") ? null : resolvePath(dirOf(ctx.file), decodeURIComponent(h.split(/[?#]/)[0]!));
+    if (target === null || !IMAGE_TYPES.some((ext) => target.toLowerCase().endsWith(ext))) {
+      problems.push({
+        code: "content_image_type", path: where(""), message: `image ${h} is not a PNG, JPEG, WebP or SVG file in the repository`,
+        hint: "keep images in the repository as .png, .jpg, .webp or .svg",
+      });
+      return null;
+    }
+    if (!images.includes(target)) images.push(target);
+    return ctx.imageUrl?.(target) ?? ctx.fileUrl(target);
+  };
+
+  /**
+   * Allow-listed HTML: known layout tags with harmless attributes; links and images follow the same
+   * rules as Markdown ones (external images become links). Everything else is dropped.
+   */
+  const sanitizeHtml = (html: string): string => {
+    const src = html.replace(REMOVED_WITH_CONTENT, "");
+    let out = "";
+    let at = 0;
+    // Text between tags keeps its entities, but a stray < or > never reaches the page.
+    const text = (t: string) => t.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    for (const m of src.matchAll(TAG)) {
+      out += text(src.slice(at, m.index)) + sanitizeTag(m[2] ?? "", m[3], m[4]);
+      at = m.index! + m[0].length;
+    }
+    return out + text(src.slice(at));
+  };
+
+  function sanitizeTag(close: string, name: string | undefined, attrs: string | undefined): string {
+    if (!name) return ""; // a comment
+    const tag = name.toLowerCase();
+    if (!ALLOWED_TAGS.has(tag)) return "";
+    if (close) return tag === "br" || tag === "hr" || tag === "img" ? "" : `</${tag}>`;
+    const kept: string[] = [];
+    let external = false;
+    for (const a of (attrs ?? "").matchAll(ATTR)) {
+      const key = a[1]!.toLowerCase();
+      const value = unesc((a[2] ?? "").replace(/^["']|["']$/g, ""));
+      if (!ALLOWED_ATTRS.has(key)) continue;
+      if (key === "href") {
+        if (tag !== "a") continue;
+        const target = classify(value);
+        if (target.href === null) continue;
+        external = target.external;
+        kept.push(`href="${esc(target.href)}"`);
+      } else if (key === "src") {
+        if (tag !== "img") continue;
+        if (/^https?:\/\//i.test(value.trim())) {
+          // No hotlinked images: they would track readers. HTML images are mostly badges inside a link,
+          // so the alt text stands in for them and the link stays.
+          const alt = /\balt\s*=\s*("([^"]*)"|'([^']*)')/i.exec(attrs ?? "");
+          return `<span class="external-image">${esc(unesc(alt?.[2] ?? alt?.[3] ?? "image"))}</span>`;
+        }
+        const src = repoImage(value);
+        if (src === null) return "";
+        kept.push(`src="${esc(src)}"`, 'loading="lazy"');
+      } else if (key === "open") {
+        if (tag === "details") kept.push("open");
+      } else {
+        kept.push(`${key}="${esc(value)}"`);
+      }
+    }
+    if (tag === "img" && !kept.some((k) => k.startsWith("src="))) return "";
+    if (external) kept.push('rel="nofollow noopener noreferrer"');
+    return `<${tag}${kept.length ? " " + kept.join(" ") : ""}>`;
+  }
+
   const marked = new Marked({ gfm: true, async: false });
   marked.use({
     renderer: {
@@ -155,17 +241,12 @@ export function renderPage(md: string, ctx: RenderContext): Rendered {
           addLink(h, href);
           return `<a href="${esc(h)}" rel="nofollow noopener noreferrer">${esc(text || h)}</a>`;
         }
-        const target = hasScheme(h) ? null : resolvePath(dirOf(ctx.file), decodeURIComponent(h.split(/[?#]/)[0]!));
-        if (target === null || !IMAGE_TYPES.some((ext) => target.toLowerCase().endsWith(ext))) {
-          problems.push({
-            code: "content_image_type", path: where(""), message: `image ${h} is not a PNG, JPEG, WebP or SVG file in the repository`,
-            hint: "keep images in the repository as .png, .jpg, .webp or .svg",
-          });
-          return esc(text);
-        }
-        return `<img src="${esc(ctx.fileUrl(target))}" alt="${esc(text)}"${t ? ` title="${esc(t)}"` : ""} loading="lazy">`;
+        const src = repoImage(h);
+        if (src === null) return esc(text);
+        return `<img src="${esc(src)}" alt="${esc(text)}"${t ? ` title="${esc(t)}"` : ""} loading="lazy">`;
       },
       html({ text }: Tokens.HTML | Tokens.Tag) {
+        if (ctx.allowHtml) return sanitizeHtml(text);
         if (DANGEROUS_HTML.test(text)) {
           problems.push({
             code: "content_raw_html", path: where(lineOf(md, text.trim()) ? `:${lineOf(md, text.trim())}` : ""),
@@ -198,6 +279,7 @@ export function renderPage(md: string, ctx: RenderContext): Rendered {
     words: text ? text.split(" ").length : 0,
     toc,
     links,
+    images,
     problems,
   };
 }

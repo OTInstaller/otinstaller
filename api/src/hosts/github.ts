@@ -144,6 +144,15 @@ export async function fileAt(f: Fetch, token: string, repo: string, path: string
   return res.text();
 }
 
+/** A file's bytes at a ref (images); null when it does not exist. */
+export async function fileBytes(f: Fetch, token: string, repo: string, path: string, sha: string): Promise<Uint8Array | null> {
+  const url = `${GITHUB_API}/repos/${repo}/contents/${path.split("/").map(encodeURIComponent).join("/")}?ref=${sha}`;
+  const res = await f(url, { headers: { ...apiHeaders(token), Accept: "application/vnd.github.raw+json" } });
+  if (res.status === 404) return null;
+  await check(res, `reading ${path}`);
+  return new Uint8Array(await res.arrayBuffer());
+}
+
 export type CommitState = "pending" | "success" | "failure" | "error";
 
 export async function setCommitStatus(f: Fetch, token: string, repo: string, sha: string, state: CommitState, description: string, targetUrl: string) {

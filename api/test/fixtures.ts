@@ -49,14 +49,14 @@ ethics:
 ${over}`;
 
 /** Fakes GitHub (installation token, tag, files, statuses) and ghcr.io for one repository. */
-export function fakeRelease(repo: string, files: Record<string, string | null>, opts: { imageStatus?: number; extra?: Record<string, Handler> } = {}) {
+export function fakeRelease(repo: string, files: Record<string, string | Uint8Array | null>, opts: { imageStatus?: number; extra?: Record<string, Handler> } = {}) {
   return fakeHosts({
     "POST https://api.github.com/app/installations/": { token: "ghs_install" },
     [`GET https://api.github.com/repos/${repo}/commits/`]: { sha: "abc123" },
     [`GET https://api.github.com/repos/${repo}/contents/`]: (req) => {
       const path = decodeURIComponent(new URL(req.url).pathname.split("/contents/")[1]!);
       const content = files[path];
-      return content == null ? null : content;
+      return content == null ? null : content instanceof Uint8Array ? new Response(content) : content;
     },
     [`POST https://api.github.com/repos/${repo}/statuses/abc123`]: { ok: true },
     "GET https://ghcr.io/v2/": (req) =>

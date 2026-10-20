@@ -6,6 +6,7 @@ import { apiError } from "../lib/errors";
 import { cached, findTool, findVersion, LISTED, summary, SUMMARY_COLUMNS, VISIBLE, type SummaryRow, type ToolRow, type VersionRow } from "../catalog";
 import { readmeKey } from "../guides";
 import type { Manifest } from "../lib/manifest";
+import { imageHeaders, kindForPath } from "../lib/images";
 
 type PageRow = { path: string; title: string; position: number; r2_key: string; word_count: number; dead_links: number; toc_json: string | null };
 
@@ -99,6 +100,17 @@ export function guideRoutes(app: App) {
     const version = c.req.param("version");
     const v = await guideVersion(c, row, version);
     return servePage(c, `${row.namespace}/${row.name}`, v.version, v.id, c.req.param("path"), version === "latest" ? 60 : 3600);
+  });
+
+  // Images from guides, docs and READMEs, copied at publish with their metadata removed. Content-addressed,
+  // so they never change.
+  app.get("/assets/:file", async (c) => {
+    const file = c.req.param("file");
+    const kind = kindForPath(file);
+    if (!/^[0-9a-f]{64}\.(png|jpg|webp|svg)$/.test(file) || !kind) apiError(404, "asset_not_found", "no such image");
+    const obj = await c.env.CONTENT.get(`assets/${file}`);
+    if (!obj) apiError(404, "asset_not_found", "no such image");
+    return new Response(obj.body, { headers: imageHeaders(kind) });
   });
 
   // ---------- tool docs, guides using a tool, README ----------

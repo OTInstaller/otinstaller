@@ -22,8 +22,21 @@ type Params struct {
 	Category  string
 	Input     string // first input type, tools only
 	Package   string // pipx only
-	Repo      string // e.g. github.com/dheeraj/holehe-lite
-	Host      string // github | gitlab
+	// PythonProject is set when the repo already has pyproject.toml or setup.py; the example Dockerfile
+	// then installs it, and otherwise ships a starter script that builds and runs as is.
+	PythonProject bool
+	Repo          string // e.g. github.com/dheeraj/holehe-lite
+	Host          string // github | gitlab
+}
+
+// HasPythonProject reports whether pip can install the repository.
+func HasPythonProject(dir string) bool {
+	for _, f := range []string{"pyproject.toml", "setup.py"} {
+		if _, err := os.Stat(filepath.Join(dir, f)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // Detect guesses the package kind from files already in the repo.
@@ -109,7 +122,12 @@ func Files(p Params) (map[string]string, error) {
 	files := map[string]string{"otinstaller.yaml": manifestTmpl, "README.md": toolReadmeTmpl}
 	switch p.Kind {
 	case "docker":
-		files["Dockerfile.otinstaller-example"] = dockerfileTmpl
+		if p.PythonProject {
+			files["Dockerfile.otinstaller-example"] = dockerfilePipTmpl
+		} else {
+			files["Dockerfile.otinstaller-example"] = dockerfileStarterTmpl
+			files["tool.py.otinstaller-example"] = starterScriptTmpl
+		}
 	case "pipx":
 	case "guide":
 		files["README.md"] = guideReadmeTmpl
@@ -204,7 +222,45 @@ test:
 <<- end >>
 `
 
-const dockerfileTmpl = `# Example only: keep your own Dockerfile if you have one.
+// The registry runs the image with --entrypoint set to the first word of runtime.command (the package
+// name), so both Dockerfiles put an executable of that name on the PATH.
+const dockerfileStarterTmpl = `# Example only: replace tool.py with your tool, or this file with your own Dockerfile.
+FROM python:3.12-slim
+RUN useradd --uid 10001 --create-home app
+COPY tool.py /usr/local/bin/<< .Name >>
+RUN chmod 755 /usr/local/bin/<< .Name >>
+USER app
+ENTRYPOINT ["<< .Name >>"]
+`
+
+// starterScriptTmpl answers the scaffolded command ("<name> --json <target>") with an empty result.
+const starterScriptTmpl = `#!/usr/bin/env python3
+"""Starter for << .Name >>: replace the lookup with your tool's logic.
+
+Prints {"entities": [...]} so ot can turn the output into its result envelope.
+"""
+import argparse
+import json
+
+
+def lookup(target):
+    # Return entities such as {"type": "account", "value": "...", "source": "..."}.
+    return []
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="<< .Name >>")
+    parser.add_argument("--json", action="store_true", help="print JSON")
+    parser.add_argument("target")
+    args = parser.parse_args()
+    print(json.dumps({"entities": lookup(args.target)}))
+
+
+if __name__ == "__main__":
+    main()
+`
+
+const dockerfilePipTmpl = `# Example only: keep your own Dockerfile if you have one.
 FROM python:3.12-slim
 RUN useradd --uid 10001 --create-home app
 WORKDIR /app

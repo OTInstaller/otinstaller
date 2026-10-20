@@ -22,10 +22,13 @@ export type { Env } from "./env";
 
 const app = new Hono<AppEnv>().basePath("/v1");
 
-// Public reads are open to any origin; credentialed calls only from the website.
+// Public reads are open to any origin; credentialed calls only from the website. Browsers refuse
+// `*` together with credentials, so other origins get `*` without them.
+const METHODS = ["GET", "POST", "PATCH", "PUT", "DELETE"];
+const publicCors = cors({ origin: "*", allowMethods: METHODS });
 app.use("*", async (c, next) => {
-  const site = c.env.SITE_URL;
-  return cors({ origin: (o) => (o === site ? o : "*"), credentials: true, allowMethods: ["GET", "POST", "PATCH", "PUT", "DELETE"] })(c, next);
+  if (c.req.header("origin") !== c.env.SITE_URL) return publicCors(c, next);
+  return cors({ origin: c.env.SITE_URL, credentials: true, allowMethods: METHODS })(c, next);
 });
 authRoutes(app);
 webhookRoutes(app);
@@ -169,7 +172,8 @@ app.get("/guides", (c) => {
   const url = new URL(c.req.url);
   url.pathname = "/v1/tools";
   url.searchParams.set("kind", "guide");
-  return app.fetch(new Request(url, c.req.raw), c.env);
+  // Pass the execution context on: signed-in requests use it (waitUntil) while authenticating.
+  return app.fetch(new Request(url, c.req.raw), c.env, c.executionCtx);
 });
 
 app.get("/tools/:ns/:name", async (c) => {

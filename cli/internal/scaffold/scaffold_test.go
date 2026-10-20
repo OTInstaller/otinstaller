@@ -66,3 +66,25 @@ func TestTemplatesMatchSpec(t *testing.T) {
 		t.Error("ReleaseTemplate picks the wrong template")
 	}
 }
+
+// The example Dockerfile builds in a fresh repository: without a Python project it installs a starter
+// script under the package name, which the registry uses as the entrypoint.
+func TestExampleDockerfile(t *testing.T) {
+	p := Params{Kind: "docker", Name: "demo-tool", Namespace: "dheeraj", Summary: "Demo package for tests", License: "MIT", Category: "utilities", Input: "domain"}
+	files, err := Files(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	df := files["Dockerfile.otinstaller-example"]
+	if strings.Contains(df, "pip install") || !strings.Contains(df, "COPY tool.py /usr/local/bin/demo-tool") {
+		t.Errorf("starter Dockerfile:\n%s", df)
+	}
+	if !strings.Contains(files["tool.py.otinstaller-example"], `prog="demo-tool"`) {
+		t.Error("no starter script")
+	}
+	p.PythonProject = true
+	files, _ = Files(p)
+	if !strings.Contains(files["Dockerfile.otinstaller-example"], "pip install --no-cache-dir .") || files["tool.py.otinstaller-example"] != "" {
+		t.Error("a Python project should be installed with pip, without a starter script")
+	}
+}

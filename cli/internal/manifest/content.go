@@ -11,13 +11,17 @@ import (
 
 // Content rule codes, shared with the registry's renderer (api/src/content.ts).
 const (
-	CodePageTooLarge = "content_page_too_large"
-	CodeRawHTML      = "content_raw_html"
-	CodeImageType    = "content_image_type"
+	CodePageTooLarge  = "content_page_too_large"
+	CodeRawHTML       = "content_raw_html"
+	CodeImageType     = "content_image_type"
+	CodeImageTooLarge = "content_image_too_large"
 )
 
-// MaxPageSize is the largest guide or docs page the registry renders.
-const MaxPageSize = 200 * 1024
+// MaxPageSize is the largest guide or docs page the registry renders; MaxImageSize the largest image it copies.
+const (
+	MaxPageSize  = 200 * 1024
+	MaxImageSize = 2 << 20
+)
 
 var (
 	fencedCode = regexp.MustCompile("(?ms)^ {0,3}(```|~~~).*?^ {0,3}(```|~~~)[^\\n]*$")
@@ -59,6 +63,15 @@ func checkContent(dir, rel string) []*Problem {
 			ps = append(ps, &Problem{Code: CodeImageType, Path: rel,
 				Message: fmt.Sprintf("image %s is not a PNG, JPEG, WebP or SVG file in the repository", src),
 				Hint:    "keep images in the repository as .png, .jpg, .webp or .svg"})
+			continue
+		}
+		fi, err := os.Stat(filepath.Join(dir, filepath.FromSlash(target)))
+		switch {
+		case err != nil:
+			ps = append(ps, &Problem{Code: CodeFileMissing, Path: target, Message: "image " + target + " does not exist"})
+		case fi.Size() > MaxImageSize:
+			ps = append(ps, &Problem{Code: CodeImageTooLarge, Path: target,
+				Message: fmt.Sprintf("%s is %.1f MB; images can be at most 2 MB", target, float64(fi.Size())/(1<<20)), Hint: "resize or compress it"})
 		}
 	}
 	return ps

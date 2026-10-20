@@ -665,7 +665,8 @@ describe("importing a GitLab project", () => {
     expect(imp).toMatchObject({ detected_kind: "guide", status: "ready", missing: [], suggested: ["related_tools"] });
     expect(imp.draft).toMatchObject({ kind: "guide", title: "Phone osint guide", topics: ["phone"], content: { root: "docs/", nav: ["index.md", "01-scope.md", "02-carriers.md"] } });
     await post(`/imports/${imp.id}/finish`, u.auth, { mode: "pr" });
-    expect(commits[0].actions.map((a: any) => a.file_path)).toEqual(["otinstaller.yaml"]);
+    expect(commits[0].actions.map((a: any) => a.file_path)).toEqual(["otinstaller.yaml", ".gitlab-ci.yml"]);
+    expect(commits[0].actions[1].content).toBe(RELEASE_TEMPLATES["gitlab-guide"]);
   });
 
   it("won't import a mirror of a package the user already publishes from the other host", async () => {

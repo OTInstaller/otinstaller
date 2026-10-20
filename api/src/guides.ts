@@ -5,6 +5,8 @@
 // nightly, and a guide with more than 20% dead links is marked "Needs update".
 import { deps, type Env } from "./env";
 import { ulid } from "./lib/crypto";
+import { cleanImage, kindForPath, MAX_IMAGE_BYTES, MAX_IMAGES_BYTES, sniff, CONTENT_TYPES, type ImageKind } from "./lib/images";
+import type { RepoHost } from "./hosts/repo";
 import type { Manifest, Problem } from "./lib/manifest";
 import { findPersonalData, pageProblems, renderPage, type PiiHit, type Rendered } from "./content";
 import { commitStatus, loadVersion, publishVersion, SCAN_TOKEN_TTL } from "./scans";
@@ -33,6 +35,14 @@ export interface RenderedRelease {
   pages: RenderedPage[];
   readme: Rendered | null;
   problems: Problem[];
+  /** Cleaned images to store in R2, filled in by copyImages. */
+  images?: StoredImage[];
+}
+
+export interface StoredImage {
+  key: string;
+  kind: ImageKind;
+  bytes: Uint8Array;
 }
 
 /** Where readers see a guide page or a tool's docs page on the website. */
@@ -53,17 +63,20 @@ export function rawFileUrl(provider: "github" | "gitlab", repo: string, sha: str
  * Renders a release's README and its guide content or tool docs, and applies the content rules. `files`
  * holds every file the manifest refers to, keyed by repository path.
  */
-export function renderRelease(env: Env, m: Manifest, files: Map<string, string>, src: { provider: "github" | "gitlab"; repo: string; sha: string }): RenderedRelease {
+export function renderRelease(
+  env: Env, m: Manifest, files: Map<string, string>, src: { provider: "github" | "gitlab"; repo: string; sha: string }, assets?: Map<string, string>,
+): RenderedRelease {
   const pagesDef = m.kind === "guide" ? m.content : m.docs;
   const nav = new Set(pagesDef?.nav ?? []);
   const fileUrl = (p: string) => rawFileUrl(src.provider, src.repo, src.sha, p);
+  const imageUrl = (p: string) => assets?.get(p) ?? null;
   const problems: Problem[] = [];
   const pages: RenderedPage[] = [];
   for (const path of pagesDef?.nav ?? []) {
     const file = pagesDef!.root + path;
     const md = files.get(file);
     if (md === undefined) continue;
-    const rendered = renderPage(md, { file, root: pagesDef!.root, pages: nav, pageUrl: (p) => pageUrl(env, m, p), fileUrl });
+    const rendered = renderPage(md, { file, root: pagesDef!.root, pages: nav, pageUrl: (p) => pageUrl(env, m, p), fileUrl, imageUrl });
     problems.push(...pageProblems(file, md, rendered));
     pages.push({ path, md, rendered });
   }
@@ -71,11 +84,60 @@ export function renderRelease(env: Env, m: Manifest, files: Map<string, string>,
   const readmeMd = m.readme ? files.get(m.readme) : undefined;
   if (m.readme && readmeMd !== undefined) {
     readme = renderPage(readmeMd, {
-      file: m.readme, root: pagesDef?.root ?? "", pages: nav, pageUrl: (p) => pageUrl(env, m, p), fileUrl, strict: false,
+      file: m.readme, root: pagesDef?.root ?? "", pages: nav, pageUrl: (p) => pageUrl(env, m, p), fileUrl, imageUrl, strict: false, allowHtml: true,
     });
     // READMEs are rendered (raw HTML shown as text) but the content rules are for guide pages and docs only.
   }
   return { pages, readme, problems };
+}
+
+/**
+ * Copies the images a release's pages show into the registry: checked by content, at most 2 MB each and
+ * 50 MB per version, with metadata removed (SVGs sanitized). Returns where each one is served from.
+ * README images are copied when they pass and otherwise left at the repository, without problems.
+ */
+export async function copyImages(env: Env, host: RepoHost, sha: string, content: RenderedRelease): Promise<{ assets: Map<string, string>; images: StoredImage[]; problems: Problem[] }> {
+  const strict = new Set(content.pages.flatMap((p) => p.rendered.images));
+  const all = [...strict, ...(content.readme?.images ?? []).filter((p) => !strict.has(p))];
+  const assets = new Map<string, string>();
+  const images: StoredImage[] = [];
+  const problems: Problem[] = [];
+  let total = 0;
+  for (const path of all) {
+    const fail = (code: string, message: string, hint?: string) => strict.has(path) && problems.push({ code, path, message, hint });
+    const raw = await host.fileBytes(path, sha);
+    if (raw === null) {
+      fail("manifest_file_missing", `image ${path} does not exist at this release`);
+      continue;
+    }
+    if (raw.length > MAX_IMAGE_BYTES) {
+      fail("content_image_too_large", `${path} is ${(raw.length / 1048576).toFixed(1)} MB; images can be at most 2 MB`, "resize or compress it");
+      continue;
+    }
+    const kind = sniff(raw);
+    const named = kindForPath(path);
+    if (!kind || kind !== named) {
+      fail("content_image_type", `${path} is not the ${named ?? "image"} file its name says`, "keep images in the repository as .png, .jpg, .webp or .svg");
+      continue;
+    }
+    let bytes: Uint8Array;
+    try {
+      bytes = cleanImage(kind, raw);
+    } catch {
+      fail("content_image_type", `${path} could not be read as ${kind}`);
+      continue;
+    }
+    total += bytes.length;
+    if (total > MAX_IMAGES_BYTES) {
+      fail("content_images_too_large", "the images of this version add up to more than 50 MB", "use fewer or smaller images");
+      break;
+    }
+    const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((x) => x.toString(16).padStart(2, "0")).join("");
+    const key = `assets/${digest}.${kind === "jpeg" ? "jpg" : kind}`;
+    assets.set(path, `${env.API_URL}/v1/${key}`);
+    if (!images.some((i) => i.key === key)) images.push({ key, kind, bytes });
+  }
+  return { assets, images, problems };
 }
 
 /** A guide's related_tools must be published tools, so its tool links never rot silently. */
@@ -111,6 +173,11 @@ export const readmeKey = (versionId: string) => `readme/${versionId}.html`;
 export async function storeContent(env: Env, versionId: string, m: Manifest, content: RenderedRelease) {
   const db = env.DB;
   const now = Date.now();
+  // Images are content-addressed, so versions share them and an existing one is never written again.
+  for (const img of content.images ?? []) {
+    if (await env.CONTENT.head(img.key)) continue;
+    await env.CONTENT.put(img.key, img.bytes, { httpMetadata: { contentType: CONTENT_TYPES[img.kind] } });
+  }
   for (const p of content.pages) {
     await env.CONTENT.put(contentKey(versionId, p.path), p.md, { httpMetadata: { contentType: "text/markdown; charset=utf-8" } });
     await env.CONTENT.put(`${contentKey(versionId, p.path)}.html`, p.rendered.html, { httpMetadata: { contentType: "text/html; charset=utf-8" } });

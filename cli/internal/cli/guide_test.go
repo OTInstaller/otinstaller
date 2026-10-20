@@ -252,7 +252,10 @@ func TestValidateGuideContent(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "otinstaller.yaml"), raw, 0o644)
 	os.MkdirAll(filepath.Join(dir, "docs"), 0o755)
 	write := func(name, body string) { os.WriteFile(filepath.Join(dir, "docs", name), []byte(body), 0o644) }
-	write("index.md", "# Index\n\n![map](img/map.png)\n\n```html\n<script>shown as code</script>\n```\n")
+	write("index.md", "# Index\n\n![map](img/map.png) ![photo](img/big.jpg) ![gone](img/gone.webp)\n\n```html\n<script>shown as code</script>\n```\n")
+	os.MkdirAll(filepath.Join(dir, "docs", "img"), 0o755)
+	os.WriteFile(filepath.Join(dir, "docs", "img", "map.png"), []byte("png"), 0o644)
+	os.WriteFile(filepath.Join(dir, "docs", "img", "big.jpg"), make([]byte, 3<<20), 0o644)
 	write("01-scope-and-legal.md", "# Scope\n\n<iframe src=\"https://x\"></iframe>\n")
 	write("02-passive-checks.md", "# Checks\n\n![anim](img/a.gif)\n\n"+strings.Repeat("word ", 42_000))
 
@@ -268,7 +271,7 @@ func TestValidateGuideContent(t *testing.T) {
 	for _, p := range res.Problems {
 		got = append(got, p.Code+" "+p.Path)
 	}
-	want := []string{"content_raw_html docs/01-scope-and-legal.md", "content_page_too_large docs/02-passive-checks.md", "content_image_type docs/02-passive-checks.md"}
+	want := []string{"content_image_too_large docs/img/big.jpg", "manifest_file_missing docs/img/gone.webp", "content_raw_html docs/01-scope-and-legal.md", "content_page_too_large docs/02-passive-checks.md", "content_image_type docs/02-passive-checks.md"}
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("problems %v, want %v", got, want)
 	}

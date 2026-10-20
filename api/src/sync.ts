@@ -103,7 +103,9 @@ export async function applyMeta(env: Env, s: SourceRow, meta: RepoMeta | null): 
 /** Refreshes the README text search uses, from the default branch. Published versions never change. */
 export async function refreshReadme(env: Env, s: SourceRow, host: RepoHost, branch: string | null) {
   if (!s.tool_id || !branch) return;
-  const t = await env.DB.prepare(`SELECT v.manifest_json FROM tools t JOIN versions v ON v.id = t.latest_version_id WHERE t.id = ?`).bind(s.tool_id).first<{ manifest_json: string }>();
+  const t = await env.DB.prepare(`SELECT t.kind, v.manifest_json FROM tools t JOIN versions v ON v.id = t.latest_version_id WHERE t.id = ?`).bind(s.tool_id).first<{ kind: string; manifest_json: string }>();
+  // A guide's search text is its pages, set when a version is published.
+  if (t?.kind === "guide") return;
   const path = (t ? (JSON.parse(t.manifest_json).readme as string | undefined) : undefined) ?? "README.md";
   const text = await host.fileAt(path, branch);
   if (text !== null) await env.DB.prepare(`UPDATE tools SET readme_text = ? WHERE id = ?`).bind(text.slice(0, 20000), s.tool_id).run();

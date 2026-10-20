@@ -79,6 +79,7 @@ func (a *App) initCmd() *cobra.Command {
 					return err
 				}
 			}
+			p.PythonProject = scaffold.HasPythonProject(dir)
 			files, err := scaffold.Files(p)
 			if err != nil {
 				return err
@@ -88,8 +89,12 @@ func (a *App) initCmd() *cobra.Command {
 				if c, ok := files["Dockerfile.otinstaller-example"]; ok {
 					files["Dockerfile"] = c
 				}
+				if c, ok := files["tool.py.otinstaller-example"]; ok {
+					files["tool.py"] = c
+				}
 			}
 			delete(files, "Dockerfile.otinstaller-example")
+			delete(files, "tool.py.otinstaller-example")
 
 			paths := make([]string, 0, len(files))
 			for path := range files {

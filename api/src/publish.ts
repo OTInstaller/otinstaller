@@ -10,7 +10,7 @@ import { githubRepo, gitlabRepo, repoUrl, type RepoHost } from "./hosts/repo";
 import { checkImage, checkWheel } from "./hosts/artifacts";
 import { audit } from "./routes/auth";
 import { commitStatus, dispatchScan, loadVersion } from "./scans";
-import { queueContentChecks, recheckLinks, relatedToolProblems, renderRelease, runContentChecks, storeContent, type RenderedRelease } from "./guides";
+import { copyImages, queueContentChecks, recheckLinks, relatedToolProblems, renderRelease, runContentChecks, storeContent, type RenderedRelease } from "./guides";
 import { ownerEmails, sendEmail, templates } from "./notify";
 import { COMMUNITY_NAMESPACE, detectQueued, failImport, heldManifestFor } from "./imports";
 
@@ -98,8 +98,15 @@ export async function processJob(env: Env, jobId: string): Promise<Outcome | nul
       }
       if (manifest.readme) readme = files.get(manifest.readme) ?? "";
       if (problems.length === 0) {
-        content = renderRelease(env, manifest, files, { provider: job.provider, repo: job.repo, sha });
+        const src = { provider: job.provider, repo: job.repo, sha };
+        content = renderRelease(env, manifest, files, src);
         problems = content.problems;
+        if (problems.length === 0) {
+          // Render again with the images' registry URLs once they are copied.
+          const copied = await copyImages(env, host, sha, content);
+          problems = copied.problems;
+          content = { ...renderRelease(env, manifest, files, src, copied.assets), images: copied.images };
+        }
       }
     }
     if (problems.length === 0) problems = manifest.kind === "guide" ? await relatedToolProblems(env, manifest) : await artifactProblems(manifest);
