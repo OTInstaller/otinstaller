@@ -71,7 +71,7 @@ export async function dispatchScan(env: Env, opts: { versionId: string; provider
 
   // repository_dispatch needs Contents: write on registry-ops. A token limited to that repository keeps the
   // App read-only on publishers' repositories; without one, the App's installation token is used.
-  const opsToken = env.OPS_DISPATCH_TOKEN || await github.installationToken(
+  const opsToken = env.OPS_DISPATCH_TOKEN?.trim() || await github.installationToken(
     deps.fetch, requireSecret(env, "GITHUB_APP_ID"), requireSecret(env, "GITHUB_APP_PRIVATE_KEY"), Number(requireSecret(env, "OPS_INSTALLATION_ID")),
   );
   // repository_dispatch allows at most 10 top-level keys in client_payload, so everything sits under "scan".

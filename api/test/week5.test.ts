@@ -113,7 +113,8 @@ describe("scan dispatch", () => {
         },
       },
     });
-    const out = await processJob({ ...(await testEnv()), OPS_DISPATCH_TOKEN: "github_pat_ops" }, jobId);
+    // Pasted secrets often end in a newline.
+    const out = await processJob({ ...(await testEnv()), OPS_DISPATCH_TOKEN: "github_pat_ops\n" }, jobId);
     expect(out?.status).toBe("scanning");
     expect(auth).toEqual(["Bearer github_pat_ops"]);
   });
