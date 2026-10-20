@@ -87,6 +87,8 @@ npx wrangler r2 bucket create otinstaller-content  # rendered READMEs, guide pag
 openssl rand -base64 32                        # → TOKEN_ENC_KEY
 for s in GITHUB_APP_ID GITHUB_APP_PRIVATE_KEY GITHUB_WEBHOOK_SECRET GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET \
          GITLAB_CLIENT_ID GITLAB_CLIENT_SECRET TOKEN_ENC_KEY; do npx wrangler secret put $s; done
+# Optional: URL Scanner checks of guide links (see "URL Scanner" below). Skip this line to run without them.
+for s in CF_URLSCAN_ACCOUNT_ID CF_URLSCAN_TOKEN; do npx wrangler secret put $s; done
 npx wrangler d1 migrations apply otinstaller --remote
 npx wrangler deploy
 ```
@@ -94,9 +96,32 @@ npx wrangler deploy
 For local development, copy `api/.dev.vars.example` to `api/.dev.vars` and fill it in. Use a tunnel
 (for example `cloudflared tunnel --url http://127.0.0.1:8787`) as the staging app's webhook URL.
 
-Optional: to check guide links with Cloudflare URL Scanner, create an API token with *URL Scanner: Edit* and set
-`CF_URLSCAN_ACCOUNT_ID` and `CF_URLSCAN_TOKEN` (`wrangler secret put`). Without them the link check still finds dead links, but
-nothing is marked malicious.
+### URL Scanner (optional)
+
+Guide releases send one link per external site to [Cloudflare URL Scanner](https://developers.cloudflare.com/radar/investigate/url-scanner/),
+and a link it calls malicious rejects the release. Without these two secrets guides still publish and dead links are still
+found; nothing is checked for malice (the link summary says `url_scanner: "not_configured"`).
+
+1. `CF_URLSCAN_ACCOUNT_ID`: the Cloudflare account ID, from the dashboard URL (`dash.cloudflare.com/<account id>/...`) or the
+   account's overview page. Not a secret, but kept with the token. (It is not called `CF_ACCOUNT_ID` because wrangler reads that
+   name as its own account setting.)
+2. `CF_URLSCAN_TOKEN`: in the dashboard, **My Profile → API Tokens → Create Token → Custom token**, add the permission
+   **Account → URL Scanner → Edit**, and under Account Resources include only this account. Edit covers both calls the
+   registry makes (submitting a scan, `POST /accounts/{id}/urlscanner/v2/scan`, and reading its result,
+   `GET /accounts/{id}/urlscanner/v2/result/{scan id}`); this is the permission Cloudflare's URL Scanner guide asks for
+   and the one the staging test ran with.
+3. `npx wrangler secret put` both (the optional line above), or put them in `api/.dev.vars` for local and staging runs.
+
+When something is wrong, releases are never blocked or held by it:
+
+- Only one of the two set: treated as not configured.
+- Token invalid, revoked or missing the permission: each submission fails with Cloudflare's error. The Worker logs
+  `URL Scanner refused <url>: 401: …` (or `403`), the link is recorded as `unknown` with that reason in the guide's link
+  check results (`checks.links.url_scans` in `GET /v1/guides/{ns}/{name}`, and in the review queue), and the release goes on
+  as if URL Scanner were off.
+- Rate limited (`429`): the remaining links wait for the next round, a minute later, for up to 5 rounds; any still not
+  submitted end as `unknown` with `429: still rate limited after 5 rounds`.
+- Cloudflare refuses some well-known sites (`400: url is invalid.`); those links are `unknown` too.
 
 ## 6. Import wizard
 
