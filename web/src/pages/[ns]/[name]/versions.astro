@@ -13,28 +13,47 @@ const { tool: t, hasDocs } = loaded;
 const ref = `${t.namespace}/${t.name}`;
 const { versions } = await api<{ versions: Version[] }>(`/tools/${ref}/versions`);
 cacheFor(Astro, 60);
+const scanClass: Record<string, string> = { pass: "ok", warn: "warn", fail: "bad", pending: "info" };
 const scanLabel: Record<string, string> = { pass: "Passed", warn: "Warnings", fail: "Failed", pending: "Pending" };
 ---
 <Base title={`${ref} versions`} description={`Version history of ${ref}.`}>
   <ToolHeader tool={t} active="versions" hasDocs={hasDocs} />
   <div class="table-wrap">
-    <table class="data">
+    <table class="data versions">
       <thead><tr><th scope="col">Version</th><th scope="col">Published</th><th scope="col">Scan</th><th scope="col">Signed</th><th scope="col">Install</th></tr></thead>
       <tbody>
-        {versions.map((v) => (
-          <tr>
-            <td class={v.status === "yanked" || v.status === "removed" ? "struck" : undefined}>
-              {v.version}{v.status === "yanked" && <span class="badge warn">yanked</span>}{v.status === "removed" && <span class="badge bad">removed</span>}
-            </td>
-            <td>{formatDate(v.published_at)}</td>
-            <td>{scanLabel[v.scan_status] ?? v.scan_status}</td>
-            <td>{v.signed ? "Yes" : "No"}</td>
-            <td>{v.status === "removed" ? "—" : <code>ot install {ref}@{v.version}</code>}</td>
-          </tr>
-        ))}
+        {versions.map((v) => {
+          const gone = v.status === "yanked" || v.status === "removed";
+          const latest = v.version === t.latest_version && !gone;
+          return (
+            <tr class:list={{ latest, gone }}>
+              <td>
+                <code class:list={{ struck: gone }}>{v.version}</code>
+                {latest && <span class="badge info">latest</span>}
+                {v.status === "yanked" && <span class="badge warn">yanked</span>}
+                {v.status === "removed" && <span class="badge bad">removed</span>}
+              </td>
+              <td>{formatDate(v.published_at)}</td>
+              <td><span class={`badge ${scanClass[v.scan_status] ?? ""}`}>{scanLabel[v.scan_status] ?? v.scan_status}</span></td>
+              <td>{v.signed ? <span class="ok">✓ yes</span> : <span class="muted">no</span>}</td>
+              <td>{v.status === "removed" ? <span class="faint">—</span> : <span class="inst"><code>ot install {ref}@{v.version}</code><button class="btn btn-sm copy" type="button" data-copy={`ot install ${ref}@${v.version}`} aria-label={`Copy install command for ${v.version}`}><span class="label">Copy</span></button></span>}</td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   </div>
   <VersionActions client:idle refName={ref} versions={versions.map((v) => ({ version: v.version, status: v.status }))} />
   <p class="small muted">Yanked versions stay installable by exact version so existing scripts keep working; they are hidden from search and <code>@latest</code>.</p>
 </Base>
+
+<style>
+  .versions td { vertical-align: middle; }
+  .versions td:first-child { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .latest { background: rgb(var(--accent-rgb) / 5%); }
+  .gone { color: var(--text-faint); }
+  .ok { color: var(--ok); font-weight: 600; }
+  .inst { display: inline-flex; gap: 8px; align-items: center; }
+  .inst .copy { opacity: 0; transition: opacity var(--dur-1); }
+  tr:hover .inst .copy, .inst .copy:focus-visible, .inst .copy[data-state="copied"] { opacity: 1; }
+</style>

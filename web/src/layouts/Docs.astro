@@ -1,12 +1,15 @@
 ---
 // Layout for the Markdown pages under /docs.
 import Base from "./Base.astro";
+import SideNav from "../components/SideNav.astro";
+import CopyCode from "../components/CopyCode.astro";
 
 interface Props {
   frontmatter: { title: string; description?: string };
+  headings?: { depth: number; slug: string; text: string }[];
 }
-const { frontmatter } = Astro.props;
-const pages = [
+const { frontmatter, headings = [] } = Astro.props;
+const pages: [string, string][] = [
   ["/docs", "Overview"],
   ["/docs/getting-started", "Getting started"],
   ["/docs/cli", "CLI reference"],
@@ -22,23 +25,22 @@ Astro.response.headers.set("Cache-Control", "public, max-age=300, s-maxage=3600"
 ---
 <Base title={frontmatter.title} description={frontmatter.description}>
   <div class="docs">
-    <nav aria-label="Documentation" class="small">
-      <ul class="list-plain">
-        {pages.map(([href, label]) => <li><a href={href} aria-current={path === href ? "page" : undefined}>{label}</a></li>)}
-      </ul>
-    </nav>
-    <article class="prose">
+    <SideNav label="Documentation" pages={pages} current={path} headings={headings} />
+    <article class="prose doc-body">
+      <p class="eyebrow">Docs</p>
       <h1>{frontmatter.title}</h1>
+      {frontmatter.description && <p class="lead">{frontmatter.description}</p>}
       <slot />
     </article>
   </div>
+  <CopyCode />
 </Base>
 
 <style>
-  .docs { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 32px; align-items: start; }
-  @media (max-width: 860px) { .docs { grid-template-columns: minmax(0, 1fr); } }
-  nav { position: sticky; top: 12px; }
-  nav a { display: block; padding: 4px 8px; border-radius: var(--radius-sm); text-decoration: none; color: var(--text); }
-  nav a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-  article { max-width: 760px; }
+  .docs { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 48px; align-items: start; }
+  @media (max-width: 860px) { .docs { grid-template-columns: minmax(0, 1fr); gap: 24px; } }
+  .doc-body { max-width: 760px; }
+  .doc-body .eyebrow { margin: 0; }
+  .doc-body h1 { margin-top: 0.2em; }
+  .doc-body .lead { margin-top: 0; margin-bottom: 1.6em; }
 </style>

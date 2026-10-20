@@ -1,26 +1,13 @@
 ---
+// A one-line command with a copy button. The click handler lives in Base.astro (one listener for every copy button).
 interface Props {
   command: string;
   label?: string;
+  class?: string;
 }
-const { command, label = "Command" } = Astro.props;
+const { command, label = "Command", class: cls } = Astro.props;
 ---
-<div class="cmd" role="group" aria-label={label}>
+<div class:list={["cmd", cls]} role="group" aria-label={label}>
   <code>{command}</code>
-  <button class="btn copy" type="button" data-copy={command}>Copy</button>
+  <button class="btn copy" type="button" data-copy={command} aria-label={`Copy: ${command}`}><span class="label">Copy</span></button>
 </div>
-
-<script>
-  // One listener for every copy button on the page (and in rendered guide code blocks).
-  document.addEventListener("click", async (e) => {
-    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-copy]");
-    if (!btn) return;
-    try {
-      await navigator.clipboard.writeText(btn.dataset.copy ?? "");
-      btn.textContent = "Copied";
-    } catch {
-      btn.textContent = "Select and copy";
-    }
-    setTimeout(() => (btn.textContent = "Copy"), 1500);
-  });
-</script>

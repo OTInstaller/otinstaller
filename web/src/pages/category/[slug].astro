@@ -1,6 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import Results from "../../components/Results.astro";
+import PageHead from "../../components/PageHead.astro";
 import { api, type Types } from "../../lib/api";
 import { categoryLabel } from "../../lib/format";
 import { cacheFor, searchFrom } from "../../lib/page";
@@ -13,6 +14,6 @@ const label = categoryLabel(slug);
 cacheFor(Astro, 600);
 ---
 <Base title={`${label} OSINT tools`} description={`OSINT tools in the ${label} category.`}>
-  <h1>{label}</h1>
+  <PageHead eyebrow="Category" title={label} />
   <Results result={result} types={types} fixed={["category"]} />
 </Base>

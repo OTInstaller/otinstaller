@@ -1,6 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import Results from "../../components/Results.astro";
+import PageHead from "../../components/PageHead.astro";
 import { api, type Types } from "../../lib/api";
 import { inputLabel } from "../../lib/format";
 import { cacheFor, searchFrom } from "../../lib/page";
@@ -13,7 +14,8 @@ const label = inputLabel(type);
 cacheFor(Astro, 600);
 ---
 <Base title={`${label} OSINT tools`} description={`OSINT tools that take a ${label.toLowerCase()} as input, ranked by how well they work.`}>
-  <h1>{label} OSINT tools</h1>
-  <p class="muted">Tools that take a {label.toLowerCase()} and what they find. <a href={`/guides?input=${type}`}>Guides about {label.toLowerCase()} investigations</a>.</p>
+  <PageHead eyebrow="I have a…" title={`${label} OSINT tools`}>
+    <p class="muted">Tools that take a {label.toLowerCase()} and what they find. <a href={`/guides?input=${type}`}>Guides about {label.toLowerCase()} investigations</a>.</p>
+  </PageHead>
   <Results result={result} types={types} fixed={["input"]} />
 </Base>

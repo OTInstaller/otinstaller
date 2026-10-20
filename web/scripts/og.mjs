@@ -1,0 +1,41 @@
+// Renders public/og.png (1200x630) from an inline SVG. Run once with `npm run og` after changing the design.
+// Text is rendered with the fonts installed on the machine that runs it, so the committed PNG is the artifact of record.
+import { writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import sharp from "sharp";
+
+const out = fileURLToPath(new URL("../public/og.png", import.meta.url));
+const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <radialGradient id="g1" cx="15%" cy="0%" r="70%"><stop offset="0" stop-color="#5fb4ff" stop-opacity="0.45"/><stop offset="1" stop-color="#0b0f17" stop-opacity="0"/></radialGradient>
+    <radialGradient id="g2" cx="95%" cy="100%" r="60%"><stop offset="0" stop-color="#4ade80" stop-opacity="0.25"/><stop offset="1" stop-color="#0b0f17" stop-opacity="0"/></radialGradient>
+    <pattern id="dots" width="26" height="26" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#94a3b8" fill-opacity="0.16"/></pattern>
+    <linearGradient id="line" x1="0" x2="1"><stop offset="0" stop-color="#5fb4ff"/><stop offset="1" stop-color="#4ade80"/></linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="#0b0f17"/>
+  <rect width="1200" height="630" fill="url(#dots)"/>
+  <rect width="1200" height="630" fill="url(#g1)"/>
+  <rect width="1200" height="630" fill="url(#g2)"/>
+  <g transform="translate(72 64)">
+    <rect width="56" height="56" rx="14" fill="#10243d"/>
+    <circle cx="24" cy="24" r="12" fill="none" stroke="#5fb4ff" stroke-width="4.4"/>
+    <path d="M33.5 33.5l10.5 10.5" stroke="#5fb4ff" stroke-width="4.8" stroke-linecap="round"/>
+    <path d="M19.8 19.8l4.4 4.2-4.4 4.2" fill="none" stroke="#e6edf6" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="74" y="40" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="30" font-weight="700" fill="#e6edf6" letter-spacing="-0.5">OTInstaller</text>
+  </g>
+  <text x="72" y="268" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="68" font-weight="800" fill="#ffffff" letter-spacing="-2.5">Find, install and run</text>
+  <text x="72" y="348" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="68" font-weight="800" fill="#ffffff" letter-spacing="-2.5">OSINT tools <tspan fill="#5fb4ff">with one command.</tspan></text>
+  <text x="72" y="410" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="27" fill="#a3b1c2">Pinned, signed, scanned and smoke-tested. Runs in a locked-down container on your machine.</text>
+  <g transform="translate(72 468)">
+    <rect width="760" height="86" rx="16" fill="#070b12" stroke="#2f3b4f"/>
+    <text x="28" y="53" font-family="JetBrains Mono, Cascadia Mono, Consolas, Menlo, monospace" font-size="27" fill="#7dd3fc">$</text>
+    <text x="58" y="53" font-family="JetBrains Mono, Cascadia Mono, Consolas, Menlo, monospace" font-size="27" fill="#e6edf6">curl -fsSL https://get.otinstaller.com/ot | sh</text>
+  </g>
+  <rect x="72" y="586" width="1056" height="4" rx="2" fill="url(#line)" opacity="0.8"/>
+  <text x="1128" y="102" text-anchor="end" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="22" fill="#7a8799">otinstaller.com · by OSINTverse</text>
+</svg>`;
+
+await sharp(Buffer.from(svg)).png({ compressionLevel: 9 }).toFile(out);
+await writeFile(fileURLToPath(new URL("./og.svg", import.meta.url)), svg.trim() + "\n");
+console.log(`wrote ${out}`);

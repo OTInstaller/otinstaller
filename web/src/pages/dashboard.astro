@@ -1,11 +1,12 @@
 ---
 import Base from "../layouts/Base.astro";
 import Dashboard from "../islands/Dashboard";
+import PageHead from "../components/PageHead.astro";
 
 // Signed-in data is loaded in the browser with the API session cookie, so this page is never cached.
 Astro.response.headers.set("Cache-Control", "private, no-store");
 ---
 <Base title="Dashboard" noindex>
-  <h1>Dashboard</h1>
+  <PageHead eyebrow="Account" title="Dashboard" />
   <Dashboard client:load back={`${Astro.site}dashboard`} />
 </Base>

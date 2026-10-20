@@ -1,0 +1,28 @@
+---
+// Adds a copy button to rendered code blocks (guides, tool docs, README, site docs). Blocks that run `ot`
+// are copied without their `$ ` prompts. The click handler is the shared one in Base.astro.
+interface Props {
+  /** Only code blocks that start with an `ot` command (as on tool pages). Default: every block. */
+  onlyOt?: boolean;
+}
+const { onlyOt = false } = Astro.props;
+---
+<span class="copy-code-marker" data-only-ot={onlyOt ? "1" : undefined} hidden></span>
+
+<script>
+  const marker = document.querySelector<HTMLElement>(".copy-code-marker");
+  const onlyOt = marker?.dataset.onlyOt === "1";
+  for (const code of document.querySelectorAll<HTMLElement>(".prose pre > code")) {
+    if (code.parentElement!.querySelector(".copy-code")) continue;
+    const text = code.textContent ?? "";
+    const isOt = /^\s*(\$\s*)?ot\s/m.test(text);
+    if (onlyOt && !isOt) continue;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn copy-code";
+    btn.innerHTML = '<span class="label">Copy</span>';
+    btn.setAttribute("aria-label", "Copy code");
+    btn.dataset.copy = (isOt ? text.replace(/^\s*\$\s*/gm, "") : text).trim();
+    code.parentElement!.prepend(btn);
+  }
+</script>

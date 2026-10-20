@@ -18,6 +18,7 @@ const title: Record<string, string> = {
   links: "Links", pii: "Personal data",
 };
 const resultClass = { pass: "ok", warn: "warn", fail: "bad" } as const;
+const resultLabel = { pass: "Passed", warn: "Warnings", fail: "Failed" } as const;
 function describe(kind: string, s: any): string {
   if (!s) return "";
   switch (kind) {
@@ -37,30 +38,67 @@ function describe(kind: string, s: any): string {
   {!scans
     ? <p class="notice">No version {version} of {ref}.</p>
     : (
-      <>
-        <p>Results for version <strong>{scans.version}</strong>. {scans.signed
-          ? <>Signed with the identity <code>{scans.signer_identity}</code> ({scans.signer_issuer}); <code>ot</code> checks this signature on every install.</>
-          : "This version is not signed, so ot installs it after a warning."}</p>
+      <div class="sec">
+        <section class:list={["cert", scans.signed ? "signed" : "unsigned"]} aria-labelledby="sig">
+          <div class="cert-head">
+            <span class="seal" aria-hidden="true">{scans.signed ? "✓" : "!"}</span>
+            <div>
+              <h2 id="sig">{scans.signed ? "Signed release" : "Unsigned release"} <span class="faint">v{scans.version}</span></h2>
+              <p class="small muted">{scans.signed
+                ? <><code>ot</code> checks this signature against the identity below on every install and refuses a mismatch.</>
+                : <>This version is not signed, so <code>ot</code> installs it after a warning.</>}</p>
+            </div>
+          </div>
+          {scans.signed && (
+            <dl class="cert-body">
+              <dt>Identity</dt><dd><code>{scans.signer_identity}</code></dd>
+              <dt>Issuer</dt><dd><code>{scans.signer_issuer}</code></dd>
+            </dl>
+          )}
+        </section>
         {scans.scans.length === 0
           ? <p class="notice">No scan results recorded for this version.</p>
           : (
-            <div class="table-wrap">
-              <table class="data">
-                <thead><tr><th scope="col">Check</th><th scope="col">Result</th><th scope="col">Details</th><th scope="col">Ran</th></tr></thead>
-                <tbody>
-                  {scans.scans.map((s) => (
-                    <tr>
-                      <th scope="row">{title[s.kind] ?? s.kind}</th>
-                      <td><span class={`badge ${resultClass[s.result]}`}>{s.result}</span></td>
-                      <td>{describe(s.kind, s.summary)}</td>
-                      <td>{formatDate(s.ran_at)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ol class="checks stagger" aria-label="Checks">
+              {scans.scans.map((s) => (
+                <li class:list={["check reveal", resultClass[s.result]]}>
+                  <span class="rail" aria-hidden="true"></span>
+                  <div class="check-main">
+                    <h3>{title[s.kind] ?? s.kind}</h3>
+                    <p class="small muted">{describe(s.kind, s.summary)}</p>
+                  </div>
+                  <div class="check-side">
+                    <span class={`badge ${resultClass[s.result]}`}>{resultLabel[s.result]}</span>
+                    <span class="small faint">{formatDate(s.ran_at)}</span>
+                  </div>
+                </li>
+              ))}
+            </ol>
           )}
-      </>
+      </div>
     )}
-  <p class="small muted">How releases are checked: <a href="/docs/security">security model</a>. Found a problem? Email <a href="mailto:security@otinstaller.com">security@otinstaller.com</a>.</p>
+  <p class="small muted foot">How releases are checked: <a href="/docs/security">security model</a>. Found a problem? Email <a href="mailto:security@otinstaller.com">security@otinstaller.com</a>.</p>
 </Base>
+
+<style>
+  .sec { display: grid; gap: 18px; max-width: 820px; }
+  .cert { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-raised); overflow: hidden; }
+  .cert-head { display: flex; gap: 16px; align-items: center; padding: 18px; }
+  .cert h2 { margin: 0; font-size: var(--fs-3); }
+  .cert p { margin: 4px 0 0; }
+  .seal { display: grid; place-items: center; flex: none; width: 46px; height: 46px; border-radius: 50%; font-weight: 800; font-size: 1.3rem; }
+  .signed .seal { background: var(--ok-soft); color: var(--ok); box-shadow: 0 0 0 6px rgb(var(--ok-rgb) / 12%), 0 0 24px -4px rgb(var(--ok-rgb) / 60%); }
+  .unsigned .seal { background: var(--warn-soft); color: var(--warn); }
+  .cert-body { margin: 0; padding: 14px 18px; border-top: 1px dashed var(--border); background: var(--code-bg); color: var(--code-text); display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: var(--fs-1); }
+  .cert-body dt { color: var(--code-muted); font-family: var(--font-mono); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; align-self: center; }
+  .cert-body dd { margin: 0; overflow-wrap: anywhere; }
+  .cert-body code { color: var(--code-accent); }
+  .checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .check { display: grid; grid-template-columns: 4px 1fr auto; gap: 16px; align-items: center; padding: 14px 16px 14px 0; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-raised); overflow: hidden; }
+  .rail { height: 100%; min-height: 48px; border-radius: 0 4px 4px 0; background: var(--border-strong); }
+  .check.ok .rail { background: var(--ok); } .check.warn .rail { background: var(--warn); } .check.bad .rail { background: var(--bad); }
+  .check h3 { margin: 0; font-size: var(--fs-2); }
+  .check p { margin: 2px 0 0; }
+  .check-side { display: grid; justify-items: end; gap: 4px; }
+  .foot { margin-top: 24px; }
+</style>

@@ -19,35 +19,49 @@ const next = result.next_cursor ? `/guides?${new URLSearchParams({ ...Object.fro
 cacheFor(Astro, 300);
 ---
 <Base title="OSINT investigation guides" description="Step-by-step investigation playbooks and references that use registry tools.">
-  <h1>Guides</h1>
-  <p class="muted">Investigation playbooks and references, versioned like tools. Read them here or in a terminal with <code>ot guide read</code>.</p>
-  <form method="get" action="/guides" role="search" class="row gsearch">
-    <label class="sr-only" for="gq">Search guides</label>
-    <input id="gq" type="search" name="q" value={current("q") ?? ""} placeholder="Search guides" />
-    <button class="btn" type="submit">Search</button>
-  </form>
+  <header class="page-head fade-in">
+    <p class="eyebrow">Playbooks, versioned like tools</p>
+    <h1>Guides</h1>
+    <p class="lead">Investigation playbooks and references. Read them here, or in a terminal with <code>ot guide read</code>; install everything one uses with <code>ot guide tools</code>.</p>
+    <form method="get" action="/guides" role="search" class="gsearch">
+      <label class="sr-only" for="gq">Search guides</label>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
+      <input id="gq" type="search" name="q" value={current("q") ?? ""} placeholder="Search guides" />
+      <button class="btn btn-sm" type="submit">Search</button>
+    </form>
+  </header>
   <div class="filters">
     {facets.map((f) => (
       <div class="row facet" role="group" aria-label={f.label}>
-        <span class="small muted">{f.label}:</span>
+        <span class="small muted fl">{f.label}</span>
         {f.values.map((v) => <a class="chip" href={withParam(url, f.key, current(f.key) === v ? null : v)} aria-current={current(f.key) === v ? "page" : undefined}>{f.name(v)}</a>)}
       </div>
     ))}
     <div class="row facet" role="group" aria-label="Sort">
-      <span class="small muted">Sort:</span>
-      {sorts.map(([k, label]) => <a class="chip" href={withParam(url, "sort", k)} aria-current={(current("sort") ?? "relevance") === k ? "page" : undefined}>{label}</a>)}
+      <span class="small muted fl">Sort</span>
+      <div class="segmented">{sorts.map(([k, label]) => <a href={withParam(url, "sort", k)} aria-current={(current("sort") ?? "relevance") === k ? "page" : undefined}>{label}</a>)}</div>
     </div>
   </div>
   {result.results.length === 0
     ? <p class="notice">No guides match these filters yet.</p>
-    : <div class="grid">{result.results.map((g) => <ToolCard tool={g} level={2} />)}</div>}
-  {next && <p><a class="btn" href={next} rel="next">More guides</a></p>}
-  <p class="small muted">Write one: <code>ot init --guide</code> scaffolds a guide repository. <a href="/docs/guides">How guides are published</a>.</p>
+    : <div class="grid stagger">{result.results.map((g) => <ToolCard tool={g} level={2} />)}</div>}
+  {next && <p class="more"><a class="btn" href={next} rel="next">More guides</a></p>}
+  <p class="small muted write">Write one: <code>ot init --guide</code> scaffolds a guide repository. <a href="/docs/guides">How guides are published</a>.</p>
 </Base>
 
 <style>
-  .gsearch { margin: 12px 0; }
-  .gsearch input { flex: 1 1 260px; }
-  .filters { margin: 8px 0 20px; display: grid; gap: 8px; }
+  .page-head { margin-bottom: 20px; }
+  .page-head .eyebrow { margin: 0; }
+  .page-head h1 { margin: 6px 0 8px; }
+  .gsearch { display: flex; align-items: center; gap: 8px; max-width: 520px; padding: 6px 6px 6px 14px; border: 1px solid var(--border-strong); border-radius: 14px; background: var(--bg-raised); margin-top: 16px; transition: border-color var(--dur-1), box-shadow var(--dur-2); }
+  .gsearch:focus-within { border-color: var(--accent); box-shadow: var(--ring); }
+  .gsearch svg { width: 18px; height: 18px; color: var(--text-faint); flex: none; }
+  .gsearch input { flex: 1; border: 0; background: transparent; padding: 8px 0; }
+  .gsearch input:focus-visible { box-shadow: none; }
+  .filters { margin: 8px 0 24px; display: grid; gap: 10px; }
   .facet { gap: 6px; }
+  .fl { min-width: 92px; }
+  .filters .chip { font-size: var(--fs-0); padding: 3px 10px; }
+  .more { margin-top: 24px; text-align: center; }
+  .write { margin-top: 28px; }
 </style>

@@ -1,0 +1,108 @@
+---
+// The hero demo: a terminal that types an `ot run` and streams its result. The server renders the finished
+// frame, so bots, readers without JavaScript and people who prefer reduced motion see the full output.
+---
+<figure class="term" data-term aria-label="Example: running an OSINT tool with ot">
+  <figcaption class="term-bar">
+    <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span class="title">ot — zsh</span>
+  </figcaption>
+  <pre class="term-body" aria-live="off"><code><span class="line prompt"><span class="ps">$</span> <span class="typed" data-typed>ot run dheeraj/holehe-lite --email ada@example.com</span></span>
+<span class="line ok" data-step><b>✓</b> signed by  github.com/dheeraj/holehe-lite <span class="dim">· verified</span></span>
+<span class="line ok" data-step><b>✓</b> scans      pass <span class="dim">· 0 critical · smoke test ok</span></span>
+<span class="line dim" data-step>→ read-only container · no host files · no shell</span>
+<span class="line hit" data-step>  github.com        <span class="tag">found</span></span>
+<span class="line hit" data-step>  gitlab.com        <span class="tag">found</span></span>
+<span class="line hit" data-step>  spotify.com       <span class="tag">found</span></span>
+<span class="line miss" data-step>  twitter.com       <span class="tag">not found</span></span>
+<span class="line ok" data-step><b>✓</b> 4 sites in 1.8 s <span class="dim">· results.json written</span></span></code></pre>
+</figure>
+
+<script>
+  const term = document.querySelector<HTMLElement>("[data-term]");
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (term && !reduce) {
+    const typed = term.querySelector<HTMLElement>("[data-typed]")!;
+    const steps = [...term.querySelectorAll<HTMLElement>("[data-step]")];
+    const command = typed.textContent ?? "";
+    let timer: number | undefined;
+    let running = false;
+    let visible = false;
+
+    const wait = (ms: number) => new Promise<void>((r) => (timer = window.setTimeout(r, ms)));
+    const stop = () => {
+      running = false;
+      if (timer) clearTimeout(timer);
+      term.removeAttribute("data-anim");
+      typed.textContent = command;
+      typed.classList.remove("typing");
+      for (const s of steps) s.classList.add("show");
+    };
+    const loop = async () => {
+      running = true;
+      while (running) {
+        term.setAttribute("data-anim", "");
+        for (const s of steps) s.classList.remove("show");
+        typed.textContent = "";
+        typed.classList.add("typing");
+        await wait(500);
+        for (const ch of command) {
+          if (!running) return;
+          typed.textContent += ch;
+          await wait(ch === " " ? 70 : 26 + Math.random() * 38);
+        }
+        await wait(380);
+        typed.classList.remove("typing");
+        const gaps = [320, 260, 420, 180, 160, 170, 190, 360];
+        for (let i = 0; i < steps.length; i++) {
+          if (!running) return;
+          await wait(gaps[i] ?? 200);
+          steps[i]!.classList.add("show");
+        }
+        await wait(4200);
+      }
+    };
+    const update = () => {
+      const shouldRun = visible && !document.hidden;
+      if (shouldRun && !running) loop();
+      if (!shouldRun && running) stop();
+    };
+    new IntersectionObserver(
+      (es) => {
+        visible = es.some((e) => e.isIntersecting);
+        update();
+      },
+      { threshold: 0.3 },
+    ).observe(term);
+    document.addEventListener("visibilitychange", update);
+  }
+</script>
+
+<style>
+  .term {
+    margin: 0; border-radius: var(--radius-lg); overflow: hidden; background: var(--code-bg); color: var(--code-text);
+    border: 1px solid rgb(148 163 184 / 20%); box-shadow: 0 30px 60px -30px rgb(0 0 0 / 60%), 0 0 0 1px rgb(var(--accent-rgb) / 8%), inset 0 1px 0 rgb(255 255 255 / 6%);
+    font-family: var(--font-mono); font-size: clamp(0.7rem, 0.55rem + 0.5vw, 0.8rem);
+  }
+  .term-bar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid rgb(148 163 184 / 14%); background: rgb(255 255 255 / 3%); color: var(--code-muted); font-size: 0.74rem; }
+  .dots { display: flex; gap: 6px; }
+  .dots i { width: 11px; height: 11px; border-radius: 50%; background: #ff5f57; }
+  .dots i:nth-child(2) { background: #febc2e; }
+  .dots i:nth-child(3) { background: #28c840; }
+  .title { flex: 1; text-align: center; padding-right: 45px; }
+  .term-body { margin: 0; padding: 16px 18px 18px; line-height: 1.75; min-height: 14.4em; white-space: pre; overflow-x: auto; font-size: inherit; tab-size: 2; }
+  .line { display: block; }
+  .ps { color: var(--code-accent); }
+  .typed { color: #fff; }
+  .typed.typing::after { content: ""; display: inline-block; width: 0.55em; height: 1.05em; margin-left: 2px; vertical-align: -0.18em; background: var(--code-accent); animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .ok b { color: var(--code-ok); font-weight: 700; }
+  .dim, .line .dim { color: var(--code-muted); }
+  .hit .tag { color: var(--code-ok); }
+  .hit .tag::before, .miss .tag::before { content: "● "; font-size: 0.7em; vertical-align: 0.1em; }
+  .miss { color: var(--code-muted); }
+  .miss .tag { color: var(--code-muted); }
+  /* While animating, hidden steps stay in flow (no layout shift) and fade in when shown. */
+  .term[data-anim] [data-step] { opacity: 0; translate: -6px 0; transition: opacity 260ms var(--ease-out), translate 260ms var(--ease-out); }
+  .term[data-anim] [data-step].show { opacity: 1; translate: 0 0; }
+</style>

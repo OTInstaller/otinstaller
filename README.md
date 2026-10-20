@@ -14,6 +14,7 @@ To connect real GitHub and GitLab apps, follow [docs/publishing-setup.md](docs/p
 | `spec/` | Manifest JSON Schema (`schema/v1.json`), example manifests (3 valid, 24 invalid with expected error codes) and the release workflow templates (`templates/`) that `ot init` and the import wizard both use |
 | `cli/` | The `ot` CLI (Go): `init`, `validate`, `search`, `info`, `install`, `run`, `list`, `uninstall`, `keys`, `doctor`, `login`, `logout`, `whoami`, `import`, `sync` |
 | `api/` | Registry API (Cloudflare Workers + Hono + D1 + Queues): search and read endpoints, GitHub/GitLab sign-in and device flow, API tokens, GitHub App webhooks, publish validation, the import wizard |
+| `web/` | The website (Astro on Cloudflare, Preact islands): home, search, tool and guide pages, docs, policies, the import wizard, dashboard and admin console. `npm run dev` for a dev server, `npm run og` to re-render the social preview image |
 | `ops/` | The scanner (`scanner/scan.py` + its Docker image) and the GitHub Actions workflow for the registry-ops repo |
 | `examples/dns-lookup/` | A tiny real tool used by the end-to-end test |
 | `examples/tldextract/`, `examples/cosign/` | Real packages (a PyPI wheel and Sigstore's signed image) used by `scripts/e2e-real.sh` |

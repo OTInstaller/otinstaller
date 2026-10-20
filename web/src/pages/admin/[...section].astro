@@ -1,6 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import AdminConsole from "../../islands/AdminConsole";
+import PageHead from "../../components/PageHead.astro";
 
 // /admin, /admin/reports and /admin/transfers (the addresses reviewer emails link to) open the console on that tab.
 const section = Astro.params.section ?? "";
@@ -9,6 +10,6 @@ if (!tab) return Astro.rewrite("/404");
 Astro.response.headers.set("Cache-Control", "private, no-store");
 ---
 <Base title="Admin" noindex>
-  <h1>Admin</h1>
+  <PageHead eyebrow="Reviewers" title="Admin console" />
   <AdminConsole client:load back={`${Astro.site}admin`} initialTab={tab} />
 </Base>

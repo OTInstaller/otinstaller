@@ -1,10 +1,11 @@
 ---
 import Base from "../../layouts/Base.astro";
 import Accounts from "../../islands/Accounts";
+import PageHead from "../../components/PageHead.astro";
 
 Astro.response.headers.set("Cache-Control", "private, no-store");
 ---
 <Base title="Accounts" noindex>
-  <h1>Accounts and sync</h1>
+  <PageHead eyebrow="Settings" title="Accounts and sync" />
   <Accounts client:load back={`${Astro.site}settings/accounts`} />
 </Base>

@@ -1,5 +1,6 @@
 ---
 // A rendered page with its navigation and table of contents: the guide reader and the tool docs tab.
+import CopyCode from "./CopyCode.astro";
 import type { NavEntry, Page } from "../lib/api";
 
 interface Props {
@@ -11,61 +12,78 @@ interface Props {
 }
 const { page, nav, hrefFor, label } = Astro.props;
 const toc = page.toc.filter((t) => t.depth >= 2);
+const pos = nav.findIndex((n) => n.path === page.path);
 ---
 <div class="three-col reader">
   <nav class="side" aria-label={label}>
+    <p class="eyebrow">Contents</p>
     <ol class="list-plain small">
       {nav.map((n, i) => (
-        <li><a href={hrefFor(n.path)} aria-current={n.path === page.path ? "page" : undefined}><span class="num">{i + 1}.</span> {n.title}</a></li>
+        <li class:list={{ done: i < pos }}><a href={hrefFor(n.path)} aria-current={n.path === page.path ? "page" : undefined}><span class="num">{i + 1}</span> {n.title}</a></li>
       ))}
     </ol>
+    {nav.length > 1 && <p class="small faint progress">Page {page.position} of {page.pages}</p>}
   </nav>
   <article>
     <div class="prose" set:html={page.body} />
-    <nav class="pager row" aria-label="Pages">
-      {page.prev ? <a class="btn" href={hrefFor(page.prev.path)} rel="prev">← {page.prev.title}</a> : <span />}
-      {page.next && <a class="btn" href={hrefFor(page.next.path)} rel="next">{page.next.title} →</a>}
+    <nav class="pager" aria-label="Pages">
+      {page.prev ? <a class="pg prev" href={hrefFor(page.prev.path)} rel="prev"><span class="small muted">← Previous</span><strong>{page.prev.title}</strong></a> : <span />}
+      {page.next && <a class="pg next" href={hrefFor(page.next.path)} rel="next"><span class="small muted">Next →</span><strong>{page.next.title}</strong></a>}
     </nav>
   </article>
   <aside class="toc small" aria-label="On this page">
     {toc.length > 0 && (
       <>
-        <p class="muted"><strong>On this page</strong></p>
-        <ul class="list-plain">{toc.map((t) => <li class={`d${t.depth}`}><a href={`#${t.id}`}>{t.text}</a></li>)}</ul>
+        <p class="eyebrow">On this page</p>
+        <ul class="list-plain" data-toc>{toc.map((t) => <li class={`d${t.depth}`}><a href={`#${t.id}`}>{t.text}</a></li>)}</ul>
       </>
     )}
   </aside>
 </div>
+<CopyCode />
 
 <script>
-  // A copy button on every code block that runs ot, as on tool pages.
-  for (const code of document.querySelectorAll<HTMLElement>(".reader pre > code")) {
-    const text = code.textContent ?? "";
-    if (!/^\s*(\$\s*)?ot\s/m.test(text)) continue;
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "btn copy-code";
-    btn.textContent = "Copy";
-    btn.dataset.copy = text.replace(/^\s*\$\s*/gm, "").trim();
-    code.parentElement!.prepend(btn);
+  const toc = document.querySelector<HTMLElement>(".reader [data-toc]");
+  if (toc) {
+    const links = [...toc.querySelectorAll<HTMLAnchorElement>("a")];
+    const byId = new Map(links.map((a) => [decodeURIComponent(a.hash.slice(1)), a]));
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const en of entries) {
+          if (!en.isIntersecting) continue;
+          for (const a of links) a.removeAttribute("aria-current");
+          byId.get(en.target.id)?.setAttribute("aria-current", "location");
+        }
+      },
+      { rootMargin: "-80px 0px -70% 0px" },
+    );
+    for (const id of byId.keys()) {
+      const el = document.getElementById(id);
+      if (el) io.observe(el);
+    }
   }
-  document.addEventListener("click", async (e) => {
-    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button.copy-code");
-    if (!btn) return;
-    await navigator.clipboard.writeText(btn.dataset.copy ?? "").catch(() => {});
-    btn.textContent = "Copied";
-    setTimeout(() => (btn.textContent = "Copy"), 1500);
-  });
 </script>
 
 <style>
-  .side { position: sticky; top: 12px; }
-  .side a { display: block; padding: 4px 8px; border-radius: var(--radius-sm); text-decoration: none; color: var(--text); }
+  .side, .toc { position: sticky; top: 84px; max-height: calc(100vh - 100px); overflow-y: auto; scrollbar-width: thin; }
+  .eyebrow { margin: 0 0 8px; font-size: 0.7rem; }
+  .side li + li { margin-top: 2px; }
+  .side a { display: flex; gap: 10px; align-items: baseline; padding: 6px 10px; border-radius: var(--radius-sm); text-decoration: none; color: var(--text-muted); transition: background var(--dur-1), color var(--dur-1); }
+  .side a:hover { background: var(--bg-subtle); color: var(--text); }
   .side a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-  .num { color: var(--text-muted); }
-  .toc { position: sticky; top: 12px; }
+  .num { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-faint); min-width: 1.4em; }
+  .done .num { color: var(--ok); }
+  .done .num::before { content: "✓ "; }
+  .progress { margin: 12px 10px 0; }
+  article { max-width: 74ch; }
+  .toc a { display: block; padding: 4px 10px; text-decoration: none; color: var(--text-muted); border-left: 2px solid transparent; transition: color var(--dur-1), border-color var(--dur-1); }
+  .toc a:hover { color: var(--text); }
+  .toc a[aria-current="location"] { color: var(--accent); border-left-color: var(--accent); }
   .toc .d3 { padding-left: 12px; }
-  .pager { justify-content: space-between; margin-top: 32px; border-top: 1px solid var(--border); padding-top: 16px; }
-  :global(.reader pre) { position: relative; }
-  :global(.copy-code) { position: absolute; top: 6px; right: 6px; font-size: 0.78rem; padding: 3px 8px; }
+  .pager { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 40px; border-top: 1px solid var(--border); padding-top: 20px; }
+  .pg { display: grid; gap: 2px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); text-decoration: none; color: var(--text); background: var(--bg-raised); transition: border-color var(--dur-2), translate var(--dur-2) var(--ease-out), box-shadow var(--dur-2); }
+  .pg:hover { border-color: var(--accent); translate: 0 -2px; box-shadow: var(--shadow-2); }
+  .pg.next { text-align: right; }
+  @media (max-width: 600px) { .pager { grid-template-columns: 1fr; } .pg.next { text-align: left; } }
+  @media (max-width: 960px) { .side { position: static; max-height: none; } }
 </style>

@@ -1,6 +1,11 @@
 ---
 import "../styles/global.css";
+import { Font } from "astro:assets";
 import { SITE_URL } from "../lib/api";
+import { THEME_BOOT } from "../lib/theme-boot";
+import Logo from "../components/Logo.astro";
+import ThemeToggle from "../components/ThemeToggle.astro";
+import SearchDialog from "../islands/SearchDialog";
 
 interface Props {
   title: string;
@@ -10,11 +15,12 @@ interface Props {
   /** schema.org JSON-LD for the page. */
   jsonLd?: Record<string, unknown>;
   noindex?: boolean;
+  /** Full-bleed pages (the home page) draw their own sections. */
+  bleed?: boolean;
 }
-const { title, description = "Find, install and run OSINT tools and investigation guides with one command.", canonical, jsonLd, noindex } = Astro.props;
-const fullTitle = title === "OTInstaller Registry" ? title : `${title} · OTInstaller Registry`;
+const { title, description = "Find, install and run OSINT tools and investigation guides with one command.", canonical, jsonLd, noindex, bleed = false } = Astro.props;
+const fullTitle = title === "OTInstaller Registry" ? "OTInstaller — the OSINT tool registry" : `${title} · OTInstaller`;
 const canonicalUrl = `${SITE_URL}${canonical ?? Astro.url.pathname}`;
-const q = Astro.url.searchParams.get("q") ?? "";
 const path = Astro.url.pathname;
 const nav = [
   { href: "/search", label: "Tools" },
@@ -22,74 +28,239 @@ const nav = [
   { href: "/docs", label: "Docs" },
   { href: "/import", label: "Publish" },
 ];
+const isCurrent = (href: string) => path === href || path.startsWith(href + "/") || (href === "/search" && (path.startsWith("/input/") || path.startsWith("/category/")));
 ---
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <script is:inline set:html={THEME_BOOT} />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonicalUrl} />
     {noindex && <meta name="robots" content="noindex" />}
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f8fb" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0f17" />
+    <meta property="og:site_name" content="OTInstaller" />
     <meta property="og:title" content={fullTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonicalUrl} />
     <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:image" content={`${SITE_URL}/og.png`} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="OTInstaller: find, install and run OSINT tools with one command" />
+    <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <Font cssVariable="--font-inter" preload />
+    <Font cssVariable="--font-jbm" preload />
     {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd).replace(/</g, "\\u003c")} />}
   </head>
   <body>
+    <div class="bg" aria-hidden="true"></div>
     <a class="skip" href="#main">Skip to content</a>
-    <header class="site-header">
+    <header class="site-header glass" data-header>
       <div class="wrap bar">
-        <a class="brand" href="/" aria-label="OTInstaller Registry home">
-          <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2.4" /><path d="M16 16l5 5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" /></svg>
-          <span>OTInstaller</span>
+        <a class="brand" href="/" aria-label="OTInstaller home">
+          <span class="mark"><Logo size={22} /></span>
+          <span class="word">OTInstaller</span>
         </a>
-        <form class="search" action="/search" method="get" role="search">
-          <label class="sr-only" for="site-search">Search tools and guides</label>
-          <input id="site-search" type="search" name="q" value={q} placeholder="Search tools, e.g. email, sherlock" autocomplete="off" />
-        </form>
-        <nav aria-label="Main">
+        <nav class="main-nav" aria-label="Main">
           <ul>
-            {nav.map((n) => <li><a href={n.href} aria-current={path.startsWith(n.href) ? "page" : undefined}>{n.label}</a></li>)}
-            <li><a href="/dashboard" aria-current={path.startsWith("/dashboard") ? "page" : undefined}>Dashboard</a></li>
+            {nav.map((n) => <li><a href={n.href} aria-current={isCurrent(n.href) ? "page" : undefined}>{n.label}</a></li>)}
           </ul>
         </nav>
+        <div class="tools">
+          <button class="search-btn" type="button" data-open-search aria-label="Search tools and guides (press / or Ctrl K)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
+            <span class="hint">Search</span>
+            <kbd class="kbd">/</kbd>
+          </button>
+          <ThemeToggle />
+          <a class="btn btn-ghost acct" href="/dashboard" aria-current={path.startsWith("/dashboard") ? "page" : undefined}>Dashboard</a>
+          <details class="menu">
+            <summary aria-label="Menu"><span class="burger" aria-hidden="true"><i></i><i></i><i></i></span></summary>
+            <ul class="list-plain">
+              {nav.map((n) => <li><a href={n.href} aria-current={isCurrent(n.href) ? "page" : undefined}>{n.label}</a></li>)}
+              <li><a href="/dashboard">Dashboard</a></li>
+            </ul>
+          </details>
+        </div>
       </div>
     </header>
     <main id="main">
-      <div class="wrap">
-        <slot />
-      </div>
+      {bleed ? <slot /> : <div class="wrap"><slot /></div>}
     </main>
     <footer class="site-footer">
-      <div class="wrap row small muted">
-        <span>OTInstaller Registry by OSINTverse</span>
-        <a href="/docs">Docs</a>
-        <a href="/docs/cli">CLI reference</a>
-        <a href="/docs/security">Security</a>
-        <a href="/policy/acceptable-use">Acceptable use</a>
-        <a href="/policy/terms">Terms</a>
-        <a href="/policy/privacy">Privacy</a>
-        <a href="/policy/transparency">Transparency</a>
-        <a href="mailto:support@otinstaller.com">Contact</a>
+      <div class="wrap">
+        <div class="foot-grid">
+          <div class="foot-brand">
+            <a class="brand" href="/"><span class="mark"><Logo size={20} /></span><span class="word">OTInstaller</span></a>
+            <p class="small muted">A free, public registry of OSINT tools and investigation guides, and <code>ot</code>, the command that runs them on your own machine.</p>
+            <p class="small muted">By <a href="https://osintverse.com" rel="noopener">OSINTverse</a></p>
+          </div>
+          <div>
+            <h2>Use</h2>
+            <ul class="list-plain small">
+              <li><a href="/search">All tools</a></li>
+              <li><a href="/guides">Guides</a></li>
+              <li><a href="/docs/getting-started">Install ot</a></li>
+              <li><a href="/docs/cli">CLI reference</a></li>
+            </ul>
+          </div>
+          <div>
+            <h2>Publish</h2>
+            <ul class="list-plain small">
+              <li><a href="/import">Import a repository</a></li>
+              <li><a href="/docs/publishing">Publishing</a></li>
+              <li><a href="/docs/manifest">Manifest reference</a></li>
+              <li><a href="/docs/guides">Writing guides</a></li>
+            </ul>
+          </div>
+          <div>
+            <h2>Trust</h2>
+            <ul class="list-plain small">
+              <li><a href="/docs/security">Security model</a></li>
+              <li><a href="/policy/transparency">Transparency</a></li>
+              <li><a href="/policy/takedown">Reports and takedowns</a></li>
+              <li><a href="/policy/acceptable-use">Acceptable use</a></li>
+            </ul>
+          </div>
+          <div>
+            <h2>Company</h2>
+            <ul class="list-plain small">
+              <li><a href="/policy/terms">Terms</a></li>
+              <li><a href="/policy/privacy">Privacy</a></li>
+              <li><a href="mailto:support@otinstaller.com">Contact</a></li>
+              <li><a href="mailto:security@otinstaller.com">Report a vulnerability</a></li>
+            </ul>
+          </div>
+        </div>
+        <div class="foot-bar small muted">
+          <span>© {new Date().getFullYear()} OSINTverse</span>
+          <span class="foot-cmd"><code>curl -fsSL https://get.otinstaller.com/ot | sh</code></span>
+        </div>
       </div>
     </footer>
+    <SearchDialog client:idle />
   </body>
 </html>
 
+<script>
+  // One copy handler for every copy button on the site.
+  document.addEventListener("click", async (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-copy]");
+    if (!btn) return;
+    const label = btn.querySelector(".label") ?? btn;
+    try {
+      await navigator.clipboard.writeText(btn.dataset.copy ?? "");
+      btn.dataset.state = "copied";
+      label.textContent = "Copied";
+    } catch {
+      label.textContent = "Select it";
+    }
+    setTimeout(() => {
+      delete btn.dataset.state;
+      label.textContent = "Copy";
+    }, 1600);
+  });
+
+  // Reveal-on-scroll and count-up. Content is only hidden when the boot script added html.js.
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n));
+  const countUp = (el: HTMLElement) => {
+    const end = Number(el.dataset.count ?? 0);
+    if (!end || reduce) return;
+    const start = performance.now();
+    const dur = 1100;
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = fmt(Math.round(end * eased));
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  };
+  const io = new IntersectionObserver(
+    (entries) => {
+      for (const en of entries) {
+        if (!en.isIntersecting) continue;
+        en.target.classList.add("in");
+        if ((en.target as HTMLElement).dataset.count) countUp(en.target as HTMLElement);
+        io.unobserve(en.target);
+      }
+    },
+    { rootMargin: "0px 0px -8% 0px", threshold: 0.05 },
+  );
+  for (const el of document.querySelectorAll(".reveal, [data-count]")) io.observe(el);
+
+  // Compact header once the page scrolls.
+  const header = document.querySelector<HTMLElement>("[data-header]");
+  const onScroll = () => header?.classList.toggle("scrolled", scrollY > 8);
+  onScroll();
+  addEventListener("scroll", onScroll, { passive: true });
+
+  // Close the mobile menu after navigating or when clicking outside.
+  const menu = document.querySelector<HTMLDetailsElement>("details.menu");
+  document.addEventListener("click", (e) => {
+    if (menu?.open && !menu.contains(e.target as Node)) menu.open = false;
+  });
+</script>
+
 <style>
-  .site-header { border-bottom: 1px solid var(--border); background: var(--bg); }
-  .bar { display: flex; align-items: center; gap: 16px; min-height: 60px; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; }
-  .brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; color: var(--text); text-decoration: none; font-size: 1.05rem; }
-  .search { flex: 1 1 260px; display: flex; }
-  .search input { width: 100%; }
-  nav ul { display: flex; gap: 4px; list-style: none; margin: 0; padding: 0; flex-wrap: wrap; }
-  nav a { display: block; padding: 6px 10px; border-radius: var(--radius-sm); color: var(--text); text-decoration: none; font-size: 0.95rem; }
-  nav a:hover, nav a[aria-current="page"] { background: var(--bg-subtle); color: var(--accent); }
-  .site-footer { border-top: 1px solid var(--border); padding: 20px 0; }
-  .site-footer .row { gap: 18px; }
+  .site-header { position: sticky; top: 0; z-index: 50; border-bottom: 1px solid transparent; transition: border-color var(--dur-2), box-shadow var(--dur-2); }
+  .site-header.scrolled { border-bottom-color: var(--border); box-shadow: 0 8px 30px -20px rgb(0 0 0 / 50%); }
+  .bar { display: flex; align-items: center; gap: 18px; min-height: 64px; transition: min-height var(--dur-2); }
+  .scrolled .bar { min-height: 56px; }
+  .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 760; color: var(--text); text-decoration: none; font-size: 1.05rem; letter-spacing: -0.02em; }
+  .mark { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--bg-inverse); color: var(--accent); box-shadow: 0 6px 16px -8px rgb(var(--accent-rgb) / 70%); transition: rotate var(--dur-3) var(--ease-spring); }
+  :root[data-theme="dark"] .mark, :root:not([data-theme="light"]) .mark { background: var(--accent-soft); }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .mark { background: var(--bg-inverse); } }
+  .brand:hover .mark { rotate: -8deg; }
+  .main-nav ul { display: flex; gap: 2px; list-style: none; margin: 0; padding: 0; }
+  .main-nav a { position: relative; display: block; padding: 8px 12px; border-radius: var(--radius-sm); color: var(--text-muted); text-decoration: none; font-size: var(--fs-1); font-weight: 550; transition: color var(--dur-1), background var(--dur-1); }
+  .main-nav a::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 4px; height: 2px; border-radius: 2px; background: var(--accent); scale: 0 1; transform-origin: left; transition: scale var(--dur-2) var(--ease-out); }
+  .main-nav a:hover { color: var(--text); background: var(--bg-subtle); }
+  .main-nav a[aria-current="page"] { color: var(--text); }
+  .main-nav a[aria-current="page"]::after { scale: 1 1; }
+  .tools { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  .search-btn { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px 0 12px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--bg-raised); color: var(--text-muted); font-size: var(--fs-1); transition: border-color var(--dur-1), color var(--dur-1), box-shadow var(--dur-2); }
+  .search-btn:hover { border-color: var(--accent); color: var(--text); box-shadow: var(--shadow-1); }
+  .search-btn svg { width: 16px; height: 16px; }
+  .search-btn .hint { min-width: 120px; text-align: left; }
+  .acct { font-weight: 550; color: var(--text-muted); }
+  .acct[aria-current="page"] { color: var(--text); }
+  .menu { display: none; position: relative; }
+  .menu summary { list-style: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: var(--radius); cursor: pointer; }
+  .menu summary::-webkit-details-marker { display: none; }
+  .menu summary:hover { background: var(--bg-subtle); }
+  .burger { display: grid; gap: 4px; }
+  .burger i { display: block; width: 18px; height: 2px; border-radius: 2px; background: var(--text); transition: translate var(--dur-2) var(--ease-out), rotate var(--dur-2) var(--ease-out), opacity var(--dur-1); }
+  .menu[open] .burger i:nth-child(1) { translate: 0 6px; rotate: 45deg; }
+  .menu[open] .burger i:nth-child(2) { opacity: 0; }
+  .menu[open] .burger i:nth-child(3) { translate: 0 -6px; rotate: -45deg; }
+  .menu ul { position: absolute; right: 0; top: calc(100% + 8px); min-width: 200px; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-2); transition: opacity var(--dur-2) var(--ease-out), translate var(--dur-2) var(--ease-out), display var(--dur-2) allow-discrete; }
+  .menu:not([open]) ul { display: none; opacity: 0; translate: 0 -6px; }
+  @starting-style { .menu[open] ul { opacity: 0; translate: 0 -6px; } }
+  .menu li + li { margin-top: 2px; }
+  .menu ul a { display: block; padding: 9px 12px; border-radius: var(--radius-sm); text-decoration: none; color: var(--text); font-weight: 550; }
+  .menu ul a:hover, .menu ul a[aria-current="page"] { background: var(--bg-subtle); color: var(--accent); }
+  @media (max-width: 820px) {
+    .main-nav, .acct, .search-btn .hint, .search-btn .kbd { display: none; }
+    .search-btn { padding: 0; width: 38px; justify-content: center; }
+    .menu { display: block; }
+  }
+
+  .site-footer { border-top: 1px solid var(--border); padding: 48px 0 28px; background: var(--bg-subtle); }
+  .foot-grid { display: grid; gap: 28px; grid-template-columns: 1.6fr repeat(4, minmax(0, 1fr)); }
+  .foot-grid h2 { font-size: var(--fs-0); text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-faint); margin: 0 0 12px; font-weight: 650; }
+  .foot-grid li + li { margin-top: 8px; }
+  .foot-grid a { color: var(--text-muted); text-decoration: none; }
+  .foot-grid a:hover { color: var(--accent); }
+  .foot-brand p { max-width: 36ch; }
+  .foot-bar { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; border-top: 1px solid var(--border); margin-top: 36px; padding-top: 18px; }
+  .foot-cmd { min-width: 0; max-width: 100%; overflow-x: auto; }
+  .foot-cmd code { font-size: 0.8rem; white-space: nowrap; }
+  @media (max-width: 900px) { .foot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .foot-brand { grid-column: 1 / -1; } }
 </style>

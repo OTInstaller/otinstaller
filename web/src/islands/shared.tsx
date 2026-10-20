@@ -19,20 +19,35 @@ export function useMe(): Me | null | false {
   return me;
 }
 
+const GitHubIcon = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.9 10.9c.6.1.8-.2.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2a11 11 0 0 1 5.8 0c2.2-1.5 3.2-1.2 3.2-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5z" /></svg>
+);
+const GitLabIcon = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m23.6 9.6-.03-.09-3.2-8.4a.84.84 0 0 0-1.6.1l-2.2 6.7H7.4L5.2 1.2a.84.84 0 0 0-1.6-.1L.4 9.5l-.03.08a6 6 0 0 0 2 6.9l5.5 4.1 2.7 2 1.7 1.3a1.1 1.1 0 0 0 1.4 0l1.7-1.3 2.7-2 5.5-4.2a6 6 0 0 0 2-6.8z" /></svg>
+);
+
 export function SignIn({ back, why }: { back: string; why: string }) {
   return (
-    <div class="card stack">
+    <div class="card stack signin">
       <p>{why}</p>
       <div class="row">
-        <a class="btn btn-primary" href={signInUrl("github", back)}>Sign in with GitHub</a>
-        <a class="btn" href={signInUrl("gitlab", back)}>Sign in with GitLab</a>
+        <a class="btn btn-primary" href={signInUrl("github", back)}><GitHubIcon /> Sign in with GitHub</a>
+        <a class="btn" href={signInUrl("gitlab", back)}><GitLabIcon /> Sign in with GitLab</a>
       </div>
+      <p class="small muted">The registry only reads your public repositories and opens pull requests you ask for.</p>
     </div>
   );
 }
 
 export function Loading({ what }: { what: string }) {
-  return <p class="muted" role="status">Loading {what}…</p>;
+  return (
+    <div class="stack" role="status" aria-label={`Loading ${what}`}>
+      <span class="skeleton" />
+      <span class="skeleton" />
+      <span class="skeleton" />
+      <span class="sr-only">Loading {what}…</span>
+    </div>
+  );
 }
 
 export function ErrorNote({ error }: { error: unknown }) {

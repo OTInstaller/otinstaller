@@ -15,46 +15,105 @@ const { result, types, fixed = [] } = Astro.props;
 const url = Astro.url;
 const current = (k: string) => url.searchParams.get(k);
 const facets = [
-  { key: "input", label: "Input", values: types.inputs, name: inputLabel },
-  { key: "output", label: "Output", values: types.outputs, name: (v: string) => v.replace(/_/g, " ") },
+  { key: "input", label: "Takes", values: types.inputs, name: inputLabel },
+  { key: "output", label: "Finds", values: types.outputs, name: (v: string) => v.replace(/_/g, " ") },
   { key: "category", label: "Category", values: types.categories, name: categoryLabel },
   { key: "runtime", label: "Runtime", values: ["docker", "pipx"], name: (v: string) => (v === "docker" ? "Docker" : "pipx") },
 ].filter((f) => !fixed.includes(f.key));
 const sorts = [["relevance", "Best match"], ["installs", "Most installed"], ["stars", "Most starred"], ["updated", "Recently updated"]];
 const next = result.next_cursor ? `${url.pathname}?${new URLSearchParams({ ...Object.fromEntries(url.searchParams), cursor: result.next_cursor })}` : null;
+const activeFilters = facets.filter((f) => current(f.key)).map((f) => ({ key: f.key, label: f.name(current(f.key)!) }));
+if (current("no_keys")) activeFilters.push({ key: "no_keys", label: "No API key needed" });
+const clearAll = `${url.pathname}${current("q") ? `?q=${encodeURIComponent(current("q")!)}` : ""}`;
+const suggestions = ["email", "username", "domain", "phone", "image"];
 ---
 <div class="results">
-  <aside class="facets" aria-label="Filters">
-    {facets.map((f) => (
-      <details open={!!current(f.key) || f.key === "input"}>
-        <summary>{f.label}</summary>
-        <ul class="list-plain">
-          {f.values.map((v) => (
-            <li><a href={withParam(url, f.key, current(f.key) === v ? null : v)} aria-current={current(f.key) === v ? "page" : undefined}>{f.name(v)}</a></li>
-          ))}
-        </ul>
-      </details>
-    ))}
-    <p><a href={withParam(url, "no_keys", current("no_keys") ? null : "1")} aria-current={current("no_keys") ? "page" : undefined}>No API key needed</a></p>
-  </aside>
-  <div>
-    <div class="row sorts" aria-label="Sort">
-      {sorts.map(([k, label]) => <a class="chip" href={withParam(url, "sort", k)} aria-current={(current("sort") ?? "relevance") === k ? "page" : undefined}>{label}</a>)}
+  <details class="facets-drawer" open>
+    <summary class="btn facets-toggle">Filters{activeFilters.length > 0 && <span class="badge info plain">{activeFilters.length}</span>}</summary>
+    <aside class="facets" aria-label="Filters">
+      <a class:list={["toggle", { on: !!current("no_keys") }]} href={withParam(url, "no_keys", current("no_keys") ? null : "1")} aria-pressed={!!current("no_keys")}>
+        <span class="sw" aria-hidden="true"></span> No API key needed
+      </a>
+      {facets.map((f) => (
+        <details class="facet" open={!!current(f.key) || f.key === "input"}>
+          <summary>{f.label}{current(f.key) && <span class="badge info plain">1</span>}</summary>
+          <ul class="list-plain">
+            {f.values.map((v) => (
+              <li><a href={withParam(url, f.key, current(f.key) === v ? null : v)} aria-current={current(f.key) === v ? "page" : undefined}>{f.name(v)}</a></li>
+            ))}
+          </ul>
+        </details>
+      ))}
+    </aside>
+  </details>
+  <div class="list">
+    <div class="toolbar">
+      <div class="segmented" aria-label="Sort">
+        {sorts.map(([k, label]) => <a href={withParam(url, "sort", k)} aria-current={(current("sort") ?? "relevance") === k ? "page" : undefined}>{label}</a>)}
+      </div>
+      {activeFilters.length > 0 && (
+        <div class="row active small">
+          {activeFilters.map((f) => <a class="chip" href={withParam(url, f.key, null)} aria-label={`Remove filter ${f.label}`}>{f.label} <span aria-hidden="true">✕</span></a>)}
+          <a class="btn btn-ghost btn-sm" href={clearAll}>Clear all</a>
+        </div>
+      )}
     </div>
     {result.results.length === 0
-      ? <p class="notice">Nothing matches. Try fewer filters or another word.</p>
-      : <div class="grid">{result.results.map((t) => <ToolCard tool={t} level={2} />)}</div>}
-    {next && <p><a class="btn" href={next} rel="next">More results</a></p>}
+      ? (
+        <div class="empty card">
+          <p class="glyph" aria-hidden="true">¯\_(ツ)_/¯</p>
+          <h2>Nothing matches</h2>
+          <p class="muted">Try fewer filters or another word. Or start from an input type:</p>
+          <div class="row">{suggestions.map((s) => <a class="chip" href={`/input/${s}`}>{inputLabel(s)}</a>)}</div>
+        </div>
+      )
+      : <div class="grid stagger">{result.results.map((t) => <ToolCard tool={t} level={2} />)}</div>}
+    {next && <p class="more"><a class="btn" href={next} rel="next">More results</a></p>}
   </div>
 </div>
 
 <style>
-  .results { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; align-items: start; }
-  @media (max-width: 860px) { .results { grid-template-columns: minmax(0, 1fr); } }
-  .facets details { border-bottom: 1px solid var(--border); padding: 8px 0; }
-  .facets summary { cursor: pointer; font-weight: 600; }
-  .facets ul { margin-top: 6px; max-height: 260px; overflow-y: auto; font-size: 0.93rem; }
-  .facets a[aria-current="page"] { font-weight: 700; }
-  .facets a[aria-current="page"]::after { content: " ✕"; }
-  .sorts { margin-bottom: 14px; }
+  .results { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 32px; align-items: start; }
+  .facets-drawer { position: sticky; top: 84px; }
+  .facets-toggle { display: none; list-style: none; }
+  .facets-toggle::-webkit-details-marker { display: none; }
+  .facets { display: grid; gap: 4px; }
+  .toggle { display: flex; align-items: center; gap: 10px; padding: 10px 10px; border-radius: var(--radius); text-decoration: none; color: var(--text); font-weight: 600; font-size: var(--fs-1); border: 1px solid var(--border); background: var(--bg-raised); margin-bottom: 8px; }
+  .toggle:hover { border-color: var(--accent); }
+  .sw { width: 30px; height: 18px; border-radius: 999px; background: var(--border-strong); position: relative; transition: background var(--dur-2); flex: none; }
+  .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: translate var(--dur-2) var(--ease-spring); box-shadow: var(--shadow-1); }
+  .toggle.on .sw { background: var(--ok); }
+  .toggle.on .sw::after { translate: 12px 0; }
+  .facet { border-bottom: 1px solid var(--border); padding: 6px 0; }
+  .facet summary { cursor: pointer; font-weight: 600; font-size: var(--fs-1); padding: 6px 4px; display: flex; align-items: center; gap: 8px; list-style: none; border-radius: var(--radius-sm); }
+  .facet summary::-webkit-details-marker { display: none; }
+  .facet summary::before { content: ""; width: 7px; height: 7px; border-right: 2px solid var(--text-faint); border-bottom: 2px solid var(--text-faint); rotate: -45deg; transition: rotate var(--dur-2) var(--ease-out); margin-right: 2px; }
+  .facet[open] summary::before { rotate: 45deg; }
+  .facet summary:hover { background: var(--bg-subtle); }
+  .facet ul { margin: 4px 0 6px; max-height: 260px; overflow-y: auto; font-size: var(--fs-1); scrollbar-width: thin; }
+  .facet li + li { margin-top: 1px; }
+  .facet a { display: flex; justify-content: space-between; padding: 5px 8px 5px 20px; border-radius: var(--radius-sm); text-decoration: none; color: var(--text-muted); text-transform: capitalize; }
+  .facet a:hover { background: var(--bg-subtle); color: var(--text); }
+  .facet a[aria-current="page"] { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+  .facet a[aria-current="page"]::after { content: "✕"; font-size: 0.75em; }
+  .toolbar { display: grid; gap: 10px; margin-bottom: 18px; }
+  .active .chip { font-size: var(--fs-0); padding: 3px 10px; }
+  .empty { text-align: center; padding: 48px 24px; display: grid; gap: 8px; justify-items: center; }
+  .empty:hover { translate: none; }
+  .glyph { font-family: var(--font-mono); font-size: 1.6rem; color: var(--text-faint); margin: 0; }
+  .empty h2 { margin: 0; }
+  .more { margin-top: 24px; text-align: center; }
+  @media (max-width: 860px) {
+    .results { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+    .facets-drawer { position: static; }
+    .facets-drawer:not([open]) .facets { display: none; }
+    .facets-toggle { display: inline-flex; width: max-content; }
+    .facets { padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-raised); margin-top: 10px; }
+  }
 </style>
+
+<script>
+  // The filter drawer starts closed on narrow screens (it is open in the HTML so it works without JavaScript on wide ones).
+  const d = document.querySelector<HTMLDetailsElement>(".facets-drawer");
+  if (d && matchMedia("(max-width: 860px)").matches) d.open = false;
+</script>

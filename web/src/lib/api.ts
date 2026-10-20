@@ -167,6 +167,8 @@ export interface Types {
 
 export interface SearchResult {
   results: ToolSummary[];
+  /** How many match in all (added after the first API release, so older responses may omit it). */
+  total?: number;
   next_cursor?: string;
 }
 

@@ -20,11 +20,21 @@ const tabs = [
 ];
 ---
 <header class="tool-head">
-  <p class="small muted crumbs"><a href={`/${t.namespace}`}>{t.namespace}</a> /</p>
-  <h1>{t.name} <span class="ver muted">v{t.latest_version}</span></h1>
+  <nav class="small crumbs" aria-label="Breadcrumb">
+    <a href="/search">Tools</a> <span aria-hidden="true">/</span> <a href={`/${t.namespace}`}>{t.namespace}</a>
+  </nav>
+  <div class="title-row">
+    <h1>{t.name}</h1>
+    <span class="ver">v{t.latest_version}</span>
+  </div>
   <p class="lead">{t.summary}</p>
-  <Badges tool={t} scanStatus={scanStatus} />
-  <p class="small muted stats">★ {formatCount(t.stars)} stars · {formatCount(t.installs_30d)} installs in the last 30 days</p>
+  <div class="row meta-row">
+    <Badges tool={t} scanStatus={scanStatus} />
+    <span class="small muted stats">
+      <span title="Stars">★ {formatCount(t.stars)}</span>
+      <span title="Installs in the last 30 days">↓ {formatCount(t.installs_30d)} <span class="faint">/ 30 days</span></span>
+    </span>
+  </div>
   {t.deprecated_message && (
     <p class="notice warn">Deprecated: {t.deprecated_message}{t.deprecated_replacement && <> Use <a href={`/${t.deprecated_replacement}`}>{t.deprecated_replacement}</a> instead.</>}</p>
   )}
@@ -38,13 +48,20 @@ const tabs = [
 </header>
 
 <style>
-  .tool-head { margin-bottom: 20px; }
-  .crumbs { margin: 0; }
-  h1 { margin: 0.1em 0 0.2em; word-break: break-word; }
-  .ver { font-size: 1rem; font-weight: 500; }
-  .lead { font-size: 1.08rem; margin: 0 0 10px; }
-  .stats { margin: 8px 0 0; }
-  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-top: 18px; overflow-x: auto; }
-  .tabs a { padding: 8px 12px; text-decoration: none; color: var(--text-muted); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
-  .tabs a[aria-current="page"] { color: var(--text); border-color: var(--accent); font-weight: 600; }
+  .tool-head { margin-bottom: 26px; }
+  .crumbs { margin: 0 0 6px; color: var(--text-faint); display: flex; gap: 8px; }
+  .crumbs a { color: var(--text-muted); text-decoration: none; }
+  .crumbs a:hover { color: var(--accent); }
+  .title-row { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  h1 { margin: 0; font-family: var(--font-mono); font-size: var(--fs-5); letter-spacing: -0.03em; word-break: break-word; }
+  .ver { font-family: var(--font-mono); font-size: var(--fs-1); color: var(--text-muted); padding: 2px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-subtle); }
+  .lead { margin: 8px 0 12px; }
+  .meta-row { gap: 10px 20px; }
+  .stats { display: inline-flex; gap: 14px; }
+  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-top: 22px; overflow-x: auto; scrollbar-width: none; }
+  .tabs a { position: relative; padding: 10px 14px; text-decoration: none; color: var(--text-muted); font-weight: 550; font-size: var(--fs-1); white-space: nowrap; border-radius: var(--radius-sm) var(--radius-sm) 0 0; transition: color var(--dur-1), background var(--dur-1); }
+  .tabs a::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); scale: 0 1; transition: scale var(--dur-2) var(--ease-out); }
+  .tabs a:hover { color: var(--text); background: var(--bg-subtle); }
+  .tabs a[aria-current="page"] { color: var(--text); font-weight: 650; }
+  .tabs a[aria-current="page"]::after { scale: 1 1; }
 </style>

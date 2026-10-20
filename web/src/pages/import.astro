@@ -1,11 +1,13 @@
 ---
 import Base from "../layouts/Base.astro";
 import ImportWizard from "../islands/ImportWizard";
+import PageHead from "../components/PageHead.astro";
 
 Astro.response.headers.set("Cache-Control", "private, no-store");
 ---
 <Base title="Publish a tool or guide" description="Import a GitHub or GitLab repository into the OTInstaller Registry.">
-  <h1>Publish a tool or guide</h1>
+  <PageHead eyebrow="Publish" title="Publish a tool or guide">
   <p class="muted">Pick a repository: the registry detects what it is, drafts <code>otinstaller.yaml</code>, and opens a pull or merge request. Merging it and tagging <code>vX.Y.Z</code> publishes. Prefer the terminal? <code>ot import &lt;repository URL&gt;</code> does the same.</p>
+  </PageHead>
   <ImportWizard client:load back={`${Astro.site}import`} />
 </Base>

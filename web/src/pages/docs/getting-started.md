@@ -6,13 +6,30 @@ description: Install the ot command and run an OSINT tool from the registry.
 
 ## 1. Install ot
 
-`ot` is a single program for Windows, macOS and Linux. Until the packaged releases are out, build it with Go 1.25 or newer:
+`ot` is a single program for Windows, macOS and Linux. The installer downloads the release for your machine, checks its SHA-256 and the release signature, and puts it on your PATH.
+
+macOS and Linux:
 
 ```sh
-go install github.com/otinstaller/otinstaller/cli/cmd/ot@latest
+curl -fsSL https://get.otinstaller.com/ot | sh
 ```
 
-Then check your machine:
+Windows (PowerShell):
+
+```powershell
+irm https://get.otinstaller.com/ot.ps1 | iex
+```
+
+Package managers and other ways:
+
+| How | Command |
+| --- | --- |
+| Homebrew | `brew install --cask otinstaller/tap/ot` |
+| Scoop | `scoop bucket add otinstaller https://github.com/otinstaller/scoop-bucket` then `scoop install ot` |
+| deb, rpm, archives | [GitHub Releases](https://github.com/otinstaller/ot/releases) |
+| From source | `go install github.com/otinstaller/otinstaller/cli/cmd/ot@latest` (Go 1.25 or newer) |
+
+Later, `ot self-update` brings in new releases after checking their signature. Then check your machine:
 
 ```sh
 ot doctor

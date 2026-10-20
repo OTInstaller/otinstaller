@@ -1,6 +1,7 @@
 ---
 import Base from "../layouts/Base.astro";
 import Results from "../components/Results.astro";
+import PageHead from "../components/PageHead.astro";
 import { api, type Types } from "../lib/api";
 import { cacheFor, searchFrom } from "../lib/page";
 
@@ -9,6 +10,8 @@ const [{ result }, types] = await Promise.all([searchFrom(Astro.url, { kind: "to
 cacheFor(Astro, 60);
 ---
 <Base title={q ? `“${q}” tools` : "OSINT tools"} description="Search OSINT tools by name, input type, output and category." noindex={!!q}>
-  <h1>{q ? <>Tools for “{q}”</> : "All tools"}</h1>
+  <PageHead eyebrow={q ? "Search" : "Registry"} title={q ? `Tools for “${q}”` : "All tools"}>
+    <p class="muted">{result.total ? `${result.total} ${result.total === 1 ? "tool" : "tools"}` : "Signed, scanned and health-checked tools"}. Filter by what you have, what you need to find, or whether an API key is required.</p>
+  </PageHead>
   <Results result={result} types={types} />
 </Base>
