@@ -1,0 +1,23 @@
+---
+import Base from "../layouts/Base.astro";
+import PageHead from "../components/PageHead.astro";
+import FeedbackForm from "../islands/FeedbackForm";
+import { ISSUES_URL } from "../lib/api";
+
+// ?from=/some/page says which page the visitor came from; only site paths are kept.
+const from = Astro.url.searchParams.get("from");
+const page = from && from.startsWith("/") && !from.startsWith("//") ? from.slice(0, 300) : undefined;
+Astro.response.headers.set("Cache-Control", "public, max-age=300, s-maxage=3600");
+---
+<Base title="Feedback" description="Tell the OTInstaller team what works, what doesn't and what is missing." noindex>
+  <PageHead eyebrow="Beta" title="Send feedback">
+    <p class="muted">The team reads every message. You don't need an account; sign in first if you'd like it linked to yours.</p>
+  </PageHead>
+  <div class="feedback">
+    <FeedbackForm client:load page={page} issuesUrl={`${ISSUES_URL}/new?template=bug.yml`} />
+  </div>
+</Base>
+
+<style>
+  .feedback { max-width: 640px; }
+</style>

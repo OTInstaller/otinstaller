@@ -1,0 +1,35 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+# Converted from the package manager's catalog by scripts/pm-catalog-to-wrappers.py.
+schema: 1
+name: paramspider
+namespace: osintverse-community
+version: 0.1.0
+summary: "Mining URLs from dark corners of Web Archives for bug hunting/fuzzing/further probing"
+readme: README.md
+license: MIT
+homepage: https://github.com/devanshbatham/ParamSpider
+categories: [domain-dns, utilities, documents-metadata]
+tags: [google, metadata, url, domain, google-recon, metadata-extraction, domain-recon]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+outputs:
+  - type: other
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/paramspider@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["paramspider", "--stream", "--domain", "{domain}"]
+  output_format: text
+  timeout_seconds: 900
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+test:
+  input: {"domain": "osintverse.com"}

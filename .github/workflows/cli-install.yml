@@ -1,0 +1,141 @@
+# Installs ot the way users do (install.sh / install.ps1 one-liners) on Windows, macOS and Linux, then runs it
+# against the production registry. The release is built and signed here with a throwaway key
+# (scripts/install/make-test-release.sh) and served from localhost, so nothing is published; the install scripts
+# still check the signature and the checksum. On Linux, where runners have Docker, it also installs and runs a tool.
+#
+# This is the closed beta's "ot installs cleanly on Windows, macOS and Linux" check.
+name: ot install
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ["cli/**", "scripts/install/**", ".github/workflows/cli-install.yml", ".github/workflows/release-cli.yml"]
+  push:
+    branches: [main]
+    paths: ["cli/**", "scripts/install/**", ".github/workflows/cli-install.yml", ".github/workflows/release-cli.yml"]
+permissions:
+  contents: read
+env:
+  VERSION: 0.0.0-ci.${{ github.run_number }}
+
+jobs:
+  # The real release config, end to end except publishing and signing: catches what `goreleaser check` can't
+  # (a dirty checkout, archive files that don't exist), which failed the first v0.12.0 release.
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: cli/go.mod
+      - name: Install scripts with a placeholder key (as release-cli.yml does)
+        run: |
+          mkdir -p dist/install
+          for s in install.sh install.ps1; do sed "s|__OT_RELEASE_PUBLIC_KEY__|placeholder|" "scripts/install/$s" > "dist/install/$s"; done
+          git status --porcelain | grep . && { echo "::error::the checkout is dirty; GoReleaser would refuse to release"; exit 1; } || true
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: release --snapshot --clean --skip=publish,sign
+          workdir: cli
+        env:
+          OT_RELEASE_PUBLIC_KEY: placeholder
+          # As release-cli.yml passes them when the repository variables are unset.
+          RELEASE_OWNER: OTInstaller
+          RELEASE_NAME: ot
+      - name: Archives carry the binary, README and license
+        run: |
+          files="$(tar -tzf cli/dist/ot_*_linux_amd64.tar.gz | sort | xargs)"
+          echo "archive: $files"
+          [ "$files" = "LICENSE README.md ot" ]
+          ls cli/dist/*.deb cli/dist/*.rpm cli/dist/checksums.txt
+      - name: ot self-update looks at OTInstaller/ot
+        run: grep -aq "OTInstaller/ot" cli/dist/ot_linux_amd64_v1/ot
+
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: cli/go.mod
+      - name: Check the GoReleaser config
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: check
+          workdir: cli
+      - name: Build a signed test release
+        run: sh scripts/install/make-test-release.sh dist "$VERSION" linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-release
+          path: dist/
+
+  install:
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, shell: sh, run_tool: true }
+          - { os: ubuntu-24.04-arm, shell: sh, run_tool: true }
+          # Apple silicon. The install runs with the system PATH only (LibreSSL, no Homebrew), as on a fresh Mac.
+          - { os: macos-latest, shell: sh, run_tool: false }
+          - { os: windows-latest, shell: pwsh, run_tool: false }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: test-release
+          path: release
+      - name: Serve the release
+        shell: bash
+        run: |
+          cd release
+          nohup python3 -m http.server 8765 --bind 127.0.0.1 > "$RUNNER_TEMP/http.log" 2>&1 &
+          for i in $(seq 1 20); do curl -fsS -o /dev/null http://127.0.0.1:8765/checksums.txt && exit 0; sleep 1; done
+          cat "$RUNNER_TEMP/http.log"; exit 1
+
+      - name: Install with install.sh
+        if: matrix.shell == 'sh'
+        run: |
+          export OT_DOWNLOAD_BASE=http://127.0.0.1:8765 OT_VERSION="v$VERSION" OT_INSTALL_DIR="$RUNNER_TEMP/bin"
+          mkdir -p "$OT_INSTALL_DIR"
+          if [ "$RUNNER_OS" = macOS ]; then export PATH=/usr/bin:/bin:/usr/sbin:/sbin; fi
+          command -v openssl && openssl version
+          curl -fsSL http://127.0.0.1:8765/install.sh | sh 2>&1 | tee "$RUNNER_TEMP/install.log"
+          # A Mac without Homebrew's OpenSSL 3 can only check the checksum (LibreSSL has no Ed25519); elsewhere the
+          # signature must be checked.
+          grep -q "Signature verified." "$RUNNER_TEMP/install.log" \
+            || { [ "$RUNNER_OS" = macOS ] && grep -q "only the checksum is checked" "$RUNNER_TEMP/install.log"; } \
+            || { echo "::error::the release signature was not checked"; exit 1; }
+          echo "$OT_INSTALL_DIR" >> "$GITHUB_PATH"
+      - name: Install with install.ps1
+        if: matrix.shell == 'pwsh'
+        shell: pwsh
+        run: |
+          $env:OT_DOWNLOAD_BASE = 'http://127.0.0.1:8765'; $env:OT_VERSION = "v$env:VERSION"
+          $env:OT_INSTALL_DIR = Join-Path $env:RUNNER_TEMP 'bin'; $env:OT_NO_MODIFY_PATH = '1'
+          $log = irm http://127.0.0.1:8765/install.ps1 | iex *>&1 | Out-String
+          $log
+          if ($log -notmatch 'Signature verified') { throw 'the release signature was not checked' }
+          Add-Content $env:GITHUB_PATH $env:OT_INSTALL_DIR
+
+      - name: Run ot
+        shell: bash
+        run: |
+          set -x
+          ot --version | grep -F "v$VERSION"
+          ot search whois --limit 3
+          ot info osintverse-community/checkdmarc
+          ot doctor || echo "ot doctor exit $? (no container runtime on this runner is expected off Linux)"
+      - name: Install and run a tool
+        if: matrix.run_tool
+        run: |
+          ot install osintverse-community/checkdmarc
+          ot run osintverse-community/checkdmarc d:example.com --no-save | tee "$RUNNER_TEMP/out.json"
+          grep -Eq '"exit_code": *0' "$RUNNER_TEMP/out.json"
+          ot list
+          ot uninstall osintverse-community/checkdmarc

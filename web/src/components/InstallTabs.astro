@@ -6,10 +6,8 @@ import CopyCommand from "./CopyCommand.astro";
 export const INSTALLS = [
   { id: "unix", label: "macOS / Linux", command: "curl -fsSL https://get.otinstaller.com/ot | sh", note: "Checks the SHA-256 and the release signature, then installs to /usr/local/bin or ~/.local/bin." },
   { id: "windows", label: "Windows", command: "irm https://get.otinstaller.com/ot.ps1 | iex", note: "Installs to %LOCALAPPDATA%\\Programs\\ot and adds it to your PATH." },
-  { id: "brew", label: "Homebrew", command: "brew install --cask otinstaller/tap/ot", note: "From the otinstaller/homebrew-tap cask." },
-  { id: "scoop", label: "Scoop", command: "scoop bucket add otinstaller https://github.com/otinstaller/scoop-bucket && scoop install ot", note: "From the otinstaller/scoop-bucket bucket." },
-  { id: "go", label: "Go", command: "go install github.com/otinstaller/otinstaller/cli/cmd/ot@latest", note: "Builds from source with Go 1.25 or newer." },
 ];
+// Homebrew, Scoop and `go install` come back once the tap, the bucket and a public source repository exist.
 
 interface Props {
   /** Prefix for the radio group, so two blocks on one page do not collide. */
@@ -53,12 +51,8 @@ const { name = "os", compact = false } = Astro.props;
   .pane { display: none; }
   .note { margin: 6px 2px 0; }
   .install:has(#os-unix:checked) [data-pane="unix"], .install:has(#os-windows:checked) [data-pane="windows"],
-  .install:has(#os-brew:checked) [data-pane="brew"], .install:has(#os-scoop:checked) [data-pane="scoop"], .install:has(#os-go:checked) [data-pane="go"],
-  .install:has(#cta-unix:checked) [data-pane="unix"], .install:has(#cta-windows:checked) [data-pane="windows"],
-  .install:has(#cta-brew:checked) [data-pane="brew"], .install:has(#cta-scoop:checked) [data-pane="scoop"], .install:has(#cta-go:checked) [data-pane="go"] { display: block; animation: fade-in var(--dur-2) var(--ease-out); }
-  .tabs:has(#os-unix:checked) label[for="os-unix"], .tabs:has(#os-windows:checked) label[for="os-windows"], .tabs:has(#os-brew:checked) label[for="os-brew"],
-  .tabs:has(#os-scoop:checked) label[for="os-scoop"], .tabs:has(#os-go:checked) label[for="os-go"],
-  .tabs:has(#cta-unix:checked) label[for="cta-unix"], .tabs:has(#cta-windows:checked) label[for="cta-windows"], .tabs:has(#cta-brew:checked) label[for="cta-brew"],
-  .tabs:has(#cta-scoop:checked) label[for="cta-scoop"], .tabs:has(#cta-go:checked) label[for="cta-go"] { background: var(--bg-raised); color: var(--text); box-shadow: var(--shadow-1); }
+  .install:has(#cta-unix:checked) [data-pane="unix"], .install:has(#cta-windows:checked) [data-pane="windows"] { display: block; animation: fade-in var(--dur-2) var(--ease-out); }
+  .tabs:has(#os-unix:checked) label[for="os-unix"], .tabs:has(#os-windows:checked) label[for="os-windows"],
+  .tabs:has(#cta-unix:checked) label[for="cta-unix"], .tabs:has(#cta-windows:checked) label[for="cta-windows"] { background: var(--bg-raised); color: var(--text); box-shadow: var(--shadow-1); }
   @keyframes fade-in { from { opacity: 0; translate: 0 6px; } }
 </style>

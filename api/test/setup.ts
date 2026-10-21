@@ -5,6 +5,8 @@ declare global {
     interface Env {
       DB: D1Database;
       CONTENT: R2Bucket;
+      BACKUPS: R2Bucket;
+      MIRROR: R2Bucket;
       TEST_MIGRATIONS: import("cloudflare:test").D1Migration[];
       TEST_SEED: string[];
       TEST_FIXTURES: { dir: string; name: string; text: string }[];

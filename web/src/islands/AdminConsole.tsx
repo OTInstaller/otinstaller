@@ -1,12 +1,15 @@
-// /admin: an overview of what is waiting, the review queue, reports and takedowns, claims and transfers, and the audit log.
+// /admin: an overview of what is waiting, the review queue, reports and takedowns, claims and transfers, the audit log,
+// and for the closed beta its feedback queue and the metrics its exit criteria are measured by.
 import type { ComponentChildren } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { api } from "../lib/api";
 import { ErrorNote, Loading, SignIn, useMe, when } from "./shared";
 import "../styles/admin.css";
 
-type Tab = "review" | "reports" | "transfers" | "audit";
-const PATHS: Record<Tab, string> = { review: "/admin", reports: "/admin/reports", transfers: "/admin/transfers", audit: "/admin/audit" };
+type Tab = "review" | "reports" | "transfers" | "audit" | "feedback" | "beta";
+const PATHS: Record<Tab, string> = {
+  review: "/admin", reports: "/admin/reports", transfers: "/admin/transfers", audit: "/admin/audit", feedback: "/admin/feedback", beta: "/admin/beta",
+};
 const CATEGORIES = ["malware", "policy", "impersonation", "license", "legal", "other"];
 
 interface Scan { kind: string; result: string; summary: any }
@@ -16,7 +19,18 @@ interface Queue { queue: QueueNs[]; content_review: QueueVersion[] }
 interface Report { id: string; ref: string; version: string | null; reason: string; details: string; status: string; action: string | null; reporter: string | null; created_at: number; resolution_note: string | null }
 interface Transfer { id: string; kind: string; status: string; ref: string; from: string; to: string; requested_by: string; verification?: string; upstream_url?: string }
 interface Entry { id: string; actor: string | null; actor_kind: string; action: string; target_kind: string; target_id: string; metadata: any; created_at: number }
-interface Counts { publishers: number; releases: number; content: number; reports: number; claims: number | null }
+interface Counts { publishers: number; releases: number; content: number; reports: number; claims: number | null; feedback: number }
+interface Feedback { id: string; kind: string; message: string; email: string | null; page: string | null; source: string; client: string | null; status: string; note: string | null; sender: string | null; resolved_by: string | null; created_at: number }
+interface FailedPublish { id: string; provider: string; repo: string; tag: string; status: string; error_code: string | null; error_detail: string | null; updated_at: number | null }
+interface BetaMetrics {
+  publishers: { external: number; by_host: Record<string, { publishers: number; names: string[] }> };
+  packages: { published: number; external: number; guides: number };
+  installs: { total: number; last_7d: number };
+  failed_publishes_7d: { count: number; recent: FailedPublish[] };
+  feedback_open: Record<string, number>;
+  sev1_open: { count: number | null; url: string; error?: string };
+  exit: { external_publishers: { target: number; met: boolean }; gitlab_publishers: { target: number; met: boolean }; no_open_sev1: { met: boolean } };
+}
 
 type Notify = (message: string) => void;
 type OnError = (e: unknown) => void;
@@ -545,6 +559,143 @@ function Audit({ onError }: { onError: OnError }) {
   );
 }
 
+// ---------- beta ----------
+
+const FEEDBACK_KINDS: Record<string, string> = { bug: "bad", idea: "info", question: "warn", other: "" };
+
+function FeedbackQueue({ notify, onError, onChange }: { notify: Notify; onError: OnError; onChange: () => void }) {
+  const [status, setStatus] = useState("open");
+  const [items, setItems] = useState<Feedback[] | null>(null);
+  const [noting, setNoting] = useState<string | null>(null);
+  const load = () => api<{ feedback: Feedback[] }>(`/admin/feedback?status=${status}`).then((r) => setItems(r.feedback), onError);
+  useEffect(() => { setItems(null); void load(); }, [status]);
+  const resolve = async (f: Feedback, s: "done" | "dismissed" | "open", note = "") => {
+    try {
+      await api(`/admin/feedback/${f.id}/resolve`, { method: "POST", body: JSON.stringify({ status: s, note }) });
+      setNoting(null);
+      notify(s === "open" ? "Feedback reopened." : s === "done" ? "Feedback marked done." : "Feedback dismissed.");
+      load();
+      onChange();
+    } catch (e) { onError(e); }
+  };
+  return (
+    <div class="admin-sections">
+      <div class="admin-toolbar">
+        <div class="segmented" role="group" aria-label="Feedback status">
+          {["open", "done", "dismissed", "all"].map((s) => <button type="button" aria-pressed={status === s} onClick={() => setStatus(s)}>{s[0]!.toUpperCase() + s.slice(1)}</button>)}
+        </div>
+        <p class="small muted">A bug that blocks someone also belongs in a GitHub issue with a severity, so the beta's sev-1 count sees it.</p>
+      </div>
+      {items === null ? <Loading what="feedback" /> : items.length === 0
+        ? <Empty title={status === "open" ? "No open feedback" : `No ${status === "all" ? "" : `${status} `}feedback`} />
+        : (
+          <ul class="list-plain admin-stack">
+            {items.map((f) => (
+              <li class="admin-card" id={f.id}>
+                <header class="admin-card-head">
+                  <span class={`badge ${FEEDBACK_KINDS[f.kind] ?? ""}`}>{f.kind}</span>
+                  <div class="grow">
+                    <h3 class="admin-card-title">{f.sender ?? f.email ?? "Anonymous"}{f.page && <span class="rel-ver"> {f.page}</span>}</h3>
+                    <p class="small muted">
+                      <Ago ms={f.created_at} /> · {f.source === "cli" ? "ot feedback" : "site form"}{f.client && <> · {f.client}</>}
+                      {f.sender && f.email && <> · {f.email}</>}{f.status !== "open" && <> · {f.status}{f.resolved_by && ` by ${f.resolved_by}`}</>}
+                    </p>
+                  </div>
+                  <div class="row admin-card-actions">
+                    {f.status === "open"
+                      ? <>
+                        <button class="btn" type="button" aria-expanded={noting === f.id} onClick={() => setNoting(noting === f.id ? null : f.id)}>Mark done</button>
+                        <ConfirmButton label="Dismiss" confirm="Dismiss feedback?" onConfirm={() => resolve(f, "dismissed")} />
+                      </>
+                      : <button class="btn" type="button" onClick={() => void resolve(f, "open")}>Reopen</button>}
+                  </div>
+                </header>
+                <blockquote class="report-text">{f.message}</blockquote>
+                {f.note && <p class="small muted">Note: {f.note}</p>}
+                {noting === f.id && (
+                  <NoteForm label="What was done?" hint="For example: fixed in ot 0.9.1, or opened an issue." submit="Mark done"
+                    onCancel={() => setNoting(null)} onSubmit={(note) => resolve(f, "done", note)} />
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+    </div>
+  );
+}
+
+function Criterion({ met, label, detail }: { met: boolean | null; label: string; detail: ComponentChildren }) {
+  return (
+    <li class="row">
+      <span class={`badge ${met ? "ok" : "warn"}`}>{met ? "met" : met === null ? "check" : "not yet"}</span>
+      <span><strong>{label}</strong> <span class="small muted">{detail}</span></span>
+    </li>
+  );
+}
+
+function Beta({ onError }: { onError: OnError }) {
+  const [m, setM] = useState<BetaMetrics | null>(null);
+  useEffect(() => void api<BetaMetrics>("/admin/beta-metrics").then(setM, onError), []);
+  if (!m) return <Loading what="beta metrics" />;
+  const none = { publishers: 0, names: [] as string[] };
+  const hosts: [string, { publishers: number; names: string[] }][] = [["GitHub", m.publishers.by_host.github ?? none], ["GitLab", m.publishers.by_host.gitlab ?? none]];
+  const gl = hosts[1]![1];
+  const openFeedback = Object.values(m.feedback_open).reduce((a, b) => a + b, 0);
+  const tiles: [ComponentChildren, string, string][] = [
+    [m.publishers.external, "External publishers", hosts.map(([h, x]) => `${x.publishers} ${h}`).join(" · ")],
+    [m.packages.published, "Published packages", `${m.packages.external} external · ${m.packages.guides} guides`],
+    [m.installs.last_7d, "Installs, 7 days", `${m.installs.total} in all`],
+    [m.failed_publishes_7d.count, "Failed publishes, 7 days", "rejected or errored"],
+    [m.sev1_open.count ?? "?", "Open sev-1 bugs", m.sev1_open.count === null ? "couldn't ask GitHub" : "GitHub issues"],
+    [openFeedback, "Open feedback", Object.entries(m.feedback_open).map(([k, n]) => `${n} ${k}`).join(" · ") || "none"],
+  ];
+  return (
+    <div class="admin-sections">
+      <div class="admin-overview">
+        {tiles.map(([n, label, hint]) => (
+          <div class="admin-stat">
+            <span class="admin-stat-n">{n}</span>
+            <span class="admin-stat-label">{label}</span>
+            <span class="admin-stat-hint">{hint}</span>
+          </div>
+        ))}
+      </div>
+      <section class="admin-card">
+        <h3 class="admin-card-title">Exit criteria</h3>
+        <ul class="list-plain admin-stack">
+          <Criterion met={m.exit.external_publishers.met} label={`${m.exit.external_publishers.target}+ external authors have published`} detail={`${m.publishers.external} so far`} />
+          <Criterion met={m.exit.gitlab_publishers.met} label={`At least ${m.exit.gitlab_publishers.target} of them from GitLab`} detail={`${gl.publishers} so far`} />
+          <Criterion met={m.exit.no_open_sev1.met} label="No open severity-1 bugs"
+            detail={m.sev1_open.count === null ? <>{m.sev1_open.error}. <a href={m.sev1_open.url}>Check on GitHub</a></> : <a href={m.sev1_open.url}>{plural(m.sev1_open.count, "open issue")}</a>} />
+          <Criterion met={null} label="ot installs cleanly on Windows, macOS and Linux" detail="see the latest run of the CLI install workflow" />
+        </ul>
+        {hosts.filter(([, x]) => x.names.length > 0).map(([h, x]) => (
+          <p class="small"><strong>{h}:</strong> {x.names.map((n, i) => <>{i > 0 && ", "}<a href={`/${n}`}>{n}</a></>)}</p>
+        ))}
+      </section>
+      <section>
+        <h3 class="admin-section-head">Failed publishes in the last 7 days</h3>
+        {m.failed_publishes_7d.recent.length === 0 ? <Empty title="No failed publishes" /> : (
+          <table class="data">
+            <thead><tr><th scope="col">Repository</th><th scope="col">Tag</th><th scope="col">Result</th><th scope="col">Why</th><th scope="col">When</th></tr></thead>
+            <tbody>
+              {m.failed_publishes_7d.recent.map((j) => (
+                <tr>
+                  <td><span class="faint">{j.provider}</span> {j.repo}</td>
+                  <td><code>{j.tag}</code></td>
+                  <td><span class={`badge ${j.status === "error" ? "bad" : "warn"}`}>{j.status}</span></td>
+                  <td class="small">{j.error_code && <code>{j.error_code}</code>} {j.error_detail}</td>
+                  <td class="small nowrap">{j.updated_at ? <Ago ms={j.updated_at} /> : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+    </div>
+  );
+}
+
 // ---------- console ----------
 
 function Overview({ counts, tab, go }: { counts: Counts | null; tab: Tab; go: (t: Tab) => void }) {
@@ -580,10 +731,11 @@ export default function AdminConsole({ back, initialTab = "review" }: { back: st
   const refresh = async () => {
     if (!me || !staff) return;
     try {
-      const [q, open, claims] = await Promise.all([
+      const [q, open, claims, feedback] = await Promise.all([
         api<Queue>("/admin/review-queue"),
         api<{ reports: Report[] }>("/admin/reports?status=open"),
         me.admin ? api<{ transfers: Transfer[] }>("/admin/transfers?status=verified") : Promise.resolve(null),
+        api<{ feedback: Feedback[] }>("/admin/feedback?status=open"),
       ]);
       setQueue(q);
       setCounts({
@@ -592,6 +744,7 @@ export default function AdminConsole({ back, initialTab = "review" }: { back: st
         content: q.content_review.length,
         reports: open.reports.length,
         claims: claims ? claims.transfers.length : null,
+        feedback: feedback.feedback.length,
       });
       setUpdated(Date.now());
     } catch (e) {
@@ -631,6 +784,8 @@ export default function AdminConsole({ back, initialTab = "review" }: { back: st
     ["reports", "Reports", counts?.reports],
     ["transfers", "Claims", counts?.claims],
     ["audit", "Audit log", undefined],
+    ["feedback", "Feedback", counts?.feedback],
+    ["beta", "Beta", undefined],
   ];
   return (
     <div class="admin">
@@ -657,6 +812,8 @@ export default function AdminConsole({ back, initialTab = "review" }: { back: st
         {tab === "reports" && <Reports notify={notify} onError={setError} onChange={refresh} />}
         {tab === "transfers" && <Transfers admin={me.admin} notify={notify} onError={setError} onChange={refresh} />}
         {tab === "audit" && <Audit onError={setError} />}
+        {tab === "feedback" && <FeedbackQueue notify={notify} onError={setError} onChange={refresh} />}
+        {tab === "beta" && <Beta onError={setError} />}
       </div>
     </div>
   );

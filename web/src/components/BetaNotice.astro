@@ -1,0 +1,19 @@
+---
+// The closed-beta strip above the header. Set PUBLIC_BETA=0 at build time to take it down at launch.
+import { BETA } from "../lib/api";
+---
+{BETA && (
+  <div class="beta-bar" role="note">
+    <div class="wrap">
+      <span class="badge info plain">Beta</span>
+      <span>OTInstaller is in closed beta. Things may change or break.</span>
+      <a href="/feedback">Send feedback</a>
+    </div>
+  </div>
+)}
+
+<style>
+  .beta-bar { background: var(--accent-soft); border-bottom: 1px solid var(--border); font-size: var(--fs-0); position: relative; z-index: 2; }
+  .beta-bar .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding-top: 6px; padding-bottom: 6px; }
+  .beta-bar a { font-weight: 650; }
+</style>

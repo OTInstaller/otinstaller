@@ -172,6 +172,10 @@ const INPUT_ICONS: Record<string, string> = {
           <svg slot="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h2M16 4h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-2M9 9h6M9 13h6M9 17h3" /></svg>
           Every run returns the same JSON result envelope, so output pivots into the next tool or an OSINTverse case. <code>--format table</code> when you just want to read it.
         </FeatureCard>
+        <FeatureCard title="Installs that outlive a takedown" href="/docs/publishing#backups">
+          <svg slot="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8" /><path d="M21 3v5h-5" /><path d="M12 7v5l3 2" /></svg>
+          Every published image and wheel has a registry-held copy. If GitHub or GitLab pulls a tool by mistake, <code>ot</code> installs the same digest from the mirror and checks the same signature.
+        </FeatureCard>
       </div>
     </div>
   </section>

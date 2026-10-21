@@ -5,6 +5,7 @@ import { SITE_URL } from "../lib/api";
 import { THEME_BOOT } from "../lib/theme-boot";
 import Logo from "../components/Logo.astro";
 import ThemeToggle from "../components/ThemeToggle.astro";
+import BetaNotice from "../components/BetaNotice.astro";
 import SearchDialog from "../islands/SearchDialog";
 
 interface Props {
@@ -39,7 +40,7 @@ const isCurrent = (href: string) => path === href || path.startsWith(href + "/")
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonicalUrl} />
-    {noindex && <meta name="robots" content="noindex" />}
+    {(noindex || Astro.url.search !== "") && <meta name="robots" content="noindex" />}
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f8fb" />
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0f17" />
     <meta property="og:site_name" content="OTInstaller" />
@@ -60,6 +61,7 @@ const isCurrent = (href: string) => path === href || path.startsWith(href + "/")
   <body>
     <div class="bg" aria-hidden="true"></div>
     <a class="skip" href="#main">Skip to content</a>
+    <BetaNotice />
     <header class="site-header glass" data-header>
       <div class="wrap bar">
         <a class="brand" href="/" aria-label="OTInstaller home">
@@ -134,6 +136,7 @@ const isCurrent = (href: string) => path === href || path.startsWith(href + "/")
             <ul class="list-plain small">
               <li><a href="/policy/terms">Terms</a></li>
               <li><a href="/policy/privacy">Privacy</a></li>
+              <li><a href="/feedback">Feedback</a></li>
               <li><a href="mailto:support@otinstaller.com">Contact</a></li>
               <li><a href="mailto:security@otinstaller.com">Report a vulnerability</a></li>
             </ul>

@@ -109,6 +109,9 @@ type ManifestResponse struct {
 	SourceGone     bool            `json:"source_unavailable"`
 	MovedTo        string          `json:"moved_to,omitempty"`
 	Manifest       json.RawMessage `json:"manifest"`
+	// Backups the registry keeps, used when the original registry or PyPI refuses the artifact.
+	MirrorImage string `json:"mirror_image,omitempty"`
+	WheelURL    string `json:"wheel_url,omitempty"`
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {

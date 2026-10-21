@@ -1,0 +1,134 @@
+# Tests the otinstaller Python package in python/ (maintenance mode; the registry CLI is in cli/).
+name: otinstaller (python)
+
+on:
+  push:
+    paths: ["python/**", ".github/workflows/python-ci.yml"]
+  pull_request:
+    paths: ["python/**", ".github/workflows/python-ci.yml"]
+
+defaults:
+  run:
+    working-directory: python
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: pip install -e ".[dev,pipeline]"
+      - name: Ruff check
+        run: ruff check .
+      - name: Ruff format check
+        run: ruff format --check .
+      - name: Run tests
+        run: pytest
+
+  test-debian:
+    # Debian 12 (bookworm) - Kali is Debian-based and covered by this
+    runs-on: ubuntu-24.04
+    container: debian:12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: |
+          apt-get update && apt-get install -y python3 python3-venv python3-pip git
+      - name: Create virtualenv
+        run: python3 -m venv .venv
+      - name: Install project
+        run: .venv/bin/pip install -e ".[dev,pipeline]"
+      - name: Ruff check
+        run: .venv/bin/ruff check .
+      - name: Ruff format check
+        run: .venv/bin/ruff format --check .
+      - name: Run tests
+        run: .venv/bin/pytest
+        env:
+          RUN_NETWORK_TESTS: "0"
+
+  test-arch:
+    # Arch Linux
+    runs-on: ubuntu-24.04
+    container: archlinux:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: |
+          pacman -Sy --noconfirm python python-pip git
+      - name: Create virtualenv
+        run: python -m venv .venv
+      - name: Install project
+        run: .venv/bin/pip install -e ".[dev,pipeline]"
+      - name: Ruff check
+        run: .venv/bin/ruff check .
+      - name: Ruff format check
+        run: .venv/bin/ruff format --check .
+      - name: Run tests
+        run: .venv/bin/pytest
+        env:
+          RUN_NETWORK_TESTS: "0"
+
+  test-kali:
+    # Kali Linux: build the Debian package with Kali's own Python libraries,
+    # run the test suite during the build, then install the .deb and use it
+    runs-on: ubuntu-24.04
+    container: kalilinux/kali-rolling
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies from Kali
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential debhelper dh-python pybuild-plugin-pyproject python3-all \
+            python3-hatchling python3-click python3-rich python3-sentry-sdk python3-typer \
+            python3-yaml python3-pytest python3-pytest-asyncio python3-requests git python3-venv
+          python3 --version
+          dpkg -l python3-typer python3-click python3-rich python3-sentry-sdk | tail -4
+      - name: Build the package (runs the tests)
+        run: dpkg-buildpackage -us -uc -b
+      - name: Install the package and use it
+        run: |
+          DEBIAN_FRONTEND=noninteractive apt-get install -y ../otinstaller_*_all.deb
+          export HOME="$(mktemp -d)" DO_NOT_TRACK=1
+          otinstaller --version
+          otinstaller init --yes
+          otinstaller doctor || true
+          otinstaller install sherlock -y
+          otinstaller run sherlock -- --version
+
+  test-browser-tool:
+    # MailAccess downloads Chromium's headless shell into its own folder at install.
+    # Check the download works and that MailAccess's browser checks run with it.
+    runs-on: ubuntu-24.04
+    env:
+      DO_NOT_TRACK: "1"
+      MAILACCESS_NO_UPDATE_CHECK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install otinstaller
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install .
+      - name: Install MailAccess and its browser
+        run: |
+          .venv/bin/otinstaller init --yes
+          .venv/bin/otinstaller install mailaccess -y
+          ls ~/.otinstaller/tools/mailaccess/playwright-browsers
+      - name: Browser checks run instead of being skipped
+        run: |
+          .venv/bin/otinstaller run mailaccess -- investigate test@example.com --modules browser_account_probe
+          cat results/mailaccess/*/*.txt
+          grep -q "browser_account_probe" results/mailaccess/*/*.txt
+          ! grep -E "browser_account_probe +SKIPPED" results/mailaccess/*/*.txt
