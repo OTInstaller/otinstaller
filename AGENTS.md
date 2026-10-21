@@ -865,8 +865,6 @@ change. Keep this list current when you fix one or find another.
 
 **Docs debt**
 
-- `web/src/pages/docs/cli.md` lacks exit code 130 and many flags (all of `import`, most of `init`, several on `run`,
-  `auto`, `playbook`); list in [docs/dev/cli.md](docs/dev/cli.md#7-docs-drift-websrcpagesdocsclimd-and-clireadmemd).
 - `api/.dev.vars.example` lacks `OPS_DISPATCH_TOKEN`, `OPS_INSTALLATION_ID`, `RESEND_API_KEY`, `R2_*` and more; the
   secrets comment in `wrangler.jsonc` lacks `HEALTH_TOKEN`, `SENTRY_DSN` and `ISSUES_TOKEN` ([config.md](docs/dev/config.md)).
 - `docs/launch-checklist.md` contradicts itself (week 11 row still "Not deployed"; 79 vs 81 failed notifications; the
