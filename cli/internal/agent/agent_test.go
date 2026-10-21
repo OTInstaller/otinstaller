@@ -167,6 +167,13 @@ func TestConsentTokens(t *testing.T) {
 	if CallHash("run_tool", "i", map[string]any{"a": 1, "consent_token": "x"}) != CallHash("run_tool", "i", map[string]any{"a": 1}) {
 		t.Fatal("the token itself is not part of the call")
 	}
+	// A new server process has a new key, so a token from before a restart never opens.
+	old := s.NewToken(h)
+	defer func(k []byte) { sessionKey = k }(sessionKey)
+	sessionKey = []byte("another process's key, 32 bytes")
+	if s.UseToken(old, h) {
+		t.Fatal("a token from before a restart works")
+	}
 }
 
 func TestAuditLog(t *testing.T) {
