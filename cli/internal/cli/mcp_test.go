@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -368,5 +369,88 @@ func TestMCPToolsDocsMatch(t *testing.T) {
 		if !strings.Contains(string(doc), "`"+p.Name+"`") {
 			t.Errorf("web/src/pages/docs/mcp-tools.md lacks the prompt %s", p.Name)
 		}
+	}
+}
+
+// The agent plugin (integrations/agent-plugin) only names tools and prompts the server has, and starts `ot mcp`.
+func TestAgentPluginMatchesServer(t *testing.T) {
+	const root = "../../../integrations/agent-plugin"
+	a, _, _ := newTestApp(t, &fakeExec{}, "")
+	list, err := a.describeMCP(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	known := map[string]bool{}
+	for _, tl := range list.Tools {
+		known[tl.Name] = true
+		// Argument and result field names (run_id, ...) are fine to mention too.
+		for _, schema := range []any{tl.InputSchema, tl.OutputSchema} {
+			var s struct{ Properties map[string]any }
+			b, _ := json.Marshal(schema)
+			json.Unmarshal(b, &s)
+			for k := range s.Properties {
+				known[k] = true
+			}
+		}
+	}
+	for _, p := range list.Prompts {
+		known[p.Name] = true
+	}
+	toolLike := regexp.MustCompile("`((?:search|get|list|run|install|uninstall|suggest|detect|read|validate|extract|diff|cancel|investigate|pivot|compare|write|publish)_[a-z_]+)`")
+	prefixed := regexp.MustCompile(`mcp__otinstaller__([a-z_]+)`)
+	var files []string
+	filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && (strings.HasSuffix(p, ".md") || strings.HasSuffix(p, ".mdc")) {
+			files = append(files, p)
+		}
+		return nil
+	})
+	if len(files) < 5 {
+		t.Fatalf("found only %d plugin documents under %s", len(files), root)
+	}
+	for _, f := range files {
+		b, _ := os.ReadFile(f)
+		for _, m := range append(toolLike.FindAllStringSubmatch(string(b), -1), prefixed.FindAllStringSubmatch(string(b), -1)...) {
+			if !known[m[1]] {
+				t.Errorf("%s names %s, which ot mcp doesn't have", f, m[1])
+			}
+		}
+		// Skills follow the Agent Skills format: name matches the folder, a description of at most 1024 characters.
+		if filepath.Base(f) == "SKILL.md" {
+			front, _, _ := strings.Cut(strings.TrimPrefix(string(b), "---\n"), "\n---")
+			name, desc := "", ""
+			for _, line := range strings.Split(front, "\n") {
+				if v, ok := strings.CutPrefix(line, "name: "); ok {
+					name = v
+				}
+				if v, ok := strings.CutPrefix(line, "description: "); ok {
+					desc = v
+				}
+			}
+			if name != filepath.Base(filepath.Dir(f)) || desc == "" || len(desc) > 1024 || len(name) > 64 {
+				t.Errorf("%s: name %q must match its folder, and the description must be 1-1024 characters (%d)", f, name, len(desc))
+			}
+		}
+	}
+	for _, f := range []string{".mcp.json", "mcp.json"} {
+		var cfg struct {
+			MCPServers map[string]struct {
+				Command string
+				Args    []string
+			} `json:"mcpServers"`
+		}
+		b, err := os.ReadFile(filepath.Join(root, f))
+		if err != nil || json.Unmarshal(b, &cfg) != nil {
+			t.Fatalf("%s: %v", f, err)
+		}
+		if s := cfg.MCPServers["otinstaller"]; s.Command != "ot" || len(s.Args) != 1 || s.Args[0] != "mcp" {
+			t.Errorf("%s should start `ot mcp`: %+v", f, s)
+		}
+	}
+	var claude, cursor struct{ Version string }
+	b1, _ := os.ReadFile(filepath.Join(root, ".claude-plugin", "plugin.json"))
+	b2, _ := os.ReadFile(filepath.Join(root, ".cursor-plugin", "plugin.json"))
+	if json.Unmarshal(b1, &claude) != nil || json.Unmarshal(b2, &cursor) != nil || claude.Version == "" || claude.Version != cursor.Version {
+		t.Errorf("the Claude Code and Cursor plugin versions should match: %q, %q", claude.Version, cursor.Version)
 	}
 }

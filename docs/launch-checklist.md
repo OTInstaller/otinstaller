@@ -128,6 +128,13 @@ with "Filename too long"; use a short path or `git config core.longpaths true`.
 - [ ] **(you)** Code signing ([code-signing.md](code-signing.md)): wired into the release workflow and off until set
       up. Windows: Azure Trusted Signing (about $9.99/month; check eligibility) or an OV certificate on a cloud HSM.
       macOS: Apple Developer Program ($99/year) for Developer ID signing and notarization.
+- [ ] **Agents** ([agent-friendly-plan.md](agent-friendly-plan.md), branch `claude/agent-friendly-plan-a8afd5`, not
+      merged): decide whether `ot run` without a terminal should need `--yes` for non-passive tools from launch day
+      (it breaks CI scripts that relied on the old behaviour; `OT_CONSENT=off` restores it). Try `ot mcp` on a real
+      client. After the release that includes it: create `OTInstaller/agent-plugin` and publish the plugin,
+      publish `server.json` to the MCP Registry, and add the `.mcpb` download to `/docs/agents`
+      ([publishing-setup.md](publishing-setup.md) sections 10 and 12). Directory and marketplace submissions each need
+      your OK.
 - [ ] Resubmit the sitemap in Google Search Console (crawlers saw 404s and 500s on 21 Oct).
 - [ ] On-call rota for launch week; launch posts (plan, week 13). Drafts and templates in [launch/](launch/README.md)
       (21 Oct): rota and reviewer schedule, posts for each channel, demo video script. Nothing posted; each needs your OK.

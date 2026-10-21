@@ -1,0 +1,16 @@
+{
+  "name": "otinstaller",
+  "displayName": "OTInstaller",
+  "version": "0.1.0",
+  "description": "Search, install and run open-source OSINT tools from the OTInstaller Registry, on your machine and in a sandbox, asking you before any run that touches a target. Adds ot's MCP server and skills for investigating, packaging tools and writing guides.",
+  "author": { "name": "OTInstaller Registry", "email": "support@otinstaller.com", "url": "https://otinstaller.com" },
+  "homepage": "https://otinstaller.com/docs/agents",
+  "repository": "https://github.com/OTInstaller/agent-plugin",
+  "license": "Apache-2.0",
+  "keywords": ["osint", "investigation", "mcp", "security-research", "threat-intelligence"],
+  "icon": "./icon.svg",
+  "documentationUrl": "https://otinstaller.com/docs/agents",
+  "supportUrl": "https://github.com/OTInstaller/feedback/issues",
+  "privacyPolicyUrl": "https://otinstaller.com/policy/privacy",
+  "termsOfServiceUrl": "https://otinstaller.com/policy/terms"
+}

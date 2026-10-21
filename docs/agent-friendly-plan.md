@@ -925,6 +925,29 @@ depend on MCP spec churn, and it carries the least risk.
 - An MCP Registry `server.json` for `com.otinstaller/ot`, with DNS verification.
 - Submissions: our own marketplace (immediately), the Anthropic directory, the Cursor marketplace.
 - "Add to Cursor" and Claude buttons on `/docs/agents`.
+- **Status (2026-10-21): built on `claude/agent-friendly-plan-a8afd5`; nothing published.** What exists:
+  - The plugin is staged in `integrations/agent-plugin/`, to be copied to `OTInstaller/agent-plugin` (section 12 of
+    `docs/publishing-setup.md`):
+    - the Claude Code manifest and marketplace, `.mcp.json`, and three skills
+    - a SessionStart hook that warns when `ot` is missing
+    - the Cursor manifest, `mcp.json` and a rule
+    - recommended permissions in its README
+    - `TestAgentPluginMatchesServer` checks it only names real tools, prompts and fields, and that its skills follow
+      the Agent Skills format
+  - No `commands/` directory: Claude Code now prefers skills, and the server's prompts are already slash commands.
+  - `.mcpb` bundles, one per platform (manifest_version 0.3, a binary server, the tool list taken from the server),
+    come from `cli/cmd/mcpb` after GoReleaser. It also writes `server.json` for `com.otinstaller/ot`.
+    - `release-cli.yml` uploads both to the release.
+    - `cli-install.yml` builds them from the snapshot and runs `mcpb validate` on every PR.
+    - A local build passed `mcpb validate` (@anthropic-ai/mcpb 2.1.2).
+  - Not done (each needs the operator or an account):
+    - creating the plugin repository
+    - `claude plugin validate` (no Claude Code CLI on the build machine)
+    - checking the Cursor manifest's fields against Cursor's own validator
+    - DNS verification and `mcp-publisher publish`
+    - `mcpb sign`
+    - the directory and marketplace submissions
+    - the "Add to Claude" button
 
 ### Phase 4: API for agents (≈ 8–10 days, can run in parallel with Phase 2)
 

@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v ot >/dev/null 2>&1 || echo 'otinstaller: the ot command is not on your PATH, so the otinstaller MCP server cannot start. Install it from https://otinstaller.com/docs/getting-started and restart Claude Code.'"
+          }
+        ]
+      }
+    ]
+  }
+}

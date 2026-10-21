@@ -22,6 +22,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/otinstaller/otinstaller/cli/internal/agent"
+	"github.com/otinstaller/otinstaller/cli/internal/api"
+	"github.com/otinstaller/otinstaller/cli/internal/runner"
 	"github.com/otinstaller/otinstaller/cli/internal/state"
 )
 
@@ -421,4 +423,17 @@ func (a *App) describeMCP(ctx context.Context) (*mcpDescription, error) {
 	}
 	sort.Slice(out.Tools, func(i, j int) bool { return out.Tools[i].Name < out.Tools[j].Name })
 	return out, nil
+}
+
+// DescribeMCP lists the server's tools and prompts without serving, for the release step that writes the .mcpb
+// manifest (cmd/mcpb).
+func DescribeMCP(ctx context.Context) ([]*mcp.Tool, []*mcp.Prompt, error) {
+	cfg := state.LoadConfig()
+	a := &App{Out: io.Discard, Err: io.Discard, In: strings.NewReader(""), Config: cfg, API: api.New(cfg.APIURL, Version),
+		Runner: &runner.Runner{Exec: runner.OSExec{}, Stderr: io.Discard}}
+	d, err := a.describeMCP(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	return d.Tools, d.Prompts, nil
 }

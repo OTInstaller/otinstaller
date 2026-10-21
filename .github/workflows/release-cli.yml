@@ -106,6 +106,18 @@ jobs:
           MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
           MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
           MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+      # MCP Bundles (one per platform, for Claude Desktop and the MCP Registry) from the binaries GoReleaser just built
+      # and signed (cli/cmd/mcpb), uploaded to the same release with the registry's server.json. Publishing server.json
+      # to the registry is a manual step (docs/publishing-setup.md, "MCP Registry").
+      - name: Build and upload the MCP bundles
+        working-directory: cli
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}
+          REPO: ${{ vars.RELEASE_OWNER || 'OTInstaller' }}/${{ vars.RELEASE_NAME || 'ot' }}
+        run: |
+          TAG="$GITHUB_REF_NAME"
+          go run ./cmd/mcpb -version "${TAG#v}" -dist dist -out dist/mcpb -release-url "https://github.com/$REPO/releases/download/$TAG"
+          gh release upload "$TAG" dist/mcpb/*.mcpb dist/mcpb/server.json --repo "$REPO" --clobber
       - name: Remove the release key
         if: always()
         run: rm -f "$RUNNER_TEMP/release-key.pem"
