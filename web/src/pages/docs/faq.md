@@ -24,6 +24,19 @@ Only as a community wrapper in the `osintverse-community` namespace, when the li
 
 The package's `otinstaller.yaml` is kept by the registry instead of in the repository. It works the same, but the package is never shown as signed and ranks slightly lower until the manifest moves into the repository.
 
+## What happens if GitHub or GitLab removes a tool?
+
+Installs keep working. The registry keeps a copy of every published image and wheel, and `ot` falls back to it with the
+same signature and hash checks. The package stays listed with a notice, and its owner can restore the repository on the
+other host from the registry's backup and switch the package's source there, keeping its versions and installs. See
+[Backups](/docs/publishing#backups).
+
+## Can I keep the results of my runs?
+
+Yes, they're saved by default: each run goes to `./results/<tool>/<target>/` with a sidecar file describing it. `ot extract`
+pulls the emails, domains, IPs and URLs out of them, and `ot diff` shows what changed since the last run. See the
+[CLI reference](/docs/cli#saved-results).
+
 ## A tool is "Possibly broken". What now?
 
 Its nightly health check failed three times in a row, usually because a site it queries changed. It still installs; check its repository for updates.
