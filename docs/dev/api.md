@@ -1,0 +1,516 @@
+# Registry API reference
+
+Derived by reading `api/src/index.ts`, `api/src/routes/*.ts`, `api/src/edge-cache.ts`, `api/src/catalog.ts`,
+`api/src/env.ts`, `api/src/publish.ts`, `api/src/trust.ts` (`overLimit`), `api/src/backups.ts`, `api/src/imports.ts`,
+`api/src/transfers.ts`, `api/src/mirror/*.ts`, `api/wrangler.jsonc` and `api/wrangler.mirror.jsonc`. Paths are under
+`/v1` (Hono `basePath("/v1")`) unless stated.
+
+## Conventions used in the table
+
+**Auth**
+
+| Value | Meaning (code) |
+| --- | --- |
+| none | No check. `authenticate` still runs and may set `c.var.user`, which some handlers use optionally |
+| user | `requireUser` (401 `unauthenticated`) |
+| member | `requireMember` (`routes/sources.ts`): any role in the namespace's `namespace_members`, or `users.is_admin` (403 `forbidden`) |
+| owner | Role `owner` in the namespace, or admin. Three separate implementations: inline in `sources.ts` (`/source`), `requireOwner` in `routes/imports.ts` (after `requireMember`), `requireOwner` in `routes/backups.ts` |
+| own import | `requireOwnImport` (`imports.ts`): the import's `user_id`, or admin; anyone else gets 404 `import_not_found` |
+| involved | `involved()` (`routes/transfers.ts`): member of the from or to namespace, the requester, a reviewer or an admin; anyone else gets 404 `transfer_not_found` |
+| reviewer | `requireReviewer` (`routes/review.ts`): `is_reviewer` or `is_admin` (403 `forbidden`, "reviewers only") |
+| admin | `requireAdmin` (`routes/review.ts`): `is_admin` (403 `forbidden`, "admins only") |
+| scan token | `Authorization: Bearer <t>`; `sha256(t)` must equal `versions.scan_token_hash`, not expired (`SCAN_TOKEN_TTL` = 1 h), version `status = 'scanning'` |
+| backup run token | Bearer; `sha256` matched to `backup_runs.token_hash`, not expired, status `pending`/`dispatched`; single use (cleared on completion). TTL 3 h for releases (`RELEASE_TTL`), 12 h weekly (`WEEKLY_TTL`) |
+| drill token | Bearer; `sha256` matched to `restore_drills.token_hash`, status `dispatched`, not expired (`DRILL_TTL` = 6 h); single use |
+| signed URL | Query `method`, `expires` (Unix seconds), `sig` = `objectSignature(TOKEN_ENC_KEY, method, key, expires)`; key must start with `git/` or `wheels/` and contain no `..` |
+| HEALTH_TOKEN | Bearer equal to `env.HEALTH_TOKEN` (compared as SHA-256 digests); 503 `not_configured` if unset |
+| HMAC | GitHub: `x-hub-signature-256` = `sha256=` + HMAC-SHA256(`GITHUB_WEBHOOK_SECRET`, raw body) |
+| GitLab token | `x-gitlab-token` whose SHA-256 equals the matching source's `webhook_secret_hash` (one secret per project) |
+
+**Caching**: `cached(c, N)` writes `Cache-Control: public, max-age=N` (`catalog.ts`). It is only set on the success
+path; `apiError` throws a separate response, so errors carry no `Cache-Control`. "-" means the handler sets no
+`Cache-Control` at all (per-user routes are still never edge cached, because they need an `authorization` header or a
+cookie, which bypasses the edge cache). Any `public` 200 with a non-zero `max-age` is stored by `edgeCached` for an
+anonymous GET.
+
+## 1. Routes
+
+Total: **99 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
+call; the `for` loop in `routes/trust.ts` registers two (`yank`, `unyank`). The mirror Worker's OCI routes are in
+section 6 and are not in this count. There is no route for stars, although the rate-limit comment in `index.ts`
+mentions stars.
+
+### 1.1 Public catalog (12)
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/health` | none | - | index.ts | `{ok: true}` |
+| GET | `/types` | none | `cached(c, 86400)` | index.ts | Input, output and category enums from `spec/schema/v1.json` |
+| GET | `/tools` | none | `cached(c, 60)` | index.ts | Search. Params `q`, `input`, `output`, `category`, `runtime`, `kind`, `level`, `format`, `lang`, `sort` (relevance, installs, stars, updated), `no_keys`, `limit` (1–100, default 25), `cursor` (offset). FTS path caps at 200 rows, non-FTS at 1000 |
+| GET | `/guides` | none | 60 (inherited) | index.ts | Re-dispatches internally to `/v1/tools?kind=guide` with `app.fetch`, so the `/tools` response (and its `max-age=60`) is returned |
+| GET | `/tools/:ns/:name` | none | `cached(c, 60)` | index.ts | Follows aliases (`moved_to`); not found goes through `notFound()`: 410 `tool_removed` or 404 `tool_not_found` |
+| GET | `/tools/:ns/:name/versions` | none | `cached(c, 60)` | index.ts | Published, yanked and removed versions, semver-sorted |
+| GET | `/tools/:ns/:name/:version/manifest` | none | `cached(c, version === "latest" ? 60 : 3600)` | index.ts | Removed versions return status and `removed_reason` with `manifest: null`; otherwise adds `installFallbacks()` (`mirror_image` / `wheel_url`) |
+| GET | `/tools/:ns/:name/:version/scans` | none | `cached(c, 300)` | index.ts | PII scan summaries reduced to `{hits: <count>}` |
+| GET | `/tools/:ns/:name/:version` | none | `cached(c, 3600)` | index.ts | Also 3600 for `latest` (unlike `/manifest`, which uses 60 for `latest`) |
+| GET | `/namespaces/:ns` | none | `cached(c, 300)` | index.ts | Active namespaces only; visible tools ordered by `installs_30d` |
+| GET | `/pivots` | none | `cached(c, 600)` | index.ts | `from=` comma list of entity types; top 10 non-broken tools per usable type |
+| POST | `/installs` | none | - | index.ts | Anonymous per-day counter; always 204 (also for unknown packages) |
+
+### 1.2 Guides, docs, READMEs, assets, wheel copies, transparency (12)
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/guides/:ns/:name` | none | `cached(c, 60)` | routes/guides.ts | Latest version of a guide; 404 `guide_not_found` if the package isn't a guide |
+| GET | `/guides/:ns/:name/:version` | none | `cached(c, version === "latest" ? 60 : 3600)` | routes/guides.ts | Same handler (`detail`) |
+| GET | `/guides/:ns/:name/:version/pages/:path{.+}` | none | 60 for `latest`, else 3600 | routes/guides.ts | `?format=html|md`; page by path, path without `.md`, or 1-based position |
+| GET | `/assets/:file` | none | `public, max-age=31536000, immutable` (set by `imageHeaders`) | routes/guides.ts | `^[0-9a-f]{64}\.(png|jpg|webp|svg)$` from R2 `CONTENT` `assets/` |
+| GET | `/tools/:ns/:name/docs` | none | `cached(c, 600)` | routes/guides.ts | Docs nav of the latest version; tools only |
+| GET | `/tools/:ns/:name/docs/:path{.+}` | none | `cached(c, 600)` | routes/guides.ts | One docs page (`?format=html|md`) |
+| GET | `/tools/:ns/:name/guides` | none | `cached(c, 600)` | routes/guides.ts | Guides that list this tool in `related_tools` |
+| GET | `/tools/:ns/:name/readme` | none | `cached(c, 600)` | routes/guides.ts | Rendered README HTML from R2 |
+| GET | `/tools/:ns/:name/:version/wheel/:file` | none | `public, max-age=86400` (set directly) | routes/backups.ts | Public wheel backup (OSI-approved licenses); `:file` is ignored, the stored filename is used |
+| GET | `/removed` | none | `cached(c, 600)` | routes/trust.ts | Transparency list (`transparency()`) |
+| GET | `/tools/:ns/:name/permissions` | user | `private, no-store` | routes/trust.ts | `{owner, reviewer, admin}` for the caller |
+| POST | `/tools/:ns/:name/reports` | none (user optional) | - | routes/trust.ts | Report a package; rate limited (section 3); malware reports email reviewers at once |
+
+### 1.3 Auth and device login (8)
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/auth/:provider/login` | none | - | routes/auth.ts | `github`, `gitlab`, `osintverse` (else 404 `unknown_provider`); state cookie `ot_oauth_state` (600 s, path `/v1/auth`); `?redirect` (same-site only), `?scope=api` for GitLab |
+| GET | `/auth/:provider/callback` | state cookie | - | routes/auth.ts | Exchanges the code, signs in or links (when already signed in), sets `ot_session` (30 days, httpOnly, Secure, Lax), 302 |
+| POST | `/auth/logout` | session cookie (optional) | - | routes/auth.ts | Deletes the session row and cookie; 204 |
+| POST | `/auth/device/start` | none | - | routes/auth.ts | `{provider}` (default github); osintverse uses the registry's own device flow |
+| POST | `/auth/device/token` | none (device code) | - | routes/auth.ts | `{provider, device_code, token_name}`; on success mints an `ot_` API token (scopes `read,publish`) |
+| GET | `/auth/osintverse/device` | none | - | routes/device.ts | HTML code-entry form |
+| POST | `/auth/osintverse/device` | none (user code) | - | routes/device.ts | Form `code`; valid pending code redirects to OSINTverse sign-in (400 HTML page otherwise) |
+| POST | `/auth/osintverse/device/confirm` | one-time confirm token (form) | - | routes/device.ts | Form `id`, `confirm`, `decision`; approve or deny; 410 HTML page if expired |
+
+### 1.4 Me (8)
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/me` | user | - | routes/auth.ts | Login, admin/reviewer flags, linked accounts, namespaces with role |
+| GET | `/me/tokens` | user | - | routes/auth.ts | Unrevoked API tokens |
+| POST | `/me/tokens` | user | - | routes/auth.ts | `{name}`; 201 with the token shown once |
+| DELETE | `/me/tokens/:id` | user | - | routes/auth.ts | Revoke; 204 or 404 `token_not_found` |
+| GET | `/me/publish-jobs` | user | - | routes/auth.ts | Last 50 jobs; joins `installations` on `github_installation_id`, so GitLab jobs (no installation) appear never to be listed |
+| GET | `/me/repos` | user | - | routes/imports.ts | `?provider=github|gitlab`, `?q`; GitHub admin or GitLab Maintainer+ public repos, with `published_as` |
+| GET | `/me/transfers` | user | - | routes/transfers.ts | Pending, verified and accepted transfers the user is party to |
+| GET | `/me/backups` | user | - | routes/backups.ts | Backup summary for up to 200 packages in the user's namespaces |
+
+### 1.5 Webhooks (2)
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| POST | `/webhooks/github` | HMAC (`GITHUB_WEBHOOK_SECRET`) | - | routes/webhooks.ts | 5 MB max (413). `ping`, `installation`, `installation_repositories`, `create` (tag → `{jobId}` queued, 202), `push`, `release`, `repository` |
+| POST | `/webhooks/gitlab` | GitLab token (per source) | - | routes/webhooks.ts | 5 MB max. `tag_push` (202 when queued), `release`, `push`; a bad token returns 401 `bad_signature` built by hand (no `docs`/`hint`) |
+
+### 1.6 Sources, sync and package settings (10)
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| POST | `/sources/gitlab` | user | - | routes/sources.ts | `{project}`; needs a linked GitLab account, Maintainer+, public project; creates the project webhook; 201 |
+| DELETE | `/sources/:id` | member | - | routes/sources.ts | Deletes the GitLab webhook (best effort), pauses the source; 204 |
+| POST | `/packages/:ns/:name/source` | owner (inline check) | - | routes/sources.ts | `{repo}`; switch the package to another repository (`switchSource`) |
+| POST | `/packages/:ns/:name/sync` | member | - | routes/sources.ts | Manual poll; at most 10 an hour (`MANUAL_SYNC_PER_HOUR`) |
+| GET | `/packages/:ns/:name/sync-log` | member | - | routes/sources.ts | Source state plus the last 50 sync events |
+| PUT | `/packages/:ns/:name/manifest` | member then owner | - | routes/imports.ts | Edit a registry-held manifest (`{manifest}` or `{yaml}`); 409 `manifest_in_repo` otherwise; problems answered as 400 `manifest_invalid` |
+| POST | `/packages/:ns/:name/manifest/pr` | member then owner | - | routes/imports.ts | Opens a PR/MR moving the held manifest into the repo; 201 |
+| GET | `/packages/:ns/:name/backups` | owner (backups.ts `requireOwner`) | - | routes/backups.ts | `backupSummary()` |
+| PATCH | `/packages/:ns/:name/backups` | owner | - | routes/backups.ts | `{git_backups: boolean}` (opt out of git backups) |
+| POST | `/packages/:ns/:name/backups/restore` | owner | - | routes/backups.ts | Signed download link for the latest git bundle (`DOWNLOAD_TTL` = 3600 s) |
+
+### 1.7 Imports (5)
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| POST | `/imports` | user | - | routes/imports.ts | `{repo}` or `{repos: [...]}` (at most `MAX_BULK` = 50), `{provider}`, `{community}`; 201 for one, 202 for a batch |
+| GET | `/imports` | user | - | routes/imports.ts | The user's last 100 imports; `?batch` |
+| GET | `/imports/:id` | own import | - | routes/imports.ts | Wizard view |
+| PATCH | `/imports/:id` | own import | - | routes/imports.ts | `{manifest}` merge, `{yaml}` replace or `{kind}` rebuild |
+| POST | `/imports/:id/finish` | own import | - | routes/imports.ts | `{mode: pr | registry | connect | wrapper, wrapper_repo}` |
+
+### 1.8 Trust: yank, deprecate, claims, transfers (10)
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| POST | `/tools/:ns/:name/:version/yank` | member | - | routes/trust.ts | 409 `invalid_state` unless published |
+| POST | `/tools/:ns/:name/:version/unyank` | member | - | routes/trust.ts | 409 `invalid_state` unless yanked |
+| POST | `/tools/:ns/:name/deprecate` | member | - | routes/trust.ts | `{message (≤500), replacement?}`; replacement must exist |
+| DELETE | `/tools/:ns/:name/deprecate` | member | - | routes/trust.ts | Back to `active` |
+| POST | `/tools/:ns/:name/claim` | user | - | routes/transfers.ts | `{to}`; starts a claim of a community wrapper and verifies at once; 201 with `claim_token` |
+| POST | `/tools/:ns/:name/transfer` | user (owner or admin checked in `offerTransfer`) | - | routes/transfers.ts | `{to: namespace}`; 201 |
+| GET | `/transfers/:id` | involved | - | routes/transfers.ts | Transfer view |
+| POST | `/transfers/:id/verify` | involved | - | routes/transfers.ts | Re-run claim verification |
+| POST | `/transfers/:id/accept` | involved (further checks in `acceptTransfer`) | - | routes/transfers.ts | Accept a transfer |
+| POST | `/transfers/:id/decline` | involved (further checks in `declineTransfer`) | - | routes/transfers.ts | Decline |
+
+(The reports endpoint is in 1.2; the staff side of reports, removals and transfers is in 1.10.)
+
+### 1.9 Feedback and beta, public side (1)
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| POST | `/feedback` | none (user optional) | - | routes/beta.ts | `{kind: bug|idea|question|other, message (3–5000), email?, page?, source: cli|web, client?}`; 201; rate limited (section 3) |
+
+The beta's staff endpoints (`/admin/feedback`, `/admin/beta-metrics`, `/admin/email-test`) are in 1.10.
+
+### 1.10 Admin and staff (24)
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/admin/review-queue` | reviewer | - | routes/review.ts | Pending namespaces with their waiting versions, plus `content_review` (held releases of active namespaces) |
+| POST | `/admin/namespaces/:ns/approve` | reviewer | - | routes/review.ts | `{notes?}`; activates and queues `{publishVersionId}` per waiting version (batches of 100) |
+| POST | `/admin/namespaces/:ns/request-changes` | reviewer | - | routes/review.ts | `{notes}` required; closes waiting versions as `changes_requested`, emails owners |
+| POST | `/admin/namespaces/:ns/reject` | reviewer | - | routes/review.ts | `{reason}` required; failure commit statuses, email |
+| POST | `/admin/versions/:id/approve` | reviewer | - | routes/review.ts | Held release of an active namespace; publishes at once (`publishVersion`) |
+| POST | `/admin/versions/:id/reject` | reviewer | - | routes/review.ts | `{reason}` required |
+| POST | `/admin/namespaces/:ns/verify` | admin | - | routes/review.ts | Sets `verified = 1` |
+| POST | `/admin/namespaces/:ns/suspend` | admin | - | routes/review.ts | `{reason}` required |
+| GET | `/admin/reports` | reviewer | - | routes/trust.ts | `?status=open|actioned|dismissed|all` (default open); malware first; ≤200 |
+| POST | `/admin/reports/:id/resolve` | reviewer | - | routes/trust.ts | `{status: actioned|dismissed, action, note}` |
+| POST | `/admin/tools/:ns/:name/:version/remove` | reviewer | - | routes/trust.ts | `{category, reason, suspend_namespace?}`; remove one version |
+| POST | `/admin/tools/:ns/:name/remove` | reviewer | - | routes/trust.ts | Remove the whole package |
+| POST | `/admin/users/:login/ban` | admin | - | routes/trust.ts | `{reason}`; deletes sessions, revokes tokens; refuses admins (409 `cannot_ban_admin`) |
+| GET | `/admin/audit-log` | reviewer | - | routes/trust.ts | `?before` (ms), `?limit` (1–500, default 100) |
+| GET | `/admin/transfers` | admin | - | routes/transfers.ts | `?status` (default `verified`, or `all`); ≤200 |
+| POST | `/admin/transfers/:id/complete` | admin | - | routes/transfers.ts | Completes a transfer |
+| GET | `/admin/feedback` | reviewer | `private, no-store` | routes/beta.ts | `?status=open|done|dismissed|all`; bugs first; ≤200 |
+| POST | `/admin/feedback/:id/resolve` | reviewer | - | routes/beta.ts | `{status: done|dismissed|open, note?}` |
+| GET | `/admin/beta-metrics` | reviewer | `private, no-store` | routes/beta.ts | Publishers by host, packages, installs, failed publishes (7 d), open feedback, open sev-1 issues, exit criteria |
+| POST | `/admin/email-test` | admin | - | routes/beta.ts | Test email to the caller via Resend; 502 with the error on failure |
+| POST | `/admin/backups/drill` | admin | - | routes/backups.ts | Runs `startDrill` now; 202 when dispatched |
+| GET | `/admin/backups/drills` | admin | - | routes/backups.ts | Last 20 drills |
+| POST | `/admin/tools/:ns/:name/legal-hold` | admin | - | routes/backups.ts | `{hold: boolean, reason}` (reason required to set) |
+| POST | `/admin/tools/:ns/:name/:version/backup` | admin | - | routes/backups.ts | `releasePlan(..., "manual")`; `{dispatch: false}` returns the job instead of sending it |
+
+### 1.11 Internal (7)
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| POST | `/internal/scans` | scan token | - | routes/review.ts | Scanner callback; body ≤256 KB (`MAX_RESULTS`), shape-checked by `parseResults`; answers `{status, verdict, backup?}` |
+| PUT | `/internal/backups/objects/*` | signed URL (`method=PUT`) | - | routes/backups.ts | Upload when R2 credentials are unset; needs `Content-Length`; limit by prefix (`git/` `MAX_BUNDLE_BYTES`, `wheels/` `MAX_WHEEL_BYTES`) |
+| GET | `/internal/backups/objects/*` | signed URL (`method=GET`) | - | routes/backups.ts | Download (restores, drills) |
+| POST | `/internal/backups/:run` | backup run token | - | routes/backups.ts | `{items: [...]}` at most 10, status `stored|too_large|failed`; `completeRun` |
+| POST | `/internal/drills/:id` | drill token | - | routes/backups.ts | `{result, detail, checks}`; `completeDrill` |
+| GET | `/internal/health/targets` | HEALTH_TOKEN | - | routes/ops.ts | `healthTargets()` for the nightly health workflow |
+| POST | `/internal/health` | HEALTH_TOKEN | - | routes/ops.ts | `{results: [...]}` at most 500; `applyHealth()` |
+
+Per-area sums: 12 + 12 + 8 + 8 + 2 + 10 + 5 + 10 + 1 + 24 + 7 = **99**. (There is no separate "ops/health" public route; the
+health endpoints are the two internal ones above.)
+
+## 2. Middleware and handler order (`index.ts`)
+
+Order in which things are registered on the Hono app (Hono runs matched handlers in registration order, and a route
+handler that returns ends the chain):
+
+1. **CORS** (`app.use("*")`, index.ts lines 36–41). Methods `GET, POST, PATCH, PUT, DELETE`. If the request's `Origin`
+   header is exactly `c.env.SITE_URL` (`https://otinstaller.com` in `wrangler.jsonc`), it gets
+   `cors({ origin: SITE_URL, credentials: true })`; every other origin (including none) gets `cors({ origin: "*" })`
+   without credentials. Note that `https://www.otinstaller.com` is not equal to `SITE_URL`, so it gets the
+   uncredentialed `*` answer.
+2. **`authRoutes(app)`**, which first registers `app.use("*", authenticate)` and then `deviceRoutes(app)` and all
+   `/auth/*` and `/me*` routes of `auth.ts`. `authenticate` never rejects: a `Bearer ot_...` token is looked up by
+   SHA-256 in `api_tokens` (not revoked, not expired, user not banned; `last_used_at` updated via `waitUntil`);
+   otherwise the `ot_session` cookie is looked up in `sessions`. Non-`ot_` bearer tokens (scan, backup, health) leave
+   `user` null.
+3. **Write rate limit** (`app.use("*")`, lines 45–52): when there is a user who is neither `is_reviewer` nor
+   `is_admin`, and the method is not `GET`, `HEAD` or `OPTIONS`, `overLimit(env, "write", user.id, 30, 60_000)`; over
+   the limit throws 429 `too_many_requests` ("at most 30 changes a minute"). Because it is registered *after*
+   `authRoutes`, the auth and device routes and `POST /me/tokens`, `DELETE /me/tokens/:id`, `POST /auth/logout`,
+   `/auth/device/*`, `/auth/osintverse/device*` are **not** covered, even though the comment lists "tokens".
+   Anonymous writes (installs, feedback, reports) are not covered either.
+4. Route registrars, in this order: `webhookRoutes`, `reviewRoutes`, `sourceRoutes`, `importRoutes`, `guideRoutes`,
+   `trustRoutes`, `transferRoutes`, `opsRoutes`, `betaRoutes`, `backupRoutes`.
+5. `app.onError`: an `HTTPException` (every `apiError`) returns its own response. Anything else: request ID =
+   `cf-ray` header or a new ULID, `reportError` to Sentry via `waitUntil`, `console.error`, and
+   `500 {error: {code: "internal_error", message: "Something went wrong on our side.", request_id}}`.
+6. `app.notFound`: `404 {error: {code: "not_found", message: "No such endpoint."}}` (no `docs`/`hint`).
+7. The public catalog endpoints of `index.ts` (section 1.1), registered last at module level.
+
+**Registration-order constraints**
+
+- `guideRoutes` must come before the `index.ts` route `GET /tools/:ns/:name/:version`, which would otherwise take
+  `/tools/:ns/:name/docs`, `/guides` and `/readme` (comment on line 57). The same applies to
+  `GET /tools/:ns/:name/permissions` (trust.ts), which is safe because all registrars run before the `index.ts`
+  endpoints. `GET /tools/:ns/:name/versions` is declared before `/:version` within `index.ts`.
+- The write rate limiter must come after `authenticate` (it reads `c.get("user")`), which is why `authRoutes` is
+  registered first; the side effect is the exemption described in step 3.
+
+**Default export** (`index.ts` lines 378–406):
+
+- `fetch`: `edgeCached(req, env, ctx, () => app.fetch(req, env, ctx))`. `edgeCached` (`edge-cache.ts`) bypasses the
+  cache when `env.EDGE_CACHE === "off"`, the method isn't `GET`, or the request has an `authorization` or `cookie`
+  header. The key is the URL with sorted query params plus `__cors=site|any` (site when `Origin === SITE_URL`). It
+  stores only `200` responses whose `Cache-Control` contains `public` and a non-zero `max-age`, and no `set-cookie`,
+  via `caches.default.put` in `waitUntil`; the original header is saved in `x-ot-cache-control`. On a hit it restores
+  `cache-control` from that header, removes it, and adds `x-edge-cache: hit`. There is no purge. The `/guides` alias
+  calls `app.fetch` directly, so its inner `/tools` request is not separately edge cached (the outer `/guides` GET is).
+- `queue`: `handleBatch` (section 4).
+- `scheduled`: section 5.
+
+## 3. Other rate limits and size limits
+
+`overLimit(env, scope, who, limit, windowMs)` (`trust.ts`): fixed windows (`floor(now / windowMs) * windowMs`), key =
+first 32 hex chars of `sha256("${TOKEN_ENC_KEY ?? "ot"}|scope|who")`, counter upserted in `rate_limits`; over when the
+count is greater than `limit`. Windows older than a day are deleted nightly by `purgeRateLimits`.
+
+| What | Limit | Scope / key | Error | Where |
+| --- | --- | --- | --- | --- |
+| Writes by signed-in non-staff users | 30 per 60 s | `write` / user id | 429 `too_many_requests` | index.ts |
+| Reports, signed in | 20 per 86 400 000 ms (day) | `report-user` / user id | 429 `too_many_reports` | routes/trust.ts |
+| Reports, anonymous | 5 per 3 600 000 ms (hour) | `report-ip` / `cf-connecting-ip` (or `"unknown"`) | 429 `too_many_reports` | routes/trust.ts |
+| Feedback, signed in | 10 per hour | `feedback-user` / user id | 429 `too_many_requests` | routes/beta.ts |
+| Feedback, anonymous | 10 per hour | `feedback-ip` / `cf-connecting-ip` | 429 `too_many_requests` | routes/beta.ts |
+| Manual sync | 10 per rolling hour per source (`MANUAL_SYNC_PER_HOUR`), counted from `sync_events` with `kind = 'manual'` | source | 429 `sync_rate_limited` | routes/sources.ts |
+| OSINTverse device poll | `interval` 5 s; a poll less than 4 s (`(INTERVAL - 1) * 1000`) after the last answers `slow_down` (not an error) | device login | `{status: "slow_down"}` | routes/device.ts |
+| OSINTverse device code | TTL 10 min; rows expired more than 24 h are deleted on each start | | | routes/device.ts |
+| GitHub/GitLab device flow | whatever the provider says (`pending`, `slow_down`, ...) is passed through | | | routes/auth.ts |
+| Claims and transfers | no rate limit found in `routes/transfers.ts` or `transfers.ts` (only the global write limit) | | | |
+| Bulk imports | at most 50 repositories per request (`MAX_BULK`) | | 400 `too_many_repos` | routes/imports.ts |
+| Webhook bodies | 5 MB (`MAX_BODY`) | | 413 `payload_too_large` | routes/webhooks.ts |
+| Scan results | 256 KB by `Content-Length` (`MAX_RESULTS`) | | 413 `payload_too_large` | routes/review.ts |
+| Health results | at most 500 per call | | 400 `invalid_body` | routes/ops.ts |
+| Backup report items | at most 10 per call | | 400 `invalid_body` | routes/backups.ts |
+| Signed backup uploads | by key prefix: `MAX_BUNDLE_BYTES` (`git/`), `MAX_WHEEL_BYTES` (`wheels/`) | | 413 `too_large` | routes/backups.ts |
+| Sync polling | at most 3 tags queued per poll (`MAX_TAGS_PER_POLL`), 50 sources per cron run, every 6 h per source (`POLL_INTERVAL`) | | | sync.ts |
+
+## 4. Queue messages (`PublishMessage`, `env.ts`) and `handleBatch` (`publish.ts`)
+
+Queue `otinstaller-publish`, producer binding `PUBLISH_QUEUE`. Consumer settings in `wrangler.jsonc`:
+`max_batch_size: 5`, `max_retries: 5`, `retry_delay: 30`.
+
+| Message | Handler in `handleBatch` | Produced by (examples) |
+| --- | --- | --- |
+| `{ importId }` | `detectQueued(env, importId)` (imports.ts) | bulk imports |
+| `{ checkVersionId, attempt? }` | `runContentChecks(env, checkVersionId, attempt ?? 0)` (guides.ts) | guide content checks; `attempt` counts URL Scanner rounds |
+| `{ linkCheckToolId }` | `recheckLinks(env, linkCheckToolId)` (guides.ts) | `queueNightlyLinkChecks` (batches of 100) |
+| `{ publishVersionId }` | `publishApproved(env, publishVersionId)` (publish.ts): publishes only if the version is `awaiting_review` and the namespace is `active` | `POST /admin/namespaces/:ns/approve` (batches of 100) |
+| `{ backupVersionId }` | `backupVersion(env, backupVersionId)` (backups.ts) | versions published without a scanner run (approvals, guides) |
+| `{ jobId }` (the `else` branch) | `processJob(env, jobId)` (publish.ts) | GitHub `create` webhook, GitLab `tag_push`, poller, imports |
+
+Dispatch is by `"key" in body`, in the order `importId`, `checkVersionId`, `linkCheckToolId`, `publishVersionId`,
+`backupVersionId`, else `jobId`. Messages are processed one after another and acked individually.
+
+**Retry**: on an exception, `transient = !(e instanceof HostError) || e.transient`. If transient and
+`msg.attempts < 5`, `msg.retry({ delaySeconds: 30 * msg.attempts })` (30, 60, 90, 120 s). Otherwise (non-transient
+`HostError`, or the 5th attempt): `importId` → `failImport(env, id, "detection_failed", message)`; `jobId` →
+`failJob(env, jobId, message)` (job `status = 'error'`, `error_code = 'internal_error'`, only from
+queued/validating or an undispatched scan); every other kind is only `console.error`'d; then `msg.ack()`. So a message
+gets at most 5 deliveries (4 retries); the wrangler `max_retries: 5` would allow one more, but the code acks first. The
+code's backoff overrides the wrangler `retry_delay: 30`. `HostError.transient` is set for status ≥500 or 429 (and for
+GitHub 403 rate-limit bodies).
+
+## 5. `scheduled()` and crons
+
+`wrangler.jsonc` `triggers.crons`: `"17 3 * * *"`, `"*/15 * * * *"`, `"41 4 * * 1"`, `"23 5 1 * *"`.
+
+`scheduled` has no guard on the first block, so **every** trigger (including the nightly, weekly and monthly ones) runs:
+
+1. `expireStaleScans(env)` (scans.ts): versions still `scanning` past `scan_token_expires_at` (1 h) become `rejected`
+   (`scan_timeout`), their jobs `error`/`scan_timeout`.
+2. `pollDueSources(env)` (sync.ts): up to 50 sources in `ok`, `error` or `unavailable` not polled for 6 h.
+3. `alertStuckJobs(env)` (ops.ts): jobs unfinished after 30 min, each reported once.
+4. `expireRuns(env)` (backups.ts): backup runs past `expires_at` become `expired`.
+5. `expireDrills(env)` (backups.ts): dispatched drills past 6 h finish as `expired`.
+6. `backfillBackups(env)` (backups.ts): up to `BACKFILL_PER_RUN` = 5 published versions with no image/wheel backup,
+   at most once a day each.
+
+Then, by `event.cron`:
+
+| Cron | Constant | Extra work |
+| --- | --- | --- |
+| `*/15 * * * *` | | none beyond the block above |
+| `41 4 * * 1` (Mondays 04:41 UTC) | `WEEKLY_BACKUP_CRON` (backups.ts) | `weeklyBackups(env)`: a git backup of every active source, dispatched 20 per call (`WEEKLY_PER_DISPATCH`) |
+| `23 5 1 * *` (1st of the month 05:23 UTC) | `RESTORE_DRILL_CRON` (backups.ts) | `startDrill(env)`: restore a random git bundle and pull a random public mirrored image |
+| `17 3 * * *` (daily 03:17 UTC) | literal string in index.ts | `queueNightlyLinkChecks(env)`, `dailyDigest(env)` (namespaces waiting > 2 business days, reports > 48 h), `purgeRateLimits(env)` (windows older than a day), `purgeBackups(env)` (due deletions, except legal holds), then the SQL `UPDATE tools SET installs_30d = ...` over the last 30 days of `install_counts` |
+
+## 6. Mirror Worker (`otinstaller-mirror`)
+
+Config `wrangler.mirror.jsonc`: `main: src/mirror/index.ts`, custom domain `mirror.otinstaller.com`, R2 binding
+`MIRROR` (`otinstaller-mirror`, also bound by the API), `limits.cpu_ms: 300000`. Secret: `MIRROR_PUSH_TOKEN`. The
+entry (`index.ts`) wraps `mirrorFetch` (`registry.ts`) and turns any throw into
+`500 {errors: [{code: "UNKNOWN", message: "internal error"}]}`. Errors use the OCI shape
+`{errors: [{code, message}]}` with `Docker-Distribution-API-Version: registry/2.0`. No `/v1` base path here.
+
+### Routes
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/` | Plain-text banner |
+| any | `/token` | Issues a token: Basic credential matching `MIRROR_PUSH_TOKEN` → push (admin) token; no Basic header → pull token; wrong Basic → 401 `UNAUTHORIZED` "wrong credential". Answers `{token, access_token, expires_in: 300, issued_at}` |
+| any | `/v2/` or `/v2` | 200 `{}` if the request carries any valid credential or token (including an anonymous pull token), else the 401 Bearer challenge |
+| GET, HEAD | `/v2/<name>/manifests/<tag|digest>` | Pull; hidden repos or hidden `name@digest` answer 404 `MANIFEST_UNKNOWN` to non-admins |
+| PUT | `/v2/<name>/manifests/<tag|digest>` | Push; ≤4 MB (`MAX_MANIFEST`, 413 `SIZE_INVALID`); digest must match; every referenced blob/manifest must already exist (400 `MANIFEST_BLOB_UNKNOWN` / `MANIFEST_UNKNOWN`); tag ref also writes `tags/<tag>` |
+| DELETE | `/v2/<name>/manifests/<digest>` | By digest only (400 `UNSUPPORTED` for tags); `deleteImage`; 202 |
+| GET, HEAD | `/v2/<name>/blobs/<digest>` | Streams chunks; repo-level hidden check only for non-admins (404 `BLOB_UNKNOWN`) |
+| DELETE | `/v2/<name>/blobs/<digest>` | 405 `UNSUPPORTED` (blobs go with their manifests) |
+| POST | `/v2/<name>/blobs/uploads/` | Start upload. `?mount=<digest>` only short-circuits when this same repository already has the blob (201); `?digest=` does a monolithic upload; else 202 with `Location` |
+| GET | `/v2/<name>/blobs/uploads/<id>` | Upload status, 204 with `Range` |
+| PATCH | `/v2/<name>/blobs/uploads/<id>` | Append a chunk (checks `Content-Range` start = offset, else 416 `BLOB_UPLOAD_INVALID`) |
+| PUT | `/v2/<name>/blobs/uploads/<id>?digest=` | Final chunk and finish; content re-hashed, mismatch → 400 `DIGEST_INVALID` and chunks discarded |
+| DELETE | `/v2/<name>/blobs/uploads/<id>` | Cancel; 204 |
+| GET | `/v2/<name>/tags/list` | `?n`, `?last`; no hidden check |
+| any | `/v2/<name>/referrers/<digest>` | 404 `UNSUPPORTED` (clients fall back to the `sha256-<hex>.sig` tag schema) |
+| any | anything else | 404 `NAME_UNKNOWN` |
+
+`<name>` must match the OCI name regex and be ≤255 chars; tags `^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$`; digests
+`sha256:<64 hex>` only.
+
+### Auth rules and token flow
+
+- `caller()` decides `{admin, authed}`: a `Basic` header is checked against `MIRROR_PUSH_TOKEN` (password part, any
+  user name, constant-time digest comparison); a `Bearer` token is verified (HMAC-SHA256 of the base64url body
+  `{adm, exp}`, keyed by `MIRROR_PUSH_TOKEN`, or by the fixed string `"anonymous-pull"` when the secret is unset;
+  `exp` = now + 300 s; `adm` only counts when `MIRROR_PUSH_TOKEN` is set).
+- Any method other than `GET`/`HEAD` (push, delete, uploads), and any request (including GET) on a repository named
+  `private` or starting with `private/`, requires `admin`; otherwise the answer is 401 with
+  `WWW-Authenticate: Bearer realm="<origin>/token",service="<host>",scope="repository:<name>:pull,push"` (or `:pull`).
+- Public `GET`/`HEAD` need no credential at all (a wrong Basic credential on a public pull is ignored).
+- Flow for the scanner: `crane auth login mirror.otinstaller.com -u scanner -p "$MIRROR_PUSH_TOKEN"`; the client
+  receives the 401 challenge, calls `/token` with the Basic credential, gets an admin token valid 300 s, and retries
+  with `Bearer`.
+- Takedowns: the API writes `hidden/<name>` or `hidden/<name>@<digest>` markers (`hideImage`) and later calls
+  `deleteImage`; both functions live in `registry.ts` and are shared through the `MIRROR` bucket.
+
+## 7. Errors
+
+### Shape
+
+`apiError(status, code, message, hint?)` (`lib/errors.ts`) throws an `HTTPException` whose body is:
+
+```json
+{ "error": { "code": "<code>", "message": "<message>", "hint": "<hint or omitted>", "docs": "https://otinstaller.com/docs/errors#<code>" } }
+```
+
+`ErrorStatus` allows 400, 401, 403, 404, 409, 410, 413, 429, 500, 503. Responses built by hand differ:
+
+- 500 `internal_error`: `{error: {code, message, request_id}}` (no `docs`) from `onError`.
+- 404 `not_found`: `{error: {code, message}}` from `notFound`.
+- 401 `bad_signature` from the GitLab webhook: `{error: {code, message}}` (the GitHub webhook uses `apiError`).
+- 400 `manifest_invalid` from `PUT /packages/:ns/:name/manifest`: `{error: {code, message, problems}}`.
+- Import refusals with a draft's problems (`import_not_ready`): `{error: {code, message, problems}}` (no `docs`).
+- `POST /admin/email-test` failures answer 502 with `{status, to, error}` (not an error envelope); 502 is outside
+  `ErrorStatus`.
+- Device-login HTML pages answer 400 or 410 with HTML, not JSON.
+
+### Every code
+
+"Documented" = an `### <code>` heading exists in `web/src/pages/docs/errors.md` (the `docs` link anchors on headings).
+**MISSING** = no heading and no mention anywhere in that file. Codes reached through `ImportProblem` (`refuse` in
+imports.ts), `TransferError` (`fail` in transfers.ts) and `BackupError` (backups.ts) are turned into `apiError` by the
+route wrappers, so they reach clients the same way.
+
+| Code | Status | File(s) | Documented |
+| --- | --- | --- | --- |
+| account_already_linked | 409 | routes/auth.ts | **MISSING** |
+| already_connected | 409 | routes/sources.ts | **MISSING** |
+| already_published | 409 | imports.ts | **MISSING** |
+| app_not_installed | 409 | routes/sources.ts, imports.ts | **MISSING** |
+| asset_not_found | 404 | routes/guides.ts | **MISSING** |
+| backup_not_found | 404 | routes/backups.ts | **MISSING** |
+| bad_signature | 401 | routes/webhooks.ts (apiError for GitHub, hand-built for GitLab) | **MISSING** |
+| cannot_ban_admin | 409 | routes/trust.ts | **MISSING** |
+| community_namespace_missing | 409 | imports.ts | **MISSING** |
+| destination_required | 400 | transfers.ts | yes |
+| docs_not_found | 404 | routes/guides.ts | **MISSING** |
+| feedback_not_found | 404 | routes/beta.ts | **MISSING** |
+| forbidden | 403 | routes/review.ts, sources.ts, imports.ts, backups.ts; transfers.ts | yes |
+| github_not_linked | 400 | routes/imports.ts, imports.ts | **MISSING** |
+| github_permission_required | 403 | imports.ts | yes |
+| gitlab_not_linked | 400 | routes/imports.ts, routes/sources.ts, imports.ts | **MISSING** |
+| gitlab_scope_required | 403 | routes/sources.ts, imports.ts | yes |
+| guide_not_found | 404 | routes/guides.ts | yes |
+| import_finished | 409 | imports.ts | **MISSING** |
+| import_not_detected | 409 | imports.ts | **MISSING** |
+| import_not_found | 404 | imports.ts (`requireOwnImport`, via apiError) | **MISSING** |
+| import_not_ready | 409 | imports.ts (with `problems`) | **MISSING** |
+| internal_error | 500 | index.ts (`onError`, hand-built) | yes |
+| invalid_backup_token | 401 | backups.ts | **MISSING** |
+| invalid_body | 400 | index.ts, routes/auth.ts, device.ts, ops.ts, review.ts, transfers.ts, beta.ts, sources.ts, trust.ts, imports.ts, backups.ts | yes |
+| invalid_category | 400 | routes/trust.ts | **MISSING** |
+| invalid_drill_token | 401 | backups.ts | **MISSING** |
+| invalid_email | 400 | routes/beta.ts | **MISSING** |
+| invalid_kind | 400 | routes/beta.ts, imports.ts | **MISSING** |
+| invalid_mode | 400 | routes/imports.ts, imports.ts | **MISSING** |
+| invalid_parameter | 400 | index.ts, routes/auth.ts, beta.ts, guides.ts, trust.ts | yes |
+| invalid_reason | 400 | routes/trust.ts | yes |
+| invalid_replacement | 400 | routes/trust.ts | **MISSING** |
+| invalid_repo | 400 | routes/imports.ts, routes/sources.ts | **MISSING** |
+| invalid_scan_results | 400 | routes/review.ts | **MISSING** |
+| invalid_scan_token | 401 | routes/review.ts | **MISSING** |
+| invalid_signature | 403 | routes/backups.ts | **MISSING** |
+| invalid_state | 409 | routes/trust.ts; transfers.ts | yes |
+| length_required | 400 | routes/backups.ts | **MISSING** |
+| license_not_redistributable | 400 | imports.ts | **MISSING** |
+| manifest_in_repo | 409 (routes/imports.ts, imports.ts); 400 (one `refuse` in imports.ts) | routes/imports.ts, imports.ts | **MISSING** (same code with two statuses) |
+| manifest_invalid | 400 | routes/imports.ts (hand-built, with `problems`) | **MISSING** |
+| manifest_name_mismatch | problem code inside `manifest_invalid` | routes/imports.ts | **MISSING** (and not in the CLI validator) |
+| manifest_namespace_mismatch | 400 | imports.ts | yes |
+| manifest_yaml_invalid | 400 | imports.ts | yes |
+| mirror_already_imported | 409 | imports.ts | **MISSING** |
+| name_taken | 409 | transfers.ts | yes |
+| namespace_in_review | 409 | routes/review.ts | **MISSING** |
+| namespace_not_allowed | 409 | transfers.ts | yes |
+| namespace_not_found | 404 | index.ts, routes/review.ts, transfers.ts | **MISSING** |
+| no_backup | 404 | backups.ts | **MISSING** |
+| no_email | 409 | routes/beta.ts | **MISSING** |
+| not_a_claim | 409 | transfers.ts | **MISSING** |
+| not_a_transfer | 409 | transfers.ts | **MISSING** |
+| not_accepted | 409 | transfers.ts | **MISSING** |
+| not_admin | 403 | imports.ts | **MISSING** |
+| not_community_admin | 403 | imports.ts | **MISSING** |
+| not_community_packaged | 409 | transfers.ts | yes |
+| not_configured | 503 | env.ts (`requireSecret`), routes/ops.ts | **MISSING** |
+| not_found | 404 | index.ts (`notFound`, hand-built); transfers.ts | yes |
+| not_maintainer | 403 | routes/sources.ts, imports.ts | **MISSING** |
+| not_pending | 409 | routes/review.ts | **MISSING** |
+| not_repo_owner | 403 | imports.ts | **MISSING** |
+| not_verified | 409 | transfers.ts | **MISSING** |
+| oauth_state_mismatch | 400 | routes/auth.ts | **MISSING** |
+| page_not_found | 404 | routes/guides.ts | yes |
+| page_not_rendered | 404 | routes/guides.ts | **MISSING** |
+| payload_too_large | 413 | routes/webhooks.ts, routes/review.ts | **MISSING** |
+| project_not_found | 404 | routes/sources.ts, imports.ts | **MISSING** |
+| project_not_public | 400 | routes/sources.ts, imports.ts | **MISSING** |
+| provider_already_linked | 409 | routes/auth.ts | **MISSING** |
+| readme_not_found | 404 | routes/guides.ts | **MISSING** |
+| repo_not_found | 404 | imports.ts | **MISSING** |
+| repo_not_public | 400 | imports.ts | **MISSING** |
+| report_not_found | 404 | routes/trust.ts | **MISSING** |
+| same_namespace | 409 | transfers.ts | **MISSING** |
+| same_source | 409 | routes/sources.ts | **MISSING** |
+| source_in_use | 409 | routes/sources.ts | **MISSING** |
+| source_not_found | 404 | routes/sources.ts | **MISSING** |
+| sync_rate_limited | 429 | routes/sources.ts | yes |
+| token_not_found | 404 | routes/auth.ts | **MISSING** |
+| too_large | 413 | routes/backups.ts | **MISSING** |
+| too_many_reports | 429 | routes/trust.ts | yes |
+| too_many_repos | 400 | routes/imports.ts | **MISSING** |
+| too_many_requests | 429 | index.ts (30/min writes), routes/beta.ts (10/h feedback) | yes, but the doc only describes the 30-a-minute write limit |
+| tool_not_found | 404 | catalog.ts, index.ts, routes/guides.ts, sources.ts, trust.ts, transfers.ts, backups.ts; backups.ts (`BackupError`) | yes |
+| tool_removed | 410 (catalog.ts, routes/trust.ts); 409 (routes/sources.ts, backups.ts) | catalog.ts, routes/trust.ts, routes/sources.ts, backups.ts | yes (same code with two statuses) |
+| transfer_not_found | 404 | routes/transfers.ts | **MISSING** |
+| unauthenticated | 401 | routes/auth.ts, review.ts, ops.ts, backups.ts | yes |
+| unknown_provider | 404 (`/auth/:provider/*`); 400 (`/auth/device/start`, imports) | routes/auth.ts, routes/imports.ts | **MISSING** |
+| upstream_has_manifest | 409 | imports.ts | **MISSING** |
+| upstream_unknown | 409 | transfers.ts | yes |
+| url_expired | 403 | routes/backups.ts | **MISSING** |
+| user_not_found | 404 | routes/trust.ts | **MISSING** |
+| version_not_found | 404 | index.ts, routes/guides.ts, review.ts, backups.ts | yes |
+| wrapper_not_community | 409 | imports.ts | **MISSING** |
+| wrapper_required | 400 | imports.ts | **MISSING** |
+
+Count: 97 distinct codes in the table (including the problem code `manifest_name_mismatch`); 25 documented, 72
+missing. Not covered here: the `manifest_*` / `content_*` / `artifact_*` / scan-verdict codes that the publish pipeline
+records in `publish_jobs.problems_json` and commit statuses (they are not HTTP error responses), the import status code
+`detection_failed`, and the mirror's OCI codes (section 6).
+
+Ambiguities and caveats:
+
+- Codes passed through `ImportProblem` / `TransferError` were found with a regex over literal `refuse(<status>, "<code>"`
+  and `fail(<status>, "<code>"` calls; a call that builds its code dynamically would have been missed (none was found).
+- The statuses for transfer and import codes come from those helpers, not from the route; they are the status the
+  client sees.
