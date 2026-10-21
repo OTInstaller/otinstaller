@@ -1,17 +1,24 @@
 # Publishes to PyPI with Trusted Publishing, pins the wheel hash in otinstaller.yaml and tags the release.
-# Configure a GitLab trusted publisher for this project on PyPI first, then run a pipeline manually
-# with the variable VERSION set (it must match pyproject.toml).
+# Configure a GitLab trusted publisher for this project on PyPI first. To release: set version: in otinstaller.yaml
+# (it must match pyproject.toml), commit, then Build > Pipelines > Run pipeline. (A VERSION variable, where the
+# project allows pipeline variables, overrides it.)
 # It pushes the release commit and tag with the job token: turn on Settings > CI/CD > Job token permissions >
 # "Allow Git push requests to the repository". Or set RELEASE_TOKEN to a token with write_repository (a project
 # access token on paid plans, or a personal access token).
 otinstaller-release:
   image: python:3.12
   rules:
-    - if: $CI_PIPELINE_SOURCE == "web" && $VERSION
+    - if: $CI_PIPELINE_SOURCE == "web"
   id_tokens:
     PYPI_ID_TOKEN:
       aud: pypi
   script:
+    - |-
+      VERSION="${VERSION:-$(sed -n 's/^version: *//p' otinstaller.yaml | tr -d '"\r ')}"; VERSION="${VERSION#v}"
+    - echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' || { echo "'$VERSION' is not a version like 1.2.0"; exit 1; }
+    - AUTH="${RELEASE_TOKEN:+oauth2:$RELEASE_TOKEN}"; AUTH="${AUTH:-gitlab-ci-token:$CI_JOB_TOKEN}"
+    - REMOTE="https://${AUTH}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+    - if git ls-remote --exit-code --tags "$REMOTE" "refs/tags/v$VERSION" >/dev/null; then echo "v$VERSION is already released; raise version in otinstaller.yaml"; exit 1; fi
     - python -m pip install build twine
     - python -m build
     - RESP=$(curl -sSf -X POST https://pypi.org/_/oidc/mint-token -d "{\"token\":\"${PYPI_ID_TOKEN}\"}")
@@ -23,7 +30,6 @@ otinstaller-release:
       sed -i -E "s|^version: .*|version: $VERSION|; s|^  package_version: .*|  package_version: \"$VERSION\"|; s|^  wheel_sha256: .*|  wheel_sha256: \"$SHA\"|" otinstaller.yaml
     - git config user.name "otinstaller release"
     - git config user.email "release@otinstaller.invalid"
-    - git commit -am "Release $VERSION"
+    - git diff --quiet || git commit -qam "Release $VERSION"
     - git tag "v$VERSION"
-    - AUTH="${RELEASE_TOKEN:+oauth2:$RELEASE_TOKEN}"; AUTH="${AUTH:-gitlab-ci-token:$CI_JOB_TOKEN}"
-    - git push "https://${AUTH}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" HEAD:$CI_DEFAULT_BRANCH "v$VERSION"
+    - git push --atomic "$REMOTE" HEAD:$CI_DEFAULT_BRANCH "v$VERSION"
