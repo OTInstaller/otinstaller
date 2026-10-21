@@ -159,6 +159,15 @@ export function exampleValue(type: string, name: string): string {
   }
 }
 
+/** The envelope the registry's own test run produced, when the scanner recorded entities from it. */
+export function recordedEnvelope(ref: string, runtime: string, input: Record<string, string>, s: { entities?: Record<string, unknown>[]; entity_count?: number; version: string; recorded_at: number }): string | null {
+  if (!s.entities?.length) return null;
+  const env: Record<string, unknown> = { envelope: 1, tool: `${ref}@${s.version}`, runtime, input, started_at: new Date(s.recorded_at).toISOString().replace(/\.\d{3}Z$/, "Z"), exit_code: 0, entities: s.entities, warnings: [] };
+  const more = (s.entity_count ?? 0) - s.entities.length;
+  const text = JSON.stringify(env, null, 2);
+  return more > 0 ? text.replace(/\n  \],\n  "warnings"/, `\n    … ${more} more\n  ],\n  "warnings"`) : text;
+}
+
 /** A sample result envelope shaped from the declared outputs, so the page shows what comes back. */
 export function sampleEnvelope(ref: string, version: string, runtime: string, outputs: string[], input: Record<string, string>): string {
   const ex: Record<string, Record<string, unknown>> = {

@@ -4018,6 +4018,19 @@
           {
             "type": "object",
             "properties": {
+              "sample": {
+                "description": "What the latest version's smoke test produced, when the scanner recorded it: up to five entities for json and jsonl tools, or the first 2000 characters of stdout. The input was the manifest's own test input.",
+                "type": "object",
+                "properties": {
+                  "output_format": { "type": "string" },
+                  "entities": { "type": "array", "items": { "type": "object" } },
+                  "entity_count": { "type": "integer" },
+                  "stdout": { "type": "string" },
+                  "version": { "type": "string" },
+                  "recorded_at": { "type": "integer", "description": "Unix milliseconds" }
+                },
+                "required": ["output_format", "version", "recorded_at"]
+              },
               "repo_url": {
                 "type": "string"
               },

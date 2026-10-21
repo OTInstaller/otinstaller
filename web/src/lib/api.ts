@@ -111,7 +111,18 @@ export interface Manifest {
   related_tools?: string[];
 }
 
+/** What the latest version's smoke test produced, recorded by the scanner (see the tool page's sample). */
+export interface SmokeSample {
+  output_format: string;
+  entities?: Record<string, unknown>[];
+  entity_count?: number;
+  stdout?: string;
+  version: string;
+  recorded_at: number;
+}
+
 export interface ToolDetail extends ToolSummary {
+  sample?: SmokeSample;
   repo_url: string | null;
   homepage: string | null;
   license: string;

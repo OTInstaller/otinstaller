@@ -208,7 +208,8 @@ Body (`ScanResults`):
   "vulnerabilities": { "critical": 0, "high": 1, "medium": 4, "low": 9, "fixable_critical": 0, "fixable_high": 1 },
   "secrets": { "count": 0, "findings": [{ "rule": "aws-access-key-id", "target": "/app/x", "line": 3 }] },
   "malware": { "count": 0, "findings": [{ "rule": "exec-base64", "detail": "..." }], "note": "optional" },
-  "smoke": { "status": "pass", "exit_code": 0, "network": "none", "duration_ms": 2140, "output_excerpt": "..." },
+  "smoke": { "status": "pass", "exit_code": 0, "network": "none", "duration_ms": 2140, "output_excerpt": "...",
+             "sample": { "output_format": "json", "entities": [{ "type": "domain", "value": "example.com" }], "entity_count": 3 } },
   "sbom": { "packages": 132 }
 }
 ```
@@ -220,6 +221,7 @@ Body (`ScanResults`):
 | `secrets.count` | non-negative integer | `findings` capped at 20 by the scanner. |
 | `malware.count` | non-negative integer | |
 | `smoke.status` | `pass` \| `fail` \| `skipped` | `exit_code`, `duration_ms`, `output_excerpt` optional. |
+| `smoke.sample` | optional object | Sent only on `pass` with non-empty stdout: `output_format`, then either `entities` (first 5, each ≤ 500 chars, from a json `{entities: [...]}`/array or jsonl lines with `type` and `value`) with `entity_count`, or `stdout` (first 2000 chars). `trimSample` (`scans.ts`) re-caps it on arrival. Stored in the `smoke` scan row and served by `GET /tools/:ns/:name` as `sample` for the latest version. |
 | `sbom` | optional `{packages}` | Stored as an `sbom` scan row when present. |
 | `scanner_version` | optional string | |
 

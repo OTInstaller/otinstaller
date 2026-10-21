@@ -71,3 +71,28 @@ class SignatureCertTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SampleTest(unittest.TestCase):
+    def test_json_envelope_keeps_a_few_entities(self):
+        out = '{"entities": [' + ", ".join('{"type": "domain", "value": "d%d.example"}' % i for i in range(8)) + "]}"
+        s = scan.sample_from_output(out, "json")
+        self.assertEqual(s["entity_count"], 8)
+        self.assertEqual(len(s["entities"]), scan.SAMPLE_MAX_ENTITIES)
+        self.assertNotIn("stdout", s)
+
+    def test_jsonl_lines_become_entities_and_junk_is_skipped(self):
+        out = '{"type": "ip", "value": "192.0.2.1"}\nnot json\n{"type": "url", "value": "https://example.com"}\n'
+        s = scan.sample_from_output(out, "jsonl")
+        self.assertEqual([e["type"] for e in s["entities"]], ["ip", "url"])
+
+    def test_text_and_unparseable_json_keep_a_slice_of_stdout(self):
+        self.assertEqual(scan.sample_from_output("x" * 5000, "text")["stdout"], "x" * scan.SAMPLE_MAX_CHARS)
+        s = scan.sample_from_output("{broken", "json")
+        self.assertEqual(s["stdout"], "{broken")
+        self.assertNotIn("entities", s)
+
+    def test_oversized_entity_is_cut_down(self):
+        out = '{"entities": [{"type": "document", "value": "r.pdf", "attrs": {"blob": "%s"}}]}' % ("y" * 900)
+        e = scan.sample_from_output(out, "json")["entities"][0]
+        self.assertEqual(e, {"type": "document", "value": "r.pdf"})

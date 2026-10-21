@@ -17,6 +17,8 @@ const clean: ScanResults = {
   sbom: { packages: 42 },
 };
 
+const sample = { output_format: "json", entities: [{ type: "organization", value: "Example Ltd" }], entity_count: 1 };
+
 describe("verdict rules", () => {
   it.each([
     ["clean results pass", clean, false, "pass"],
@@ -145,11 +147,15 @@ describe("scan callback", () => {
   it("publishes a clean release from an approved publisher and makes it searchable", async () => {
     const p = await publisher(true);
     const { scan, calls } = await tagAndValidate(p);
-    const res = await report(scan.callback_token, clean);
+    const res = await report(scan.callback_token, { ...clean, smoke: { ...clean.smoke, sample: { ...sample, stdout: "ignored when entities exist" } } });
     expect(await res.json()).toMatchObject({ status: "published", verdict: { result: "pass" } });
 
     const tool = (await (await call(`/tools/${p.login}/whois-plus`)).json()) as any;
     expect(tool).toMatchObject({ latest_version: "1.0.0", inputs: ["domain"], outputs: ["organization"], signed: true });
+    // The smoke test's sample rides along with the tool, trimmed: entities win over stdout.
+    expect(tool.sample).toMatchObject({ output_format: "json", entities: sample.entities, entity_count: 1, version: "1.0.0" });
+    expect(tool.sample.stdout).toBeUndefined();
+    expect(typeof tool.sample.recorded_at).toBe("number");
     const manifest = (await (await call(`/tools/${p.login}/whois-plus/latest/manifest`)).json()) as any;
     expect(manifest.signer_identity).toBe(clean.signature.identity);
     expect(statuses(calls).at(-1)).toMatchObject({ state: "success" });

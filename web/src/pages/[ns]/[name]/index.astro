@@ -9,7 +9,7 @@ import CopyCode from "../../../components/CopyCode.astro";
 import ToolRow from "../../../components/ToolRow.astro";
 import { apiOrNull, type ManifestResponse, type Pivots, type Scans, type SearchResult } from "../../../lib/api";
 import { entityLabel, formatDate, inputLabel } from "../../../lib/format";
-import { ethicsLines, evidence, inputExample, prefixFor, sampleEnvelope } from "../../../lib/evidence";
+import { ethicsLines, evidence, inputExample, prefixFor, recordedEnvelope, sampleEnvelope } from "../../../lib/evidence";
 import { loadTool } from "../../../lib/tool";
 import { cacheFor } from "../../../lib/page";
 import { demoteHeadings } from "../../../lib/html";
@@ -57,7 +57,13 @@ const runtimeLine = [
 const agentCall = first
   ? JSON.stringify({ tool: ref, target: ex(first).replace(/^"|"$/g, ""), input_type: first.type })
   : JSON.stringify({ tool: ref });
-const sample = sampleEnvelope(ref, t.latest_version, m.runtime?.kind ?? "docker", pivotFrom, Object.fromEntries(required.map((i) => [i.name, ex(i).replace(/^"|"$/g, "")])));
+// Real output first: the scanner records what the manifest's test input produced. Otherwise a sample shaped from
+// what the tool declares it finds.
+const sampleInput = Object.fromEntries(required.map((i) => [i.name, ex(i).replace(/^"|"$/g, "")]));
+const recorded = t.sample ? recordedEnvelope(ref, m.runtime?.kind ?? "docker", m.test?.input ? Object.fromEntries(Object.entries(m.test.input).map(([k, v]) => [k, String(v)])) : sampleInput, t.sample) : null;
+const recordedText = !recorded && t.sample?.stdout ? t.sample.stdout : null;
+const sample = recorded ?? sampleEnvelope(ref, t.latest_version, m.runtime?.kind ?? "docker", pivotFrom, sampleInput);
+const recordedOn = t.sample ? new Date(t.sample.recorded_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : null;
 const leads = pivotFrom.filter((o) => pivots?.pivots[o]?.length).map((o) => ({ type: o, n: pivots!.pivots[o]!.length }));
 const jsonHref = `https://api.otinstaller.com/v1/tools/${ref}`;
 cacheFor(Astro, 60);
@@ -137,8 +143,18 @@ const jsonLd = graph(software, breadcrumbs([["Tools", "/search"], [t.namespace, 
 
       <section class="panel sample-panel" aria-labelledby="out-h">
         <div class="ph"><h2 id="out-h">What you get back</h2><a href="/docs/results">Result envelope →</a></div>
-        <pre class="sample"><code>{sample}</code></pre>
-        <p class="small muted pad">Every tool returns this shape, shaped here from what this tool declares it finds. <code>--format table</code> to read it; <code>ot extract</code> and <code>ot auto</code> to continue.</p>
+        {recordedText ? (
+          <pre class="sample"><code>{recordedText}</code></pre>
+        ) : (
+          <pre class="sample"><code>{sample}</code></pre>
+        )}
+        {recorded ? (
+          <p class="small muted pad">Recorded from the registry's own run of version {t.sample!.version} on its test input, {recordedOn}. <code>--format table</code> to read it; <code>ot extract</code> and <code>ot auto</code> to continue.</p>
+        ) : recordedText ? (
+          <p class="small muted pad">The start of what version {t.sample!.version} printed on its test input ({t.sample!.output_format}), recorded by the registry on {recordedOn}. <code>ot run</code> wraps it in the <a href="/docs/results">result envelope</a>.</p>
+        ) : (
+          <p class="small muted pad">Every tool returns this shape, shaped here from what this tool declares it finds. <code>--format table</code> to read it; <code>ot extract</code> and <code>ot auto</code> to continue.</p>
+        )}
       </section>
 
       <section class="prose readme" aria-label="README">
