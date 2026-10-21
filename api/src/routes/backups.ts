@@ -9,7 +9,7 @@ import { requireUser } from "./auth";
 import { requireAdmin } from "./review";
 import { toolByRef, type ToolRef } from "../trust";
 import {
-  BackupError, backupSummary, completeDrill, completeRun, dispatchBackups, MAX_BUNDLE_BYTES, MAX_WHEEL_BYTES,
+  BackupError, backupSummary, completeDrill, completeRun, dispatchBackups, MAX_BUNDLE_BYTES, MAX_WHEEL_BYTES, startDrill,
   releasePlan, restoreLink, setGitBackups, setLegalHold, type ReportedItem,
 } from "../backups";
 
@@ -155,6 +155,24 @@ export function backupRoutes(app: App) {
   });
 
   // ---------- admins ----------
+  // The restore drill runs on the 1st of each month; admins can run one now and see recent results.
+  app.post("/admin/backups/drill", async (c) => {
+    requireAdmin(c);
+    const out = await startDrill(c.env);
+    if (!out) return c.json({ status: "nothing_to_drill", message: "there is no stored git bundle or public mirrored image yet" });
+    return c.json(out, out.status === "dispatched" ? 202 : 200);
+  });
+
+  app.get("/admin/backups/drills", async (c) => {
+    requireAdmin(c);
+    const drills = await c.env.DB.prepare(
+      `SELECT d.id, d.status, d.detail, d.created_at, d.completed_at, g.location AS bundle, i.location AS image
+       FROM restore_drills d LEFT JOIN backups g ON g.id = d.git_backup_id LEFT JOIN backups i ON i.id = d.image_backup_id
+       ORDER BY d.created_at DESC LIMIT 20`,
+    ).all();
+    return c.json({ drills: drills.results });
+  });
+
   app.post("/admin/tools/:ns/:name/legal-hold", async (c) => {
     const admin = requireAdmin(c);
     const t = await tool(c);
