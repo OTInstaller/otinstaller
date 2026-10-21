@@ -35,5 +35,7 @@ ethics:
   touches_target: true
   auth_required: false
   collects_personal_data: true
+  notifies_target: true
+  notes: "It downloads the file from its URL. Whoever runs that server sees the request, and a tracking link can tell them it was opened."
 test:
   input: { url: "https://raw.githubusercontent.com/ianare/exif-samples/master/jpg/gps/DSCN0010.jpg" }
