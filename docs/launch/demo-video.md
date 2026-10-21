@@ -6,20 +6,30 @@ LinkedIn and the blog post; a 30-second cut for X if needed.
 ## The three commands
 
 ```
+curl -fsSL https://get.otinstaller.com/ot | sh        # Windows: irm https://get.otinstaller.com/ot.ps1 | iex
 ot guide tools osintverse-community/email-investigation --yes
-ot auto {demo email} --case demo
-ot extract --case demo
+ot run osintverse-community/holehe e:{demo email} --format raw
 ```
 
-1. Installs every tool the Email investigation playbook uses: holehe, socialscan, mailcat, email-header-parser,
-   checkdmarc and dns-records (signatures checked as they install).
-2. Guesses the target is an email address and runs every installed tool that takes one; holehe checks 120+ sites
-   for an account registered with it, without alerting the owner, and `ot auto` prints a summary table.
-3. Pulls the accounts (and any emails, domains, URLs) out of the saved results.
+1. Installs `ot` (checks the release signature).
+2. Installs every tool the Email investigation playbook uses: holehe, socialscan, mailcat, email-header-parser,
+   checkdmarc and dns-records, each signature checked as it installs.
+3. Runs holehe, which checks 121 sites for an account registered with the address without alerting its owner, and
+   prints one `[+] site` line per account.
 
-**Production check (21 Oct):** the commands and the guide exist on production. A dry run with holehe's own test
-input could not finish: Docker Desktop was not running on the machine. {Result of the dry run, how long each step
-takes, and the exact output, once run.}
+**Dry run on production (21 Oct, `ot` built from the v0.12.1 commit, holehe's own test address
+`example@example.com`):**
+
+| Step | Time | What happened |
+| --- | --- | --- |
+| `ot guide tools … --yes` | 117 s on a fresh machine (image pulls and two sandbox builds) | All 6 installed; holehe's cosign signature verified. Also prints "socialscan is not signed" and "mailcat has scan warnings": true, and fine on camera, or start from `ot install osintverse-community/holehe` instead |
+| `ot run … --format raw` | 14 s | 13 `[+]` lines ("121 websites checked in 10.46 seconds"), between holehe's own banner lines (Twitter handle, GitHub link, a BTC donation address) |
+
+**Why not `ot auto` and `ot extract`:** the holehe package prints text, not JSON, so `ot` records no entities for
+it. `ot auto` shows "ENTITIES 0" in its summary, and `ot extract` lists every domain in the text, including
+`github.com` from holehe's banner and the address's own domain. Both would contradict "12 accounts" on screen. If
+the holehe package is changed to emit account entities, the original `ot auto` / `ot extract` flow becomes the
+better demo.
 
 ## The demo email: make "12" true and nobody's privacy at stake
 
@@ -51,13 +61,13 @@ The number on screen must be real, and the address must not be a real person's (
 | 1 | 0:00–0:04 | Title card | "From an email to 12 accounts in 3 commands" · OTInstaller logo | — |
 | 2 | 0:04–0:10 | Browser: otinstaller.com home, scroll to "Start from what you have", click **Email** | The email tools and the Email investigation playbook | "OTInstaller is a free registry of OSINT tools and guides." |
 | 3 | 0:10–0:14 | Browser: the Email investigation playbook page, highlight the install command | `ot guide tools osintverse-community/email-investigation` | "Start from a guide." |
-| 4 | 0:14–0:24 | Terminal: command 1 | Six tools installing, "signature verified" lines (speed up the pulls, label "sped up") | "One command installs every tool it uses. Each one's signature is checked first." |
-| 5 | 0:24–0:38 | Terminal: command 2 | `ot auto` detecting "email", holehe running, the summary table | "ot auto sees an email address and runs every tool that takes one." |
-| 6 | 0:38–0:48 | Terminal: command 3 | The list of accounts, the count "12" highlighted (zoom or box) | "And ot extract pulls out what they found: 12 accounts." |
+| 4 | 0:14–0:20 | Terminal: command 1 | The installer checking the signature, `ot` on the PATH | "Install ot: one command, signature checked." |
+| 5 | 0:20–0:32 | Terminal: command 2 | Six tools installing, "verified" lines (speed up the pulls, label "sped up") | "One command installs every tool the email guide uses. Each one's signature is checked first." |
+| 6 | 0:32–0:48 | Terminal: command 3 | holehe's `[+]` lines; box the 12 lines and the "121 websites checked" line | "Then run it on an email address: 12 accounts, found without alerting the owner." |
 | 7 | 0:48–0:54 | Browser: holehe's tool page | Signed · Scan passed · Healthy · "Community-packaged" and the upstream credit | "Every tool is signed, scanned, and tested every night. It all runs on your machine." |
 | 8 | 0:54–1:00 | End card | `curl -fsSL https://get.otinstaller.com/ot \| sh` · otinstaller.com · "Free" | "Get started at otinstaller.com." |
 
-**30-second cut:** shots 1, 4 (3 s), 5, 6, 8.
+**30-second cut:** shots 1, 4 (2 s), 5 (3 s), 6, 8.
 
 ## Captions and accessibility
 
