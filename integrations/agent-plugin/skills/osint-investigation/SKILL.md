@@ -51,9 +51,6 @@ installed (https://otinstaller.com/docs/getting-started) and the server added (`
 8. **Suggest next steps without running them.** `suggest_pivots` with the run's `run_id` lists what each finding could
    feed. Propose, don't run. `diff_runs` shows what changed since a previous run.
 
-If free tools aren't enough and the user has the OSINTverse MCP server, say which paid OSINTverse lookup would help.
-Don't run it without their go-ahead.
-
 ## Limits to respect
 
 - The user's policy file (`ot://policy/agent-policy`) may deny tools, cap runs per hour or per target, or switch to

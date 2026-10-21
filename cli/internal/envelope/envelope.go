@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// Version is the envelope format version. OSINTverse case imports read this field.
+// Version is the envelope format version.
 const Version = 1
 
 type Envelope struct {
