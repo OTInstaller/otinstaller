@@ -3,6 +3,8 @@
 // was a D1 query, and in October 2026 crawlers alone used up D1's daily read allowance.
 import type { Env } from "./env";
 
+const ORIGINAL_CC = "x-ot-cache-control";
+
 /** The cache key: the URL plus which CORS answer the request gets (the site's, with credentials, or `*`). */
 function cacheKey(req: Request, env: Env): Request {
   const url = new URL(req.url);
@@ -21,13 +23,19 @@ export async function edgeCached(req: Request, env: Env, ctx: ExecutionContext, 
   const hit = await cache.match(key);
   if (hit) {
     const res = new Response(hit.body, hit);
+    // The zone's Browser Cache TTL rewrites Cache-Control on cached responses (to 4 hours); give browsers ours.
+    const cc = res.headers.get(ORIGINAL_CC);
+    if (cc) res.headers.set("cache-control", cc);
+    res.headers.delete(ORIGINAL_CC);
     res.headers.set("x-edge-cache", "hit");
     return res;
   }
   const res = await handle();
   const cc = res.headers.get("cache-control") ?? "";
   if (res.status === 200 && /\bpublic\b/.test(cc) && /max-age=\d*[1-9]/.test(cc) && !res.headers.has("set-cookie")) {
-    ctx.waitUntil(cache.put(key, res.clone()));
+    const stored = new Response(res.clone().body, res);
+    stored.headers.set(ORIGINAL_CC, cc);
+    ctx.waitUntil(cache.put(key, stored));
   }
   return res;
 }
