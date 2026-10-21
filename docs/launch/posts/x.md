@@ -49,7 +49,14 @@ is under 280 characters (counts in brackets, with links as 23; Thursday 22 Octob
 >
 > https://otinstaller.com/import
 
-**7/** [86]
+**7/** [211]
+
+> AI agents can use it too: `ot mcp` lets Claude, Cursor or Codex install and run tools, but they have to ask you
+> before anything touches a target, and every run is logged on your machine.
+>
+> https://otinstaller.com/docs/agents
+
+**8/** [86]
 
 > It's free and open source: https://github.com/OTInstaller/otinstaller
 >

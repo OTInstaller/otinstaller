@@ -48,6 +48,7 @@ and the gallery images ready before scheduling.
 > 🩺 A nightly health check tells you whether a tool still works
 > 🏠 Tools run on your machine. We never see your targets or results
 > 📚 Guides walk through real investigations and install the tools they use
+> 🤖 Works with AI agents through `ot mcp`, which asks you before any run that touches a target
 >
 > Tool authors: publishing is a pull request away. Sign in with GitHub or GitLab, pick your repo, and the import
 > wizard writes the manifest and release workflow for you.

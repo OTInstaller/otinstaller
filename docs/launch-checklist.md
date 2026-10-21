@@ -103,6 +103,9 @@ with "Filename too long"; use a short path or `git config core.longpaths true`.
 
 ## Beta decisions
 
+Superseded on 21 Oct 2026: nobody was invited to the closed beta, and the launch is public and direct. Kept for the
+record.
+
 - **No invite gate.** Every new namespace already waits in the review queue for a reviewer, so only approved
   people can publish. Approve the invited authors' namespaces; reject others politely until launch.
 - **Feedback** goes to D1 (`/admin/feedback`); bugs that block someone also go to GitHub issues with a severity,
@@ -110,9 +113,9 @@ with "Filename too long"; use a short path or `git config core.longpaths true`.
 
 ## Before the public launch (week 13)
 
-- [ ] Beta exit criteria met (Beta tab), survey read ([beta/feedback-survey.md](beta/feedback-survey.md)).
+- [x] ~~Beta exit criteria met, survey read~~: doesn't apply. There was no beta cohort; the launch is public (21 Oct).
 - [x] Week 11 backups merged and deployed; restore drill run once (21 Oct, below).
-- [ ] Build the site with `PUBLIC_BETA=0` to drop the beta strip.
+- [x] Build the site with `PUBLIC_BETA=0` to drop the beta strip. Every deploy since 21 Oct has (latest `c4e822b4`).
 - [x] Remove the dry-run packages. Done 21 Oct about 10:24 UTC in the admin console (Reports → Take down, every
       version, category `other`): `dheerajydv19/ot-test-tool` and `osintversehq/ot-test-tool`. Their pages and API
       reads answer 410, search no longer finds them (`/v1/tools?kind=tool` total 39 → 37), and the Beta tab shows 0

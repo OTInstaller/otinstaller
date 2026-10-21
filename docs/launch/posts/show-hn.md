@@ -40,6 +40,9 @@ Planned for **Thursday 22 October 2026**, 13:00–14:00 UTC (09:00–10:00 US Ea
 > - A nightly job runs each tool's test input, so a tool page tells you whether it worked last night.
 > - Results come back as one JSON envelope with typed entities, so `ot auto`, playbooks and `ot extract` can chain
 >   tools ("run everything that takes an email").
+> - `ot mcp` is an MCP server for AI agents. Runs that go online, touch the target or involve a person need the
+>   human's consent (an elicitation question, or a single-use token bound to the exact call), and every agent run is
+>   written to a local audit log. Agents can't set API keys, sign in or install unsigned tools.
 > - Because GitHub and GitLab sometimes ban OSINT repositories, the registry keeps backups: the image with its
 >   signatures on our own mirror (same digest), the wheel, and a git bundle. If the original disappears, `ot` falls
 >   back to the mirror and checks the same signature.
@@ -64,4 +67,7 @@ Planned for **Thursday 22 October 2026**, 13:00–14:00 UTC (09:00–10:00 US Ea
 - *Who runs it / business model?* OSINTverse. The registry is free; a hosted "run in the cloud" tier may come later.
   No ads, no tracking cookies.
 - *GitLab?* Yes, sign-in, publishing, import and sync.
+- *Can an AI agent run these?* Yes, through `ot mcp`, but it has to ask before anything that touches a target, and
+  you can switch agents off in `<ot home>/agent-policy.json`. A read-only remote server
+  (https://api.otinstaller.com/mcp) lets chat assistants search the registry without running anything.
 - *Windows?* Yes: `irm https://get.otinstaller.com/ot.ps1 | iex`. Docker Desktop (or Podman) is needed for most tools.
