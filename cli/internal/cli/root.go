@@ -126,6 +126,7 @@ func (a *App) Root() *cobra.Command {
 		a.guideCmd(),
 		a.docsCmd(),
 		a.reportCmd(),
+		a.feedbackCmd(),
 		a.claimCmd(),
 		a.transferCmd(),
 		a.yankCmd(),

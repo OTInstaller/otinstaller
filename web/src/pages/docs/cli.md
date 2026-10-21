@@ -20,6 +20,7 @@ Run `ot <command> --help` for all flags. Packages are written `namespace/name`, 
 | `ot keys set\|list\|rm <NAME>` | API keys in the OS keychain |
 | `ot doctor` | Check Docker, pipx, Python and the keychain |
 | `ot report <ns/name> [--reason … --details …]` | Report a package to the reviewers (opens the form without `--reason`) |
+| `ot feedback [--kind bug\|idea\|question\|other] [--about …] "message"` | Send feedback to the team with your `ot` version and OS; reads piped text, or opens the form with no message |
 | `ot self-update [--check]` | Update ot itself; the release signature is checked first |
 
 ## Guides and docs

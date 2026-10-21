@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Quick feedback
+    url: https://otinstaller.com/feedback
+    about: A thought, a question or a small annoyance. Also from the terminal with `ot feedback "..."`.
+  - name: Report a package
+    url: https://otinstaller.com/policy/takedown
+    about: Malware, abuse or a license problem in a published tool or guide goes to the reviewers.
+  - name: Security problem in OTInstaller itself
+    url: mailto:security@otinstaller.com
+    about: Please email instead of opening a public issue.

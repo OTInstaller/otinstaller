@@ -1,21 +1,27 @@
 # Optional. `ot release 1.2.0` does the same from your computer in a few seconds, without CI.
-# Sets the version in otinstaller.yaml and pushes the tag vX.Y.Z; the registry then renders and checks the guide.
-# Run a pipeline manually with the variable VERSION set (e.g. 1.2.0). RELEASE_TOKEN is a project access
-# token with write_repository, used to push the release commit and tag.
+# Pushes the tag vX.Y.Z for the version in otinstaller.yaml; the registry then renders and checks the guide.
+# To release: set version: in otinstaller.yaml (e.g. 1.2.0), commit, then Build > Pipelines > Run pipeline.
+# (A VERSION variable, where the project allows pipeline variables, overrides it.)
+# It pushes the release commit and tag with the job token: turn on Settings > CI/CD > Job token permissions >
+# "Allow Git push requests to the repository". Or set RELEASE_TOKEN to a token with write_repository (a project
+# access token on paid plans, or a personal access token).
 otinstaller-release:
   image: alpine:3.20
   timeout: 3m
   variables:
     GIT_DEPTH: "1"
   rules:
-    - if: $CI_PIPELINE_SOURCE == "web" && $VERSION
+    - if: $CI_PIPELINE_SOURCE == "web"
   script:
     - apk add --no-cache git
-    - VERSION="${VERSION#v}"
+    - |-
+      VERSION="${VERSION:-$(sed -n 's/^version: *//p' otinstaller.yaml | tr -d '"\r ')}"; VERSION="${VERSION#v}"
     - echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' || { echo "'$VERSION' is not a version like 1.2.0"; exit 1; }
-    - REMOTE="https://oauth2:${RELEASE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
-    - if git ls-remote --exit-code --tags "$REMOTE" "refs/tags/v$VERSION" >/dev/null; then echo "v$VERSION is already released"; exit 1; fi
-    - sed -i -E "s|^version: .*|version: $VERSION|" otinstaller.yaml
+    - AUTH="${RELEASE_TOKEN:+oauth2:$RELEASE_TOKEN}"; AUTH="${AUTH:-gitlab-ci-token:$CI_JOB_TOKEN}"
+    - REMOTE="https://${AUTH}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+    - if git ls-remote --exit-code --tags "$REMOTE" "refs/tags/v$VERSION" >/dev/null; then echo "v$VERSION is already released; raise version in otinstaller.yaml"; exit 1; fi
+    - |-
+      sed -i -E "s|^version: .*|version: $VERSION|" otinstaller.yaml
     - git config user.name "otinstaller release"
     - git config user.email "release@otinstaller.invalid"
     - git diff --quiet || git commit -qam "Release $VERSION"

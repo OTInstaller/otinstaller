@@ -60,15 +60,19 @@ on osintverse.com → Dashboard → Developer, with redirect URIs `https://api.o
 GitLab.com → Edit profile (or the group) → Applications → Add new application.
 
 - Redirect URI: `https://api.otinstaller.com/v1/auth/gitlab/callback`
-- Confidential: yes · Scopes: `read_user`, `read_api`
+- Confidential: yes · Scopes: `read_user`, `read_api` and `api`. Sign-in asks only for the first two; `api` must still
+  be ticked here, because GitLab refuses any scope the application wasn't registered with ("The requested scope is
+  invalid, unknown, or malformed") when a user later connects a project.
 - Application ID → `GITLAB_CLIENT_ID`, secret → `GITLAB_CLIENT_SECRET`
 - Device flow (`ot login --gitlab`) works with the same application.
 - Connecting a project creates its webhook, which needs the `api` scope. Users grant it only when they connect:
   `POST /v1/sources/gitlab {"project": "group/name"}` answers `gitlab_scope_required` with a sign-in link that asks for it.
   Finishing an import (`POST /v1/imports/{id}/finish`) needs the same scope, for the webhook and the merge request.
 - GitLab projects publish with the `.gitlab-ci.yml` that `ot init` writes: images are signed with GitLab's OIDC token
-  (cosign keyless, issuer `https://gitlab.com`) and Python packages use PyPI trusted publishing. Add a project access
-  token with `write_repository` as the CI variable `RELEASE_TOKEN` so the pipeline can push the release commit and tag.
+  (cosign keyless, issuer `https://gitlab.com`) and Python packages use PyPI trusted publishing. The pipeline pushes the
+  release commit and tag with its job token, once the project turns on Settings → CI/CD → Job token permissions →
+  "Allow Git push requests to the repository". `RELEASE_TOKEN` (a token with `write_repository`) still works instead;
+  project access tokens need a paid plan on GitLab.com, so the job token is the default.
 
 ## 4. Scanner repository (registry-ops) and email
 

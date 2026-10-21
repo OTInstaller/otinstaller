@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { exampleRun, formatCount, guidePageHref, inputLabel } from "./format";
+import { exampleRun, formatCount, guidePageHref, hintParts, inputLabel } from "./format";
 import { withParam } from "./page";
 
 describe("format", () => {
@@ -25,5 +25,19 @@ describe("format", () => {
     const url = new URL("https://otinstaller.com/search?q=email&input=email&cursor=24");
     expect(withParam(url, "runtime", "docker")).toBe("/search?q=email&input=email&runtime=docker");
     expect(withParam(url, "input", null)).toBe("/search?q=email");
+  });
+});
+
+describe("hintParts", () => {
+  const api = "https://api.otinstaller.com";
+  it("links a sign-in hint back to the current page", () => {
+    expect(hintParts("sign in again at https://api.otinstaller.com/v1/auth/gitlab/login?scope=api", api, "https://otinstaller.com/import")).toEqual([
+      "sign in again at ",
+      { href: "https://api.otinstaller.com/v1/auth/gitlab/login?scope=api&redirect=https%3A%2F%2Fotinstaller.com%2Fimport", label: "this link" },
+    ]);
+  });
+  it("keeps other links and trailing punctuation as they are", () => {
+    expect(hintParts("see https://otinstaller.com/docs/errors.", api)).toEqual(["see ", { href: "https://otinstaller.com/docs/errors", label: "https://otinstaller.com/docs/errors" }, "."]);
+    expect(hintParts("wait a minute and try again", api)).toEqual(["wait a minute and try again"]);
   });
 });

@@ -3,9 +3,9 @@ import Base from "../../layouts/Base.astro";
 import AdminConsole from "../../islands/AdminConsole";
 import PageHead from "../../components/PageHead.astro";
 
-// /admin, /admin/reports and /admin/transfers (the addresses reviewer emails link to) open the console on that tab.
+// /admin, /admin/reports, /admin/transfers, /admin/feedback and /admin/beta (the addresses reviewer emails link to) open the console on that tab.
 const section = Astro.params.section ?? "";
-const tab = ({ "": "review", reports: "reports", transfers: "transfers", audit: "audit" } as const)[section];
+const tab = ({ "": "review", reports: "reports", transfers: "transfers", audit: "audit", feedback: "feedback", beta: "beta" } as const)[section];
 if (!tab) return Astro.rewrite("/404");
 Astro.response.headers.set("Cache-Control", "private, no-store");
 ---
