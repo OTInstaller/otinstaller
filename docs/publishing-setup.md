@@ -60,7 +60,9 @@ on osintverse.com → Dashboard → Developer, with redirect URIs `https://api.o
 GitLab.com → Edit profile (or the group) → Applications → Add new application.
 
 - Redirect URI: `https://api.otinstaller.com/v1/auth/gitlab/callback`
-- Confidential: yes · Scopes: `read_user`, `read_api`
+- Confidential: yes · Scopes: `read_user`, `read_api` and `api`. Sign-in asks only for the first two; `api` must still
+  be ticked here, because GitLab refuses any scope the application wasn't registered with ("The requested scope is
+  invalid, unknown, or malformed") when a user later connects a project.
 - Application ID → `GITLAB_CLIENT_ID`, secret → `GITLAB_CLIENT_SECRET`
 - Device flow (`ot login --gitlab`) works with the same application.
 - Connecting a project creates its webhook, which needs the `api` scope. Users grant it only when they connect:

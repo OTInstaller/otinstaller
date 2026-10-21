@@ -1,6 +1,7 @@
 // Pieces shared by the signed-in islands.
 import { useEffect, useState } from "preact/hooks";
-import { api, ApiError, signInUrl } from "../lib/api";
+import { api, API_URL, ApiError, signInUrl } from "../lib/api";
+import { hintParts } from "../lib/format";
 
 export interface Me {
   login: string;
@@ -62,12 +63,18 @@ export function Loading({ what }: { what: string }) {
   );
 }
 
+/** A hint with its links clickable; sign-in links (e.g. "sign in again at …?scope=api") come back to this page. */
+function Hint({ text }: { text: string }) {
+  const here = typeof location === "undefined" ? undefined : location.href;
+  return <>{hintParts(text, API_URL, here).map((p) => (typeof p === "string" ? p : <a href={p.href}>{p.label}</a>))}</>;
+}
+
 export function ErrorNote({ error }: { error: unknown }) {
   if (!error) return null;
   const e = error as ApiError;
   return (
     <div class="notice bad" role="alert">
-      <p>{e.message ?? String(error)}{e.hint && <> ({e.hint})</>}</p>
+      <p>{e.message ?? String(error)}{e.hint && <> (<Hint text={e.hint} />)</>}</p>
       {e.problems && e.problems.length > 0 && (
         <ul>{e.problems.map((p) => <li><code>{p.code}</code>{p.path && <> at <code>{p.path}</code></>}: {p.message}</li>)}</ul>
       )}

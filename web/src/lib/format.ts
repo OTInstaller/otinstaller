@@ -37,3 +37,30 @@ export function exampleRun(ref: string, inputs: { name: string; type: string; re
 export function guidePageHref(ref: string, path: string, version?: string): string {
   return `/guides/${ref}/${path.replace(/\.md$/, "")}${version ? `?v=${encodeURIComponent(version)}` : ""}`;
 }
+
+export type HintPart = string | { href: string; label: string };
+
+/**
+ * Splits an API error hint into text and links. A sign-in link on the API ("sign in again at …?scope=api") is
+ * labelled "this link" and gets `redirect` set to the current page, so the user comes back to what they were doing.
+ */
+export function hintParts(text: string, apiUrl: string, here?: string): HintPart[] {
+  const out: HintPart[] = [];
+  text.split(/(https:\/\/\S+)/).forEach((part, i) => {
+    if (i % 2 === 0) {
+      if (part) out.push(part);
+      return;
+    }
+    const url = part.replace(/[.,;)]+$/, "");
+    const signIn = url.startsWith(`${apiUrl}/v1/auth/`);
+    let href = url;
+    if (signIn && here) {
+      const u = new URL(url);
+      if (!u.searchParams.has("redirect")) u.searchParams.set("redirect", here);
+      href = u.toString();
+    }
+    out.push({ href, label: signIn ? "this link" : url });
+    if (part.length > url.length) out.push(part.slice(url.length));
+  });
+  return out;
+}
