@@ -156,7 +156,16 @@ describe("GitLab webhooks and publishing", () => {
         const path = decodeURIComponent(new URL(req.url).pathname.split("/files/")[1]!.replace(/\/raw$/, ""));
         return ({ "otinstaller.yaml": manifest, "README.md": README } as Record<string, string>)[path] ?? null;
       },
-      [`POST ${GL}${p.id}/statuses/abc123`]: { id: 1 },
+      // Like gitlab.com: a status can't move from running to running (seen in the beta dry run on production).
+      [`POST ${GL}${p.id}/statuses/abc123`]: (() => {
+        let last = "";
+        return async (req: Request) => {
+          const { state } = (await req.json()) as { state: string };
+          if (state === last) return Response.json({ message: `Cannot transition status via :run from :${state} (Reason(s): Status cannot transition via "run")` }, { status: 400 });
+          last = state;
+          return { id: 1 };
+        };
+      })(),
       "GET https://registry.gitlab.com/v2/": { schemaVersion: 2 },
       "POST https://api.github.com/app/installations/": { token: "ghs_ops" },
       "POST https://api.github.com/repos/osintverse/registry-ops/dispatches": new Response(null, { status: 204 }),
