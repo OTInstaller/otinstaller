@@ -10,18 +10,17 @@ Astro.response.headers.set("Cache-Control", "no-store");
 const requestId = error instanceof ApiError ? error.message.match(/request ID ([\w-]+)/)?.[1] : undefined;
 ---
 <Base title="Temporarily unavailable" noindex>
-  <div class="nf card fade-in">
-    <p class="code" aria-hidden="true">500</p>
+  <div class="nf">
+    <p class="eyebrow">500 · temporarily unavailable</p>
     <h1>The registry is having trouble</h1>
-    <p class="muted">This page couldn't be loaded just now. Nothing is wrong with your setup; please try again in a few minutes.</p>
+    <p class="muted">This page could not be loaded just now. Nothing is wrong with your setup; please try again in a few minutes. Installed tools keep working, and <code>ot</code> keeps a cache of what it needs.</p>
     {requestId && <p class="small muted">Request ID <code>{requestId}</code></p>}
-    <p class="small"><a href="/">Home</a> · <a href="/docs">Docs</a> · <a href="/feedback">Tell us about it</a></p>
+    <p class="small muted"><a href="/">Home</a> · <a href="/docs">Docs</a> · <a href="/feedback">Tell us about it</a></p>
   </div>
 </Base>
 
 <style>
-  .nf { max-width: 560px; margin: 6vh auto; padding: 40px 32px; text-align: center; display: grid; gap: 10px; justify-items: center; }
-  .nf:hover { translate: none; }
-  .code { font-family: var(--font-mono); font-size: var(--fs-6); font-weight: 800; letter-spacing: -0.05em; margin: 0; background: linear-gradient(120deg, var(--accent), var(--ok)); -webkit-background-clip: text; background-clip: text; color: transparent; line-height: 1; }
-  .nf h1 { margin: 0; font-size: var(--fs-4); }
+  .nf { max-width: 640px; margin: 8vh auto; display: grid; gap: 12px; }
+  .nf .eyebrow, .nf h1, .nf p { margin: 0; }
+  .nf h1 { font-size: var(--fs-5); }
 </style>

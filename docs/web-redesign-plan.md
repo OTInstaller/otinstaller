@@ -409,8 +409,8 @@ frame server-rendered). The logo mark stays; the wordmark is set in Geist Mono.
 | Semantics | One `h1`; footer titles are not headings; icons hidden; tabs use the tabs pattern | `astro check` plus `npm run a11y` (axe-core in jsdom against the preview build) |
 | LCP | < 1.0 s at p75 on a warm edge (today 2.4 s warm) | Cloudflare Web Vitals; no hidden-until-JS content |
 | INP / CLS | < 100 ms / 0 | Small islands, no scroll work; fonts preloaded with `size-adjust` fallbacks |
-| Weight | Home ≤ 90 KB compressed excluding fonts; fonts ≤ 60 KB | Build output check |
-| JS | ≤ 25 KB compressed on public pages; islands only on signed-in or form pages | Count of `client:*` per page |
+| Weight | Home ≤ 90 KB compressed excluding fonts; fonts ≤ 60 KB | `npm run budget` against the preview build or production |
+| JS | ≤ 25 KB compressed on public pages; islands only on signed-in or form pages | `npm run budget` |
 | Lighthouse | ≥ 95 performance and accessibility on home, search, tool (plan target was 90) | Per phase, preview build |
 
 ### 4.12 Constraints that stay
@@ -598,6 +598,12 @@ GitLab jobs) and the site uses them; the run block has a Terminal / Agent switch
 a11y` runs axe-core over thirteen pages in jsdom (static rules; contrast is the token script's job) and found the
 radio-driven tabs misusing `role="tab"`, now a radio group. Still open: converting the getting-started doc to the
 shared install block (it would lose its Markdown twin), and a signed-in walk through the wizard and dashboard.
+
+**Phase 6 (21 Oct 2026, later still):** the header search dialog recognises a pasted value and offers its input
+page (Enter goes there with the value kept), so the paste box works from every page; `npm run budget` checks the
+page-weight budgets of section 4.11 against a running site (today: home 19 KB page, 8 KB JS, 23 KB fonts, gzip;
+every other page smaller); the home page's Image row lists the images-geo category, since image tools take a
+URL; `/publish` is in the sitemap; the 500 page sits on the tokens.
 
 Effort is for one person who knows the codebase, including verification.
 

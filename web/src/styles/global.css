@@ -219,7 +219,8 @@ table.data tbody tr:hover { background: var(--bg-subtle); }
 .sdlg-field input { flex: 1; border: 0; background: transparent; padding: 12px 0; font-size: var(--fs-3); color: var(--text); }
 .sdlg-field input:focus-visible { outline: none; }
 .sdlg-field input::-webkit-search-cancel-button { display: none; }
-.sdlg-type { margin-left: auto; }
+.sdlg-typed { margin: 0; padding: 8px 14px; border-bottom: 1px solid var(--border); background: var(--bg-subtle); color: var(--text-muted); }
+.sdlg-typed b { color: var(--text); }
 .sdlg-results { max-height: min(60vh, 460px); overflow-y: auto; }
 .sdlg-results li + li { margin-top: 0; border-top: 1px solid var(--border); }
 .sdlg-results a { display: grid; gap: 2px; padding: 10px 14px; text-decoration: none; color: var(--text); }

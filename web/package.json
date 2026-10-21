@@ -11,7 +11,8 @@
     "og": "node scripts/og.mjs",
     "deploy": "astro build && wrangler deploy",
     "contrast": "node scripts/contrast.mjs",
-    "a11y": "node scripts/a11y.mjs"
+    "a11y": "node scripts/a11y.mjs",
+    "budget": "node scripts/budget.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "14.3.3",
