@@ -66,6 +66,8 @@ export interface ToolSummary {
   stars: number;
   installs_30d: number;
   health: "unknown" | "healthy" | "broken" | "not_checked";
+  /** When the nightly health check last ran (ms); null when never. Older API responses omit it. */
+  health_checked_at?: number | null;
   verified: boolean;
   signed: boolean;
   needs_keys: boolean;
@@ -141,6 +143,15 @@ export interface ManifestResponse {
   manifest: Manifest | null;
   mirror_image?: string;
   wheel_url?: string;
+}
+
+export interface Facets {
+  kind: "tool" | "guide";
+  inputs: Record<string, number>;
+  outputs: Record<string, number>;
+  categories: Record<string, number>;
+  runtimes: Record<string, number>;
+  no_keys: number;
 }
 
 export interface Pivots {
