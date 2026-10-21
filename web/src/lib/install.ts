@@ -4,5 +4,8 @@ export const INSTALLS = [
   { id: "windows", label: "Windows", command: "irm https://get.otinstaller.com/ot.ps1 | iex", where: "%LOCALAPPDATA%\\Programs\\ot, and adds it to your PATH" },
 ] as const;
 
+// The no-Docker edition: a Python CLI for Linux that installs tools into per-tool virtualenvs.
+export const NO_DOCKER = { command: "pipx install otlite", label: "No Docker? otlite on Linux", docs: "/docs/otlite" } as const;
+
 export const RELEASES_URL = "https://github.com/OTInstaller/ot/releases";
 export const INSTALL_SCRIPT_URL = "https://github.com/OTInstaller/otinstaller/tree/main/scripts/install";
