@@ -13,15 +13,31 @@ Run `ot <command> --help` for all flags. Packages are written `namespace/name`, 
 | `ot search [query] [--input email] [--category x] [--runtime docker\|pipx] [--no-keys] [--kind tool\|guide]` | Search the registry; `--json` for scripts |
 | `ot info <ns/name>` | Summary, inputs, outputs, keys, ethics flags and trust status |
 | `ot install <ns/name[@version]> [--native]` | Install a tool (pull its image, or install its Python package) |
-| `ot run <ns/name> --<input> <value> …` | Run a tool; installs it first if needed |
+| `ot run <ns/name> --<input> <value> …` | Run a tool; installs it first if needed (`-y` without asking) |
+| `ot run <ns/name> u:johndoe` | Typed inputs fill the tool's input of that type: `u:` username, `d:` domain, `e:` email, `p:` phone, `ip:` IP, `url:` URL |
 | `ot run … --format json\|table\|csv\|raw -o file` | Output format (JSON result envelope by default) and file |
+| `ot run --all u:johndoe [--parallel 4] [--dry-run]` | Run every installed tool that takes those inputs |
+| `ot auto <target> [--type …] [--dry-run]` | Guess the target's type (URL, IP, email, phone, domain, else username) and run every installed tool that takes it |
+| `ot playbook --list` · `ot playbook <name> <type>:<value> [-y]` | Run a named set of tools against the same inputs (bundled: `domain-recon`, `username-investigation`; your own go in `./playbooks` or `<ot home>/playbooks`) |
 | `ot list` | Installed tools |
+| `ot outdated` · `ot update <ns/name …> \| --all` | Check for and install newer versions, with the same signature and trust checks as `ot install` |
 | `ot uninstall <ns/name>` | Remove a tool |
 | `ot keys set\|list\|rm <NAME>` | API keys in the OS keychain |
 | `ot doctor` | Check Docker, pipx, Python and the keychain |
 | `ot report <ns/name> [--reason … --details …]` | Report a package to the reviewers (opens the form without `--reason`) |
 | `ot feedback [--kind bug\|idea\|question\|other] [--about …] "message"` | Send feedback to the team with your `ot` version and OS; reads piped text, or opens the form with no message |
 | `ot self-update [--check]` | Update ot itself; the release signature is checked first |
+
+## Saved results
+
+Every run's raw output is saved to `./results/<tool>/<target>/` with a `.meta.json` sidecar (command, timing, exit code,
+SHA-256, entities found). `--results-dir` or `OT_RESULTS_DIR` moves it, `--case NAME` groups runs under `cases/NAME/`,
+and `--no-save` skips saving. The result envelope still goes to stdout.
+
+| Command | What it does |
+| --- | --- |
+| `ot extract <tool \| path> [--case …] [--json]` | Pull emails, domains, IPs, URLs and entities out of saved runs |
+| `ot diff <tool> <target> [--json]` | What changed between the two most recent runs of a tool against a target |
 
 ## Guides and docs
 
@@ -48,6 +64,14 @@ Run `ot <command> --help` for all flags. Packages are written `namespace/name`, 
 | `ot deprecate <ns/name> --message … [--replacement ns/name] [--undo]` | Mark a package deprecated |
 | `ot claim <ns/name> [--to ns]` · `ot claim --verify <id>` | Take over a community wrapper of your own project |
 | `ot transfer <ns/name> --to <ns>` · `--accept <id>` · `--decline <id>` | Move a package to another namespace |
+
+## When a tool's host removes it
+
+The registry keeps its own copy of every published image and Python wheel. If `ot install` can't pull an image by
+digest because its registry refuses it (a ban or a deleted repository), it pulls the same digest from
+`mirror.otinstaller.com` and checks the same signature with cosign. If PyPI no longer serves a wheel, it downloads the
+registry's copy and checks the same SHA-256. You see a note when this happens; nothing else changes. See
+[Publishing: Backups](/docs/publishing#backups).
 
 ## Exit codes
 
