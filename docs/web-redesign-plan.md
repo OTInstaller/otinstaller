@@ -582,6 +582,16 @@ problem and its fix; inline confirms replace `window.confirm`. Verified signed o
 signed-in flows are typechecked and built but were not clicked through (no registry session in the audit
 browser), so the first real import through the wizard should be watched.
 
+**Phase 4 (21 Oct 2026, later):** the transparency page defines the reason categories, links every removal to the
+package's own 410 notice (which now says what to do with an installed copy) and states the response targets and
+the action ladder; the report page explains what happens to a report beside the form; the admin console sits on
+the tokens (square, bordered, monochrome highlights, outlined danger buttons); the home page's empty type row
+links to publishing. Screenshots of the rebuilt pages are in `docs/web-redesign/after/`. Left for the API, not
+this branch: facet counts on `/types`, a health-date sort for "recently verified working", GitLab publishers'
+jobs in `/me/publish-jobs`, and a public `health_checked_at` so the evidence panel can date the nightly check.
+Also left: an axe run in `npm test` (needs Playwright) and converting the getting-started doc to the shared
+install block (it would lose its Markdown twin).
+
 Effort is for one person who knows the codebase, including verification.
 
 | Phase | Scope | Effort | Exit criteria |
