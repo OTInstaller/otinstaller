@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://otinstaller.com/schema/error-v1.json",
+  "title": "OTInstaller error, version 1",
+  "description": "The registry API's error body, and what ot prints on stderr (one line) when JSON output is on. Readers must ignore keys they don't know.",
+  "type": "object",
+  "required": ["error"],
+  "properties": {
+    "error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "Stable and documented at docs." },
+        "message": { "type": "string" },
+        "hint": { "type": "string", "description": "What to do next, often an ot command." },
+        "docs": { "type": "string", "format": "uri", "description": "https://otinstaller.com/docs/errors#<code>" },
+        "exit_code": { "type": "integer", "description": "ot only: the exit code ot returns." },
+        "request_id": { "type": "string", "description": "Identifies a failed registry request in its logs." },
+        "problems": {
+          "type": "array",
+          "description": "Each problem with a manifest or request, most specific first.",
+          "items": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": { "type": "string" },
+              "path": { "type": "string" },
+              "message": { "type": "string" },
+              "hint": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

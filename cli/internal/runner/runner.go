@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -150,6 +151,11 @@ func (r *Runner) Run(ctx context.Context, inst *state.Installed, opt RunOptions)
 	if warnings == nil {
 		warnings = []string{}
 	}
+	sum := sha256.Sum256(buf.Bytes())
+	kind := "image"
+	if inst.Runtime == "pipx" {
+		kind = "wheel"
+	}
 	return &envelope.Envelope{
 		Envelope:   envelope.Version,
 		Tool:       m.Ref() + "@" + m.Version,
@@ -161,6 +167,9 @@ func (r *Runner) Run(ctx context.Context, inst *state.Installed, opt RunOptions)
 		Entities:   entities,
 		Raw:        raw,
 		Warnings:   warnings,
+		EndedAt:    time.Now().UTC(),
+		Artifact:   &envelope.Artifact{Kind: kind, Ref: inst.Artifact, Signer: inst.Signer, FromBackup: inst.FromBackup},
+		Output:     &envelope.Output{SHA256: hex.EncodeToString(sum[:]), Bytes: int64(buf.Len())},
 	}, nil
 }
 

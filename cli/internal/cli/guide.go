@@ -47,7 +47,6 @@ func guideArg(s string) (pkgRef, error) {
 
 func (a *App) guideSearchCmd() *cobra.Command {
 	var p api.SearchParams
-	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "search [query]",
 		Short: "Search guides",
@@ -60,7 +59,7 @@ func (a *App) guideSearchCmd() *cobra.Command {
 			if err != nil {
 				return a.requestError(err)
 			}
-			if asJSON {
+			if a.jsonMode() {
 				return writeJSON(a.Out, res)
 			}
 			if len(res.Results) == 0 {
@@ -89,7 +88,6 @@ func (a *App) guideSearchCmd() *cobra.Command {
 	f.StringVar(&p.Format, "format", "", "guide or reference")
 	f.StringVar(&p.Lang, "lang", "", "language code, e.g. en")
 	f.IntVar(&p.Limit, "limit", 25, "maximum results")
-	f.BoolVar(&asJSON, "json", false, "print JSON")
 	return cmd
 }
 
@@ -264,11 +262,7 @@ func (a *App) guideOpenCmd() *cobra.Command {
 			if ref.Version != "" {
 				u += "?v=" + url.QueryEscape(ref.Version)
 			}
-			fmt.Fprintf(a.Out, "Opening %s\n", u)
-			if err := a.OpenURL(u); err != nil {
-				fmt.Fprintf(a.Err, "could not open a browser (%v); open the link yourself\n", err)
-			}
-			return nil
+			return a.openLink(u, "open the link yourself")
 		},
 	}
 }
@@ -437,22 +431,45 @@ func (a *App) guideToolsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// In JSON mode the plan and its outcome are one list on stdout; the text lines go to stderr.
+			type toolRow struct {
+				Ref    string `json:"ref"`
+				Status string `json:"status"` // unavailable, already_installed, installed, failed
+				Error  string `json:"error,omitempty"`
+			}
+			var rows []*toolRow
+			out := a.Out
+			if a.jsonMode() {
+				out = a.Err
+			}
 			var todo []pkgRef
+			var todoRows []*toolRow
 			for _, t := range g.RelatedTools {
+				row := &toolRow{Ref: t.Ref}
+				rows = append(rows, row)
 				switch {
 				case !t.Available:
-					fmt.Fprintf(a.Out, "  %s: not in the registry any more, skipped\n", t.Ref)
+					row.Status = "unavailable"
+					fmt.Fprintf(out, "  %s: not in the registry any more, skipped\n", t.Ref)
 				case st.Installed[t.Ref] != nil:
-					fmt.Fprintf(a.Out, "  %s: already installed\n", t.Ref)
+					row.Status = "already_installed"
+					fmt.Fprintf(out, "  %s: already installed\n", t.Ref)
 				default:
-					fmt.Fprintf(a.Out, "  %s %s: %s\n", t.Ref, t.Version, t.Summary)
+					fmt.Fprintf(out, "  %s %s: %s\n", t.Ref, t.Version, t.Summary)
 					r, _ := parseRef(t.Ref)
 					todo = append(todo, r)
+					todoRows = append(todoRows, row)
 				}
 			}
 			if len(todo) == 0 {
+				if a.jsonMode() {
+					return writeJSON(a.Out, rows)
+				}
 				fmt.Fprintf(a.Out, "Nothing to install for %s.\n", ref.Ref())
 				return nil
+			}
+			if !yes && !a.interactive() {
+				return needsInput(fmt.Sprintf("installing %d tool(s) needs a yes", len(todo)), "--yes")
 			}
 			if !yes {
 				fmt.Fprintf(a.Out, "Install %d tool(s)? [y/N]: ", len(todo))
@@ -463,16 +480,25 @@ func (a *App) guideToolsCmd() *cobra.Command {
 				}
 			}
 			var failed []string
-			for _, r := range todo {
+			for i, r := range todo {
+				todoRows[i].Status = "installed"
 				if _, err := a.install(ctx, r, native); err != nil {
 					fmt.Fprintf(a.Err, "error: %s: %v\n", r.Ref(), err)
 					failed = append(failed, r.Ref())
+					todoRows[i].Status, todoRows[i].Error = "failed", err.Error()
+				}
+			}
+			if a.jsonMode() {
+				if err := writeJSON(a.Out, rows); err != nil {
+					return err
 				}
 			}
 			if len(failed) > 0 {
 				return exitErr(ExitToolError, "%d of %d tool(s) failed to install: %s", len(failed), len(todo), strings.Join(failed, ", "))
 			}
-			fmt.Fprintf(a.Out, "Installed %d tool(s) from %s.\n", len(todo), ref.Ref())
+			if !a.jsonMode() {
+				fmt.Fprintf(a.Out, "Installed %d tool(s) from %s.\n", len(todo), ref.Ref())
+			}
 			return nil
 		},
 	}

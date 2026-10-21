@@ -95,7 +95,7 @@ func (c *Client) SearchGuides(ctx context.Context, p SearchParams) (*SearchResul
 		q.Set("limit", fmt.Sprint(p.Limit))
 	}
 	var out SearchResult
-	return &out, c.do(ctx, http.MethodGet, "/guides?"+q.Encode(), nil, &out)
+	return &out, c.anon().do(ctx, http.MethodGet, "/guides?"+q.Encode(), nil, &out)
 }
 
 // Guide returns a guide's navigation, related tools and checks; version "" means the latest.
@@ -105,7 +105,7 @@ func (c *Client) Guide(ctx context.Context, ns, name, version string) (*GuideDet
 		p += "/" + url.PathEscape(version)
 	}
 	var out GuideDetail
-	return &out, c.do(ctx, http.MethodGet, p, nil, &out)
+	return &out, c.anon().do(ctx, http.MethodGet, p, nil, &out)
 }
 
 // GuidePage returns one page by path or 1-based position, as "md" or "html".
@@ -115,15 +115,15 @@ func (c *Client) GuidePage(ctx context.Context, ns, name, version, page, format 
 	}
 	var out Page
 	p := "/guides/" + pkgPath(ns, name) + "/" + url.PathEscape(version) + "/pages/" + pagePath(page) + "?format=" + url.QueryEscape(format)
-	return &out, c.do(ctx, http.MethodGet, p, nil, &out)
+	return &out, c.anon().do(ctx, http.MethodGet, p, nil, &out)
 }
 
 func (c *Client) ToolDocs(ctx context.Context, ns, name string) (*Docs, error) {
 	var out Docs
-	return &out, c.do(ctx, http.MethodGet, "/tools/"+pkgPath(ns, name)+"/docs", nil, &out)
+	return &out, c.anon().do(ctx, http.MethodGet, "/tools/"+pkgPath(ns, name)+"/docs", nil, &out)
 }
 
 func (c *Client) ToolDocPage(ctx context.Context, ns, name, page, format string) (*Page, error) {
 	var out Page
-	return &out, c.do(ctx, http.MethodGet, "/tools/"+pkgPath(ns, name)+"/docs/"+pagePath(page)+"?format="+url.QueryEscape(format), nil, &out)
+	return &out, c.anon().do(ctx, http.MethodGet, "/tools/"+pkgPath(ns, name)+"/docs/"+pagePath(page)+"?format="+url.QueryEscape(format), nil, &out)
 }

@@ -89,6 +89,11 @@ type Meta struct {
 	Envelope        int               `json:"envelope"`
 	Entities        []envelope.Entity `json:"entities"`
 	Warnings        []string          `json:"warnings"`
+	// Provenance, as in the envelope.
+	RunID     string             `json:"run_id,omitempty"`
+	OTVersion string             `json:"ot_version,omitempty"`
+	Client    string             `json:"client,omitempty"`
+	Artifact  *envelope.Artifact `json:"artifact,omitempty"`
 }
 
 // Statuses a run can end with.
@@ -102,6 +107,8 @@ const (
 // Run is one run being saved. Write the tool's stdout to Stdout and its stderr to Stderr, then
 // call Finish.
 type Run struct {
+	// ID is the run's random part of the file names, also the envelope's run_id.
+	ID                               string
 	OutputPath, MetaPath, StderrPath string
 
 	out     *os.File
@@ -124,12 +131,14 @@ func Start(dir, tool, target, caseName, format string) (*Run, error) {
 		return nil, fmt.Errorf("can't save results in %s (%v); choose another folder with --results-dir or OT_RESULTS_DIR, or pass --no-save", dir, unwrapPathErr(err))
 	}
 	now := time.Now().UTC()
-	stem := filepath.Join(folder, fmt.Sprintf("%s_%s_%s_%s", now.Format("20060102-150405"), tool, target, runID()))
+	id := runID()
+	stem := filepath.Join(folder, fmt.Sprintf("%s_%s_%s_%s", now.Format("20060102-150405"), tool, target, id))
 	f, err := os.OpenFile(stem+"."+Ext(format), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 	if err != nil {
 		return nil, err
 	}
 	return &Run{
+		ID:         id,
 		OutputPath: f.Name(),
 		MetaPath:   stem + ".meta.json",
 		StderrPath: stem + ".stderr.txt",
@@ -146,6 +155,9 @@ func unwrapPathErr(err error) error {
 	}
 	return err
 }
+
+// NewRunID is a run id for a run that is not saved.
+func NewRunID() string { return runID() }
 
 func runID() string {
 	b := make([]byte, 4)

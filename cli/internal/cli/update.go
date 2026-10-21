@@ -61,8 +61,8 @@ func (a *App) checkUpdates(ctx context.Context, insts []*state.Installed) []*upd
 	return rows
 }
 
-func (a *App) printUpdateRows(rows []*updateRow, asJSON bool) error {
-	if asJSON {
+func (a *App) printUpdateRows(rows []*updateRow) error {
+	if a.jsonMode() {
 		return writeJSON(a.Out, rows)
 	}
 	tw := tabwriter.NewWriter(a.Out, 0, 4, 2, ' ', 0)
@@ -78,7 +78,6 @@ func (a *App) printUpdateRows(rows []*updateRow, asJSON bool) error {
 }
 
 func (a *App) outdatedCmd() *cobra.Command {
-	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "outdated",
 		Short: "Check installed packages for newer versions (changes nothing)",
@@ -92,15 +91,14 @@ func (a *App) outdatedCmd() *cobra.Command {
 				fmt.Fprintln(a.Err, "Nothing installed yet.")
 				return nil
 			}
-			return a.printUpdateRows(a.checkUpdates(cmd.Context(), st.Sorted()), asJSON)
+			return a.printUpdateRows(a.checkUpdates(cmd.Context(), st.Sorted()))
 		},
 	}
-	cmd.Flags().BoolVar(&asJSON, "json", false, "print JSON")
 	return cmd
 }
 
 func (a *App) updateCmd() *cobra.Command {
-	var all, asJSON bool
+	var all bool
 	cmd := &cobra.Command{
 		Use:   "update [namespace/name ...]",
 		Short: "Install the latest version of installed packages",
@@ -140,7 +138,7 @@ func (a *App) updateCmd() *cobra.Command {
 				row.Status, row.Note = "updated", "from "+row.Installed
 				row.Installed = inst.Version
 			}
-			if err := a.printUpdateRows(rows, asJSON); err != nil {
+			if err := a.printUpdateRows(rows); err != nil {
 				return err
 			}
 			for _, r := range rows {
@@ -155,6 +153,5 @@ func (a *App) updateCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&all, "all", false, "update every installed package")
-	cmd.Flags().BoolVar(&asJSON, "json", false, "print JSON")
 	return cmd
 }

@@ -53,6 +53,17 @@ func (e *Error) Error() string {
 	return s
 }
 
+// UnreachableError means no answer came back from the registry (DNS, TLS, timeout), so a retry may work.
+type UnreachableError struct {
+	Base string
+	Err  error
+}
+
+func (e *UnreachableError) Error() string {
+	return fmt.Sprintf("cannot reach the registry at %s: %v", e.Base, e.Err)
+}
+func (e *UnreachableError) Unwrap() error { return e.Err }
+
 type ToolSummary struct {
 	Namespace     string   `json:"namespace"`
 	Name          string   `json:"name"`
@@ -134,7 +145,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return fmt.Errorf("cannot reach the registry at %s: %w", c.Base, err)
+		return &UnreachableError{Base: c.Base, Err: err}
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
@@ -186,12 +197,12 @@ func (c *Client) Search(ctx context.Context, p SearchParams) (*SearchResult, err
 		q.Set("limit", fmt.Sprint(p.Limit))
 	}
 	var out SearchResult
-	return &out, c.do(ctx, http.MethodGet, "/tools?"+q.Encode(), nil, &out)
+	return &out, c.anon().do(ctx, http.MethodGet, "/tools?"+q.Encode(), nil, &out)
 }
 
 func (c *Client) Tool(ctx context.Context, ns, name string) (*ToolDetail, error) {
 	var out ToolDetail
-	return &out, c.do(ctx, http.MethodGet, "/tools/"+url.PathEscape(ns)+"/"+url.PathEscape(name), nil, &out)
+	return &out, c.anon().do(ctx, http.MethodGet, "/tools/"+url.PathEscape(ns)+"/"+url.PathEscape(name), nil, &out)
 }
 
 func (c *Client) Manifest(ctx context.Context, ns, name, version string) (*ManifestResponse, error) {
@@ -200,12 +211,12 @@ func (c *Client) Manifest(ctx context.Context, ns, name, version string) (*Manif
 	}
 	var out ManifestResponse
 	p := "/tools/" + url.PathEscape(ns) + "/" + url.PathEscape(name) + "/" + url.PathEscape(version) + "/manifest"
-	return &out, c.do(ctx, http.MethodGet, p, nil, &out)
+	return &out, c.anon().do(ctx, http.MethodGet, p, nil, &out)
 }
 
 // InstallPing is anonymous: only the package and version are sent.
 func (c *Client) InstallPing(ctx context.Context, ref, version string) error {
-	return c.do(ctx, http.MethodPost, "/installs", map[string]string{"tool": ref, "version": version}, nil)
+	return c.anon().do(ctx, http.MethodPost, "/installs", map[string]string{"tool": ref, "version": version}, nil)
 }
 
 type DeviceStart struct {
@@ -225,13 +236,13 @@ type DeviceToken struct {
 
 func (c *Client) StartDeviceLogin(ctx context.Context, provider string) (*DeviceStart, error) {
 	var out DeviceStart
-	return &out, c.do(ctx, http.MethodPost, "/auth/device/start", map[string]string{"provider": provider}, &out)
+	return &out, c.anon().do(ctx, http.MethodPost, "/auth/device/start", map[string]string{"provider": provider}, &out)
 }
 
 func (c *Client) PollDeviceLogin(ctx context.Context, provider, deviceCode, tokenName string) (*DeviceToken, error) {
 	var out DeviceToken
 	body := map[string]string{"provider": provider, "device_code": deviceCode, "token_name": tokenName}
-	return &out, c.do(ctx, http.MethodPost, "/auth/device/token", body, &out)
+	return &out, c.anon().do(ctx, http.MethodPost, "/auth/device/token", body, &out)
 }
 
 type Me struct {
@@ -252,4 +263,12 @@ type Me struct {
 func (c *Client) Me(ctx context.Context) (*Me, error) {
 	var out Me
 	return &out, c.do(ctx, http.MethodGet, "/me", nil, &out)
+}
+
+// anon is the client without its token, for public reads: the registry answers them the same either
+// way, and anonymous requests can be served from its edge cache.
+func (c *Client) anon() *Client {
+	cp := *c
+	cp.Token = ""
+	return &cp
 }
