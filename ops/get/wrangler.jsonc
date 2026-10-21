@@ -1,0 +1,10 @@
+{
+  // get.otinstaller.com, the install-script host. Deploy from this folder with `npx wrangler deploy`; the custom
+  // domain creates its DNS record in the otinstaller.com zone.
+  "name": "otinstaller-get",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-12",
+  "routes": [{ "pattern": "get.otinstaller.com", "custom_domain": true }],
+  "vars": { "RELEASE_REPO": "OTInstaller/ot" },
+  "observability": { "enabled": true }
+}
