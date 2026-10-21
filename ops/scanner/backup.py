@@ -185,9 +185,15 @@ def upload(url: str, path: Path, opener=urllib.request.urlopen) -> None:
     size = path.stat().st_size
     with open(path, "rb") as f:
         req = urllib.request.Request(url, data=f, method="PUT", headers={"Content-Type": "application/octet-stream", "Content-Length": str(size)})
-        with opener(req, timeout=3600) as r:
-            if r.status not in (200, 201, 204):
-                raise RuntimeError(f"upload answered {r.status}")
+        try:
+            with opener(req, timeout=3600) as r:
+                if r.status not in (200, 201, 204):
+                    raise RuntimeError(f"upload answered {r.status}")
+        except urllib.error.HTTPError as e:
+            # R2 explains a refusal in the body (SignatureDoesNotMatch, AccessDenied, ...); keep it for the report.
+            body = e.read().decode("utf-8", "replace")
+            code = re.search(r"<Code>([^<]+)</Code>", body)
+            raise RuntimeError(f"upload answered {e.code}: {code.group(1) if code else body.strip()[:200]}") from None
 
 
 def find_wheel(item: dict, work: Path | None) -> Path:
