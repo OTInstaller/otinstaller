@@ -208,6 +208,216 @@ The GitHub App needs write access to contents, workflows and pull requests to op
 ### gitlab_scope_required
 Opening merge requests needs GitLab write access. Sign in again with GitLab from the import page and grant it.
 
+## Signing in and accounts
+
+### unknown_provider
+Sign in with `github`, `gitlab` or `osintverse`; device sign-in and imports accept `github` or `gitlab`.
+
+### oauth_state_mismatch
+The sign-in took too long or the callback was tampered with. Start the sign-in again from the same browser.
+
+### account_already_linked
+That GitHub, GitLab or OSINTverse account is already linked to another OTInstaller user. Sign in as that user, or unlink it there first.
+
+### provider_already_linked
+Your account already has a different account from that provider. Unlink it in [Settings](/settings/accounts) before linking another.
+
+### github_not_linked
+Importing from GitHub or opening a pull request needs a linked GitHub account. Sign in with GitHub from [Settings](/settings/accounts).
+
+### gitlab_not_linked
+Importing from GitLab or connecting a GitLab project needs a linked GitLab account. Sign in with GitLab from [Settings](/settings/accounts).
+
+### no_email
+Your account has no email address, so the registry cannot send you anything. Add one on the provider you signed in with and sign in again.
+
+### invalid_email
+The email address on a feedback message does not look like one. Leave it empty if you don't want a reply.
+
+### invalid_kind
+Feedback is `bug`, `idea`, `question` or `other`; an import is `docker`, `pipx` or `guide`.
+
+### feedback_not_found
+No feedback message has that id.
+
+## Importing and connecting repositories
+
+### invalid_repo
+Give the repository as a URL such as `https://github.com/owner/name` or `https://gitlab.com/group/name`, or as `owner/name` for GitHub.
+
+### too_many_repos
+A bulk import takes at most 50 repositories at once.
+
+### repo_not_found
+The GitHub repository does not exist, or your account cannot see it.
+
+### repo_not_public
+Only public repositories can publish to the registry. Make it public, or keep it off the registry.
+
+### project_not_found
+The GitLab project does not exist, or your account cannot see it.
+
+### project_not_public
+Only public GitLab projects can publish to the registry.
+
+### not_admin
+Importing a GitHub repository needs admin access to it. If it is someone else's tool, an `osintverse-community` admin can package it as a community wrapper instead.
+
+### not_maintainer
+Importing or connecting a GitLab project needs Maintainer access or above.
+
+### not_repo_owner
+Only the repository's owner, or an owner of its organisation or group, can keep its manifest on the registry. Finish the import as a pull or merge request instead.
+
+### not_community_admin
+Only `osintverse-community` admins can package tools they don't own as community wrappers.
+
+### community_namespace_missing
+The `osintverse-community` namespace does not exist on this registry yet. An operator installs the GitHub App on its organisation first.
+
+### app_not_installed
+The OTInstaller GitHub App is not installed on that repository, so the registry cannot read tags or open pull requests there. The message links to the install page; pick the repository when GitHub asks.
+
+### already_published
+That repository already publishes a package. Edit the package from its [dashboard](/dashboard) page instead of importing it again.
+
+### upstream_has_manifest
+The upstream repository already has an `otinstaller.yaml`, so its maintainer can publish it directly and it needs no community wrapper.
+
+### license_not_redistributable
+Community wrappers only package tools whose license lets the registry redistribute them (OSI-approved licenses and the AGPL). The repository has no such license, or none at all. Ask its maintainer to publish it themselves.
+
+### import_not_detected
+Detection of the repository has not finished, or failed. Wait for it, or start the import again.
+
+### import_finished
+That import is finished. Change the package from its dashboard page, or edit `otinstaller.yaml` in the repository.
+
+### import_not_found
+No import of yours has that id.
+
+### invalid_mode
+An import finishes as `pr` (a pull or merge request adding `otinstaller.yaml`), `registry` (the manifest is kept on the registry), `connect` (the repository already has a manifest) or `wrapper` (a community wrapper, only for community imports).
+
+### manifest_in_repo
+The repository already has `otinstaller.yaml`, so the registry does not hold a manifest for it. Edit the file in the repository, or finish the import with mode `connect`.
+
+### manifest_name_mismatch
+A registry-held manifest cannot change the package's `namespace` or `name`. To move it to another namespace, use `ot transfer` instead.
+
+### wrapper_required
+Finishing a community import needs the wrapper repository, for example `{"mode": "wrapper", "wrapper_repo": "https://github.com/osintverse-community/<name>"}`.
+
+### wrapper_not_community
+The wrapper repository must belong to the `osintverse-community` organisation.
+
+### mirror_already_imported
+A wrapper for that upstream repository already exists; the message names it.
+
+### source_not_found
+The package has no connected source repository, or no source has that id.
+
+### same_source
+That repository is already the package's source.
+
+### source_in_use
+That repository is already the source of another package. A repository publishes one package.
+
+### already_connected
+Someone else connected that GitLab project to the registry; only they, or an admin, can change its connection.
+
+## Transfers and claims
+
+### namespace_not_found
+No namespace has that name. Namespaces come from installing the GitHub App or connecting GitLab.
+
+### same_namespace
+The package is already in the namespace you named.
+
+### transfer_not_found
+No transfer or claim has that id, or your account is not part of it.
+
+### not_a_claim
+Only claims are verified against the upstream repository; transfers are accepted by the receiving namespace.
+
+### not_a_transfer
+Claims are completed by an admin once they are verified; only transfers are accepted by the receiving namespace.
+
+### not_accepted
+The receiving namespace has not accepted the transfer yet.
+
+### not_verified
+The claim has not been verified yet. Add the verification file to the upstream repository and run the check again.
+
+## Reviewers and admins
+
+### not_pending
+The namespace or version is not waiting for review, so it cannot be approved or rejected again; the message gives its state.
+
+### namespace_in_review
+The version belongs to a namespace that is not active. Approve or reject the namespace instead; its waiting versions follow.
+
+### report_not_found
+No report has that id.
+
+### user_not_found
+No user has that id.
+
+### cannot_ban_admin
+Admins cannot be banned. Remove the admin role first.
+
+### invalid_category
+Removal categories are those on the [transparency page](/policy/transparency); the message lists them.
+
+### invalid_replacement
+A deprecation's replacement must be a published package, given as `namespace/name`.
+
+### not_configured
+This server is missing a secret the request needs (for example the health token or the email key), so the feature is off here. Operators: see the configuration reference.
+
+## Pages and assets
+
+### readme_not_found
+The package has no rendered README. It is rendered when a version is published.
+
+### docs_not_found
+The tool ships no docs. Tools add pages with the `docs:` field in `otinstaller.yaml`; guides are read from `/guides`.
+
+### page_not_rendered
+The page is listed in the manifest but was not rendered for that version. Publishing the next version renders it; if that fails too, write to support@otinstaller.com.
+
+### asset_not_found
+No image with that hash and extension exists.
+
+## Backups and internal calls
+
+### backup_not_found
+There is no public wheel copy for that version. Backups exist only for published versions of public repositories with a redistributable license.
+
+### too_large
+A backup item was over its limit (git bundles 500 MiB, images 2 GiB, wheels 1 GiB), so it was not stored. Shrink the artifact or repository; the registry still serves the original.
+
+### url_expired
+The signed upload or download link has passed its expiry. Ask for a fresh link; backup jobs get new ones on each run.
+
+### invalid_signature
+The signed link's signature does not match its path and expiry, or the path is not a backup object. Use the link exactly as the registry gave it.
+
+### length_required
+Uploads to a signed link must send `Content-Length`.
+
+### invalid_scan_token
+The scan token is unknown, has expired (an hour after dispatch) or was already used. The registry dispatches a new scan when the tag is pushed again.
+
+### invalid_scan_results
+The scan results body does not match what the registry expects; the message names the field.
+
+### payload_too_large
+A webhook body over 5 MB, or scan results over their limit, is refused.
+
+### bad_signature
+The webhook's signature or token does not match the registry's. Check the webhook secret on the GitHub App or the GitLab project.
+
 ## ot
 
 Codes `ot` itself reports. With `--json` (or `OT_OUTPUT=json`) every error is one line of JSON on stderr with `code`,

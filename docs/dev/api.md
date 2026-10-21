@@ -405,112 +405,111 @@ entry (`index.ts`) wraps `mirrorFetch` (`registry.ts`) and turns any throw into
 ### Every code
 
 "Documented" = an `### <code>` heading exists in `web/src/pages/docs/errors.md` (the `docs` link anchors on headings).
-**MISSING** = no heading and no mention anywhere in that file. Codes reached through `ImportProblem` (`refuse` in
+Every code below has one since the errors page was completed on 22 October 2026; `web/src/lib/errors-doc.test.ts` fails when a new code is added without an entry. Codes reached through `ImportProblem` (`refuse` in
 imports.ts), `TransferError` (`fail` in transfers.ts) and `BackupError` (backups.ts) are turned into `apiError` by the
 route wrappers, so they reach clients the same way.
 
 | Code | Status | File(s) | Documented |
 | --- | --- | --- | --- |
-| account_already_linked | 409 | routes/auth.ts | **MISSING** |
-| already_connected | 409 | routes/sources.ts | **MISSING** |
-| already_published | 409 | imports.ts | **MISSING** |
-| app_not_installed | 409 | routes/sources.ts, imports.ts | **MISSING** |
-| asset_not_found | 404 | routes/guides.ts | **MISSING** |
-| backup_not_found | 404 | routes/backups.ts | **MISSING** |
-| bad_signature | 401 | routes/webhooks.ts (apiError for GitHub, hand-built for GitLab) | **MISSING** |
-| cannot_ban_admin | 409 | routes/trust.ts | **MISSING** |
-| community_namespace_missing | 409 | imports.ts | **MISSING** |
+| account_already_linked | 409 | routes/auth.ts | yes |
+| already_connected | 409 | routes/sources.ts | yes |
+| already_published | 409 | imports.ts | yes |
+| app_not_installed | 409 | routes/sources.ts, imports.ts | yes |
+| asset_not_found | 404 | routes/guides.ts | yes |
+| backup_not_found | 404 | routes/backups.ts | yes |
+| bad_signature | 401 | routes/webhooks.ts (apiError for GitHub, hand-built for GitLab) | yes |
+| cannot_ban_admin | 409 | routes/trust.ts | yes |
+| community_namespace_missing | 409 | imports.ts | yes |
 | destination_required | 400 | transfers.ts | yes |
-| docs_not_found | 404 | routes/guides.ts | **MISSING** |
-| feedback_not_found | 404 | routes/beta.ts | **MISSING** |
+| docs_not_found | 404 | routes/guides.ts | yes |
+| feedback_not_found | 404 | routes/beta.ts | yes |
 | forbidden | 403 | routes/review.ts, sources.ts, imports.ts, backups.ts; transfers.ts | yes |
-| github_not_linked | 400 | routes/imports.ts, imports.ts | **MISSING** |
+| github_not_linked | 400 | routes/imports.ts, imports.ts | yes |
 | github_permission_required | 403 | imports.ts | yes |
-| gitlab_not_linked | 400 | routes/imports.ts, routes/sources.ts, imports.ts | **MISSING** |
+| gitlab_not_linked | 400 | routes/imports.ts, routes/sources.ts, imports.ts | yes |
 | gitlab_scope_required | 403 | routes/sources.ts, imports.ts | yes |
 | guide_not_found | 404 | routes/guides.ts | yes |
-| import_finished | 409 | imports.ts | **MISSING** |
-| import_not_detected | 409 | imports.ts | **MISSING** |
-| import_not_found | 404 | imports.ts (`requireOwnImport`, via apiError) | **MISSING** |
-| import_not_ready | 409 | imports.ts (with `problems`) | **MISSING** |
+| import_finished | 409 | imports.ts | yes |
+| import_not_detected | 409 | imports.ts | yes |
+| import_not_found | 404 | imports.ts (`requireOwnImport`, via apiError) | yes |
+| import_not_ready | 409 | imports.ts (with `problems`) | yes |
 | internal_error | 500 | index.ts (`onError`, hand-built) | yes |
-| invalid_backup_token | 401 | backups.ts | **MISSING** |
+| invalid_backup_token | 401 | backups.ts | yes |
 | invalid_body | 400 | index.ts, routes/auth.ts, device.ts, ops.ts, review.ts, transfers.ts, beta.ts, sources.ts, trust.ts, imports.ts, backups.ts | yes |
-| invalid_category | 400 | routes/trust.ts | **MISSING** |
-| invalid_drill_token | 401 | backups.ts | **MISSING** |
-| invalid_email | 400 | routes/beta.ts | **MISSING** |
-| invalid_kind | 400 | routes/beta.ts, imports.ts | **MISSING** |
-| invalid_mode | 400 | routes/imports.ts, imports.ts | **MISSING** |
+| invalid_category | 400 | routes/trust.ts | yes |
+| invalid_drill_token | 401 | backups.ts | yes |
+| invalid_email | 400 | routes/beta.ts | yes |
+| invalid_kind | 400 | routes/beta.ts, imports.ts | yes |
+| invalid_mode | 400 | routes/imports.ts, imports.ts | yes |
 | invalid_parameter | 400 | index.ts, routes/auth.ts, beta.ts, guides.ts, trust.ts | yes |
 | invalid_reason | 400 | routes/trust.ts | yes |
-| invalid_replacement | 400 | routes/trust.ts | **MISSING** |
-| invalid_repo | 400 | routes/imports.ts, routes/sources.ts | **MISSING** |
-| invalid_scan_results | 400 | routes/review.ts | **MISSING** |
-| invalid_scan_token | 401 | routes/review.ts | **MISSING** |
-| invalid_signature | 403 | routes/backups.ts | **MISSING** |
+| invalid_replacement | 400 | routes/trust.ts | yes |
+| invalid_repo | 400 | routes/imports.ts, routes/sources.ts | yes |
+| invalid_scan_results | 400 | routes/review.ts | yes |
+| invalid_scan_token | 401 | routes/review.ts | yes |
+| invalid_signature | 403 | routes/backups.ts | yes |
 | invalid_state | 409 | routes/trust.ts; transfers.ts | yes |
-| length_required | 400 | routes/backups.ts | **MISSING** |
-| license_not_redistributable | 400 | imports.ts | **MISSING** |
-| manifest_in_repo | 409 (routes/imports.ts, imports.ts); 400 (one `refuse` in imports.ts) | routes/imports.ts, imports.ts | **MISSING** (same code with two statuses) |
-| manifest_invalid | 400 | routes/imports.ts (hand-built, with `problems`) | **MISSING** |
-| manifest_name_mismatch | problem code inside `manifest_invalid` | routes/imports.ts | **MISSING** (and not in the CLI validator) |
+| length_required | 400 | routes/backups.ts | yes |
+| license_not_redistributable | 400 | imports.ts | yes |
+| manifest_in_repo | 409 (routes/imports.ts, imports.ts); 400 (one `refuse` in imports.ts) | routes/imports.ts, imports.ts | yes (same code with two statuses) |
+| manifest_invalid | 400 | routes/imports.ts (hand-built, with `problems`) | yes |
+| manifest_name_mismatch | problem code inside `manifest_invalid` | routes/imports.ts | yes (and not in the CLI validator) |
 | manifest_namespace_mismatch | 400 | imports.ts | yes |
 | manifest_yaml_invalid | 400 | imports.ts | yes |
-| mirror_already_imported | 409 | imports.ts | **MISSING** |
+| mirror_already_imported | 409 | imports.ts | yes |
 | name_taken | 409 | transfers.ts | yes |
-| namespace_in_review | 409 | routes/review.ts | **MISSING** |
+| namespace_in_review | 409 | routes/review.ts | yes |
 | namespace_not_allowed | 409 | transfers.ts | yes |
-| namespace_not_found | 404 | index.ts, routes/review.ts, transfers.ts | **MISSING** |
-| no_backup | 404 | backups.ts | **MISSING** |
-| no_email | 409 | routes/beta.ts | **MISSING** |
-| not_a_claim | 409 | transfers.ts | **MISSING** |
-| not_a_transfer | 409 | transfers.ts | **MISSING** |
-| not_accepted | 409 | transfers.ts | **MISSING** |
-| not_admin | 403 | imports.ts | **MISSING** |
-| not_community_admin | 403 | imports.ts | **MISSING** |
+| namespace_not_found | 404 | index.ts, routes/review.ts, transfers.ts | yes |
+| no_backup | 404 | backups.ts | yes |
+| no_email | 409 | routes/beta.ts | yes |
+| not_a_claim | 409 | transfers.ts | yes |
+| not_a_transfer | 409 | transfers.ts | yes |
+| not_accepted | 409 | transfers.ts | yes |
+| not_admin | 403 | imports.ts | yes |
+| not_community_admin | 403 | imports.ts | yes |
 | not_community_packaged | 409 | transfers.ts | yes |
-| not_configured | 503 | env.ts (`requireSecret`), routes/ops.ts | **MISSING** |
+| not_configured | 503 | env.ts (`requireSecret`), routes/ops.ts | yes |
 | not_found | 404 | index.ts (`notFound`, hand-built); transfers.ts | yes |
-| not_maintainer | 403 | routes/sources.ts, imports.ts | **MISSING** |
-| not_pending | 409 | routes/review.ts | **MISSING** |
-| not_repo_owner | 403 | imports.ts | **MISSING** |
-| not_verified | 409 | transfers.ts | **MISSING** |
-| oauth_state_mismatch | 400 | routes/auth.ts | **MISSING** |
+| not_maintainer | 403 | routes/sources.ts, imports.ts | yes |
+| not_pending | 409 | routes/review.ts | yes |
+| not_repo_owner | 403 | imports.ts | yes |
+| not_verified | 409 | transfers.ts | yes |
+| oauth_state_mismatch | 400 | routes/auth.ts | yes |
 | page_not_found | 404 | routes/guides.ts | yes |
-| page_not_rendered | 404 | routes/guides.ts | **MISSING** |
-| payload_too_large | 413 | routes/webhooks.ts, routes/review.ts | **MISSING** |
-| project_not_found | 404 | routes/sources.ts, imports.ts | **MISSING** |
-| project_not_public | 400 | routes/sources.ts, imports.ts | **MISSING** |
-| provider_already_linked | 409 | routes/auth.ts | **MISSING** |
-| readme_not_found | 404 | routes/guides.ts | **MISSING** |
-| repo_not_found | 404 | imports.ts | **MISSING** |
-| repo_not_public | 400 | imports.ts | **MISSING** |
-| report_not_found | 404 | routes/trust.ts | **MISSING** |
-| same_namespace | 409 | transfers.ts | **MISSING** |
-| same_source | 409 | routes/sources.ts | **MISSING** |
-| source_in_use | 409 | routes/sources.ts | **MISSING** |
-| source_not_found | 404 | routes/sources.ts | **MISSING** |
+| page_not_rendered | 404 | routes/guides.ts | yes |
+| payload_too_large | 413 | routes/webhooks.ts, routes/review.ts | yes |
+| project_not_found | 404 | routes/sources.ts, imports.ts | yes |
+| project_not_public | 400 | routes/sources.ts, imports.ts | yes |
+| provider_already_linked | 409 | routes/auth.ts | yes |
+| readme_not_found | 404 | routes/guides.ts | yes |
+| repo_not_found | 404 | imports.ts | yes |
+| repo_not_public | 400 | imports.ts | yes |
+| report_not_found | 404 | routes/trust.ts | yes |
+| same_namespace | 409 | transfers.ts | yes |
+| same_source | 409 | routes/sources.ts | yes |
+| source_in_use | 409 | routes/sources.ts | yes |
+| source_not_found | 404 | routes/sources.ts | yes |
 | sync_rate_limited | 429 | routes/sources.ts | yes |
-| token_not_found | 404 | routes/auth.ts | **MISSING** |
-| too_large | 413 | routes/backups.ts | **MISSING** |
+| token_not_found | 404 | routes/auth.ts | yes |
+| too_large | 413 | routes/backups.ts | yes |
 | too_many_reports | 429 | routes/trust.ts | yes |
-| too_many_repos | 400 | routes/imports.ts | **MISSING** |
+| too_many_repos | 400 | routes/imports.ts | yes |
 | too_many_requests | 429 | index.ts (30/min writes), routes/beta.ts (10/h feedback) | yes, but the doc only describes the 30-a-minute write limit |
 | tool_not_found | 404 | catalog.ts, index.ts, routes/guides.ts, sources.ts, trust.ts, transfers.ts, backups.ts; backups.ts (`BackupError`) | yes |
 | tool_removed | 410 (catalog.ts, routes/trust.ts); 409 (routes/sources.ts, backups.ts) | catalog.ts, routes/trust.ts, routes/sources.ts, backups.ts | yes (same code with two statuses) |
-| transfer_not_found | 404 | routes/transfers.ts | **MISSING** |
+| transfer_not_found | 404 | routes/transfers.ts | yes |
 | unauthenticated | 401 | routes/auth.ts, review.ts, ops.ts, backups.ts | yes |
-| unknown_provider | 404 (`/auth/:provider/*`); 400 (`/auth/device/start`, imports) | routes/auth.ts, routes/imports.ts | **MISSING** |
-| upstream_has_manifest | 409 | imports.ts | **MISSING** |
+| unknown_provider | 404 (`/auth/:provider/*`); 400 (`/auth/device/start`, imports) | routes/auth.ts, routes/imports.ts | yes |
+| upstream_has_manifest | 409 | imports.ts | yes |
 | upstream_unknown | 409 | transfers.ts | yes |
-| url_expired | 403 | routes/backups.ts | **MISSING** |
-| user_not_found | 404 | routes/trust.ts | **MISSING** |
+| url_expired | 403 | routes/backups.ts | yes |
+| user_not_found | 404 | routes/trust.ts | yes |
 | version_not_found | 404 | index.ts, routes/guides.ts, review.ts, backups.ts | yes |
-| wrapper_not_community | 409 | imports.ts | **MISSING** |
-| wrapper_required | 400 | imports.ts | **MISSING** |
+| wrapper_not_community | 409 | imports.ts | yes |
+| wrapper_required | 400 | imports.ts | yes |
 
-Count: 97 distinct codes in the table (including the problem code `manifest_name_mismatch`); 25 documented, 72
-missing. Not covered here: the `manifest_*` / `content_*` / `artifact_*` / scan-verdict codes that the publish pipeline
+Count: 97 distinct codes in the table (including the problem code `manifest_name_mismatch`), all documented. Not covered here: the `manifest_*` / `content_*` / `artifact_*` / scan-verdict codes that the publish pipeline
 records in `publish_jobs.problems_json` and commit statuses (they are not HTTP error responses), the import status code
 `detection_failed`, and the mirror's OCI codes (section 6).
 

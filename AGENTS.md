@@ -865,8 +865,6 @@ change. Keep this list current when you fix one or find another.
 
 **Docs debt**
 
-- 72 of the API's 97 error codes have no entry in `web/src/pages/docs/errors.md`, although every error links there
-  (list in [docs/dev/api.md](docs/dev/api.md#every-code)).
 - `web/src/pages/docs/cli.md` lacks exit code 130 and many flags (all of `import`, most of `init`, several on `run`,
   `auto`, `playbook`); list in [docs/dev/cli.md](docs/dev/cli.md#7-docs-drift-websrcpagesdocsclimd-and-clireadmemd).
 - `api/.dev.vars.example` lacks `OPS_DISPATCH_TOKEN`, `OPS_INSTALLATION_ID`, `RESEND_API_KEY`, `R2_*` and more; the
