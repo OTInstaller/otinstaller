@@ -26,7 +26,7 @@ These change nothing, so clients may allow them without asking.
 | `list_installed` | The tools installed on this machine, with their versions and the exact image digest or wheel hash. | none |
 | `list_playbooks` | Named sets of tools run together against one target, bundled or the person's own, and which of their tools are installed. | none |
 | `list_runs` | Saved runs, newest first, optionally of one tool, against one target, or in one case. | `case`, `limit`, `target`, `tool` |
-| `list_types` | The input types tools take, the entity types they find, and the pivot map: which input types each entity type can feed. | none |
+| `list_types` | The input types tools take, the entity types they find and what each means, and the pivot map: which input types each entity type can feed. | none |
 | `read_guide` | One page of a guide, as Markdown, with the list of its pages and the tools it uses. | `guide` (required), `page` |
 | `search_guides` | Search the registry's investigation guides (methods, checklists, references), by words, target type or level. | `input_type`, `level`, `limit`, `query` |
 | `search_tools` | Search the OTInstaller Registry for OSINT tools. Results list each tool's input and output types, whether it needs API keys, its ethics flags and network access, and its trust status (signed, verified publisher, health). | `category`, `cursor`, `input_type`, `limit`, `no_keys`, `output_type`, `passive_only`, `query`, `runtime` |

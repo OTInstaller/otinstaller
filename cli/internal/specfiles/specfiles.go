@@ -1,5 +1,5 @@
 // Package specfiles embeds the spec files ot serves or reads at run time: the result, run-summary and error JSON
-// Schemas (MCP resources) and the pivot map. The copies come from spec/ with `go generate ./...`; a test checks they
+// Schemas (MCP resources), the pivot map and the type descriptions. The copies come from spec/ with `go generate ./...`; a test checks they
 // match.
 package specfiles
 
@@ -31,6 +31,26 @@ type PivotTarget struct {
 	Attr      string `json:"attr,omitempty"`
 	Transform string `json:"transform,omitempty"`
 }
+
+// TypeDescriptions says what each input type, entity type and category means (spec/types.json).
+type TypeDescriptions struct {
+	Inputs     map[string]string `json:"inputs"`
+	Entities   map[string]string `json:"entities"`
+	Categories map[string]string `json:"categories"`
+}
+
+// Types is spec/types.json.
+var Types = func() TypeDescriptions {
+	var t TypeDescriptions
+	b, err := files.ReadFile("files/types.json")
+	if err == nil {
+		err = json.Unmarshal(b, &t)
+	}
+	if err != nil {
+		panic("specfiles: types.json: " + err.Error())
+	}
+	return t
+}()
 
 // Pivots maps entity types to the inputs they can feed (spec/pivots.json).
 var Pivots = mustPivots()

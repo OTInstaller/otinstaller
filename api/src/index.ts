@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import schema from "../../spec/schema/v1.json";
 import pivotMap from "../../spec/pivots.json";
+import typeDescriptions from "../../spec/types.json";
 import openapi from "../../spec/openapi/v1.json";
 import { rank } from "./ranking";
 import { cached, findTool, findVersion, notFound, LISTED, rankInput, summary, SUMMARY_COLUMNS, VISIBLE, type SummaryRow } from "./catalog";
@@ -121,7 +122,11 @@ app.get("/openapi.json", (c) => {
 
 app.get("/types", (c) => {
   cached(c, 86400);
-  return c.json({ inputs: INPUT_TYPES, outputs: ENTITY_TYPES, categories: CATEGORIES, pivots: PIVOTS });
+  return c.json({
+    inputs: INPUT_TYPES, outputs: ENTITY_TYPES, categories: CATEGORIES, pivots: PIVOTS,
+    // What each value means (spec/types.json).
+    descriptions: { inputs: typeDescriptions.inputs, outputs: typeDescriptions.entities, categories: typeDescriptions.categories },
+  });
 });
 
 app.get("/tools", async (c) => {

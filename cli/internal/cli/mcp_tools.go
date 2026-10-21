@@ -84,6 +84,8 @@ type typesOut struct {
 	InputTypes  []string                           `json:"input_types"`
 	EntityTypes []string                           `json:"entity_types"`
 	Pivots      map[string][]specfiles.PivotTarget `json:"pivots" jsonschema:"which input types each entity type can feed (spec/pivots.json)"`
+	// Descriptions say what each type and category means (spec/types.json).
+	Descriptions specfiles.TypeDescriptions `json:"descriptions"`
 }
 
 type pivotsIn struct {
@@ -261,10 +263,10 @@ func (s *mcpServer) addReadTools() {
 			return out, nil
 		})
 	readTool(s, "list_types", "List input and entity types",
-		"The input types tools take, the entity types they find, and the pivot map: which input types each entity type can feed.",
+		"The input types tools take, the entity types they find and what each means, and the pivot map: which input types each entity type can feed.",
 		func(ctx context.Context, _ struct{}) (*typesOut, error) {
 			in, out := manifest.Types()
-			return &typesOut{InputTypes: in, EntityTypes: out, Pivots: specfiles.Pivots}, nil
+			return &typesOut{InputTypes: in, EntityTypes: out, Pivots: specfiles.Pivots, Descriptions: specfiles.Types}, nil
 		})
 	readTool(s, "suggest_pivots", "Suggest next runs",
 		"Given a saved run (or entities), list what to look at next: each entity worth pivoting on, the input type it fits, and the installed tools (and optionally registry tools) that take it. Runs nothing.",

@@ -1,12 +1,12 @@
 //go:build ignore
 
-// Copies the spec files ot embeds (the result schemas and the pivot map) out of spec/. Run with `go generate ./...`.
+// Copies the spec files ot embeds (the result schemas, the pivot map and the type descriptions) out of spec/. Run with `go generate ./...`.
 package main
 
 import "os"
 
 func main() {
-	for _, f := range []string{"schema/envelope-v1.json", "schema/run-all-v1.json", "schema/error-v1.json", "pivots.json"} {
+	for _, f := range []string{"schema/envelope-v1.json", "schema/run-all-v1.json", "schema/error-v1.json", "pivots.json", "types.json"} {
 		b, err := os.ReadFile("../../../spec/" + f)
 		if err != nil {
 			panic(err)
