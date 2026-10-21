@@ -51,8 +51,8 @@ These stop testers on day one. Don't send invitations until they are done.
 | Sign in / connect | Existing App installation | Linked GitLab; connect failed until the `api` scope was added to the app, then OK |
 | Release | `otinstaller release` workflow, v0.3.6, 1 min 30 s | Fixed template, no token, no variables: v0.1.0 and v0.1.1 built (amd64 + arm64 under QEMU), signed with GitLab OIDC, tagged by the job token (~8 min each); v0.1.2 tagged from git |
 | Validate → scan → publish | Published, scans pass, signed, ~70 s after the tag | v0.1.0/v0.1.1 rejected by the commit-status bug (fixed in `d9a19a0`); v0.1.2 validated in 13 s, all five scans pass |
-| Review | Not needed (namespace already approved) | **Waiting for you**: approve `osintversehq` at https://otinstaller.com/admin |
-| `ot install` / `ot run` on Windows | OK: cosign signature verified, `ot run … d:example.com` exit 0 | After approval: `ot install osintversehq/ot-test-tool` and `ot run osintversehq/ot-test-tool d:example.com` |
+| Review | Not needed (namespace already approved) | Approved in the admin console 07:22:58 UTC; v0.1.2 published 7 s later from the queue |
+| `ot install` / `ot run` on Windows | OK: cosign signature verified, `ot run … d:example.com` exit 0 | OK: GitLab OIDC signature on `registry.gitlab.com/osintversehq/ot-test-tool` verified, `ot run … d:example.com` exit 0 |
 
 Production deploys on 21 Oct: `8556684` (06:14 UTC), `d9a19a0` (06:55), then week 11's `claude/backup-backfill` from another session (07:01, which dropped the beta work), then `c242065` = main with week 11 + this branch (07:10). Then `90b9c2c` (adds PR #4, the backup backfill) at about 07:20 UTC, which is what production runs now.
 
