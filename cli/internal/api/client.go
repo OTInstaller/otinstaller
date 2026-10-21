@@ -53,6 +53,17 @@ func (e *Error) Error() string {
 	return s
 }
 
+// UnreachableError means no answer came back from the registry (DNS, TLS, timeout), so a retry may work.
+type UnreachableError struct {
+	Base string
+	Err  error
+}
+
+func (e *UnreachableError) Error() string {
+	return fmt.Sprintf("cannot reach the registry at %s: %v", e.Base, e.Err)
+}
+func (e *UnreachableError) Unwrap() error { return e.Err }
+
 type ToolSummary struct {
 	Namespace     string   `json:"namespace"`
 	Name          string   `json:"name"`
@@ -71,6 +82,9 @@ type ToolSummary struct {
 	NeedsKeys     bool     `json:"needs_keys"`
 	ManifestHeld  bool     `json:"manifest_held_by_registry"`
 	Status        string   `json:"status"`
+	// Tools only: what a run does (from the manifest), so callers can tell which runs need consent.
+	Ethics *Ethics `json:"ethics,omitempty"`
+	Egress *bool   `json:"egress,omitempty"`
 	// Guides only.
 	Title       string `json:"title,omitempty"`
 	Level       string `json:"level,omitempty"`
@@ -79,9 +93,19 @@ type ToolSummary struct {
 	NeedsUpdate bool   `json:"needs_update,omitempty"`
 }
 
+// Ethics is the manifest's ethics section as search results carry it.
+type Ethics struct {
+	TouchesTarget        bool `json:"touches_target"`
+	AuthRequired         bool `json:"auth_required"`
+	CollectsPersonalData bool `json:"collects_personal_data"`
+	// NotifiesTarget is set only when the publisher says.
+	NotifiesTarget *bool `json:"notifies_target,omitempty"`
+}
+
 type SearchResult struct {
 	Results    []ToolSummary `json:"results"`
 	NextCursor string        `json:"next_cursor,omitempty"`
+	Total      int           `json:"total,omitempty"`
 }
 
 type ToolDetail struct {
@@ -109,6 +133,9 @@ type ManifestResponse struct {
 	SourceGone     bool            `json:"source_unavailable"`
 	MovedTo        string          `json:"moved_to,omitempty"`
 	Manifest       json.RawMessage `json:"manifest"`
+	// ManifestFull is the manifest with every field. Manifest leaves out optional fields added since ot v0.12, whose
+	// schema rejects them; see registryManifest in the cli package.
+	ManifestFull json.RawMessage `json:"manifest_full,omitempty"`
 	// Backups the registry keeps, used when the original registry or PyPI refuses the artifact.
 	MirrorImage string `json:"mirror_image,omitempty"`
 	WheelURL    string `json:"wheel_url,omitempty"`
@@ -134,7 +161,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return fmt.Errorf("cannot reach the registry at %s: %w", c.Base, err)
+		return &UnreachableError{Base: c.Base, Err: err}
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
@@ -164,6 +191,10 @@ type SearchParams struct {
 	Level, Format, Lang string
 	NoKeys              bool
 	Limit               int
+	// Cursor is a previous page's next_cursor.
+	Cursor string
+	// PassiveOnly keeps tools that run offline, touch no target and collect no personal data.
+	PassiveOnly bool
 }
 
 func (c *Client) Search(ctx context.Context, p SearchParams) (*SearchResult, error) {
@@ -179,6 +210,10 @@ func (c *Client) Search(ctx context.Context, p SearchParams) (*SearchResult, err
 	set("category", p.Category)
 	set("runtime", p.Runtime)
 	set("kind", p.Kind)
+	set("cursor", p.Cursor)
+	if p.PassiveOnly {
+		q.Set("passive_only", "1")
+	}
 	if p.NoKeys {
 		q.Set("no_keys", "1")
 	}
@@ -186,12 +221,12 @@ func (c *Client) Search(ctx context.Context, p SearchParams) (*SearchResult, err
 		q.Set("limit", fmt.Sprint(p.Limit))
 	}
 	var out SearchResult
-	return &out, c.do(ctx, http.MethodGet, "/tools?"+q.Encode(), nil, &out)
+	return &out, c.anon().do(ctx, http.MethodGet, "/tools?"+q.Encode(), nil, &out)
 }
 
 func (c *Client) Tool(ctx context.Context, ns, name string) (*ToolDetail, error) {
 	var out ToolDetail
-	return &out, c.do(ctx, http.MethodGet, "/tools/"+url.PathEscape(ns)+"/"+url.PathEscape(name), nil, &out)
+	return &out, c.anon().do(ctx, http.MethodGet, "/tools/"+url.PathEscape(ns)+"/"+url.PathEscape(name), nil, &out)
 }
 
 func (c *Client) Manifest(ctx context.Context, ns, name, version string) (*ManifestResponse, error) {
@@ -200,12 +235,13 @@ func (c *Client) Manifest(ctx context.Context, ns, name, version string) (*Manif
 	}
 	var out ManifestResponse
 	p := "/tools/" + url.PathEscape(ns) + "/" + url.PathEscape(name) + "/" + url.PathEscape(version) + "/manifest"
-	return &out, c.do(ctx, http.MethodGet, p, nil, &out)
+	return &out, c.anon().do(ctx, http.MethodGet, p, nil, &out)
 }
 
 // InstallPing is anonymous: only the package and version are sent.
-func (c *Client) InstallPing(ctx context.Context, ref, version string) error {
-	return c.do(ctx, http.MethodPost, "/installs", map[string]string{"tool": ref, "version": version}, nil)
+// InstallPing counts an install anonymously; client is cli, mcp or ci (no identifiers).
+func (c *Client) InstallPing(ctx context.Context, ref, version, client string) error {
+	return c.anon().do(ctx, http.MethodPost, "/installs", map[string]string{"tool": ref, "version": version, "client": client}, nil)
 }
 
 type DeviceStart struct {
@@ -218,20 +254,25 @@ type DeviceStart struct {
 }
 
 type DeviceToken struct {
-	Status string `json:"status"` // ok, pending, slow_down, expired, denied
-	Token  string `json:"token,omitempty"`
-	Login  string `json:"login,omitempty"`
+	Status string   `json:"status"` // ok, pending, slow_down, expired, denied
+	Token  string   `json:"token,omitempty"`
+	Login  string   `json:"login,omitempty"`
+	Scopes []string `json:"scopes,omitempty"`
 }
 
 func (c *Client) StartDeviceLogin(ctx context.Context, provider string) (*DeviceStart, error) {
 	var out DeviceStart
-	return &out, c.do(ctx, http.MethodPost, "/auth/device/start", map[string]string{"provider": provider}, &out)
+	return &out, c.anon().do(ctx, http.MethodPost, "/auth/device/start", map[string]string{"provider": provider}, &out)
 }
 
-func (c *Client) PollDeviceLogin(ctx context.Context, provider, deviceCode, tokenName string) (*DeviceToken, error) {
+// PollDeviceLogin asks whether a device sign-in was approved. scopes, when given, limit the token it mints.
+func (c *Client) PollDeviceLogin(ctx context.Context, provider, deviceCode, tokenName string, scopes ...string) (*DeviceToken, error) {
 	var out DeviceToken
-	body := map[string]string{"provider": provider, "device_code": deviceCode, "token_name": tokenName}
-	return &out, c.do(ctx, http.MethodPost, "/auth/device/token", body, &out)
+	body := map[string]any{"provider": provider, "device_code": deviceCode, "token_name": tokenName}
+	if len(scopes) > 0 {
+		body["scopes"] = scopes
+	}
+	return &out, c.anon().do(ctx, http.MethodPost, "/auth/device/token", body, &out)
 }
 
 type Me struct {
@@ -252,4 +293,12 @@ type Me struct {
 func (c *Client) Me(ctx context.Context) (*Me, error) {
 	var out Me
 	return &out, c.do(ctx, http.MethodGet, "/me", nil, &out)
+}
+
+// anon is the client without its token, for public reads: the registry answers them the same either
+// way, and anonymous requests can be served from its edge cache.
+func (c *Client) anon() *Client {
+	cp := *c
+	cp.Token = ""
+	return &cp
 }

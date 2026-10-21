@@ -155,11 +155,11 @@ export OT_API_URL="$API/v1" OT_HOME="$WORKM/ot-home" OT_NO_TELEMETRY=1
 if [ $? = 0 ] && grep -q "OTInstaller mirror" "$WORK/install.log" && ! grep -q "not verified" "$WORK/install.log"; then
   ok "ot installed sigstore/cosign from the mirror, signature verified"
 else bad "ot install from the mirror"; cat "$WORK/install.log"; fi
-./bin/ot run sigstore/cosign --subcommand version </dev/null >"$WORK/run.log" 2>&1 && ok "the mirrored image runs" || { bad "running the mirrored image"; tail -5 "$WORK/run.log"; }
+./bin/ot run sigstore/cosign --subcommand version --yes </dev/null >"$WORK/run.log" 2>&1 && ok "the mirrored image runs" || { bad "running the mirrored image"; tail -5 "$WORK/run.log"; }
 ./bin/ot install osintverse-community/tldextract </dev/null >"$WORK/install-wheel.log" 2>&1
 if [ $? = 0 ] && grep -q "backup copy" "$WORK/install-wheel.log"; then ok "ot installed tldextract from the registry's wheel copy (same SHA-256)"
 else bad "wheel fallback"; cat "$WORK/install-wheel.log"; fi
-./bin/ot run osintverse-community/tldextract --url https://maps.google.co.uk </dev/null >"$WORK/run-wheel.log" 2>&1 && ok "the restored wheel runs" || { bad "running tldextract"; tail -5 "$WORK/run-wheel.log"; }
+./bin/ot run osintverse-community/tldextract --url https://maps.google.co.uk --yes </dev/null >"$WORK/run-wheel.log" 2>&1 && ok "the restored wheel runs" || { bad "running tldextract"; tail -5 "$WORK/run-wheel.log"; }
 
 echo "== restore from backup onto the other host"
 curl -sf "${AUTH[@]}" -X POST "$API/v1/packages/sigstore/cosign/backups/restore" >"$WORK/restore.json" || { bad "restore link"; cat "$WORK/restore.json"; }

@@ -55,10 +55,22 @@ type Input struct {
 	Default     any      `json:"default,omitempty"`
 	Description string   `json:"description,omitempty"`
 	Values      []string `json:"values,omitempty"`
+	// Example is a sample value, for docs and agents.
+	Example any `json:"example,omitempty"`
 }
 
 type Output struct {
-	Type string `json:"type"`
+	Type        string `json:"type"`
+	Description string `json:"description,omitempty"`
+	// Attrs are the attributes the tool sets on entities of this type.
+	Attrs []OutputAttr `json:"attrs,omitempty"`
+}
+
+// OutputAttr is one attribute a tool sets on the entities it outputs.
+type OutputAttr struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Description string `json:"description,omitempty"`
 }
 
 type Runtime struct {
@@ -66,6 +78,8 @@ type Runtime struct {
 	Command        []string `json:"command"`
 	OutputFormat   string   `json:"output_format"`
 	TimeoutSeconds int      `json:"timeout_seconds,omitempty"`
+	// TypicalSeconds is how long a run usually takes.
+	TypicalSeconds int `json:"typical_seconds,omitempty"`
 
 	// Docker.
 	Image     string   `json:"image,omitempty"`
@@ -85,6 +99,8 @@ type Secret struct {
 	Required    bool   `json:"required"`
 	Description string `json:"description,omitempty"`
 	URL         string `json:"url,omitempty"`
+	// Pricing is free, free_tier or paid.
+	Pricing string `json:"pricing,omitempty"`
 }
 
 type Network struct {
@@ -96,6 +112,10 @@ type Ethics struct {
 	TouchesTarget        bool `json:"touches_target"`
 	AuthRequired         bool `json:"auth_required"`
 	CollectsPersonalData bool `json:"collects_personal_data"`
+	// NotifiesTarget says whether a run can produce something the target sees. Unset is unknown: agents treat a tool
+	// that touches the target as if it may.
+	NotifiesTarget *bool  `json:"notifies_target,omitempty"`
+	Notes          string `json:"notes,omitempty"`
 }
 
 type Test struct {

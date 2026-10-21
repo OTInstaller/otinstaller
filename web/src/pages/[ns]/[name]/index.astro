@@ -34,10 +34,15 @@ const jsonLd = {
   url: `${Astro.site}${ref}`,
   ...(t.repo_url ? { codeRepository: t.repo_url } : {}),
   offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+  isAccessibleForFree: true,
+  featureList: [...(m.inputs ?? []).map((i) => `Input: ${i.type}`), ...(m.outputs ?? []).map((o) => `Finds: ${o.type}`)],
+  downloadUrl: "https://otinstaller.com/docs/getting-started",
+  installUrl: "https://otinstaller.com/docs/getting-started",
+  softwareRequirements: "ot, Docker or Podman",
 };
 const yes = (v: boolean) => (v ? "yes" : "no");
 ---
-<Base title={ref} description={t.summary} jsonLd={jsonLd}>
+<Base title={ref} description={t.summary} jsonLd={jsonLd} markdown={`/${ref}.md`}>
   <ToolHeader tool={t} active="overview" hasDocs={hasDocs} scanStatus={scans?.scan_status} />
   <div class="two-col">
     <div class="stack">

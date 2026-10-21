@@ -54,3 +54,23 @@ describe("edge cache", () => {
     expect((await call("/me", {}, e)).headers.get("x-edge-cache")).toBeNull();
   });
 });
+
+describe("ETags", () => {
+  it("answers a repeated read with 304 when the body is unchanged, cached or not", async () => {
+    for (const e of [await testEnv(), { ...(await testEnv()), EDGE_CACHE: undefined }]) {
+      const path = `/tools?q=etag${uniq()}`;
+      const first = await call(path, {}, e);
+      const etag = first.headers.get("etag");
+      expect(etag).toMatch(/^W\/"[0-9a-f]{24}"$/);
+      const again = await call(path, { headers: { "if-none-match": etag! } }, e);
+      expect(again.status).toBe(304);
+      expect(again.headers.get("etag")).toBe(etag);
+      expect(await again.text()).toBe("");
+      expect((await call(path, { headers: { "if-none-match": 'W/"other"' } }, e)).status).toBe(200);
+    }
+    // Signed-in reads get one too.
+    const me = await person();
+    const r = await call("/me", { headers: me.auth });
+    expect((await call("/me", { headers: { ...me.auth, "if-none-match": r.headers.get("etag")! } })).status).toBe(304);
+  });
+});

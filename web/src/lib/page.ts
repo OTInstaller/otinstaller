@@ -2,9 +2,14 @@
 import type { AstroGlobal } from "astro";
 import { api, type SearchResult } from "./api";
 
+/** The Cache-Control value for a public response kept `seconds` at the edge (browsers keep it a minute at most). */
+export function cacheControl(seconds: number): string {
+  return `public, max-age=${Math.min(seconds, 60)}, s-maxage=${seconds}`;
+}
+
 /** Edge-caches a page the way the plan says (e.g. 60 s for tool pages, 5 min for the home page). */
 export function cacheFor(Astro: AstroGlobal, seconds: number) {
-  Astro.response.headers.set("Cache-Control", `public, max-age=${Math.min(seconds, 60)}, s-maxage=${seconds}`);
+  Astro.response.headers.set("Cache-Control", cacheControl(seconds));
 }
 
 /** Reads search filters from the query string and asks the API. */

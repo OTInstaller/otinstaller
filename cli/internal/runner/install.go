@@ -38,6 +38,9 @@ type InstallOptions struct {
 	// tried when the original registry refuses the pull. WheelBackupURL is the registry's copy of the wheel.
 	MirrorImage    string
 	WheelBackupURL string
+	// RequireSignature refuses a Docker image without a recorded signer, or when cosign is missing, instead of
+	// warning. Installs an AI agent asks for use it.
+	RequireSignature bool
 }
 
 // Install pulls or builds everything a package needs and returns its state record.
@@ -55,11 +58,14 @@ func (r *Runner) Install(ctx context.Context, m *manifest.Manifest, rawManifest 
 	}
 	switch m.Runtime.Kind {
 	case "docker":
-		pulled, err := r.installDocker(ctx, m, opt)
+		pulled, verified, err := r.installDocker(ctx, m, opt)
 		if err != nil {
 			return nil, err
 		}
 		inst.Artifact = m.Runtime.Image
+		if verified {
+			inst.Signer = opt.SignerIdentity
+		}
 		if pulled != m.Runtime.Image {
 			// Runs use the mirror's reference: the image is stored locally under that name.
 			inst.LocalImage = pulled
@@ -118,40 +124,46 @@ func sameDigest(original, mirror string) bool {
 
 // installDocker pulls the image by digest and verifies its signature. If the original registry refuses the
 // image, it pulls the same digest from the mirror and verifies the same signature there. It returns the
-// reference that was pulled.
-func (r *Runner) installDocker(ctx context.Context, m *manifest.Manifest, opt InstallOptions) (string, error) {
+// reference that was pulled and whether its signature was verified.
+func (r *Runner) installDocker(ctx context.Context, m *manifest.Manifest, opt InstallOptions) (string, bool, error) {
 	if err := r.requireEngine(); err != nil {
-		return "", err
+		return "", false, err
 	}
 	image := m.Runtime.Image
 	if !strings.Contains(image, "@sha256:") {
-		return "", &TrustError{"image " + image + " is not pinned by digest"}
+		return "", false, &TrustError{"image " + image + " is not pinned by digest"}
 	}
 	var out bytes.Buffer
 	code, err := r.Exec.Run(ctx, r.Engine, []string{"pull", image}, nil, nil, r.Stderr, io.MultiWriter(r.Stderr, &out))
 	if err != nil || code != 0 {
 		if opt.MirrorImage == "" || !sameDigest(image, opt.MirrorImage) || !unavailable.MatchString(out.String()) {
-			return "", commandFailed("pulling "+image, code, err, out.String())
+			return "", false, commandFailed("pulling "+image, code, err, out.String())
 		}
 		fmt.Fprintf(r.Stderr, "note: %s refused the image; pulling the same digest from the OTInstaller mirror\n", strings.SplitN(image, "/", 2)[0])
 		image = opt.MirrorImage
 		out.Reset()
 		if code, err := r.Exec.Run(ctx, r.Engine, []string{"pull", image}, nil, nil, r.Stderr, io.MultiWriter(r.Stderr, &out)); err != nil || code != 0 {
-			return "", commandFailed("pulling "+image+" from the mirror", code, err, out.String())
+			return "", false, commandFailed("pulling "+image+" from the mirror", code, err, out.String())
 		}
 	}
 	if opt.SignerIdentity == "" {
-		return image, nil
+		if opt.RequireSignature {
+			return "", false, &TrustError{image + " is not signed, and agents may only install signed images; install it yourself with `ot install` if you trust it"}
+		}
+		return image, false, nil
 	}
 	if _, err := r.Exec.LookPath("cosign"); err != nil {
+		if opt.RequireSignature {
+			return "", false, &TrustError{"cosign is not installed, so the signature of " + image + " can't be verified; agents may only install verified images (install cosign: https://docs.sigstore.dev/cosign/system_config/installation/)"}
+		}
 		fmt.Fprintln(r.Stderr, "warning: cosign is not installed, so the image signature was not verified locally")
-		return image, nil
+		return image, false, nil
 	}
 	args := []string{"verify", "--certificate-identity", opt.SignerIdentity, "--certificate-oidc-issuer", opt.SignerIssuer, image}
 	if code, err := r.Exec.Run(ctx, "cosign", args, nil, nil, io.Discard, r.Stderr); err != nil || code != 0 {
-		return "", &TrustError{"signature verification failed for " + image + "; refusing to install"}
+		return "", false, &TrustError{"signature verification failed for " + image + "; refusing to install"}
 	}
-	return image, nil
+	return image, true, nil
 }
 
 // PipxHome and PipxBinDir keep ot's packages apart from the user's own pipx apps.

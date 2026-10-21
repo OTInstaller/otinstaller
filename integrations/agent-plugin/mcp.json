@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "otinstaller": {
+      "command": "ot",
+      "args": ["mcp"]
+    }
+  }
+}

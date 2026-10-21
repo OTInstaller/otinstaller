@@ -34,6 +34,13 @@ type runArgs struct {
 	NoSave     bool
 	ResultsDir string
 	Case       string
+	// MaxRaw leaves raw out of the printed envelope when the output is larger (0: no limit).
+	MaxRaw int64
+	// Set by the consent check for unattended runs: whether to audit them, and how they were allowed.
+	audit   bool
+	consent string
+	// onStart, when set, gets a run's id (and sidecar path when saved) as soon as it has one, before it ends.
+	onStart func(runID, metaPath string)
 	// DryRun lists what --all, a playbook or auto would run, without running it.
 	DryRun bool
 	// Detect turns bare targets (example.com) into typed inputs, for auto and playbooks.
@@ -46,6 +53,9 @@ func parseRunArgs(args []string) (*runArgs, error) {
 
 func parseArgs(args []string, detect bool) (*runArgs, error) {
 	ra := &runArgs{Inputs: map[string]string{}, Parallel: 4, Detect: detect}
+	if n, err := strconv.ParseInt(os.Getenv("OT_MAX_RAW"), 10, 64); err == nil && n > 0 {
+		ra.MaxRaw = n
+	}
 	var positional []string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -73,6 +83,10 @@ func parseArgs(args []string, detect bool) (*runArgs, error) {
 		case "dry-run":
 			ra.DryRun = true
 			continue
+		case "json":
+			// The global --json, which `ot run` has to parse itself.
+			ra.Format = "json"
+			continue
 		case "live":
 			// otinstaller's live table; ot always shows progress with --all, playbooks and auto.
 			continue
@@ -95,6 +109,12 @@ func parseArgs(args []string, detect bool) (*runArgs, error) {
 			ra.ResultsDir = val
 		case "case":
 			ra.Case = val
+		case "max-raw":
+			n, err := strconv.ParseInt(val, 10, 64)
+			if err != nil || n < 0 {
+				return nil, &runner.UsageError{Msg: fmt.Sprintf("--max-raw needs a number of bytes, not %q", val)}
+			}
+			ra.MaxRaw = n
 		case "parallel":
 			n, err := strconv.Atoi(val)
 			if err != nil || n < 1 {
@@ -141,7 +161,8 @@ Typed inputs fill the tool's input of that type:
   u:<username>  d:<domain>  e:<email>  p:<phone>  ip:<ip>  url:<url>
 
 Flags:
-  -f, --format string       json (default), table, csv or raw; with --all, table (default) or json
+  -f, --format string       json (default), table, csv or raw; with --all, table (default), json or jsonl
+      --json                same as --format json
   -o, --output string       write the result to a file instead of stdout
       --out-dir string      host directory mounted at /out for tools that write files
       --native              run pipx tools on the host instead of in a container
@@ -149,6 +170,7 @@ Flags:
       --results-dir string  where runs are saved (default $OT_RESULTS_DIR, else ./results)
       --case string         save under <results-dir>/cases/<case>
       --no-save             don't save the run
+      --max-raw int         leave raw out of the envelope when the output is over this many bytes (default $OT_MAX_RAW)
       --all                 run every installed tool that has an input of the given types
       --parallel int        how many tools --all runs at once (default 4)
       --dry-run             with --all, list the tools that would run, without running them
@@ -204,6 +226,9 @@ func (a *App) runCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := a.cliConsent(ra, []allJob{{inst: inst, values: values}}); err != nil {
+				return err
+			}
 			env, meta, err := a.execute(cmd.Context(), inst, values, secrets, target, ra, a.Runner.Stderr)
 			if meta != nil {
 				fmt.Fprintf(a.Err, "Saved %s\n", meta.OutputPath)
@@ -223,6 +248,14 @@ func (a *App) runCmd() *cobra.Command {
 			format := ra.Format
 			if format == "" {
 				format = orDefault(a.Config.Format, "json")
+			}
+			if ra.MaxRaw > 0 && format != "raw" && env.Output != nil && env.Output.Bytes > ra.MaxRaw {
+				env.Raw, env.Output.RawOmitted = nil, true
+				where := "it was not saved (--no-save)"
+				if env.Output.Path != "" {
+					where = "the full output is in " + env.Output.Path
+				}
+				env.Warnings = append(env.Warnings, fmt.Sprintf("raw left out: the output is %d bytes, over the %d-byte limit; %s", env.Output.Bytes, ra.MaxRaw, where))
 			}
 			if err := env.Write(w, format); err != nil {
 				return &runner.UsageError{Msg: err.Error()}
@@ -252,9 +285,20 @@ func firstGiven(m *manifest.Manifest, given map[string]string) string {
 // execute runs an installed tool and, unless --no-save, saves its output and sidecar. The meta
 // is returned whenever something was saved, including for a timeout or an interrupted run.
 func (a *App) execute(ctx context.Context, inst *state.Installed, values, secrets map[string]string, target string, ra *runArgs, stderr io.Writer) (*envelope.Envelope, *results.Meta, error) {
+	env, meta, err := a.executeRun(ctx, inst, values, secrets, target, ra, stderr)
+	a.auditRun(ra, inst, values, env, meta, err)
+	return env, meta, err
+}
+
+func (a *App) executeRun(ctx context.Context, inst *state.Installed, values, secrets map[string]string, target string, ra *runArgs, stderr io.Writer) (*envelope.Envelope, *results.Meta, error) {
 	opt := runner.RunOptions{Values: values, Secrets: secrets, OutDir: ra.OutDir, Stderr: stderr}
 	if ra.NoSave {
+		id := results.NewRunID()
+		if ra.onStart != nil {
+			ra.onStart(id, "")
+		}
 		env, err := a.Runner.Run(ctx, inst, opt)
+		a.stamp(env, id)
 		return env, nil, err
 	}
 	m := inst.Manifest
@@ -262,9 +306,16 @@ func (a *App) execute(ctx context.Context, inst *state.Installed, values, secret
 	if err != nil {
 		return nil, nil, &ExitError{Code: ExitToolError, Err: err}
 	}
+	if ra.onStart != nil {
+		ra.onStart(rec.ID, rec.MetaPath)
+	}
 	opt.Stdout = rec.Stdout()
 	opt.Stderr = io.MultiWriter(stderr, rec.Stderr())
 	env, runErr := a.Runner.Run(ctx, inst, opt)
+	a.stamp(env, rec.ID)
+	if env != nil {
+		env.Output.Path, env.Output.MetaPath = rec.OutputPath, rec.MetaPath
+	}
 
 	meta := &results.Meta{
 		Command:     runner.BuildCommand(m, values),
@@ -276,6 +327,10 @@ func (a *App) execute(ctx context.Context, inst *state.Installed, values, secret
 		Input:       values,
 		Envelope:    envelope.Version,
 		ExitCode:    -1,
+		RunID:       rec.ID,
+		OTVersion:   Version,
+		Client:      a.clientKind(),
+		Artifact:    &envelope.Artifact{Kind: map[bool]string{true: "wheel", false: "image"}[inst.Runtime == "pipx"], Ref: inst.Artifact, Signer: inst.Signer, FromBackup: inst.FromBackup},
 	}
 	if ra.Case != "" {
 		meta.Case = &ra.Case
@@ -306,4 +361,24 @@ func (a *App) execute(ctx context.Context, inst *state.Installed, values, secret
 		fmt.Fprintf(a.Err, "warning: %v\n", err)
 	}
 	return env, meta, runErr
+}
+
+// stamp adds what only ot knows to a run's envelope: its id, ot's version and who started it.
+func (a *App) stamp(env *envelope.Envelope, runID string) {
+	if env == nil {
+		return
+	}
+	env.RunID, env.OTVersion, env.Client = runID, Version, a.clientKind()
+}
+
+// clientKind says what started a run, for the envelope and the sidecar: mcp under `ot mcp`, ci when the CI variable that
+// GitHub Actions, GitLab CI and most others set is present, otherwise cli.
+func (a *App) clientKind() string {
+	if a.AgentMode {
+		return "mcp"
+	}
+	if os.Getenv("CI") != "" {
+		return "ci"
+	}
+	return "cli"
 }

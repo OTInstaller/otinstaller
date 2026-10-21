@@ -62,7 +62,8 @@ export interface User {
   is_reviewer: number;
 }
 
-export type AppEnv = { Bindings: Env; Variables: { user: User | null } };
+// token is set when the request was made with an API token (with its scopes), not the session cookie.
+export type AppEnv = { Bindings: Env; Variables: { user: User | null; token: import("./scopes").TokenInfo | null } };
 export type App = Hono<AppEnv>;
 
 // Outbound HTTP goes through here so tests can stand in for GitHub, GitLab, PyPI and registries.

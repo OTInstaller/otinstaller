@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://otinstaller.com/schema/run-all-v1.json",
+  "title": "OTInstaller run summary (ot run --all, ot playbook, ot auto), version 1",
+  "description": "With -f json, one array of rows. With -f jsonl, one row per line as each tool finishes, then one summary line. Readers must ignore keys they don't know.",
+  "oneOf": [
+    { "type": "array", "items": { "$ref": "#/$defs/row" } },
+    { "$ref": "#/$defs/row" },
+    { "$ref": "#/$defs/summaryLine" }
+  ],
+  "$defs": {
+    "row": {
+      "type": "object",
+      "required": ["tool", "version", "status", "entities"],
+      "properties": {
+        "tool": { "type": "string", "description": "namespace/name" },
+        "version": { "type": "string" },
+        "status": { "enum": ["complete", "failed", "timeout", "interrupted", "skipped", "error", "would run"] },
+        "exit_code": { "type": "integer" },
+        "entities": { "type": "integer", "minimum": 0, "description": "How many entities the run found." },
+        "top_entities": {
+          "type": "array",
+          "maxItems": 20,
+          "description": "The first entities the run found, without duplicates. All of them are in the sidecar at meta_path.",
+          "items": { "$ref": "https://otinstaller.com/schema/envelope-v1.json#/$defs/entity" }
+        },
+        "run_id": { "type": "string" },
+        "output_path": { "type": "string" },
+        "meta_path": { "type": "string" },
+        "reason": { "type": "string", "description": "Why the tool was skipped or failed to start." }
+      }
+    },
+    "summaryLine": {
+      "type": "object",
+      "required": ["summary"],
+      "properties": {
+        "summary": {
+          "type": "object",
+          "required": ["total", "exit_code"],
+          "properties": {
+            "total": { "type": "integer" },
+            "complete": { "type": "integer" },
+            "failed": { "type": "integer" },
+            "timeout": { "type": "integer" },
+            "interrupted": { "type": "integer" },
+            "skipped": { "type": "integer" },
+            "error": { "type": "integer" },
+            "would run": { "type": "integer" },
+            "exit_code": { "type": "integer", "description": "The exit code ot will return." }
+          }
+        }
+      }
+    }
+  }
+}

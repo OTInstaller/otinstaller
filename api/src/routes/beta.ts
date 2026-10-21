@@ -3,7 +3,7 @@
 import type { Context } from "hono";
 import type { App, AppEnv, Env } from "../env";
 import { deps } from "../env";
-import { apiError } from "../lib/errors";
+import { apiError, rateLimited, windowRetry } from "../lib/errors";
 import { ulid } from "../lib/crypto";
 import { audit } from "./auth";
 import { requireAdmin, requireReviewer } from "./review";
@@ -57,7 +57,7 @@ export function betaRoutes(app: App) {
     const limited = user
       ? await overLimit(c.env, "feedback-user", user.id, 10, 3_600_000)
       : await overLimit(c.env, "feedback-ip", c.req.header("cf-connecting-ip") ?? "unknown", 10, 3_600_000);
-    if (limited) apiError(429, "too_many_requests", "at most 10 messages an hour", "write to registry@otinstaller.com");
+    if (limited) rateLimited("too_many_requests", "at most 10 messages an hour", "write to registry@otinstaller.com", windowRetry(3_600_000), 10, 3600);
     const id = ulid();
     await c.env.DB.prepare(
       `INSERT INTO feedback (id, user_id, kind, message, email, page, source, client, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,

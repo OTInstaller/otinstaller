@@ -2,7 +2,7 @@
 // and the transparency list.
 import type { Context } from "hono";
 import type { App, AppEnv } from "../env";
-import { apiError } from "../lib/errors";
+import { apiError, rateLimited, windowRetry } from "../lib/errors";
 import { audit, requireUser } from "./auth";
 import { requireMember } from "./sources";
 import { requireAdmin, requireReviewer } from "./review";
@@ -82,7 +82,10 @@ export function trustRoutes(app: App) {
     const limited = user
       ? await overLimit(c.env, "report-user", user.id, 20, 86_400_000)
       : await overLimit(c.env, "report-ip", c.req.header("cf-connecting-ip") ?? "unknown", 5, 3_600_000);
-    if (limited) apiError(429, "too_many_reports", user ? "at most 20 reports a day" : "at most 5 reports an hour from one address", "write to abuse@otinstaller.com");
+    if (limited) {
+      rateLimited("too_many_reports", user ? "at most 20 reports a day" : "at most 5 reports an hour from one address", "write to abuse@otinstaller.com",
+        windowRetry(user ? 86_400_000 : 3_600_000), user ? 20 : 5, user ? 86400 : 3600);
+    }
     const version = b.version
       ? await c.env.DB.prepare(`SELECT id FROM versions WHERE tool_id = ? AND version = ?`).bind(t.id, String(b.version)).first<{ id: string }>()
       : null;
