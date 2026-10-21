@@ -158,6 +158,9 @@ func (a *App) prompter(yes bool) func(label, current, def string) (string, error
 			}
 			return def, nil
 		}
+		if !a.interactive() {
+			return "", needsInput(fmt.Sprintf("ot needs an answer to %q", label), "--yes to accept the defaults (with flags for the rest)")
+		}
 		if def != "" {
 			fmt.Fprintf(a.Out, "%s [%s]: ", label, def)
 		} else {
@@ -180,7 +183,7 @@ func (a *App) prompter(yes bool) func(label, current, def string) (string, error
 
 func (a *App) validateCmd() *cobra.Command {
 	var tag string
-	var asJSON, smoke bool
+	var smoke bool
 	cmd := &cobra.Command{
 		Use:   "validate [path]",
 		Short: "Check otinstaller.yaml against the spec",
@@ -208,7 +211,7 @@ func (a *App) validateCmd() *cobra.Command {
 			} else {
 				problems = manifest.Validate(doc, m, manifest.Options{Tag: tag, Dir: dir})
 			}
-			if asJSON {
+			if a.jsonMode() {
 				enc := json.NewEncoder(a.Out)
 				enc.SetIndent("", "  ")
 				if problems == nil {
@@ -241,7 +244,6 @@ func (a *App) validateCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&tag, "tag", "", "git tag being released; must equal v<version>")
-	cmd.Flags().BoolVar(&asJSON, "json", false, "print problems as JSON")
 	cmd.Flags().BoolVar(&smoke, "smoke", false, "also install the package and run its test input")
 	return cmd
 }

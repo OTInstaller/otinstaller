@@ -91,7 +91,8 @@
               "required": { "type": "boolean" },
               "default": {},
               "description": { "type": "string", "maxLength": 200 },
-              "values": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+              "values": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+              "example": { "description": "A sample value, for docs and agents; it must suit the input's type" }
             },
             "if": { "properties": { "type": { "const": "enum" } } },
             "then": { "required": ["values"] }
@@ -104,7 +105,25 @@
             "type": "object",
             "required": ["type"],
             "additionalProperties": false,
-            "properties": { "type": { "$ref": "#/$defs/entityType" } }
+            "properties": {
+              "type": { "$ref": "#/$defs/entityType" },
+              "description": { "type": "string", "maxLength": 200 },
+              "attrs": {
+                "type": "array",
+                "maxItems": 30,
+                "description": "The attributes the tool sets on entities of this type, so agents know what to expect before running it",
+                "items": {
+                  "type": "object",
+                  "required": ["name", "type"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$" },
+                    "type": { "enum": ["string", "number", "boolean", "url", "datetime"] },
+                    "description": { "type": "string", "maxLength": 200 }
+                  }
+                }
+              }
+            }
           }
         },
         "runtime": {
@@ -114,7 +133,8 @@
             "kind": { "enum": ["docker", "pipx"] },
             "command": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
             "output_format": { "enum": ["json", "jsonl", "csv", "text"] },
-            "timeout_seconds": { "type": "integer", "minimum": 1, "maximum": 3600, "default": 300 }
+            "timeout_seconds": { "type": "integer", "minimum": 1, "maximum": 3600, "default": 300 },
+            "typical_seconds": { "type": "integer", "minimum": 1, "maximum": 3600, "description": "How long a run usually takes, so callers know how long to wait" }
           },
           "allOf": [
             {
@@ -158,7 +178,8 @@
               "name": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,63}$" },
               "required": { "type": "boolean" },
               "description": { "type": "string", "maxLength": 200 },
-              "url": { "type": "string", "format": "uri" }
+              "url": { "type": "string", "format": "uri" },
+              "pricing": { "enum": ["free", "free_tier", "paid"], "description": "What a key costs: free, a free tier with paid plans, or paid only" }
             }
           }
         },
@@ -177,7 +198,9 @@
           "properties": {
             "touches_target": { "type": "boolean" },
             "auth_required": { "type": "boolean" },
-            "collects_personal_data": { "type": "boolean" }
+            "collects_personal_data": { "type": "boolean" },
+            "notifies_target": { "type": "boolean", "description": "Whether a run can produce something the target sees: a password-reset email, a login alert, a profile-view notice" },
+            "notes": { "type": "string", "maxLength": 280, "description": "A plain-language caveat shown when asking for consent" }
           }
         },
         "test": {

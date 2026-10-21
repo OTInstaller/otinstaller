@@ -3,6 +3,7 @@ package manifest
 import (
 	"bytes"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -31,6 +32,7 @@ const (
 	CodeInputDuplicate     = "manifest_input_duplicate"
 	CodeSecretDuplicate    = "manifest_secret_duplicate"
 	CodeTestInputUnknown   = "manifest_test_input_unknown"
+	CodeExampleInvalid     = "manifest_example_invalid"
 	CodeTestInputMissing   = "manifest_test_input_missing"
 	CodeTagMismatch        = "manifest_tag_mismatch"
 	CodeFileMissing        = "manifest_file_missing"
@@ -199,8 +201,54 @@ func checkInputs(m *Manifest) []*Problem {
 				Message: fmt.Sprintf("input %q is declared more than once", in.Name)})
 		}
 		seen[in.Name] = true
+		if in.Example != nil {
+			if why := exampleProblem(in); why != "" {
+				ps = append(ps, &Problem{Code: CodeExampleInvalid, Path: fmt.Sprintf("/inputs/%d/example", i),
+					Message: fmt.Sprintf("the example for %q %s", in.Name, why), Hint: "give a value of the input's type, as a user would type it"})
+			}
+		}
 	}
 	return ps
+}
+
+// article puts "a" or "an" before an input type: "an integer", "a url".
+func article(t string) string {
+	if t != "" && strings.ContainsRune("aeio", rune(t[0])) {
+		return "an " + t
+	}
+	return "a " + t
+}
+
+// exampleProblem says what is wrong with an input's example, or "" when it suits the input's type.
+func exampleProblem(in Input) string {
+	switch v := in.Example.(type) {
+	case bool:
+		if in.Type != "boolean" {
+			return "is true or false, but the input is " + article(in.Type)
+		}
+	case float64, int, int64:
+		f := fmt.Sprint(v)
+		if in.Type != "integer" {
+			return "is a number, but the input is " + article(in.Type) + "; quote it if it is text"
+		}
+		if strings.ContainsAny(f, ".eE") {
+			return "is not a whole number"
+		}
+	case string:
+		switch {
+		case strings.TrimSpace(v) == "":
+			return "is empty"
+		case in.Type == "integer" || in.Type == "boolean":
+			return "is text, but the input is " + article(in.Type)
+		case in.Type == "enum" && !contains(in.Values, v):
+			return fmt.Sprintf("is %q, which is not one of its values", v)
+		case in.Type == "email" && (!strings.Contains(v, "@") || strings.ContainsAny(v, " \t")):
+			return fmt.Sprintf("%q is not an email address", v)
+		}
+	default:
+		return "must be a single value, not a list or a map"
+	}
+	return ""
 }
 
 func checkSecrets(m *Manifest) []*Problem {
@@ -296,3 +344,18 @@ func checkFiles(m *Manifest, dir string) []*Problem {
 	}
 	return ps
 }
+
+// Types lists the input types and the output (entity) types the schema allows, in schema order.
+func Types() (inputs, outputs []string) {
+	var doc struct {
+		Defs struct {
+			InputType  struct{ Enum []string } `json:"inputType"`
+			EntityType struct{ Enum []string } `json:"entityType"`
+		} `json:"$defs"`
+	}
+	_ = json.Unmarshal(schemaJSON, &doc)
+	return doc.Defs.InputType.Enum, doc.Defs.EntityType.Enum
+}
+
+// SchemaJSON is the embedded manifest schema, spec/schema/v1.json.
+func SchemaJSON() []byte { return schemaJSON }

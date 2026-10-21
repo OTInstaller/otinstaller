@@ -106,6 +106,9 @@ func (a *App) releaseCmd() *cobra.Command {
 			}
 			if problems := manifest.Validate(doc, m2, manifest.Options{Tag: tag, Dir: dir}); len(problems) > 0 {
 				restore()
+				if a.jsonMode() {
+					return problemsError(fmt.Sprintf("not released: %s has %d problem(s)", path, len(problems)), problems)
+				}
 				fmt.Fprintf(a.Out, "Not released: %s has %d problem(s):\n", path, len(problems))
 				for _, p := range problems {
 					fmt.Fprintf(a.Out, "  %s: %s\n", p.Code, p.Message)
@@ -122,12 +125,18 @@ func (a *App) releaseCmd() *cobra.Command {
 			if _, err := git(dir, "tag", "-a", tag, "-m", "Release "+version); err != nil {
 				return err
 			}
+			if a.jsonMode() && noPush {
+				return writeJSON(a.Out, map[string]any{"ref": m.Ref(), "version": version, "tag": tag, "pushed": false})
+			}
 			if noPush {
 				fmt.Fprintf(a.Out, "Tagged %s %s locally. Push it with: git push --atomic %s HEAD %s\n", m.Ref(), tag, remote, tag)
 				return nil
 			}
 			if _, err := git(dir, "push", "-q", "--atomic", remote, "HEAD", tag); err != nil {
 				return fmt.Errorf("%w\nThe commit and tag are made locally; push them with: git push --atomic %s HEAD %s", err, remote, tag)
+			}
+			if a.jsonMode() {
+				return writeJSON(a.Out, map[string]any{"ref": m.Ref(), "version": version, "tag": tag, "pushed": true, "remote": remote})
 			}
 			fmt.Fprintf(a.Out, "Released %s %s: pushed %s. The registry checks it within a minute; follow it with `ot sync %s --log`.\n",
 				m.Ref(), version, tag, m.Ref())

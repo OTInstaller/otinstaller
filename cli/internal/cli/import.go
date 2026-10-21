@@ -20,7 +20,7 @@ import (
 // on the registry.
 func (a *App) importCmd() *cobra.Command {
 	var id, file, save, wrapper string
-	var registry, draftOnly, yes, list, asJSON, community bool
+	var registry, draftOnly, yes, list, community bool
 	cmd := &cobra.Command{
 		Use:   "import <github-or-gitlab-url>...",
 		Short: "Publish an existing GitHub or GitLab repository: detect, complete, open a PR/MR",
@@ -35,22 +35,22 @@ func (a *App) importCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			if a.API.Token == "" {
-				return exitErr(ExitUsage, "sign in first with `ot login` (or `ot login --gitlab`)")
+				return errNotSignedIn("sign in first with `ot login` (or `ot login --gitlab`)")
 			}
 			switch {
 			case list:
-				return a.listImports(ctx, asJSON)
+				return a.listImports(ctx)
 			case id == "" && len(args) == 0:
 				return exitErr(ExitUsage, "give a repository URL, or --id to continue an import")
 			case id == "" && len(args) > 1:
-				return a.bulkImport(ctx, args, community, asJSON)
+				return a.bulkImport(ctx, args, community)
 			}
 			var imp *api.Import
 			var err error
 			if id != "" {
 				imp, err = a.API.Import(ctx, id)
 			} else {
-				fmt.Fprintf(a.Out, "Looking at %s…\n", args[0])
+				fmt.Fprintf(a.Err, "Looking at %s…\n", args[0])
 				if community {
 					imp, err = a.API.StartCommunityImport(ctx, args[0])
 				} else {
@@ -60,7 +60,7 @@ func (a *App) importCmd() *cobra.Command {
 			if err != nil {
 				return a.requestError(err)
 			}
-			return a.runWizard(ctx, imp, wizardOptions{file: file, save: save, wrapper: wrapper, registry: registry, draftOnly: draftOnly, yes: yes, asJSON: asJSON})
+			return a.runWizard(ctx, imp, wizardOptions{file: file, save: save, wrapper: wrapper, registry: registry, draftOnly: draftOnly, yes: yes, asJSON: a.jsonMode()})
 		},
 	}
 	f := cmd.Flags()
@@ -73,7 +73,6 @@ func (a *App) importCmd() *cobra.Command {
 	f.BoolVar(&draftOnly, "draft", false, "stop after saving the draft; finish later with --id")
 	f.BoolVarP(&yes, "yes", "y", false, "do not prompt; fail if the draft still needs input")
 	f.BoolVar(&list, "list", false, "list your imports")
-	f.BoolVar(&asJSON, "json", false, "print JSON")
 	return cmd
 }
 
@@ -143,7 +142,7 @@ func (a *App) runWizard(ctx context.Context, imp *api.Import, o wizardOptions) e
 		if err := os.WriteFile(o.save, []byte(imp.DraftYAML), 0o644); err != nil {
 			return err
 		}
-		fmt.Fprintf(a.Out, "Saved the draft to %s\n", o.save)
+		fmt.Fprintf(a.Err, "Saved the draft to %s\n", o.save)
 	}
 	if len(imp.Problems) > 0 {
 		if o.asJSON {
@@ -154,6 +153,9 @@ func (a *App) runWizard(ctx context.Context, imp *api.Import, o wizardOptions) e
 		return &ExitError{Code: ExitUsage}
 	}
 	if o.draftOnly {
+		if o.asJSON {
+			return writeJSON(a.Out, imp)
+		}
 		fmt.Fprintf(a.Out, "Draft saved. Finish it with: ot import --id %s\n", imp.ID)
 		return nil
 	}
@@ -402,7 +404,10 @@ func printProblems(w io.Writer, ps []api.Problem) {
 func (a *App) requestError(err error) error {
 	var e *api.Error
 	if errors.As(err, &e) && len(e.Problems) > 0 {
-		printProblems(a.Out, e.Problems)
+		// Stdout is for data; in JSON mode the problems are in the error itself.
+		if !a.jsonMode() {
+			printProblems(a.Err, e.Problems)
+		}
 		return &ExitError{Code: ExitUsage, Err: err}
 	}
 	if errors.As(err, &e) && e.Status >= 400 && e.Status < 500 {
@@ -411,12 +416,12 @@ func (a *App) requestError(err error) error {
 	return err
 }
 
-func (a *App) bulkImport(ctx context.Context, repos []string, community, asJSON bool) error {
+func (a *App) bulkImport(ctx context.Context, repos []string, community bool) error {
 	b, err := a.API.StartImports(ctx, repos, community)
 	if err != nil {
 		return a.requestError(err)
 	}
-	if asJSON {
+	if a.jsonMode() {
 		return writeJSON(a.Out, b)
 	}
 	fmt.Fprintf(a.Out, "Importing %d repositories; detection runs in the background.\n", len(b.Imports))
@@ -427,12 +432,12 @@ func (a *App) bulkImport(ctx context.Context, repos []string, community, asJSON 
 	return nil
 }
 
-func (a *App) listImports(ctx context.Context, asJSON bool) error {
+func (a *App) listImports(ctx context.Context) error {
 	imps, err := a.API.Imports(ctx)
 	if err != nil {
 		return a.requestError(err)
 	}
-	if asJSON {
+	if a.jsonMode() {
 		return writeJSON(a.Out, imps)
 	}
 	if len(imps) == 0 {
