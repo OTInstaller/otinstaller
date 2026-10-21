@@ -1,6 +1,6 @@
 # Typed inputs, saved results, `ot run --all`, playbooks, `ot auto`, `extract` and `diff`
 
-The Python package manager (`otinstaller`, now in maintenance) had three run features `ot` lacked: typed inputs
+The Python package manager (`otinstaller`, now `otlite`) had three run features `ot` lacked: typed inputs
 (`u:johndoe`), results saved to disk with a sidecar, and `run --all`. This note says how they map onto the manifest and
 the result envelope, so `otinstaller` users lose nothing when they switch.
 

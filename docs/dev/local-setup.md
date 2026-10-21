@@ -11,7 +11,7 @@ Windows path is the best tested. [AGENTS.md](../../AGENTS.md) has the short comm
 | Go | 1.25+ (`cli/go.mod`) | `cli/`, `ot release` tests, `scripts/e2e*.sh` |
 | Node.js | 22+ (Astro 7 needs it; there is no `engines` field) | `api/`, `web/` |
 | Docker Desktop or Podman | recent | running tools, sandboxed pipx tools, the e2e scripts, the scanner image |
-| Python | 3.12 (3.12+ works for the scanner and seed tests); 3.10+ on Linux for `python/` | `ops/scanner`, seed tool tests, `scripts/pm-catalog-to-wrappers.py`, `python/` |
+| Python | 3.12 (3.12+ works for the scanner and seed tests); 3.10+ on Linux for `otlite/` | `ops/scanner`, seed tool tests, `scripts/pm-catalog-to-wrappers.py`, `otlite/` |
 | cosign | v2 | `scripts/e2e-real.sh`, `scripts/e2e-backups.sh`, signature checks in `ot` (missing cosign only warns) |
 | crane | recent | `scripts/e2e-backups.sh` |
 | Trivy, GuardDog | as pinned in `ops/scanner/Dockerfile` | only for running the scanner outside its image; normally use the image |
@@ -34,7 +34,7 @@ go install github.com/google/go-containerregistry/cmd/crane@latest
   mode; open files with `newline=""` in scripts that write repository files.
 - Use `127.0.0.1`, not `localhost`, for local servers that Docker talks to: `localhost` resolves to `::1` and Docker's
   IPv6 port forward hangs.
-- `python/` is Linux-only; use WSL 2 or a Linux container for it.
+- `otlite/` is Linux-only; use WSL 2 or a Linux container for it.
 - Very long paths can break the Astro prerender in workerd (`SQLITE_CANTOPEN`); a short checkout path avoids it.
 
 ### macOS
@@ -54,7 +54,7 @@ warns. That only matters when testing `scripts/install/install.sh`.
 
 Use the distribution's packages for Git, Python and Docker (or Podman). Distribution Go and Node are often too old: take
 Go from go.dev and Node 22 from NodeSource or a version manager. Add your user to the `docker` group (or use rootless
-Podman), and install `python3-venv` for `python/`.
+Podman), and install `python3-venv` for `otlite/`.
 
 ## 2. Clone and check
 
@@ -72,7 +72,7 @@ Then, from the checkout:
 | Site | `cd web && npm install && npm run check && npm test` |
 | Scanner | `python -m unittest discover ops/scanner` |
 | A seed tool | `cd seed/first-party/<tool> && python -m unittest` |
-| python/ (Linux) | `cd python && pip install -e ".[dev,pipeline]" && ruff check . && ruff format --check . && pytest` |
+| otlite/ (Linux) | `cd otlite && pip install -e ".[dev,pipeline]" && ruff check . && ruff format --check . && pytest` |
 
 The API tests need no secrets: `api/vitest.config.ts` gives them fake secrets, builds the seed from
 `api/scripts/seed-lib.mjs` and the fixtures and templates from `spec/`, and sets `EDGE_CACHE: "off"`. The `week10`

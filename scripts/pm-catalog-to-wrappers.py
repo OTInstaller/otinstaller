@@ -1,4 +1,4 @@
-"""Turn the package manager's tool catalog (python/src/otinstaller/data/registry.yaml) into
+"""Turn otlite's tool catalog (otlite/src/otlite/data/registry.yaml) into
 community wrapper folders (otinstaller.yaml, README.md and, for Docker, a Dockerfile and the
 release workflow) under seed/community/.
 
@@ -26,7 +26,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-CATALOG = ROOT / "python" / "src" / "otinstaller" / "data" / "registry.yaml"
+CATALOG = ROOT / "otlite" / "src" / "otlite" / "data" / "registry.yaml"
 SEED = ROOT / "seed"
 DOCKER_WORKFLOW = ROOT / "spec" / "templates" / "github-docker.yml"
 NAMESPACE = "osintverse-community"
