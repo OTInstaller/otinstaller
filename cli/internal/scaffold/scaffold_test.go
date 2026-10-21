@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/otinstaller/otinstaller/cli/internal/manifest"
 )
 
@@ -86,5 +88,41 @@ func TestExampleDockerfile(t *testing.T) {
 	files, _ = Files(p)
 	if !strings.Contains(files["Dockerfile.otinstaller-example"], "pip install --no-cache-dir .") || files["tool.py.otinstaller-example"] != "" {
 		t.Error("a Python project should be installed with pip, without a starter script")
+	}
+}
+
+// GitLab and GitHub read these workflows as YAML: a script line such as `- sed "s|^version: .*|..."` parses as a
+// mapping, and GitLab then refuses the whole .gitlab-ci.yml. All three GitLab templates shipped that way.
+func TestWorkflowsAreValidYAML(t *testing.T) {
+	for _, kind := range []string{"docker", "pipx", "guide"} {
+		for _, host := range []string{"github", "gitlab"} {
+			files, err := Files(Params{Kind: kind, Host: host, Name: "demo-tool", Namespace: "dheeraj", Summary: "Demo package for tests",
+				License: "MIT", Category: "utilities", Input: "domain", Package: "demo-tool"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for name, body := range files {
+				if !strings.HasSuffix(name, ".yml") {
+					continue
+				}
+				var doc map[string]any
+				if err := yaml.Unmarshal([]byte(body), &doc); err != nil {
+					t.Errorf("%s/%s %s: %v", kind, host, name, err)
+					continue
+				}
+				for job, v := range doc {
+					j, ok := v.(map[string]any)
+					if !ok {
+						continue
+					}
+					script, _ := j["script"].([]any)
+					for i, line := range script {
+						if _, ok := line.(string); !ok {
+							t.Errorf("%s/%s %s: %s script line %d is %T, not a command", kind, host, name, job, i+1, line)
+						}
+					}
+				}
+			}
+		}
 	}
 }

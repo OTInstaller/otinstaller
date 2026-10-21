@@ -1,6 +1,8 @@
 # Builds the image, signs it with GitLab's OIDC token, pins its digest and tags the release.
-# Run a pipeline manually with the variable VERSION set (e.g. 1.2.0). RELEASE_TOKEN is a project
-# access token with write_repository, used to push the release commit and tag.
+# Run a pipeline manually with the variable VERSION set (e.g. 1.2.0).
+# It pushes the release commit and tag with the job token: turn on Settings > CI/CD > Job token permissions >
+# "Allow Git push requests to the repository". Or set RELEASE_TOKEN to a token with write_repository (a project
+# access token on paid plans, or a personal access token).
 otinstaller-release:
   image: docker:27
   services: [docker:27-dind]
@@ -14,11 +16,14 @@ otinstaller-release:
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
     - docker buildx create --use
     - docker buildx build --platform linux/amd64,linux/arm64 --push -t "$CI_REGISTRY_IMAGE:$VERSION" --metadata-file meta.json .
-    - DIGEST=$(sed -n 's/.*"containerimage.digest": *"\([^"]*\)".*/\1/p' meta.json)
+    - |-
+      DIGEST=$(sed -n 's/.*"containerimage.digest": *"\([^"]*\)".*/\1/p' meta.json)
     - cosign sign --yes "$CI_REGISTRY_IMAGE@$DIGEST"
-    - sed -i -E "s|^version: .*|version: $VERSION|; s|^  image: .*|  image: $CI_REGISTRY_IMAGE@$DIGEST|" otinstaller.yaml
+    - |-
+      sed -i -E "s|^version: .*|version: $VERSION|; s|^  image: .*|  image: $CI_REGISTRY_IMAGE@$DIGEST|" otinstaller.yaml
     - git config user.name "otinstaller release"
     - git config user.email "release@otinstaller.invalid"
     - git commit -am "Release $VERSION"
     - git tag "v$VERSION"
-    - git push "https://oauth2:${RELEASE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" HEAD:$CI_DEFAULT_BRANCH "v$VERSION"
+    - AUTH="${RELEASE_TOKEN:+oauth2:$RELEASE_TOKEN}"; AUTH="${AUTH:-gitlab-ci-token:$CI_JOB_TOKEN}"
+    - git push "https://${AUTH}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" HEAD:$CI_DEFAULT_BRANCH "v$VERSION"
