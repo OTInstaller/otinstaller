@@ -48,8 +48,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
           OT_RELEASE_PUBLIC_KEY: ${{ vars.OT_RELEASE_PUBLIC_KEY }}
-          RELEASE_OWNER: ${{ vars.RELEASE_OWNER }}
-          RELEASE_NAME: ${{ vars.RELEASE_NAME }}
+          # An unset variable is an empty string, which GoReleaser's envOrDefault takes as set: default here.
+          RELEASE_OWNER: ${{ vars.RELEASE_OWNER || 'OTInstaller' }}
+          RELEASE_NAME: ${{ vars.RELEASE_NAME || 'ot' }}
       - name: Remove the release key
         if: always()
         run: rm -f "$RUNNER_TEMP/release-key.pem"

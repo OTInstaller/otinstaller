@@ -41,12 +41,17 @@ jobs:
           workdir: cli
         env:
           OT_RELEASE_PUBLIC_KEY: placeholder
+          # As release-cli.yml passes them when the repository variables are unset.
+          RELEASE_OWNER: OTInstaller
+          RELEASE_NAME: ot
       - name: Archives carry the binary, README and license
         run: |
           files="$(tar -tzf cli/dist/ot_*_linux_amd64.tar.gz | sort | xargs)"
           echo "archive: $files"
           [ "$files" = "LICENSE README.md ot" ]
           ls cli/dist/*.deb cli/dist/*.rpm cli/dist/checksums.txt
+      - name: ot self-update looks at OTInstaller/ot
+        run: grep -aq "OTInstaller/ot" cli/dist/ot_linux_amd64_v1/ot
 
   release:
     runs-on: ubuntu-latest
