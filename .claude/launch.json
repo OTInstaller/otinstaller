@@ -28,6 +28,18 @@
         "4322"
       ],
       "port": 4322
+    },
+    {
+      "name": "design-mockups",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4323",
+        "--directory",
+        "web/design"
+      ],
+      "port": 4323
     }
   ]
 }

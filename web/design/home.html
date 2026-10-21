@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OTInstaller — mockup: home</title>
+  <link rel="stylesheet" href="design.css" />
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="wrap bar">
+      <a class="brand" href="#"><span class="mark" aria-hidden="true">&gt;_</span><span>OTInstaller</span></a>
+      <nav class="main-nav" aria-label="Main">
+        <ul>
+          <li><a href="#">Tools</a></li>
+          <li><a href="#">Guides</a></li>
+          <li><a href="#">Docs</a></li>
+          <li><a href="#">Publish</a></li>
+        </ul>
+      </nav>
+      <div class="tools">
+        <button class="search-btn" type="button"><span aria-hidden="true">⌕</span><span class="hint">Search or paste a value</span><kbd>/</kbd></button>
+        <a class="btn acct" href="#">Sign in</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div class="wrap">
+        <p class="eyebrow">Free public registry of OSINT tools</p>
+        <h1>Paste what you have. Run the right tool.</h1>
+        <form class="paste" action="#" role="search">
+          <div class="field">
+            <label class="sr-only" for="q">Paste an email, username, domain, IP, phone, URL, wallet or a word</label>
+            <input id="q" name="q" type="search" value="ada@example.com" autocomplete="off" />
+            <span class="chip detected">looks like an <b>email</b> · change</span>
+          </div>
+          <button class="btn btn-primary btn-lg" type="submit">Find tools →</button>
+        </form>
+        <p class="starts small">or start from:
+          <a class="chip" href="#">Email</a><a class="chip" href="#">Username</a><a class="chip" href="#">Phone</a><a class="chip" href="#">Domain</a><a class="chip" href="#">IP</a><a class="chip" href="#">URL</a><a class="chip" href="#">Image</a><a class="chip" href="#">Wallet</a>
+        </p>
+
+        <div class="hero-grid">
+          <figure class="term" aria-label="Example: running an OSINT tool with ot">
+            <figcaption class="term-bar">ot — zsh</figcaption>
+            <pre class="term-body"><code><span class="ps">$</span> ot run osintverse-community/holehe --email ada@example.com
+<span class="ok">✓</span> signed by  github.com/osintverse-community/holehe <span class="dim">· verified</span>
+<span class="ok">✓</span> scans      pass <span class="dim">· 0 critical · smoke test ok</span>
+<span class="dim">→ read-only container · no host files · no shell</span>
+<span class="hit">  github.com        <span class="tag">found</span></span>
+<span class="hit">  gitlab.com        <span class="tag">found</span></span>
+<span class="hit">  spotify.com       <span class="tag">found</span></span>
+<span class="miss">  twitter.com       <span class="tag">not found</span></span>
+<span class="ok">✓</span> 3 of 121 sites <span class="dim">· results saved to ./results</span></code></pre>
+          </figure>
+          <div class="trust-copy">
+            <p><code>ot</code> installs a tool once and runs it on your own machine, in a container that cannot read your files. Before anything is listed here it is:</p>
+            <ul>
+              <li><b>pinned</b> to one image digest or wheel hash,</li>
+              <li><b>signed</b> by its repository's CI and checked before every run,</li>
+              <li><b>scanned</b> for vulnerabilities, secrets and malware,</li>
+              <li><b>run once</b> in the same sandbox, and health-checked every night,</li>
+              <li><b>reviewed</b> by a person the first time a publisher releases.</li>
+            </ul>
+            <p class="small mt-3"><a href="#">How releases are checked</a> · <a href="#">Source code</a> · by <a href="#">OSINTverse</a></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="install-h">
+      <div class="wrap install-grid">
+        <div>
+          <p class="eyebrow">Install ot</p>
+          <h2 id="install-h" class="mt-1">One file. Windows, macOS, Linux.</h2>
+          <p class="muted small mt-2">Then <code>ot doctor</code> tells you whether Docker or Podman and your keychain are ready.</p>
+        </div>
+        <div class="install">
+          <div class="tabs" role="tablist" aria-label="Operating system"><span role="tab" aria-selected="true">macOS / Linux</span><span role="tab" aria-selected="false">Windows</span></div>
+          <div class="cmd"><code><span class="ps">$</span>curl -fsSL https://get.otinstaller.com/ot | sh</code><button class="copy" type="button">Copy</button></div>
+          <details>
+            <summary>What this script does</summary>
+            <ol>
+              <li>Downloads <code>ot_0.12.1_linux_amd64.tar.gz</code> from the GitHub release <a href="#">OTInstaller/ot v0.12.1</a>.</li>
+              <li>Checks its SHA-256 against <code>checksums.txt</code>, and the Ed25519 signature on that file against the <a href="#">published key</a>.</li>
+              <li>Puts <code>ot</code> in <code>/usr/local/bin</code> or <code>~/.local/bin</code>. Nothing else is written. <a href="#">Read the script</a>.</li>
+            </ol>
+          </details>
+          <p class="steps"><span><b>1</b> ot doctor</span><span><b>2</b> ot run ns/tool e:ada@example.com</span><span>the first run asks once, then installs</span></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="have-h">
+      <div class="wrap">
+        <div class="section-head"><h2 id="have-h">I have a…</h2><a href="#">All 37 tools →</a></div>
+        <div class="types">
+          <div class="type-row"><span class="label">Email</span><span class="list"><a href="#">holehe</a><a href="#">mailcat</a><a href="#">email-header-parser</a><a href="#">socialscan</a></span><a class="more" href="#">2 more →</a></div>
+          <div class="type-row"><span class="label">Username</span><span class="list"><a href="#">maigret</a><a href="#">sherlock</a><a href="#">socialscan</a><a href="#">username-permutations</a></span><a class="more" href="#">3 more →</a></div>
+          <div class="type-row"><span class="label">Domain</span><span class="list"><a href="#">dns-records</a><a href="#">crtsh-subdomains</a><a href="#">dnstwist</a><a href="#">checkdmarc</a></span><a class="more" href="#">8 more →</a></div>
+          <div class="type-row"><span class="label">IP address</span><span class="list"><a href="#">ipwhois</a><a href="#">cdncheck</a><a href="#">mapcidr</a></span><a class="more" href="#">2 more →</a></div>
+          <div class="type-row"><span class="label">Phone</span><span class="list"><a href="#">phone-parse</a><a href="#">ignorant</a></span><a class="more" href="#">1 more →</a></div>
+          <div class="type-row"><span class="label">URL / image</span><span class="list"><a href="#">image-hash</a><a href="#">exif-meta</a><a href="#">reverse-image-links</a><a href="#">gallery-dl</a></span><a class="more" href="#">3 more →</a></div>
+          <div class="type-row"><span class="label">Wallet</span><span class="list"><a href="#">btc-address</a><a href="#">eth-address</a></span><a class="more" href="#">guide →</a></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="guides-h">
+      <div class="wrap">
+        <div class="section-head"><h2 id="guides-h">Guides</h2><a href="#">All 10 guides →</a></div>
+        <div class="guide-row"><div><a href="#">Email investigation playbook</a><p class="sum">Trace a suspicious message and find where an address is registered, without alerting its owner.</p></div><span class="small muted">beginner · 6 tools</span></div>
+        <div class="guide-row"><div><a href="#">Domain investigation playbook</a><p class="sum">DNS, subdomains, certificates, history and look-alikes of a domain, passively first.</p></div><span class="small muted">intermediate · 7 tools</span></div>
+        <div class="guide-row"><div><a href="#">Username investigation playbook</a><p class="sum">From a name or one handle to verified accounts across thousands of sites.</p></div><span class="small muted">beginner · 4 tools</span></div>
+        <p class="small muted mt-3">Read them here or in a terminal: <code>ot guide read ns/name</code>. <code>ot guide tools</code> installs everything a guide uses.</p>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="fresh-h">
+      <div class="wrap">
+        <div class="section-head"><h2 id="fresh-h">Recently verified working</h2><a href="#">Sort by health check →</a></div>
+        <div class="rows">
+          <div class="trow">
+            <div><a class="name" href="#"><span class="ns">osintverse-community/</span>maigret</a><p class="sum">Builds a profile of a person from a username: accounts on 3,000+ sites and the details they expose.</p></div>
+            <div class="io">Takes <b>username</b> → finds <b>account, url, person</b><br />No key · pipx</div>
+            <div class="state"><span class="status ok">Worked last night</span><span class="muted">Verified publisher</span></div>
+          </div>
+          <div class="trow">
+            <div><a class="name" href="#"><span class="ns">osintverse-community/</span>holehe</a><p class="sum">Checks whether an email address is registered on 120+ sites, without alerting its owner.</p></div>
+            <div class="io">Takes <b>email</b> → finds <b>account</b><br />No key · Docker</div>
+            <div class="state"><span class="status ok">Worked last night</span><span class="muted">Verified publisher</span></div>
+          </div>
+          <div class="trow">
+            <div><a class="name" href="#"><span class="ns">osintverse-community/</span>shodan-host</a><p class="sum">Looks up what Shodan knows about an IP: open ports, banners, hostnames and vulnerabilities.</p></div>
+            <div class="io">Takes <b>ip</b> → finds <b>domain, url, other</b><br />Key required · Docker</div>
+            <div class="state"><span class="status none">Not health-checked</span><span class="muted">needs SHODAN_API_KEY</span></div>
+          </div>
+          <div class="trow">
+            <div><a class="name" href="#"><span class="ns">osintverse-community/</span>dnstwist</a><p class="sum">Finds registered look-alike domains for phishing, typosquatting and brand impersonation.</p></div>
+            <div class="io">Takes <b>domain</b> → finds <b>domain, ip</b><br />No key · pipx</div>
+            <div class="state"><span class="status warn">Possibly broken since 19 Oct</span><span class="muted">3 failed checks</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="pub-h">
+      <div class="wrap">
+        <div class="section-head"><h2 id="pub-h">Publish from the repository you already have</h2><a href="#">How publishing works →</a></div>
+        <div class="row">
+          <a class="btn" href="#">Import a repository</a>
+          <a class="btn" href="#">Add a manifest with <code>ot init</code></a>
+          <a class="btn" href="#">Write a guide</a>
+        </div>
+        <p class="small muted mt-3">Push a <code>vX.Y.Z</code> tag; the registry validates, scans, backs up and publishes. A person reviews every new publisher's first release, usually within 3 business days.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="foot-grid">
+        <div><p class="eyebrow">OTInstaller</p><p class="mt-2">A free registry of OSINT tools and guides, and <code>ot</code>, the command that runs them on your machine. By <a href="#">OSINTverse</a>.</p></div>
+        <div><p class="eyebrow">Use</p><ul><li><a href="#">All tools</a></li><li><a href="#">Guides</a></li><li><a href="#">Install ot</a></li><li><a href="#">CLI reference</a></li><li><a href="#">API and JSON</a></li></ul></div>
+        <div><p class="eyebrow">Publish</p><ul><li><a href="#">Import a repository</a></li><li><a href="#">Manifest reference</a></li><li><a href="#">Writing guides</a></li></ul></div>
+        <div><p class="eyebrow">Trust</p><ul><li><a href="#">Security model</a></li><li><a href="#">Transparency</a></li><li><a href="#">Reports and takedowns</a></li><li><a href="#">Privacy</a> · <a href="#">Terms</a></li><li><a href="#">security@otinstaller.com</a></li></ul></div>
+      </div>
+      <div class="foot-bar"><span>© 2026 OSINTverse · Apache-2.0 · <a href="#">Source</a></span><span><a href="#">Feedback</a></span></div>
+    </div>
+  </footer>
+</body>
+</html>
