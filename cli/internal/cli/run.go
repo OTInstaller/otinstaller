@@ -75,7 +75,7 @@ func loadSecrets(m *manifest.Manifest) (map[string]string, error) {
 		v, err := keys.Get(s.Name)
 		if errors.Is(err, keys.ErrNotFound) {
 			if s.Required {
-				msg := fmt.Sprintf("%s needs the key %s; set it with `ot keys set %s`", m.Ref(), s.Name, s.Name)
+				msg := fmt.Sprintf("%s needs the key %s; set it with `ot keys setup %s` (or `ot keys set %s`)", m.Ref(), s.Name, m.Ref(), s.Name)
 				if s.URL != "" {
 					msg += " (get one at " + s.URL + ")"
 				}
@@ -133,9 +133,9 @@ func (a *App) keysCmd() *cobra.Command {
 	set := &cobra.Command{
 		Use:   "set <NAME>",
 		Short: "Store a key (reads the value from stdin, or --from-env)",
-		Long: "Stores a key in the OS keychain. The value is read from stdin (typed, or piped), or copied from an environment\n" +
-			"variable with --from-env. On machines without a keychain (CI, containers), skip this: set an environment variable of\n" +
-			"the same name and ot uses it.",
+		Long: "Stores a key in the OS keychain. The value is read from stdin (typed, with typing hidden, or piped), or copied from\n" +
+			"an environment variable with --from-env. On machines without a keychain (CI, containers), skip this: set an\n" +
+			"environment variable of the same name and ot uses it. `ot keys setup` walks through every key your tools need.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var val string
@@ -145,11 +145,12 @@ func (a *App) keysCmd() *cobra.Command {
 					return exitErr(ExitUsage, "%s is not set in the environment", fromEnv)
 				}
 			} else {
+				prompt := ""
 				if a.interactive() {
-					fmt.Fprintf(a.Err, "Value for %s: ", args[0])
+					prompt = fmt.Sprintf("Value for %s (typing is hidden): ", args[0])
 				}
-				line, err := bufio.NewReader(a.In).ReadString('\n')
-				if val = strings.TrimSpace(line); val == "" {
+				v, err := a.readSecret(bufio.NewReader(a.In), prompt)
+				if val = v; val == "" {
 					return exitErr(ExitUsage, "no value given: %v", err)
 				}
 			}
@@ -166,6 +167,7 @@ func (a *App) keysCmd() *cobra.Command {
 	set.Flags().StringVar(&fromEnv, "from-env", "", "copy the value from this environment variable")
 	cmd.AddCommand(
 		set,
+		a.keysSetupCmd(),
 		&cobra.Command{
 			Use:   "list",
 			Short: "List stored key names (never values)",
