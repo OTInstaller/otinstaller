@@ -266,7 +266,7 @@ The run, install or uninstall needs the consent of the person the agent works fo
 The person declined. Don't run it again for the same target unless they ask.
 
 ### consent_token_invalid
-The `consent_token` was for a different call (other arguments), was already used, or has expired. Call without it to get a new one, and ask again.
+The `consent_token` was for a different call (other arguments), was already used, or has expired. Tokens also die with the server: one from before `ot mcp` restarted (a new client session, or a client that starts the server for each call) never works. Call without it to get a new one, and ask again.
 
 ### consent_expired
 A consent answer arrived for a call that changed or is more than 10 minutes old. Call the tool again.

@@ -288,7 +288,7 @@ func (s *mcpServer) ask(ctx context.Context, c consentRequest) (consentAnswer, e
 	}
 	if c.token != "" {
 		if !s.sess.UseToken(c.token, hash) {
-			return consentAnswer{}, &toolError{Code: "consent_token_invalid", Message: "the consent_token is for a different call (other arguments), was already used, or is more than 10 minutes old",
+			return consentAnswer{}, &toolError{Code: "consent_token_invalid", Message: "the consent_token is for a different call (other arguments), was already used, is more than 10 minutes old, or came from before the server restarted (tokens die with the server process)",
 				Hint: "call without consent_token to get a new one, and ask the person again"}
 		}
 		return consentAnswer{method: "token"}, nil

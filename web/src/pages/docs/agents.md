@@ -96,7 +96,7 @@ When a run needs consent, your client shows you a question. It names the exact t
 
 You can answer **Allow once**, **Allow for this session** (the same tool and target, for an hour) or **Decline**. A declined run isn't retried.
 
-Clients that can't ask questions get a `consent_required` error instead. It carries a summary to show you and a `consent_token` that works once, for that exact call, for 10 minutes. The agent is told to use it only after you say yes. Clients' own approval prompts are a second check, because run tools are marked as having side effects.
+Clients that can't ask questions get a `consent_required` error instead. It carries a summary to show you and a `consent_token` that works once, for that exact call, for 10 minutes, and only while that `ot mcp` keeps running. The agent is told to use it only after you say yes. Clients' own approval prompts are a second check, because run tools are marked as having side effects.
 
 Installs ask too, unless the policy allows them. An agent can only install published, signed, current, healthy versions, and only with a verified signature: cosign has to be installed. It can't install from a local manifest. Uninstalling always asks.
 
