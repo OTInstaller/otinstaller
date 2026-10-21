@@ -645,6 +645,24 @@ describe("monthly restore drill", () => {
     expect((await call(`/internal/drills/${d.id}`, { method: "POST", headers: { authorization: `Bearer ${d.token}` }, body: "{}" })).status).toBe(401);
   });
 
+  it("admins can run a drill now and read the results", async () => {
+    const admin = await person({ admin: true });
+    const owner = await person();
+    const ns = await namespace(owner);
+    const p = await pkg(ns);
+    await runPlan((await releasePlan(env as any, p.versionId))!, { image: { status: "failed" } });
+    expect((await call("/admin/backups/drill", { method: "POST", headers: owner.auth })).status).toBe(403);
+    const res = await call("/admin/backups/drill", { method: "POST", headers: admin.auth });
+    expect(res.status).toBe(202);
+    const { id } = (await res.json()) as { id: string };
+    const d = dispatches.find((x) => x.event_type === "otinstaller-drill")!.client_payload.drill;
+    expect(d.id).toBe(id);
+    await call(`/internal/drills/${id}`, { method: "POST", headers: { authorization: `Bearer ${d.token}`, "content-type": "application/json" }, body: JSON.stringify({ result: "pass", detail: "bundle: pass" }) });
+    const list = (await (await call("/admin/backups/drills", { headers: admin.auth })).json()) as { drills: { id: string; status: string; detail: string }[] };
+    expect(list.drills.find((x) => x.id === id)).toMatchObject({ status: "pass", detail: "bundle: pass" });
+    expect((await call("/admin/backups/drills", { headers: owner.auth })).status).toBe(403);
+  });
+
   it("alerts when a drill never reports back", async () => {
     await person({ admin: true });
     const id = ulid();
