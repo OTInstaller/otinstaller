@@ -1,11 +1,15 @@
 ---
+// A tool's overview: run block, evidence, the facts rail, a sample of what comes back, the README, guides that
+// use it, and where its output leads. A `?value=` from an input page fills the run command in the browser only.
 import Base from "../../../layouts/Base.astro";
 import ToolHeader from "../../../components/ToolHeader.astro";
-import CopyCommand from "../../../components/CopyCommand.astro";
+import Evidence from "../../../components/Evidence.astro";
+import InstallBlock from "../../../components/InstallBlock.astro";
 import CopyCode from "../../../components/CopyCode.astro";
-import ToolCard from "../../../components/ToolCard.astro";
-import { apiOrNull, type SearchResult, type Scans } from "../../../lib/api";
-import { entityLabel, exampleRun, formatDate, inputLabel } from "../../../lib/format";
+import ToolRow from "../../../components/ToolRow.astro";
+import { apiOrNull, type ManifestResponse, type Pivots, type Scans, type SearchResult } from "../../../lib/api";
+import { entityLabel, formatDate, inputLabel } from "../../../lib/format";
+import { evidence, exampleValue, sampleEnvelope } from "../../../lib/evidence";
 import { loadTool } from "../../../lib/tool";
 import { cacheFor } from "../../../lib/page";
 
@@ -14,13 +18,31 @@ if ("response" in loaded) return loaded.response;
 const { tool: t, hasDocs } = loaded;
 const ref = `${t.namespace}/${t.name}`;
 const m = t.manifest;
-const [readme, guides, scans, latest] = await Promise.all([
+const pivotFrom = (m.outputs ?? []).map((o) => o.type);
+const [readme, guides, scans, manifest, latest, pivots] = await Promise.all([
   apiOrNull<{ html: string }>(`/tools/${ref}/readme`),
   apiOrNull<{ guides: SearchResult["results"] }>(`/tools/${ref}/guides`),
   apiOrNull<Scans>(`/tools/${ref}/${t.latest_version}/scans`),
+  apiOrNull<ManifestResponse>(`/tools/${ref}/${t.latest_version}/manifest`),
   apiOrNull<{ published_at: number | null }>(`/tools/${ref}/${t.latest_version}`),
+  pivotFrom.length ? apiOrNull<Pivots>(`/pivots?from=${encodeURIComponent(pivotFrom.join(","))}`).catch(() => null) : Promise.resolve(null),
 ]);
 const e = m.ethics;
+const lines = evidence(t, scans, manifest);
+const required = (m.inputs ?? []).filter((i) => i.required);
+const first = required[0];
+const runArgs = required.map((i) => `--${i.name} ${exampleValue(i.type, i.name)}`).join(" ");
+const runCmd = `ot run ${ref}${runArgs ? ` ${runArgs}` : ""}`;
+const egress = m.network?.egress === true;
+const runtimeLine = [
+  m.runtime?.kind === "docker" ? "Docker image in a read-only container" : "Python wheel, run in a read-only container (Docker optional with --native)",
+  egress ? (m.network?.domains?.length ? `talks to ${m.network.domains.slice(0, 3).join(", ")}${m.network.domains.length > 3 ? "…" : ""}` : "network allowed") : "no network",
+  m.secrets?.some((s) => s.required) ? `needs ${m.secrets.filter((s) => s.required).map((s) => s.name).join(", ")}` : "no key",
+  m.runtime?.timeout_seconds ? `up to ${Math.round(m.runtime.timeout_seconds / 60)} min` : null,
+].filter(Boolean).join(" · ");
+const sample = sampleEnvelope(ref, t.latest_version, m.runtime?.kind ?? "docker", pivotFrom, Object.fromEntries(required.map((i) => [i.name, exampleValue(i.type, i.name).replace(/^"|"$/g, "")])));
+const leads = pivotFrom.filter((o) => pivots?.pivots[o]?.length).map((o) => ({ type: o, n: pivots!.pivots[o]!.length }));
+const jsonHref = `https://api.otinstaller.com/v1/tools/${ref}`;
 cacheFor(Astro, 60);
 const jsonLd = {
   "@context": "https://schema.org",
@@ -35,89 +57,175 @@ const jsonLd = {
   ...(t.repo_url ? { codeRepository: t.repo_url } : {}),
   offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
 };
-const yes = (v: boolean) => (v ? "yes" : "no");
 ---
-<Base title={ref} description={t.summary} jsonLd={jsonLd}>
-  <ToolHeader tool={t} active="overview" hasDocs={hasDocs} scanStatus={scans?.scan_status} />
+<Base title={ref} description={t.summary} jsonLd={jsonLd} jsonHref={jsonHref}>
+  <ToolHeader tool={t} active="overview" hasDocs={hasDocs} />
+  <section class="run" aria-labelledby="run-h" data-run data-input={first?.name} data-type={first?.type}>
+    <p class="eyebrow" id="run-h">Run</p>
+    <div class="cmd" role="group" aria-label="Run command">
+      <code data-run-cmd data-template={runCmd}>{runCmd}</code>
+      <button class="btn copy" type="button" data-copy={runCmd} aria-label="Copy the run command"><span class="label">Copy</span></button>
+    </div>
+    <div class="cmd" role="group" aria-label="Install command">
+      <code>ot install {ref}</code>
+      <button class="btn copy" type="button" data-copy={`ot install ${ref}`} aria-label="Copy the install command"><span class="label">Copy</span></button>
+    </div>
+    <p class="note small">{runtimeLine}. The first <code>ot run</code> installs the tool after asking once.</p>
+    <details class="noot">
+      <summary class="small">Don't have <code>ot</code>? Install it in one line</summary>
+      <InstallBlock name="tool" compact />
+    </details>
+  </section>
+
   <div class="two-col">
-    <div class="stack">
-      <section class="run-box fade-in" aria-labelledby="install">
-        <h2 id="install" class="eyebrow">Install and run</h2>
-        <CopyCommand label="Install" command={`ot install ${ref}`} />
-        <CopyCommand label="Run" command={exampleRun(ref, m.inputs)} />
-        <p class="small muted">The first <code>ot run</code> installs the tool after asking once. New to <code>ot</code>? <a href="/docs/getting-started">Install the CLI</a>.</p>
+    <div class="stack main">
+      <Evidence lines={lines} securityHref={`/${ref}/security`} />
+
+      <section class="panel sample-panel" aria-labelledby="out-h">
+        <div class="ph"><h2 id="out-h">What you get back</h2><a href="/docs/cli#saved-results">Result envelope →</a></div>
+        <pre class="sample"><code>{sample}</code></pre>
+        <p class="small muted pad">Every tool returns this shape, shaped here from what this tool declares it finds. <code>--format table</code> to read it; <code>ot extract</code> and <code>ot auto</code> to continue.</p>
       </section>
+
       <section class="prose readme" aria-label="README">
         {readme ? <Fragment set:html={readme.html} /> : <p class="muted">This version has no rendered README yet.</p>}
       </section>
+
       {guides && guides.guides.length > 0 && (
         <section aria-labelledby="guides">
-          <h2 id="guides">Guides using this tool</h2>
-          <div class="grid stagger">{guides.guides.map((g) => <ToolCard tool={g} />)}</div>
+          <div class="section-head"><h2 id="guides">Guides using this tool</h2></div>
+          <div class="rows">{guides.guides.map((g) => <ToolRow tool={g} />)}</div>
+        </section>
+      )}
+
+      {leads.length > 0 && (
+        <section aria-labelledby="next">
+          <div class="section-head"><h2 id="next">What next</h2></div>
+          <p class="small muted">{t.name} finds {pivotFrom.map(entityLabel).join(", ")}. Tools that take those:</p>
+          <p class="row pivots">{leads.map((l) => <a class="chip" href={`/input/${l.type}`}>{entityLabel(l.type)} → {l.n} {l.n === 1 ? "tool" : "tools"}</a>)}<a class="chip" href="/docs/cli#saved-results">ot auto, with a saved result</a></p>
         </section>
       )}
     </div>
-    <aside class="stack side">
-      <section class="panel" aria-labelledby="io">
-        <h2 id="io">Inputs and outputs</h2>
-        <ul class="list-plain small io">
-          {(m.inputs ?? []).map((i) => (
-            <li><code>--{i.name}</code> <span class="type">{inputLabel(i.type)}</span>{!i.required && <span class="faint"> optional</span>}{i.description && <div class="muted">{i.description}</div>}</li>
-          ))}
-        </ul>
-        <p class="small finds"><strong>Finds</strong> {(m.outputs ?? []).map((o) => <span class="badge plain">{entityLabel(o.type)}</span>)}</p>
-      </section>
-      {m.secrets && m.secrets.length > 0 && (
-        <section class="panel" aria-labelledby="keys">
-          <h2 id="keys">API keys</h2>
+
+    <aside class="panel facts" aria-label="Facts">
+      <section>
+        <h3>Takes</h3>
+        {(m.inputs ?? []).length === 0 ? <p class="small muted">No inputs.</p> : (
           <ul class="list-plain small">
-            {m.secrets.map((s) => (
-              <li><code>{s.name}</code> <span class="faint">{s.required ? "required" : "optional"}</span>{s.url && <> · <a href={s.url} rel="nofollow noopener">get one</a></>}{s.description && <div class="muted">{s.description}</div>}</li>
+            {(m.inputs ?? []).map((i) => (
+              <li><code>--{i.name}</code> {inputLabel(i.type).toLowerCase()} <span class="faint">{i.required ? "required" : "optional"}</span>{i.description && <div class="muted desc">{i.description}</div>}</li>
             ))}
           </ul>
-          <p class="small muted">Store keys with <code>ot keys set NAME</code>; they stay in your OS keychain.</p>
-        </section>
-      )}
-      {e && (
-        <section class="panel" aria-labelledby="ethics">
-          <h2 id="ethics">What it does</h2>
-          <ul class="list-plain small ethics">
-            <li data-v={yes(e.touches_target)}>{e.touches_target ? "Contacts the target directly" : "Does not contact the target"}</li>
-            <li data-v={yes(e.auth_required)}>{e.auth_required ? "Logs in to accounts" : "Does not log in to accounts"}</li>
-            <li data-v={yes(e.collects_personal_data)}>{e.collects_personal_data ? "Collects personal data" : "Does not collect personal data"}</li>
+        )}
+        <p class="small muted hint">Or as a typed value: <code>ot run {ref} {first ? `${{ email: "e", username: "u", domain: "d", phone: "p", ip: "ip", url: "url" }[first.type] ?? "u"}:…` : ""}</code></p>
+      </section>
+      <section>
+        <h3>Finds</h3>
+        <ul class="list-plain small finds">
+          {pivotFrom.map((o) => {
+            const n = pivots?.pivots[o]?.length ?? 0;
+            return <li>{n > 0 ? <><a href={`/input/${o}`}>{entityLabel(o)}</a> <span class="faint">→ {n} {n === 1 ? "tool takes it" : "tools take it"}</span></> : entityLabel(o)}</li>;
+          })}
+        </ul>
+      </section>
+      <section>
+        <h3>Keys</h3>
+        {m.secrets && m.secrets.length > 0 ? (
+          <ul class="list-plain small">
+            {m.secrets.map((s) => (
+              <li><code>{s.name}</code> <span class="faint">{s.required ? "required" : "optional"}</span>{s.url && <> · <a href={s.url} rel="nofollow noopener">get one</a></>}{s.description && <div class="muted desc">{s.description}</div>}</li>
+            ))}
+            <li class="muted"><code>ot keys set NAME</code> stores a key in your OS keychain; this tool is the only container that sees it.</li>
           </ul>
-          {m.network?.domains && m.network.domains.length > 0 && <p class="small muted">Talks to: {m.network.domains.join(", ")}</p>}
+        ) : <p class="small muted">None needed.</p>}
+      </section>
+      {e && (
+        <section>
+          <h3>Behaviour</h3>
+          <ul class="list-plain small beh">
+            <li class:list={{ yes: e.touches_target }}>{e.touches_target ? "Contacts the target directly" : "Does not contact the target"}</li>
+            <li class:list={{ yes: e.auth_required }}>{e.auth_required ? "Logs in to accounts" : "Does not log in to accounts"}</li>
+            <li class:list={{ yes: e.collects_personal_data }}>{e.collects_personal_data ? "Collects personal data" : "Does not collect personal data"}</li>
+          </ul>
+          <p class="small muted hint">{egress ? (m.network?.domains?.length ? `Talks to: ${m.network.domains.join(", ")}` : "Network access declared.") : "Runs with no network."}</p>
         </section>
       )}
-      <section class="panel" aria-labelledby="facts">
-        <h2 id="facts">Details</h2>
-        <dl>
-          <dt>License</dt><dd>{t.license}</dd>
-          <dt>Runtime</dt><dd>{t.runtime === "docker" ? "Docker" : "pipx"}</dd>
+      <section>
+        <h3>Details</h3>
+        <dl class="small">
+          <dt>Licence</dt><dd>{t.license}</dd>
+          <dt>Runtime</dt><dd>{m.runtime?.kind === "docker" ? "Docker image" : `Python wheel${m.runtime?.package ? ` (${m.runtime.package})` : ""}`}</dd>
           {t.repo_url && <><dt>Source</dt><dd><a href={t.repo_url} rel="nofollow noopener">{t.repo_url.replace(/^https:\/\//, "")}</a></dd></>}
-          {t.homepage && t.homepage !== t.repo_url && <><dt>Homepage</dt><dd><a href={t.homepage} rel="nofollow noopener">{t.homepage.replace(/^https:\/\//, "")}</a></dd></>}
+          {t.homepage && t.homepage !== t.repo_url && <><dt>Upstream</dt><dd><a href={t.homepage} rel="nofollow noopener">{t.homepage.replace(/^https:\/\//, "")}</a></dd></>}
           <dt>Categories</dt><dd>{t.categories.map((c, i) => <>{i > 0 && ", "}<a href={`/category/${c}`}>{c}</a></>)}</dd>
           <dt>Published</dt><dd>{formatDate(latest?.published_at)}</dd>
+          {t.installs_30d >= 10 && <><dt>Installs</dt><dd>{t.installs_30d} in 30 days</dd></>}
         </dl>
       </section>
-      <p class="small side-links"><a href={`/${ref}/security`}>Security details</a> · <a href={`/${ref}/report`}>Report this tool</a></p>
+      <section class="links small">
+        <a href={jsonHref}>View as JSON</a> · <a href={`https://api.otinstaller.com/v1/tools/${ref}/${t.latest_version}/manifest`}>Manifest</a> · <a href={`/${ref}/report`}>Report this tool</a>
+      </section>
     </aside>
   </div>
   <CopyCode onlyOt />
 </Base>
 
+<script>
+  // Fill the run command with the value pasted on the input page. The value stays in this browser.
+  const value = new URLSearchParams(location.search).get("value");
+  const run = document.querySelector<HTMLElement>("[data-run]");
+  const code = document.querySelector<HTMLElement>("[data-run-cmd]");
+  const input = run?.dataset.input;
+  if (value && run && code && input) {
+    const safe = /^[\w@.+:\/%-]+$/.test(value) ? value : `"${value.replace(/"/g, '\\"')}"`;
+    const cmd = code.dataset.template!.replace(new RegExp(`--${input} \\S+`), `--${input} ${safe}`);
+    code.textContent = cmd;
+    const btn = run.querySelector<HTMLButtonElement>("button[data-copy]");
+    if (btn) btn.dataset.copy = cmd;
+  }
+</script>
+
 <style>
-  .run-box { display: grid; gap: 10px; padding: 18px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-1); }
-  .run-box h2 { margin: 0; }
-  .run-box p { margin: 2px 0 0; }
-  .readme { padding-top: 8px; }
-  .side { position: sticky; top: 84px; }
-  @media (max-width: 960px) { .side { position: static; } }
-  .io li + li { margin-top: 10px; }
-  .type { color: var(--text-muted); }
-  .finds { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 12px 0 0; }
-  .ethics li { padding-left: 24px; position: relative; }
-  .ethics li::before { content: "✓"; position: absolute; left: 0; font-weight: 700; color: var(--ok); }
-  .ethics li[data-v="yes"]::before { content: "!"; color: var(--warn); }
-  .side-links { margin: 0; }
+  .run { background: var(--code-bg); color: var(--code-text); border: 1px solid var(--border-strong); padding: 14px; display: grid; gap: 10px; }
+  .run .eyebrow { margin: 0; color: var(--code-muted); }
+  .run .note { margin: 0; color: var(--code-muted); }
+  .run .note code { color: var(--code-text); }
+  /* The install block inside the dark run block reads the terminal palette in both themes. */
+  .noot { --text: var(--code-text); --text-muted: var(--code-muted); --text-faint: var(--code-muted); --bg: var(--code-bg); --bg-inverse: var(--code-text); --border: var(--code-border); --border-strong: var(--code-muted); --bg-subtle: var(--code-raised); }
+  .noot summary { cursor: pointer; color: var(--code-muted); }
+  .noot summary:hover { color: var(--code-text); }
+  .noot summary code { color: var(--code-text); }
+  .noot[open] summary { margin-bottom: 10px; }
+  .main > * + * { margin-top: 20px; }
+  .sample-panel { padding: 0; }
+  .ph { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  .ph h2 { margin: 0; }
+  .ph a { font-size: var(--fs-1); color: var(--text-muted); }
+  .sample { margin: 0; padding: 12px 14px; font-size: var(--fs-1); line-height: 1.55; overflow-x: auto; color: var(--text-muted); }
+  .pad { padding: 10px 14px; margin: 0; border-top: 1px solid var(--border); }
+  .readme { padding-top: 4px; }
+  .pivots { gap: 8px; }
+  .pivots .chip { text-transform: none; letter-spacing: 0; font-size: var(--fs-1); height: 28px; }
+  .facts { padding: 0; position: sticky; top: 76px; }
+  .facts section { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .facts section:last-child { border-bottom: 0; }
+  .facts h3 { margin: 0 0 8px; font-size: var(--fs-0); text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-faint); font-weight: 600; }
+  .facts li + li { margin-top: 8px; }
+  .facts .desc { margin-top: 2px; }
+  .facts .hint { margin: 10px 0 0; overflow-wrap: anywhere; }
+  .facts dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; }
+  .facts dt { color: var(--text-muted); }
+  .facts dd { margin: 0; word-break: break-word; }
+  .finds a { text-decoration: none; }
+  .finds a:hover { text-decoration: underline; }
+  .beh li { display: flex; gap: 8px; }
+  .beh li::before { content: "✓"; color: var(--ok); font-weight: 700; }
+  .beh li.yes::before { content: "!"; color: var(--warn); }
+  .facts p { margin: 0; }
+  @media (max-width: 960px) {
+    .two-col { display: flex; flex-direction: column; }
+    .facts { order: -1; position: static; }
+    .main { margin-top: 20px; }
+    .main > :nth-child(1) { order: 0; }
+  }
 </style>

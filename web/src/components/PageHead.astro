@@ -6,15 +6,15 @@ interface Props {
 }
 const { eyebrow, title } = Astro.props;
 ---
-<header class="page-head fade-in">
+<header class="page-head">
   {eyebrow && <p class="eyebrow">{eyebrow}</p>}
   <h1>{title}</h1>
   <slot />
 </header>
 
 <style>
-  .page-head { margin-bottom: 22px; }
+  .page-head { margin-bottom: 20px; }
   .page-head .eyebrow { margin: 0; }
-  .page-head h1 { margin: 4px 0 6px; }
-  .page-head :global(p:not(.eyebrow)) { margin: 0; max-width: 64ch; }
+  .page-head h1 { margin: 6px 0 6px; }
+  .page-head :global(p:not(.eyebrow)) { margin: 0; max-width: 70ch; }
 </style>

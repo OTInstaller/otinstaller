@@ -91,7 +91,7 @@ export interface Manifest {
   tags?: string[];
   inputs?: { name: string; type: string; required: boolean; description?: string; values?: string[]; default?: unknown }[];
   outputs?: { type: string }[];
-  runtime?: { kind: string; command: string[]; image?: string; package?: string; output_format: string };
+  runtime?: { kind: string; command: string[]; image?: string; package?: string; package_version?: string; wheel_sha256?: string; output_format: string; timeout_seconds?: number };
   secrets?: { name: string; required: boolean; description?: string; url?: string }[];
   network?: { egress?: boolean; domains?: string[] };
   ethics?: { touches_target: boolean; auth_required: boolean; collects_personal_data: boolean };
@@ -118,6 +118,25 @@ export interface Version {
   published_at: number | null;
   yanked_at: number | null;
   signed: boolean;
+}
+
+/** The manifest endpoint: what `ot install` reads, plus where it falls back to when the original host refuses. */
+export interface ManifestResponse {
+  ref: string;
+  version: string;
+  status: string;
+  signer_identity?: string;
+  signer_issuer?: string;
+  scan_status: string;
+  health: string;
+  verified_publisher: boolean;
+  manifest: Manifest | null;
+  mirror_image?: string;
+  wheel_url?: string;
+}
+
+export interface Pivots {
+  pivots: Record<string, ToolSummary[]>;
 }
 
 export interface Scans {

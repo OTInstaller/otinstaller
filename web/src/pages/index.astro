@@ -1,305 +1,161 @@
 ---
+// The home page: paste what you have, then one row per input type, the install block, guides and what was
+// updated lately. Half the length of the old page and nothing hidden until JavaScript runs.
 import Base from "../layouts/Base.astro";
-import ToolCard from "../components/ToolCard.astro";
+import PasteBox from "../components/PasteBox.astro";
 import Terminal from "../components/Terminal.astro";
-import InstallTabs from "../components/InstallTabs.astro";
-import Pipeline from "../components/Pipeline.astro";
-import FeatureCard from "../components/FeatureCard.astro";
-import Stat from "../components/Stat.astro";
-import CopyCommand from "../components/CopyCommand.astro";
+import InstallBlock from "../components/InstallBlock.astro";
+import ToolRow from "../components/ToolRow.astro";
 import { api, type SearchResult } from "../lib/api";
 import { START_INPUTS, inputLabel } from "../lib/format";
 import { cacheFor } from "../lib/page";
 
-const [trending, updated, guides, allTools, allGuides] = await Promise.all([
-  api<SearchResult>("/tools?kind=tool&sort=installs&limit=6"),
+const byType = await Promise.all(START_INPUTS.map((t) => api<SearchResult>(`/tools?kind=tool&input=${t}&limit=4`).then((r) => ({ type: t, ...r }))));
+const [updated, guides, allTools, allGuides] = await Promise.all([
   api<SearchResult>("/tools?kind=tool&sort=updated&limit=6"),
-  api<SearchResult>("/guides?sort=stars&limit=3"),
+  api<SearchResult>("/guides?sort=stars&limit=4"),
   api<SearchResult>("/tools?kind=tool&limit=1"),
   api<SearchResult>("/guides?limit=1"),
 ]);
-// Featured publishers: verified namespaces among the popular tools.
-const publishers = [...new Set(trending.results.concat(updated.results).filter((t) => t.verified).map((t) => t.namespace))].slice(0, 8);
-const totals = { tools: allTools.total, guides: allGuides.total };
+const totals = { tools: allTools.total ?? 0, guides: allGuides.total ?? 0 };
 cacheFor(Astro, 300);
-
-const INPUT_ICONS: Record<string, string> = {
-  email: "M4 6h16v12H4zM4 7l8 6 8-6",
-  username: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0",
-  phone: "M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2",
-  domain: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18",
-  ip: "M4 7h16v4H4zM4 13h16v4H4zM7 9h.01M7 15h.01",
-  image: "M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15 9h.01",
-  crypto_address: "M12 3v18M8 7h6a3 3 0 0 1 0 6H8M8 13h7a3 3 0 0 1 0 6H8",
-};
 ---
 <Base title="OTInstaller Registry" bleed jsonLd={{ "@context": "https://schema.org", "@type": "WebSite", name: "OTInstaller Registry", url: Astro.site?.toString(), potentialAction: { "@type": "SearchAction", target: `${Astro.site}search?q={query}`, "query-input": "required name=query" } }}>
   <section class="hero">
-    <div class="wrap hero-grid">
-      <div class="hero-copy">
-        <p class="eyebrow fade-in">Free, public OSINT tool registry</p>
-        <h1 class="fade-in">Find, install and run OSINT tools <span class="gradient-text">with one command.</span></h1>
-        <p class="lead fade-in">Every tool is pinned, signed, scanned and smoke-tested before it is listed. <code>ot</code> runs it in a locked-down container on your own machine, and gives you results other tools can read.</p>
-        <div class="row cta fade-in">
-          <a class="btn btn-primary btn-lg" href="#install">Install ot</a>
-          <a class="btn btn-lg" href="/search">Browse tools</a>
-        </div>
-        <form action="/search" method="get" role="search" class="hero-search fade-in">
-          <label class="sr-only" for="hero-q">Search the registry</label>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
-          <input id="hero-q" type="search" name="q" placeholder="Search tools: username, whois, breach…" autocomplete="off" />
-          <button class="btn btn-sm" type="submit">Search</button>
-        </form>
-      </div>
-      <div class="hero-demo fade-in">
+    <div class="wrap">
+      <p class="eyebrow">Free public registry of OSINT tools</p>
+      <h1>Paste what you have.<br />Run the right tool.</h1>
+      <PasteBox id="hero-q" large />
+      <p class="starts small muted">or start from:
+        {START_INPUTS.map((t) => <a class="chip" href={`/input/${t}`}>{inputLabel(t)}</a>)}
+      </p>
+      <div class="hero-grid">
         <Terminal />
+        <div class="trust">
+          <p><code>ot</code> installs a tool once and runs it on your own machine, in a container that cannot read your files. Before anything is listed here it is:</p>
+          <ul>
+            <li><b>pinned</b> to one image digest or wheel hash,</li>
+            <li><b>signed</b> by its repository's CI and checked before every run,</li>
+            <li><b>scanned</b> for vulnerabilities, secrets and malware,</li>
+            <li><b>run once</b> in the same sandbox, and health-checked every night,</li>
+            <li><b>reviewed</b> by a person the first time a publisher releases.</li>
+          </ul>
+          <p class="small"><a href="/docs/security">How releases are checked</a> · <a href="https://github.com/OTInstaller/otinstaller" rel="noopener">Source code</a> · by <a href="https://osintverse.com" rel="noopener">OSINTverse</a></p>
+        </div>
+      </div>
+      <div class="stats" aria-label="The registry in numbers">
+        <div><b>{totals.tools}</b><span>tools you can run today</span></div>
+        <div><b>{totals.guides}</b><span>investigation guides</span></div>
+        <div><b>5</b><span>checks on every release</span></div>
+        <div><b>0</b><span>host files a tool can read</span></div>
       </div>
     </div>
   </section>
 
-  <section class="section install-section" id="install" aria-labelledby="install-h">
-    <div class="wrap">
-      <div class="install-grid">
-        <div>
-          <p class="eyebrow">Get started</p>
-          <h2 id="install-h">One file. Windows, macOS and Linux.</h2>
-          <p class="muted">The installer checks the SHA-256 and the release signature before anything runs. Then <code>ot doctor</code> tells you whether Docker, Podman and your keychain are ready.</p>
-          <p class="small muted">Prefer a package? Every release ships deb, rpm and archives on <a href="https://github.com/otinstaller/ot/releases" rel="noopener">GitHub Releases</a>, and <code>ot self-update</code> keeps it current.</p>
-        </div>
-        <div class="install-box reveal">
-          <InstallTabs />
-          <ol class="steps small">
-            <li><code>ot doctor</code> <span class="muted">checks your machine</span></li>
-            <li><code>ot search username</code> <span class="muted">finds a tool</span></li>
-            <li><code>ot run ns/tool --username jane</code> <span class="muted">installs it once, then runs it</span></li>
-          </ol>
-        </div>
+  <section class="section" id="install" aria-labelledby="install-h">
+    <div class="wrap install-grid">
+      <div>
+        <p class="eyebrow">Install ot</p>
+        <h2 id="install-h">One file. Windows, macOS, Linux.</h2>
+        <p class="small muted">Then <code>ot doctor</code> tells you whether Docker or Podman and your keychain are ready. Archives, deb and rpm packages are on <a href="https://github.com/OTInstaller/ot/releases" rel="noopener">GitHub Releases</a>; <code>ot self-update</code> keeps it current.</p>
       </div>
+      <InstallBlock />
     </div>
   </section>
 
-  <section class="section" aria-labelledby="have">
+  <section class="section" aria-labelledby="have-h">
     <div class="wrap">
-      <div class="section-head">
-        <div>
-          <p class="eyebrow">Start from what you have</p>
-          <h2 id="have">I have a…</h2>
-        </div>
-        <a class="btn btn-ghost" href="/search">All tools →</a>
-      </div>
-      <div class="tiles stagger">
-        {START_INPUTS.map((t) => (
-          <a class="tile reveal" href={`/input/${t}`}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={INPUT_ICONS[t] ?? "M4 4h16v16H4z"} /></svg>
-            <span>{inputLabel(t)}</span>
-          </a>
-        ))}
-      </div>
-    </div>
-  </section>
-
-  {trending.results.length > 0 ? (
-    <section class="section" aria-labelledby="trending">
-      <div class="wrap">
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">Live from the registry</p>
-            <h2 id="trending">Trending this month</h2>
-          </div>
-          <a class="btn btn-ghost" href="/search?sort=installs">Most installed →</a>
-        </div>
-        <div class="grid stagger">{trending.results.map((t) => <ToolCard tool={t} />)}</div>
-        {(totals.tools || totals.guides) && (
-          <div class="stats stagger">
-            {totals.tools && <Stat value={totals.tools} label="tools you can run today" />}
-            {totals.guides && <Stat value={totals.guides} label="investigation guides" />}
-            <Stat value={5} label="checks on every release" />
-            <Stat value={0} label="host files a tool can read" />
-          </div>
-        )}
-      </div>
-    </section>
-  ) : (
-    <section class="section" aria-labelledby="opening">
-      <div class="wrap">
-        <div class="opening card reveal">
-          <div>
-            <p class="eyebrow">Opening soon</p>
-            <h2 id="opening">The first tools are being published now</h2>
-            <p class="muted">The registry is live and accepting releases. Browse back shortly, or be one of the first publishers: the import wizard turns a GitHub or GitLab repository into a listed, signed tool in minutes.</p>
-            <div class="row"><a class="btn btn-primary" href="/import">Publish a tool</a><a class="btn" href="/docs/publishing">How it works</a></div>
-          </div>
-          <div class="stats-col stagger">
-            <Stat value={5} label="checks on every release" />
-            <Stat value={0} label="host files a tool can read" />
-          </div>
-        </div>
-      </div>
-    </section>
-  )}
-
-  <section class="section" aria-labelledby="trust">
-    <div class="wrap">
-      <div class="section-head">
-        <div>
-          <p class="eyebrow">Trust, checked by machines and people</p>
-          <h2 id="trust">How a release gets in</h2>
-        </div>
-        <a class="btn btn-ghost" href="/docs/security">Security model →</a>
-      </div>
-      <Pipeline />
-    </div>
-  </section>
-
-  <section class="section" aria-labelledby="sandbox">
-    <div class="wrap">
-      <div class="section-head">
-        <div>
-          <p class="eyebrow">When you run it</p>
-          <h2 id="sandbox">Runs on your machine, inside a box</h2>
-        </div>
-      </div>
-      <div class="grid stagger">
-        <FeatureCard title="Read-only container, nothing shared">
-          <svg slot="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 7v6c0 4.4 3.4 8.3 8 9 4.6-.7 8-4.6 8-9V7z" /><path d="m9 12 2 2 4-4" /></svg>
-          All capabilities dropped, non-root, no new privileges, a memory and CPU cap, and no host folders mounted. Input values are passed as arguments, never through a shell.
-        </FeatureCard>
-        <FeatureCard title="API keys stay in your keychain">
-          <svg slot="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4" /><path d="m10.9 12.1 9.1-9.1M15 7l2 2M18 4l2 2" /></svg>
-          <code>ot keys set NAME</code> stores a key in the OS keychain and hands it to that one container only. Tools that need none are a search filter away.
-        </FeatureCard>
-        <FeatureCard title="Results other tools can read">
-          <svg slot="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h2M16 4h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-2M9 9h6M9 13h6M9 17h3" /></svg>
-          Every run returns the same JSON result envelope, so output pivots into the next tool or an OSINTverse case. <code>--format table</code> when you just want to read it.
-        </FeatureCard>
-        <FeatureCard title="Installs that outlive a takedown" href="/docs/publishing#backups">
-          <svg slot="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8" /><path d="M21 3v5h-5" /><path d="M12 7v5l3 2" /></svg>
-          Every published image and wheel has a registry-held copy. If GitHub or GitLab pulls a tool by mistake, <code>ot</code> installs the same digest from the mirror and checks the same signature.
-        </FeatureCard>
+      <div class="section-head"><h2 id="have-h">I have a…</h2><a href="/search">All {totals.tools} tools →</a></div>
+      <div class="types">
+        {byType.map((row) => {
+          const label = inputLabel(row.type);
+          const more = (row.total ?? row.results.length) - row.results.length;
+          return (
+            <div class="type-row">
+              <a class="label" href={`/input/${row.type}`}>{label}</a>
+              <span class="list">
+                {row.results.length === 0
+                  ? <span class="muted">No tools yet</span>
+                  : row.results.map((t) => <a href={`/${t.namespace}/${t.name}`} title={`${t.namespace}/${t.name}: ${t.summary}`}><span class="ns">{t.namespace}/</span>{t.name}</a>)}
+              </span>
+              <a class="more" href={`/input/${row.type}`}>{more > 0 ? `${more} more →` : "where it leads →"}</a>
+            </div>
+          );
+        })}
       </div>
     </div>
   </section>
 
   {guides.results.length > 0 && (
-    <section class="section" aria-labelledby="guides">
+    <section class="section" aria-labelledby="guides-h">
       <div class="wrap">
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">Playbooks, versioned like tools</p>
-            <h2 id="guides">Investigation guides</h2>
-          </div>
-          <a class="btn btn-ghost" href="/guides">All guides →</a>
-        </div>
-        <div class="grid stagger">{guides.results.map((t) => <ToolCard tool={t} />)}</div>
-        <p class="small muted">Read them here, or in a terminal: <code>ot guide read ns/name</code>. <code>ot guide tools</code> installs everything a guide uses at once.</p>
+        <div class="section-head"><h2 id="guides-h">Guides</h2><a href="/guides">All {totals.guides} guides →</a></div>
+        <div class="rows">{guides.results.map((g) => <ToolRow tool={g} />)}</div>
+        <p class="small muted after">Read them here or in a terminal: <code>ot guide read ns/name</code>. <code>ot guide tools ns/name</code> installs everything a guide uses.</p>
       </div>
     </section>
   )}
 
   {updated.results.length > 0 && (
-    <section class="section" aria-labelledby="updated">
+    <section class="section" aria-labelledby="fresh-h">
       <div class="wrap">
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">Fresh</p>
-            <h2 id="updated">Recently updated</h2>
-          </div>
-          <a class="btn btn-ghost" href="/search?sort=updated">Newest first →</a>
-        </div>
-        <div class="grid stagger">{updated.results.map((t) => <ToolCard tool={t} />)}</div>
+        <div class="section-head"><h2 id="fresh-h">Recently updated</h2><a href="/search?sort=updated">Newest first →</a></div>
+        <div class="rows">{updated.results.map((t) => <ToolRow tool={t} />)}</div>
       </div>
     </section>
   )}
 
-  <section class="section" aria-labelledby="publish">
+  <section class="section" aria-labelledby="pub-h">
     <div class="wrap">
-      <div class="publish card reveal">
-        <div>
-          <p class="eyebrow">For tool authors</p>
-          <h2 id="publish">Publish from the repository you already have</h2>
-          <p class="muted">Point the wizard at a GitHub or GitLab repository. The registry detects what is in it, drafts <code>otinstaller.yaml</code>, and opens a pull request with a release workflow. Merge, tag <code>v1.0.0</code>, and your tool is scanned and live.</p>
-          <div class="row">
-            <a class="btn btn-primary" href="/import">Import a repository</a>
-            <a class="btn" href="/docs/publishing">How publishing works</a>
-          </div>
-        </div>
-        <ol class="pub-steps">
-          <li><span class="k">1</span><div><strong>Describe</strong><span class="small muted"><code>ot init</code> or the import wizard writes the manifest</span></div></li>
-          <li><span class="k">2</span><div><strong>Tag</strong><span class="small muted">Your CI builds, signs and pushes the release</span></div></li>
-          <li><span class="k">3</span><div><strong>Live</strong><span class="small muted">Scanned, smoke-tested and listed within minutes</span></div></li>
-        </ol>
+      <div class="section-head"><h2 id="pub-h">Publish from the repository you already have</h2><a href="/publish">How publishing works →</a></div>
+      <div class="row">
+        <a class="btn" href="/import">Import a repository</a>
+        <a class="btn" href="/docs/publishing">Add a manifest with <code>ot init</code></a>
+        <a class="btn" href="/docs/guides">Write a guide</a>
       </div>
-      {publishers.length > 0 && (
-        <div class="publishers">
-          <p class="small muted">Verified publishers</p>
-          <div class="row stagger">{publishers.map((p) => <a class="chip reveal" href={`/${p}`}>{p}</a>)}</div>
-        </div>
-      )}
-    </div>
-  </section>
-
-  <section class="section final">
-    <div class="wrap final-inner reveal">
-      <h2>Ready when you are.</h2>
-      <p class="muted">Install in seconds, run your first tool a minute later.</p>
-      <div class="final-cmd"><CopyCommand label="Install on macOS or Linux" command="curl -fsSL https://get.otinstaller.com/ot | sh" /></div>
-      <p class="small muted">Windows: <code>irm https://get.otinstaller.com/ot.ps1 | iex</code> · <a href="/docs/getting-started">Getting started</a></p>
+      <p class="small muted after">Push a <code>vX.Y.Z</code> tag; the registry validates, scans, backs up and publishes. A person reviews every new publisher's first release, usually within 3 business days.</p>
     </div>
   </section>
 </Base>
 
 <style>
-  .hero { padding: clamp(40px, 7vw, 96px) 0 clamp(32px, 5vw, 64px); }
-  .hero-grid { display: grid; gap: 40px; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); align-items: center; }
-  @media (max-width: 960px) { .hero-grid { grid-template-columns: minmax(0, 1fr); } }
-  .hero h1 { font-size: var(--fs-6); margin: 10px 0 18px; letter-spacing: -0.035em; line-height: 1.05; font-weight: 800; }
-  .hero .lead { font-size: var(--fs-3); margin: 0 0 24px; }
-  .cta { gap: 12px; margin-bottom: 22px; }
-  .hero-search { display: flex; align-items: center; gap: 8px; max-width: 520px; padding: 6px 6px 6px 14px; border: 1px solid var(--border-strong); border-radius: 14px; background: var(--bg-raised); box-shadow: var(--shadow-1); transition: border-color var(--dur-1), box-shadow var(--dur-2); }
-  .hero-search:focus-within { border-color: var(--accent); box-shadow: var(--ring); }
-  .hero-search svg { width: 18px; height: 18px; color: var(--text-faint); flex: none; }
-  .hero-search input { flex: 1; border: 0; background: transparent; padding: 8px 0; font-size: var(--fs-2); }
-  .hero-search input:focus-visible { box-shadow: none; }
-  .fade-in:nth-child(1) { animation-delay: 0ms; } .fade-in:nth-child(2) { animation-delay: 80ms; } .fade-in:nth-child(3) { animation-delay: 160ms; }
-  .fade-in:nth-child(4) { animation-delay: 240ms; } .fade-in:nth-child(5) { animation-delay: 320ms; }
-  .hero-demo { animation-delay: 260ms; perspective: 1200px; }
-  .hero-demo :global(.term) { transition: rotate var(--dur-3) var(--ease-out); }
-  @media (min-width: 961px) { .hero-demo :global(.term) { rotate: y -5deg; } .hero-demo:hover :global(.term) { rotate: y 0deg; } }
-
-  .install-section { background: linear-gradient(180deg, transparent, rgb(var(--accent-rgb) / 5%) 50%, transparent); }
-  .install-grid { display: grid; gap: 36px; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); align-items: center; }
-  @media (max-width: 900px) { .install-grid { grid-template-columns: minmax(0, 1fr); } }
-  .install-grid h2 { margin: 6px 0 10px; }
-  .install-box { padding: 20px; border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--bg-raised); box-shadow: var(--shadow-2); }
-  .steps { margin: 18px 0 0; padding: 0 0 0 20px; display: grid; gap: 8px; }
-  .steps li::marker { color: var(--accent); font-weight: 700; font-family: var(--font-mono); }
-
-  .tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
-  .tile { display: grid; gap: 10px; padding: 18px 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); text-decoration: none; color: var(--text); font-weight: 600; background: var(--bg-raised); transition: translate var(--dur-2) var(--ease-out), border-color var(--dur-2), box-shadow var(--dur-2), opacity var(--dur-3) var(--ease-out); }
-  .tile svg { width: 26px; height: 26px; color: var(--accent); transition: scale var(--dur-3) var(--ease-spring), rotate var(--dur-3) var(--ease-spring); }
-  .tile:hover { translate: 0 -3px; border-color: var(--accent); box-shadow: var(--shadow-2), 0 0 0 4px rgb(var(--accent-rgb) / 10%); color: var(--accent); }
-  .tile:hover svg { scale: 1.12; rotate: -6deg; }
-
-  .opening { display: grid; gap: 32px; grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.7fr); padding: clamp(22px, 4vw, 40px); border-radius: var(--radius-xl); align-items: center; }
-  .opening:hover { translate: none; }
-  .opening h2 { margin: 6px 0 10px; }
-  .stats-col { display: grid; gap: 22px; padding-left: 32px; border-left: 1px dashed var(--border); }
-  @media (max-width: 860px) { .opening { grid-template-columns: minmax(0, 1fr); } .stats-col { padding-left: 0; border-left: 0; padding-top: 22px; border-top: 1px dashed var(--border); } }
-  .stats { display: grid; gap: 24px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin-top: 40px; padding-top: 32px; border-top: 1px dashed var(--border); }
-
-  .publish { display: grid; gap: 32px; grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr); padding: clamp(22px, 4vw, 40px); border-radius: var(--radius-xl); align-items: center; }
-  .publish:hover { translate: none; }
-  @media (max-width: 860px) { .publish { grid-template-columns: minmax(0, 1fr); } }
-  .publish h2 { margin: 6px 0 10px; }
-  .pub-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
-  .pub-steps li { display: flex; gap: 14px; align-items: center; padding: 14px 16px; border-radius: var(--radius-lg); background: var(--bg-subtle); border: 1px solid var(--border); }
-  .pub-steps div { display: grid; }
-  .k { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--accent); color: var(--accent-contrast); font-family: var(--font-mono); font-weight: 700; flex: none; }
-  .publishers { margin-top: 28px; }
-  .publishers p { margin: 0 0 8px; }
-
-  .final { text-align: center; }
-  .final-inner { max-width: 640px; margin: 0 auto; }
-  .final h2 { font-size: var(--fs-5); margin: 0 0 6px; }
-  .final-cmd { margin: 22px auto 10px; text-align: left; }
+  .hero { padding: 48px 0 40px; }
+  .hero .eyebrow { margin: 0; }
+  .hero h1 { font-size: var(--fs-7); line-height: 1.1; margin: 12px 0 24px; max-width: 22ch; }
+  .starts { display: flex; gap: 8px 6px; flex-wrap: wrap; align-items: center; margin: 12px 0 0; }
+  .hero-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 32px; align-items: start; margin-top: 40px; }
+  .trust { font-size: var(--fs-3); color: var(--text-muted); line-height: 1.6; }
+  .trust p { margin: 0; }
+  .trust ul { margin: 12px 0; padding-left: 18px; }
+  .trust li + li { margin-top: 4px; }
+  .trust b { color: var(--text); font-weight: 600; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--border); margin-top: 32px; }
+  .stats > div { padding: 16px; border-right: 1px solid var(--border); display: grid; gap: 4px; }
+  .stats > div:last-child { border-right: 0; }
+  .stats b { font-size: var(--fs-6); font-weight: 600; letter-spacing: -0.025em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .stats span { font-size: var(--fs-1); color: var(--text-muted); }
+  .install-grid { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 32px; align-items: start; }
+  .install-grid h2 { margin: 6px 0 8px; font-size: var(--fs-4); }
+  .install-grid .eyebrow, .install-grid p { margin: 0; }
+  .install-grid p + p { margin-top: 8px; }
+  .types { display: grid; border-top: 1px solid var(--border); }
+  .type-row { display: grid; grid-template-columns: 170px minmax(0, 1fr) auto; gap: 16px; align-items: baseline; padding: 14px 0; border-bottom: 1px solid var(--border); }
+  .type-row .label { font-weight: 600; text-decoration: none; }
+  .type-row .label:hover { text-decoration: underline; }
+  .type-row .list { display: flex; gap: 6px 16px; flex-wrap: wrap; }
+  .type-row .list a { text-decoration: none; }
+  .type-row .list a:hover { text-decoration: underline; }
+  .type-row .ns { color: var(--text-faint); }
+  .type-row .more { color: var(--text-muted); text-decoration: none; white-space: nowrap; font-size: var(--fs-1); }
+  .type-row .more:hover { color: var(--text); text-decoration: underline; }
+  .after { margin: 12px 0 0; }
+  @media (max-width: 820px) {
+    .hero-grid { grid-template-columns: 1fr; gap: 24px; }
+    .stats { grid-template-columns: 1fr 1fr; }
+    .stats > div:nth-child(2n) { border-right: 0; }
+    .stats > div:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
+    .install-grid { grid-template-columns: 1fr; gap: 16px; }
+    .type-row { grid-template-columns: 1fr; gap: 6px; }
+    .type-row .more { justify-self: start; }
+  }
 </style>

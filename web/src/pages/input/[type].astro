@@ -1,21 +1,74 @@
 ---
+// "I have an email": the landing page for one input type. Tools that take it, guides about it, and where it
+// leads (the output types those tools find that other tools take). A pasted `?value=` is shown and carried to
+// the tool pages by the browser only; the server never sees or caches it.
 import Base from "../../layouts/Base.astro";
 import Results from "../../components/Results.astro";
-import PageHead from "../../components/PageHead.astro";
-import { api, type Types } from "../../lib/api";
-import { inputLabel } from "../../lib/format";
+import ToolRow from "../../components/ToolRow.astro";
+import { api, type SearchResult, type Types } from "../../lib/api";
+import { entityLabel, inputLabel } from "../../lib/format";
 import { cacheFor, searchFrom } from "../../lib/page";
 
 const type = Astro.params.type!;
 const types = await api<Types>("/types");
 if (!types.inputs.includes(type)) return new Response(null, { status: 404, statusText: "Not found" });
-const { result } = await searchFrom(Astro.url, { kind: "tool", input: type });
+const [{ result }, guides] = await Promise.all([
+  searchFrom(Astro.url, { kind: "tool", input: type }),
+  api<SearchResult>(`/guides?input=${encodeURIComponent(type)}&limit=4`).catch(() => ({ results: [] }) as SearchResult),
+]);
 const label = inputLabel(type);
+const lower = label.toLowerCase();
+const article = /^[aeiou]/i.test(lower) ? "an" : "a";
+// Where this type leads: output types of these tools that are also input types, so another tool can take them.
+const leads = new Map<string, number>();
+for (const t of result.results) for (const o of t.outputs) if (types.inputs.includes(o) && o !== type) leads.set(o, (leads.get(o) ?? 0) + 1);
+const pivots = [...leads.entries()].sort((a, b) => b[1] - a[1]);
 cacheFor(Astro, 600);
 ---
-<Base title={`${label} OSINT tools`} description={`OSINT tools that take a ${label.toLowerCase()} as input, ranked by how well they work.`}>
-  <PageHead eyebrow="I have a…" title={`${label} OSINT tools`}>
-    <p class="muted">Tools that take a {label.toLowerCase()} and what they find. <a href={`/guides?input=${type}`}>Guides about {label.toLowerCase()} investigations</a>.</p>
-  </PageHead>
+<Base title={`${label} OSINT tools`} description={`OSINT tools that take ${article} ${lower}: what they find, whether they need a key, and whether they still work.`} jsonHref={`https://api.otinstaller.com/v1/tools?kind=tool&input=${encodeURIComponent(type)}`}>
+  <header class="page-head">
+    <p class="eyebrow">I have {article}…</p>
+    <h1>{label}</h1>
+    <p class="muted lead-line">
+      {result.total ?? result.results.length} {result.results.length === 1 ? "tool takes" : "tools take"} {article} {lower}<span data-value-note hidden> like <code data-value-text></code></span>. Pick one, and its run command is ready to copy.
+      {guides.results.length > 0 && <> New to this? Start with the <a href={`/guides/${guides.results[0]!.namespace}/${guides.results[0]!.name}`}>{guides.results[0]!.title ?? "guide"}</a>.</>}
+    </p>
+  </header>
   <Results result={result} types={types} fixed={["input"]} />
+  {pivots.length > 0 && (
+    <section class="pivots" aria-labelledby="leads-h">
+      <div class="section-head"><h2 id="leads-h">Where {article} {lower} leads</h2></div>
+      <p class="small muted">What these tools find, and how many tools take each of those next:</p>
+      <p class="row">{pivots.map(([o, n]) => <a class="chip" href={`/input/${o}`}>{entityLabel(o)} ← {n} {n === 1 ? "tool" : "tools"} find it</a>)}</p>
+    </section>
+  )}
+  {guides.results.length > 0 && (
+    <section aria-labelledby="guides-h">
+      <div class="section-head"><h2 id="guides-h">Guides about {lower} investigations</h2><a href={`/guides?input=${type}`}>All guides →</a></div>
+      <div class="rows">{guides.results.map((g) => <ToolRow tool={g} />)}</div>
+    </section>
+  )}
 </Base>
+
+<script>
+  const value = new URLSearchParams(location.search).get("value");
+  if (value) {
+    const note = document.querySelector<HTMLElement>("[data-value-note]");
+    const text = document.querySelector<HTMLElement>("[data-value-text]");
+    if (note && text) {
+      text.textContent = value;
+      note.hidden = false;
+    }
+  }
+</script>
+
+<style>
+  .page-head { margin-bottom: 20px; }
+  .page-head .eyebrow { margin: 0; }
+  .page-head h1 { margin: 6px 0; }
+  .lead-line { margin: 0; max-width: 72ch; }
+  .pivots, section[aria-labelledby="guides-h"] { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--border); }
+  .pivots .section-head, section .section-head { margin-bottom: 8px; }
+  .pivots p { margin: 6px 0 0; }
+  .pivots .chip { text-transform: none; letter-spacing: 0; font-size: var(--fs-1); height: 28px; }
+</style>

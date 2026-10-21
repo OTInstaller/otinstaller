@@ -371,7 +371,7 @@ for 12 px text):
 | --- | --- | --- | --- |
 | Surfaces | `--bg #0a0a0a` · `--bg-subtle #121212` · `--bg-card #191919` · `--bg-inverse #fafafa` | `#ffffff` · `#f5f5f5` · `#fafafa` · `#0a0a0a` | No gradients; blur only on the sticky header, as OSINTverse does. |
 | Text | `--text #fafafa` · `--text-muted #b3b3b3` (10:1) · `--text-faint #8c8c8c` (5.6:1) | `#0a0a0a` · `#525252` · `#6d6d6d` (4.6:1) | Faint only at ≥ 14 px (OSINTverse's `#b3b3b3cc` is kept as the muted value). |
-| Lines | `--border rgb(102 102 102 / 25%)` · `--border-strong #525252` | `#e5e5e5` · `#a3a3a3` | 1 px; grids of borders instead of shadows. |
+| Lines | `--border rgb(102 102 102 / 28%)` · `--border-strong #6b6b6b` | `#e5e5e5` · `#858585` | 1 px; grids of borders instead of shadows. Strong borders are 3:1 against the page (WCAG 1.4.11); OSINTverse's `#525252` is 2.5:1. |
 | Action | `--action #737373` text `#fafafa` (primary); `--action-strong #fafafa` text `#171717` (the one inverted call to action per page) | `#737373` / `#fafafa`; strong `#0a0a0a` / `#fafafa` | As on OSINTverse: grey primary, inverted only for the main CTA. |
 | Semantic | `--ok #4ade80` · `--warn #fbbf24` · `--bad #f87171` · `--info #60a5fa` (on dark) | `#187c49` · `#a84500` · `#e7000b` · `#1f6cb0` | OSINTverse's light values (warning darkened for AA); always with a word next to them. |
 | Terminal | `--term-bg #0a0a0a` · `--term-text #e5e5e5` · `--term-dim #8c8c8c` · `--term-ok #4ade80` · `--term-accent #60a5fa` | same | The run block is dark in both themes. |
@@ -550,6 +550,18 @@ transparency and removal notice pages.
 ---
 
 ## 7. Roadmap
+
+**Status (21 Oct 2026):** phase 1 is built on this branch (see the PR): tokens and global CSS on Geist Mono, dark by
+default; the header with account state and the lean footer; `InstallBlock` with "what this script does"; the home
+page with the paste box and type rows; `/search`, `/input/{type}`, `/category/{slug}` and `/{ns}` as rows with the
+facet rail; the tool page with run block, evidence panel, facts rail, sample output and pivots; the Security tab
+grouped by run; Versions with tag links; reveal-on-scroll, shimmer and blobs removed; the OG image; `npm run
+contrast`; detector tests. Measured in the preview build: LCP of the home `h1` 268 ms on a warm cache (was 2.4 s);
+no hidden-until-JS content; the in-page contrast scan passes in both themes. Not in phase 1: the axe run in
+`npm test` (Playwright would add a browser download to every install; revisit in phase 4 with the screenshot job),
+and the docs' install commands still live in Markdown (phase 2 converts the getting-started page to use
+`InstallBlock`). AGENTS.md's website section still names `InstallTabs`, `Stat`, `FeatureCard` and `Pipeline`, which
+no longer exist; it is updated when the plan is merged.
 
 Effort is for one person who knows the codebase, including verification.
 

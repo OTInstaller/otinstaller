@@ -1,0 +1,51 @@
+---
+// One result row: name, summary, what it takes and finds, key and runtime, then the two or three words that
+// change a decision (health, verified publisher, deprecated). Everything else is on the tool page.
+import type { ToolSummary } from "../lib/api";
+import { entityLabel, inputLabel } from "../lib/format";
+
+interface Props {
+  tool: ToolSummary;
+  /** Heading level for the name: 2 where rows sit right under the page title. */
+  level?: 2 | 3;
+}
+const { tool: t, level = 3 } = Astro.props;
+const Heading = level === 2 ? "h2" : "h3";
+const ref = `${t.namespace}/${t.name}`;
+const guide = t.kind === "guide";
+const href = guide ? `/guides/${ref}` : `/${ref}`;
+const health = t.health === "healthy" ? { cls: "ok", text: "Health check passing" } : t.health === "broken" ? { cls: "warn", text: "Possibly broken" } : { cls: "none", text: "Not health-checked" };
+---
+<article class="trow">
+  <div>
+    <Heading class="h"><a class="name" href={href} data-tool-link={guide ? undefined : ""}>{guide ? t.title ?? ref : <><span class="ns">{t.namespace}/</span>{t.name}</>}</a></Heading>
+    <p class="sum">{t.summary}</p>
+  </div>
+  <div class="io">
+    {guide ? (
+      <>
+        {t.inputs.length > 0 && <>About <b>{t.inputs.map(inputLabel).join(", ").toLowerCase()}</b><br /></>}
+        {t.level && <span>{t.level}</span>}{t.format === "reference" && <span> · reference</span>}
+      </>
+    ) : (
+      <>
+        {t.inputs.length > 0 && <>Takes <b>{t.inputs.map(inputLabel).join(", ").toLowerCase()}</b></>}
+        {t.outputs.length > 0 && <> → finds <b>{t.outputs.slice(0, 4).map(entityLabel).join(", ")}{t.outputs.length > 4 ? "…" : ""}</b></>}
+        <br />
+        {t.needs_keys ? "Key required" : "No key"} · {t.runtime === "docker" ? "Docker" : t.runtime === "pipx" ? "Python wheel" : "—"}
+        {t.installs_30d >= 10 && <> · {t.installs_30d} installs / 30 days</>}
+      </>
+    )}
+  </div>
+  <div class="state">
+    {!guide && <span class={`status ${health.cls}`}>{health.text}</span>}
+    {t.verified && <span class="muted">Verified publisher</span>}
+    {t.status === "deprecated" && <span class="status warn">Deprecated</span>}
+    {t.source_unavailable && <span class="status bad">Source unavailable</span>}
+    {guide && t.needs_update && <span class="status warn">Needs update</span>}
+  </div>
+</article>
+
+<style>
+  .h { margin: 0; font-size: var(--fs-2); }
+</style>

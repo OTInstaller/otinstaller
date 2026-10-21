@@ -3,15 +3,23 @@ import Base from "../layouts/Base.astro";
 import Results from "../components/Results.astro";
 import PageHead from "../components/PageHead.astro";
 import { api, type Types } from "../lib/api";
+import { destination } from "../lib/detect";
 import { cacheFor, searchFrom } from "../lib/page";
 
+// A pasted value (an email, a domain…) belongs on its input page, with the value kept for the run commands.
+// The paste box sends `type` (auto, a type, or "name" to search by name); the header dialog sends only `q`.
 const q = Astro.url.searchParams.get("q") ?? "";
+const type = Astro.url.searchParams.get("type") ?? "auto";
+if (q) {
+  const dest = destination(q, type);
+  if (dest.startsWith("/input/")) return Astro.redirect(dest, 302);
+}
 const [{ result }, types] = await Promise.all([searchFrom(Astro.url, { kind: "tool" }), api<Types>("/types")]);
 cacheFor(Astro, 60);
 ---
-<Base title={q ? `“${q}” tools` : "OSINT tools"} description="Search OSINT tools by name, input type, output and category." noindex={!!q}>
+<Base title={q ? `“${q}” tools` : "OSINT tools"} description="Search OSINT tools by name, input type, output and category." noindex={!!q} jsonHref={`https://api.otinstaller.com/v1/tools?kind=tool${q ? `&q=${encodeURIComponent(q)}` : ""}`}>
   <PageHead eyebrow={q ? "Search" : "Registry"} title={q ? `Tools for “${q}”` : "All tools"}>
-    <p class="muted">{result.total ? `${result.total} ${result.total === 1 ? "tool" : "tools"}` : "Signed, scanned and health-checked tools"}. Filter by what you have, what you need to find, or whether an API key is required.</p>
+    <p class="muted">{result.total ? `${result.total} ${result.total === 1 ? "tool" : "tools"}` : "Signed, scanned and health-checked tools"}. Filter by what you have, what you need to find, or whether a key is required.</p>
   </PageHead>
   <Results result={result} types={types} />
 </Base>

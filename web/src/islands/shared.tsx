@@ -11,21 +11,24 @@ export interface Me {
   namespaces: { name: string; status: string; verified: number; role: string }[];
 }
 
-/** Keeps the header's Admin link (see Base.astro) in step with what /me just said. */
-export function rememberStaff(staff: boolean) {
+/** Keeps the header's account menu and Admin link (see Base.astro) in step with what /me just said. */
+export function rememberStaff(staff: boolean, login: string | null = null) {
   try {
-    sessionStorage.setItem("ot-staff", JSON.stringify({ staff, at: Date.now() }));
+    sessionStorage.setItem("ot-account", JSON.stringify({ login, staff, at: Date.now() }));
   } catch {
     // Storage unavailable: the header asks again on the next page.
   }
   for (const el of document.querySelectorAll<HTMLElement>("[data-staff]")) el.hidden = !staff;
+  for (const el of document.querySelectorAll<HTMLElement>("[data-signin]")) el.hidden = !!login;
+  for (const el of document.querySelectorAll<HTMLElement>("[data-account]")) el.hidden = !login;
+  for (const el of document.querySelectorAll<HTMLElement>("[data-login]")) el.textContent = login ?? "";
 }
 
 /** Loads /me; null while loading, false when signed out. */
 export function useMe(): Me | null | false {
   const [me, setMe] = useState<Me | null | false>(null);
   useEffect(() => {
-    api<Me>("/me").then((m) => { rememberStaff(m.admin || m.reviewer); setMe(m); })
+    api<Me>("/me").then((m) => { rememberStaff(m.admin || m.reviewer, m.login); setMe(m); })
       .catch((e) => { if (e instanceof ApiError && e.status === 401) rememberStaff(false); setMe(e instanceof ApiError && e.status === 401 ? false : (console.error(e), false)); });
   }, []);
   return me;
