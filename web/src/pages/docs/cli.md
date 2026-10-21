@@ -26,6 +26,7 @@ errors as one line of JSON on stderr; see [Scripts, CI and agents](/docs/automat
 | `ot outdated` · `ot update <ns/name …> \| --all` | Check for and install newer versions, with the same signature and trust checks as `ot install` |
 | `ot uninstall <ns/name>` | Remove a tool |
 | `ot keys set\|list\|rm <NAME>` | API keys in the OS keychain (`set --from-env VAR`); an environment variable of the same name always wins |
+| `ot keys setup [tool...]` | Walks through the keys the named tools (or every installed tool) need: what each is, where to get it, what it costs; opens the sign-up page if you want, and asks for each value with typing hidden. Needs a terminal. `--all` also replaces keys already set |
 | `ot doctor` | Check Docker, pipx, Python, cosign, the keychain and the registry; says how to install or start Docker when it is missing, and exits 5 when any check fails |
 | `ot pivot <run-id \| saved file> [--registry] [--limit 25]` | Suggest the next runs from what a saved run found, with the `ot run` command for each; runs nothing |
 | `ot mcp [--results-dir DIR]` | Serve [MCP](/docs/agents) over stdio for AI agents; `ot mcp install claude\|claude-desktop\|cursor\|vscode\|codex\|gemini [--print]` adds it to a client (`--print` only shows the configuration) |

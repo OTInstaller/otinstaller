@@ -378,7 +378,7 @@ func (s *mcpServer) planRun(ctx context.Context, in runIn, withKeys bool) (*runP
 	if withKeys {
 		if secrets, err = loadSecrets(m); err != nil {
 			return nil, &toolError{Code: "secret_missing", Message: err.Error(),
-				Hint: "ask the person to set the key themselves with `ot keys set NAME`, or as an environment variable; never ask for the key's value"}
+				Hint: "call key_setup to explain the key and where to get it, then ask the person to run `ot keys setup " + m.Ref() + "` in their own terminal; never ask for the key's value"}
 		}
 	}
 	return &runPlan{inst: inst, values: values, secrets: secrets, target: target, sandbox: sandbox}, nil

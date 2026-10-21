@@ -23,10 +23,11 @@ These change nothing, so clients may allow them without asking.
 | `get_playbook` | One playbook: its tools and which are installed. | `name` (required) |
 | `get_run` | A run's result: its status and provenance, the entities it found (paged), a deduplicated summary of the indicators, or its raw output. Also reports runs still going. | `include_raw`, `limit`, `offset`, `run_id` (required), `view` |
 | `get_tool` | Everything needed to run a tool: its inputs (names, types, defaults), what it finds, the API keys it needs and whether they are set, its ethics flags and network access, and whether a run will need the person's consent. Works for installed and registry tools. | `tool` (required) |
+| `key_setup` | The API keys the named tools (or all installed tools) declare: what each is, where to get it, what it costs, whether it is set, and the command the person runs in their own terminal to store it. You can't store keys: show the person the command, and never ask them for a key's value. | `tools` |
 | `list_installed` | The tools installed on this machine, with their versions and the exact image digest or wheel hash. | none |
 | `list_playbooks` | Named sets of tools run together against one target, bundled or the person's own, and which of their tools are installed. | none |
 | `list_runs` | Saved runs, newest first, optionally of one tool, against one target, or in one case. | `case`, `limit`, `target`, `tool` |
-| `list_types` | The input types tools take, the entity types they find, and the pivot map: which input types each entity type can feed. | none |
+| `list_types` | The input types tools take, the entity types they find and what each means, and the pivot map: which input types each entity type can feed. | none |
 | `read_guide` | One page of a guide, as Markdown, with the list of its pages and the tools it uses. | `guide` (required), `page` |
 | `search_guides` | Search the registry's investigation guides (methods, checklists, references), by words, target type or level. | `input_type`, `level`, `limit`, `query` |
 | `search_tools` | Search the OTInstaller Registry for OSINT tools. Results list each tool's input and output types, whether it needs API keys, its ethics flags and network access, and its trust status (signed, verified publisher, health). | `category`, `cursor`, `input_type`, `limit`, `no_keys`, `output_type`, `passive_only`, `query`, `runtime` |

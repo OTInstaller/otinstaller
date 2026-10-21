@@ -30,5 +30,6 @@ ethics:
   touches_target: false
   auth_required: false
   collects_personal_data: true
+  notifies_target: false
 test:
   input: { email: "example@example.com" }
