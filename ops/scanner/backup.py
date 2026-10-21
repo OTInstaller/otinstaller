@@ -3,17 +3,18 @@
 A backup job comes from the registry (with a scan callback's answer, or as an "otinstaller-backup" event) and
 lists what to copy, each with a limit:
 
-  image  crane copy <source> <mirror>/<ns>/<name>@<digest> (same digest), then its signatures and attestations
-         (cosign copy, and the sha256-<hex>[.sig|.att|.sbom] tags with crane). Layers over 90 MB are pushed to the
-         mirror in 50 MB chunks first, because a Worker takes at most 100 MB per request.
+  image  crane copy <source> <mirror>/<ns>/<name>@<digest> (same digest), then its signatures, attestations and
+         SBOMs: cosign's tag-schema tags sha256-<hex>[.sig|.att|.sbom] and the OCI referrers fallback tag
+         sha256-<hex>, copied with crane. That is everything `cosign copy` would copy, without its errors on
+         single-platform images. Layers over 90 MB are pushed to the mirror in 50 MB chunks first, because a Worker
+         takes at most 100 MB per request.
   wheel  the verified wheel, PUT to a short-lived signed URL
   git    git clone --mirror, then git bundle create --branches --tags, PUT to a signed URL
 
 Then it reports to the job's complete_url with the job's single-use token. A restore drill ("otinstaller-drill")
 restores a bundle into an empty repository and pulls a mirrored image by digest, verifying its signature.
 
-Pushing to the mirror needs MIRROR_PUSH_TOKEN (and `crane auth login <mirror> -u scanner -p "$MIRROR_PUSH_TOKEN"`
-for crane and cosign).
+Pushing to the mirror needs MIRROR_PUSH_TOKEN (and `crane auth login <mirror> -u scanner -p "$MIRROR_PUSH_TOKEN"`).
 """
 from __future__ import annotations
 
@@ -164,19 +165,16 @@ def mirror_image(item: dict) -> dict:
             finally:
                 proc.stdout.close()
                 proc.wait(timeout=600)
-    r = run(["crane", "copy", source, f"{target}@{digest}"])
+    # CRANE_JOBS limits parallel blob uploads (the local exit test sets 1: local workerd drops concurrent ones).
+    jobs = ["--jobs", os.environ["CRANE_JOBS"]] if os.environ.get("CRANE_JOBS") else []
+    r = run(["crane", "copy", *jobs, source, f"{target}@{digest}"])
     if r.returncode != 0:
         raise RuntimeError(f"crane copy failed: {r.stderr.strip()[-300:]}")
-    notes = []
-    if shutil.which("cosign"):
-        c = run(["cosign", "copy", "--force", source, target])
-        if c.returncode != 0:
-            notes.append(f"cosign copy: {c.stderr.strip()[-200:]}")
     tags = copy_signature_tags(source_repo, digest, target)
     got = run(["crane", "digest", f"{target}@{digest}"], timeout=120)
     if got.returncode != 0 or got.stdout.strip() != digest:
         raise RuntimeError(f"the mirror does not serve {digest}: {got.stderr.strip()[-200:]}")
-    return {"status": "stored", "size_bytes": size, "detail": "; ".join([f"copied {', '.join(tags) or 'no signature tags'}", *notes])}
+    return {"status": "stored", "size_bytes": size, "detail": f"copied {', '.join(tags) or 'no signature tags'}"}
 
 
 # ---------- uploads ----------
