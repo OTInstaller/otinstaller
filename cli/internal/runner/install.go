@@ -38,6 +38,9 @@ type InstallOptions struct {
 	// tried when the original registry refuses the pull. WheelBackupURL is the registry's copy of the wheel.
 	MirrorImage    string
 	WheelBackupURL string
+	// RequireSignature refuses a Docker image without a recorded signer, or when cosign is missing, instead of
+	// warning. Installs an AI agent asks for use it.
+	RequireSignature bool
 }
 
 // Install pulls or builds everything a package needs and returns its state record.
@@ -144,9 +147,15 @@ func (r *Runner) installDocker(ctx context.Context, m *manifest.Manifest, opt In
 		}
 	}
 	if opt.SignerIdentity == "" {
+		if opt.RequireSignature {
+			return "", false, &TrustError{image + " is not signed, and agents may only install signed images; install it yourself with `ot install` if you trust it"}
+		}
 		return image, false, nil
 	}
 	if _, err := r.Exec.LookPath("cosign"); err != nil {
+		if opt.RequireSignature {
+			return "", false, &TrustError{"cosign is not installed, so the signature of " + image + " can't be verified; agents may only install verified images (install cosign: https://docs.sigstore.dev/cosign/system_config/installation/)"}
+		}
 		fmt.Fprintln(r.Stderr, "warning: cosign is not installed, so the image signature was not verified locally")
 		return image, false, nil
 	}

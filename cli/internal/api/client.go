@@ -175,6 +175,8 @@ type SearchParams struct {
 	Level, Format, Lang string
 	NoKeys              bool
 	Limit               int
+	// Cursor is a previous page's next_cursor.
+	Cursor string
 }
 
 func (c *Client) Search(ctx context.Context, p SearchParams) (*SearchResult, error) {
@@ -190,6 +192,7 @@ func (c *Client) Search(ctx context.Context, p SearchParams) (*SearchResult, err
 	set("category", p.Category)
 	set("runtime", p.Runtime)
 	set("kind", p.Kind)
+	set("cursor", p.Cursor)
 	if p.NoKeys {
 		q.Set("no_keys", "1")
 	}

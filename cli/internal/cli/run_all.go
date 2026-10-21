@@ -79,80 +79,14 @@ func (a *App) runAll(ctx context.Context, ra *runArgs, what string, selection []
 	if format != "table" && format != "json" && format != "jsonl" {
 		return exitErr(ExitUsage, "%s prints a summary as table, json or jsonl, not %q", what, format)
 	}
-	candidates := selection
-	if selection == nil {
-		st, err := state.Load()
-		if err != nil {
+	rows, jobs, err := a.planAll(ra, what, selection)
+	if err != nil {
+		return err
+	}
+	if !ra.DryRun {
+		if err := a.cliConsent(ra, jobs); err != nil {
 			return err
 		}
-		candidates = st.Sorted()
-	}
-
-	var rows []*allResult
-	var jobs []allJob
-	for _, inst := range candidates {
-		m := inst.Manifest
-		row := &allResult{Tool: inst.Ref, Version: inst.Version}
-		if m == nil || m.IsGuide() || m.Runtime == nil {
-			if selection != nil {
-				row.Status, row.Reason = "skipped", "not a tool"
-				rows = append(rows, row)
-			}
-			continue
-		}
-		// Only the typed inputs this tool has an input for apply; a tool with none is not listed.
-		var typed []runner.TypedInput
-		var ambiguous error
-		for _, t := range ra.Typed {
-			switch names := runner.InputsOfType(m, runner.TypedPrefixes[t.Prefix]); len(names) {
-			case 0:
-			case 1:
-				typed = append(typed, t)
-			default:
-				_, ambiguous = runner.InputForType(m, runner.TypedPrefixes[t.Prefix])
-			}
-		}
-		if len(typed) == 0 && ambiguous == nil {
-			if selection != nil {
-				row.Status, row.Reason = "skipped", "has no "+typedTypes(ra.Typed)+" input"
-				rows = append(rows, row)
-			}
-			continue
-		}
-		skip := func(err error) {
-			row.Status, row.Reason = "skipped", err.Error()
-			rows = append(rows, row)
-		}
-		if ambiguous != nil {
-			skip(ambiguous)
-			continue
-		}
-		given, target, err := runner.ApplyTyped(m, nil, typed)
-		if err != nil {
-			skip(err)
-			continue
-		}
-		values, err := runner.ResolveInputs(m, given)
-		if err != nil {
-			skip(err)
-			continue
-		}
-		secrets, err := loadSecrets(m)
-		if err != nil {
-			skip(err)
-			continue
-		}
-		rows = append(rows, row)
-		jobs = append(jobs, allJob{inst, values, secrets, target, row})
-	}
-	if len(rows) == 0 {
-		return exitErr(ExitUsage, "no installed tool has a %s input; find some with `ot search`", typedTypes(ra.Typed))
-	}
-	if len(jobs) == 0 && selection != nil {
-		for _, r := range rows {
-			fmt.Fprintf(a.Err, "%s: %s\n", r.Tool, r.Reason)
-		}
-		return exitErr(ExitUsage, "none of the playbook's tools can run with a %s input", typedTypes(ra.Typed))
 	}
 
 	if ra.DryRun {
@@ -178,8 +112,6 @@ func (a *App) runAll(ctx context.Context, ra *runArgs, what string, selection []
 	if format == "table" {
 		fmt.Fprintf(a.Err, "Running %d tools, %d at a time...\n", len(jobs), ra.Parallel)
 	}
-	sem := make(chan struct{}, ra.Parallel)
-	var wg sync.WaitGroup
 	// Progress on stderr as each tool finishes, so a long batch shows it is moving (otinstaller's
 	// --live table). Only with the table summary; JSON callers read the summary.
 	var progressMu sync.Mutex
@@ -203,51 +135,9 @@ func (a *App) runAll(ctx context.Context, ra *runArgs, what string, selection []
 		}
 		fmt.Fprintf(a.Err, "[%d/%d] %s %s\n", done, len(jobs), row.Tool, status)
 	}
-	for _, j := range jobs {
-		wg.Add(1)
-		go func(j allJob) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			defer progress(j.row)
-			if ctx.Err() != nil {
-				j.row.Status, j.row.Reason = results.StatusInterrupted, "not started"
-				return
-			}
-			// Parallel runs would interleave on the terminal, so stderr only goes to the saved file.
-			env, meta, err := a.execute(ctx, j.inst, j.values, j.secrets, j.target, ra, io.Discard)
-			if meta != nil {
-				j.row.Status, j.row.Entities = meta.Status, len(meta.Entities)
-				j.row.TopEntities, j.row.RunID = firstDistinct(meta.Entities, topEntities), meta.RunID
-				j.row.OutputPath = meta.OutputPath
-				j.row.MetaPath = meta.MetaPath
-				if meta.ExitCode >= 0 {
-					code := meta.ExitCode
-					j.row.ExitCode = &code
-				}
-			} else if env != nil {
-				// Saving failed after the run; execute already warned.
-				code := env.ExitCode
-				j.row.Status, j.row.ExitCode, j.row.Entities = results.StatusComplete, &code, len(env.Entities)
-				j.row.TopEntities, j.row.RunID = firstDistinct(env.Entities, topEntities), env.RunID
-				if code != 0 {
-					j.row.Status = results.StatusFailed
-				}
-			}
-			if err != nil {
-				var ee *ExitError
-				if j.row.Status == "" || !errors.As(err, &ee) {
-					j.row.Reason = err.Error()
-				}
-				if j.row.Status == "" {
-					j.row.Status = "error"
-				}
-			}
-		}(j)
-	}
-	wg.Wait()
+	a.runJobs(ctx, ra, jobs, progress)
 
-	err := allOutcome(ctx, rows)
+	err = allOutcome(ctx, rows)
 	if format == "jsonl" {
 		if werr := a.writeSummary(rows, err); werr != nil {
 			return werr
@@ -321,4 +211,134 @@ func typedTypes(typed []runner.TypedInput) string {
 		types = append(types, runner.TypedPrefixes[t.Prefix])
 	}
 	return strings.Join(types, " or ")
+}
+
+// planAll works out what --all, a playbook or auto would run: a row for every tool listed, and a job for each
+// that can run.
+func (a *App) planAll(ra *runArgs, what string, selection []*state.Installed) ([]*allResult, []allJob, error) {
+	candidates := selection
+	if selection == nil {
+		st, err := state.Load()
+		if err != nil {
+			return nil, nil, err
+		}
+		candidates = st.Sorted()
+	}
+
+	var rows []*allResult
+	var jobs []allJob
+	for _, inst := range candidates {
+		m := inst.Manifest
+		row := &allResult{Tool: inst.Ref, Version: inst.Version}
+		if m == nil || m.IsGuide() || m.Runtime == nil {
+			if selection != nil {
+				row.Status, row.Reason = "skipped", "not a tool"
+				rows = append(rows, row)
+			}
+			continue
+		}
+		// Only the typed inputs this tool has an input for apply; a tool with none is not listed.
+		var typed []runner.TypedInput
+		var ambiguous error
+		for _, t := range ra.Typed {
+			switch names := runner.InputsOfType(m, runner.TypedPrefixes[t.Prefix]); len(names) {
+			case 0:
+			case 1:
+				typed = append(typed, t)
+			default:
+				_, ambiguous = runner.InputForType(m, runner.TypedPrefixes[t.Prefix])
+			}
+		}
+		if len(typed) == 0 && ambiguous == nil {
+			if selection != nil {
+				row.Status, row.Reason = "skipped", "has no "+typedTypes(ra.Typed)+" input"
+				rows = append(rows, row)
+			}
+			continue
+		}
+		skip := func(err error) {
+			row.Status, row.Reason = "skipped", err.Error()
+			rows = append(rows, row)
+		}
+		if ambiguous != nil {
+			skip(ambiguous)
+			continue
+		}
+		given, target, err := runner.ApplyTyped(m, nil, typed)
+		if err != nil {
+			skip(err)
+			continue
+		}
+		values, err := runner.ResolveInputs(m, given)
+		if err != nil {
+			skip(err)
+			continue
+		}
+		secrets, err := loadSecrets(m)
+		if err != nil {
+			skip(err)
+			continue
+		}
+		rows = append(rows, row)
+		jobs = append(jobs, allJob{inst, values, secrets, target, row})
+	}
+	if len(rows) == 0 {
+		return nil, nil, exitErr(ExitUsage, "no installed tool has a %s input; find some with `ot search`", typedTypes(ra.Typed))
+	}
+	if len(jobs) == 0 && selection != nil {
+		for _, r := range rows {
+			fmt.Fprintf(a.Err, "%s: %s\n", r.Tool, r.Reason)
+		}
+		return nil, nil, exitErr(ExitUsage, "none of the playbook's tools can run with a %s input", typedTypes(ra.Typed))
+	}
+	return rows, jobs, nil
+}
+
+// runJobs runs the jobs, ra.Parallel at a time, filling in their rows; done is called as each one ends.
+func (a *App) runJobs(ctx context.Context, ra *runArgs, jobs []allJob, done func(*allResult)) {
+	sem := make(chan struct{}, ra.Parallel)
+	var wg sync.WaitGroup
+	for _, j := range jobs {
+		wg.Add(1)
+		go func(j allJob) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			defer done(j.row)
+			if ctx.Err() != nil {
+				j.row.Status, j.row.Reason = results.StatusInterrupted, "not started"
+				return
+			}
+			// Parallel runs would interleave on the terminal, so stderr only goes to the saved file.
+			env, meta, err := a.execute(ctx, j.inst, j.values, j.secrets, j.target, ra, io.Discard)
+			if meta != nil {
+				j.row.Status, j.row.Entities = meta.Status, len(meta.Entities)
+				j.row.TopEntities, j.row.RunID = firstDistinct(meta.Entities, topEntities), meta.RunID
+				j.row.OutputPath = meta.OutputPath
+				j.row.MetaPath = meta.MetaPath
+				if meta.ExitCode >= 0 {
+					code := meta.ExitCode
+					j.row.ExitCode = &code
+				}
+			} else if env != nil {
+				// Saving failed after the run; execute already warned.
+				code := env.ExitCode
+				j.row.Status, j.row.ExitCode, j.row.Entities = results.StatusComplete, &code, len(env.Entities)
+				j.row.TopEntities, j.row.RunID = firstDistinct(env.Entities, topEntities), env.RunID
+				if code != 0 {
+					j.row.Status = results.StatusFailed
+				}
+			}
+			if err != nil {
+				var ee *ExitError
+				if j.row.Status == "" || !errors.As(err, &ee) {
+					j.row.Reason = err.Error()
+				}
+				if j.row.Status == "" {
+					j.row.Status = "error"
+				}
+			}
+		}(j)
+	}
+	wg.Wait()
 }

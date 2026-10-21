@@ -247,6 +247,9 @@ func (a *App) install(ctx context.Context, ref pkgRef, native bool) (*state.Inst
 	var err error
 	opt := runner.InstallOptions{Native: native}
 
+	if ref.LocalPath != "" && a.AgentMode {
+		return nil, &ExitError{Code: ExitTrust, Reason: "trust_refused", Err: fmt.Errorf("agents may only install published packages, not a local manifest (%s); use `ot validate --smoke` in a terminal to test one", ref.LocalPath)}
+	}
 	if ref.LocalPath != "" {
 		raw, err = os.ReadFile(ref.LocalPath)
 		if err != nil {
@@ -284,6 +287,18 @@ func (a *App) install(ctx context.Context, ref pkgRef, native bool) (*state.Inst
 		}
 		opt.SignerIdentity, opt.SignerIssuer = resp.SignerIdentity, resp.SignerIssuer
 		opt.MirrorImage, opt.WheelBackupURL = resp.MirrorImage, resp.WheelURL
+		// An agent gets no "warning:" it can scroll past: what a person would be warned about, it is refused.
+		if a.AgentMode {
+			opt.RequireSignature = true
+			switch {
+			case resp.Status == "yanked":
+				return nil, &ExitError{Code: ExitTrust, Reason: "trust_refused", Err: fmt.Errorf("%s@%s is yanked; agents may only install current versions", ref.Ref(), resp.Version)}
+			case resp.ScanStatus == "fail":
+				return nil, &ExitError{Code: ExitTrust, Reason: "trust_refused", Err: fmt.Errorf("%s@%s failed its security scan", ref.Ref(), resp.Version)}
+			case resp.Health == "broken":
+				return nil, &ExitError{Code: ExitTrust, Reason: "trust_refused", Err: fmt.Errorf("%s is marked possibly broken by recent health checks", ref.Ref())}
+			}
+		}
 		for _, w := range trustWarnings(resp) {
 			fmt.Fprintln(a.Err, "warning:", w)
 		}

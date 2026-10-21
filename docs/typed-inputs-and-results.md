@@ -174,3 +174,21 @@ output was written.
 `ot outdated` compares each installed package with the registry's latest version and changes nothing. `ot update
 <namespace/name>...` or `ot update --all` installs the newer versions, through the same checks as `ot install`.
 Packages installed from a local manifest show as "not in registry".
+
+## `ot pivot`
+
+`ot pivot <run-id | saved file>` reads a saved run's entities and suggests what to run next, without running anything.
+The pivot map in `spec/pivots.json` says which input types each entity type can feed: an `email` feeds `email` inputs
+and, through its domain, `domain` inputs; a `subdomain` feeds `domain`; an `account` feeds `username` and `url` inputs
+from its `attrs`. For each pivot `ot pivot` lists the installed tools that take that input, with the `ot run` command
+for each. `--registry` adds tools that aren't installed, and `--json` prints the same as the MCP server's
+`suggest_pivots`. The map is embedded in `ot` (`cli/internal/specfiles`, copied by `go generate`).
+
+## Runs without a terminal
+
+`ot run`, `run --all`, playbooks and `auto` without a terminal (CI, scripts, agents using a shell) follow the same
+consent rules as `ot mcp` (`cli/internal/agent`). A tool that isn't passive (offline, no target contact, no personal
+data) needs `--yes`, or the run stops with `consent_required` before anything runs. The agent policy's
+`allow_tools`, `deny_tools` and `enabled` apply too. Each such run is appended to `<ot home>/agent-audit.jsonl` with its
+consent recorded as `flag` (from `--yes`), `policy` or `off` (`OT_CONSENT=off`). A person at a terminal is never asked.
+

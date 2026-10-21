@@ -112,7 +112,7 @@ func errorCode(err error, exitCode int) string {
 // interactive reports whether someone can answer a prompt. ot never prompts otherwise: piped or
 // closed stdin, CI and agents get an input_required error naming the flag to pass instead.
 func (a *App) interactive() bool {
-	if os.Getenv("OT_NONINTERACTIVE") == "1" {
+	if a.AgentMode || os.Getenv("OT_NONINTERACTIVE") == "1" {
 		return false
 	}
 	if f, ok := a.In.(*os.File); ok {
