@@ -13,7 +13,9 @@ const { result } = await searchFrom(Astro.url, { kind: "tool", category: slug })
 const label = categoryLabel(slug);
 cacheFor(Astro, 600);
 ---
-<Base title={`${label} OSINT tools`} description={`OSINT tools in the ${label} category.`}>
-  <PageHead eyebrow="Category" title={label} />
+<Base title={`${label} OSINT tools`} description={`OSINT tools in the ${label} category.`} jsonHref={`https://api.otinstaller.com/v1/tools?kind=tool&category=${encodeURIComponent(slug)}`}>
+  <PageHead eyebrow="Category" title={label}>
+    <p class="muted">{result.total ?? result.results.length} {result.results.length === 1 ? "tool" : "tools"}.</p>
+  </PageHead>
   <Results result={result} types={types} fixed={["category"]} />
 </Base>

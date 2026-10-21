@@ -1,10 +1,12 @@
 ---
-// A search result list with facets, used by /search, /input/{type} and /category/{slug}. Filter and sort links
-// are nofollow (and filtered pages noindex, see Base.astro): crawlers walking every combination used up the
-// registry database's daily reads.
-import ToolCard from "./ToolCard.astro";
+// A search result list with a facet rail, used by /search, /input/{type} and /category/{slug}. Filter and sort
+// links are nofollow (and filtered pages noindex, see Base.astro): crawlers walking every combination used up the
+// registry database's daily reads. A `?value=` on the page is carried to each tool link by a small script, so the
+// tool page can fill its run command; the value never reaches the API.
+import ToolRow from "./ToolRow.astro";
+import PasteBox from "./PasteBox.astro";
 import type { SearchResult, Types } from "../lib/api";
-import { categoryLabel, inputLabel } from "../lib/format";
+import { categoryLabel, entityLabel, inputLabel } from "../lib/format";
 import { withParam } from "../lib/page";
 
 interface Props {
@@ -18,27 +20,30 @@ const url = Astro.url;
 const current = (k: string) => url.searchParams.get(k);
 const facets = [
   { key: "input", label: "Takes", values: types.inputs, name: inputLabel },
-  { key: "output", label: "Finds", values: types.outputs, name: (v: string) => v.replace(/_/g, " ") },
+  { key: "output", label: "Finds", values: types.outputs, name: entityLabel },
   { key: "category", label: "Category", values: types.categories, name: categoryLabel },
-  { key: "runtime", label: "Runtime", values: ["docker", "pipx"], name: (v: string) => (v === "docker" ? "Docker" : "pipx") },
+  { key: "runtime", label: "Runtime", values: ["docker", "pipx"], name: (v: string) => (v === "docker" ? "Docker" : "Python wheel") },
 ].filter((f) => !fixed.includes(f.key));
-const sorts = [["relevance", "Best match"], ["installs", "Most installed"], ["stars", "Most starred"], ["updated", "Recently updated"]];
+const sorts = [["relevance", "Best match"], ["updated", "Recently updated"], ["installs", "Most installed"], ["stars", "Most starred"]];
 const next = result.next_cursor ? `${url.pathname}?${new URLSearchParams({ ...Object.fromEntries(url.searchParams), cursor: result.next_cursor })}` : null;
 const activeFilters = facets.filter((f) => current(f.key)).map((f) => ({ key: f.key, label: f.name(current(f.key)!) }));
-if (current("no_keys")) activeFilters.push({ key: "no_keys", label: "No API key needed" });
+if (current("no_keys")) activeFilters.push({ key: "no_keys", label: "No key needed" });
 const clearAll = `${url.pathname}${current("q") ? `?q=${encodeURIComponent(current("q")!)}` : ""}`;
-const suggestions = ["email", "username", "domain", "phone", "image"];
 ---
 <div class="results">
   <details class="facets-drawer" open>
-    <summary class="btn facets-toggle">Filters{activeFilters.length > 0 && <span class="badge info plain">{activeFilters.length}</span>}</summary>
+    <summary class="btn btn-sm facets-toggle">Filters{activeFilters.length > 0 && <span class="n">{activeFilters.length}</span>}</summary>
     <aside class="facets" aria-label="Filters">
-      <a class:list={["toggle", { on: !!current("no_keys") }]} href={withParam(url, "no_keys", current("no_keys") ? null : "1")} rel="nofollow" aria-pressed={!!current("no_keys")}>
-        <span class="sw" aria-hidden="true"></span> No API key needed
-      </a>
+      <div class="facet">
+        <p class="fl">Key</p>
+        <ul class="list-plain">
+          <li><a href={withParam(url, "no_keys", null)} rel="nofollow" aria-current={!current("no_keys") ? "page" : undefined}>Any</a></li>
+          <li><a href={withParam(url, "no_keys", "1")} rel="nofollow" aria-current={current("no_keys") ? "page" : undefined}>No key needed</a></li>
+        </ul>
+      </div>
       {facets.map((f) => (
         <details class="facet" open={!!current(f.key) || f.key === "input"}>
-          <summary>{f.label}{current(f.key) && <span class="badge info plain">1</span>}</summary>
+          <summary class="fl">{f.label}{current(f.key) && <span class="n">1</span>}</summary>
           <ul class="list-plain">
             {f.values.map((v) => (
               <li><a href={withParam(url, f.key, current(f.key) === v ? null : v)} rel="nofollow" aria-current={current(f.key) === v ? "page" : undefined}>{f.name(v)}</a></li>
@@ -55,62 +60,64 @@ const suggestions = ["email", "username", "domain", "phone", "image"];
       </div>
       {activeFilters.length > 0 && (
         <div class="row active small">
-          {activeFilters.map((f) => <a class="chip" href={withParam(url, f.key, null)} rel="nofollow" aria-label={`Remove filter ${f.label}`}>{f.label} <span aria-hidden="true">✕</span></a>)}
+          {activeFilters.map((f) => <a class="chip" href={withParam(url, f.key, null)} rel="nofollow" aria-label={`Remove filter ${f.label}`}>{f.label} ✕</a>)}
           <a class="btn btn-ghost btn-sm" href={clearAll} rel="nofollow">Clear all</a>
         </div>
       )}
     </div>
     {result.results.length === 0
       ? (
-        <div class="empty card">
-          <p class="glyph" aria-hidden="true">¯\_(ツ)_/¯</p>
-          <h2>Nothing matches</h2>
-          <p class="muted">Try fewer filters or another word. Or start from an input type:</p>
-          <div class="row">{suggestions.map((s) => <a class="chip" href={`/input/${s}`}>{inputLabel(s)}</a>)}</div>
+        <div class="empty">
+          <h2>Nothing is named that</h2>
+          <p class="muted">Paste the value you have instead, and the registry finds the tools that take it. Or try fewer filters.</p>
+          <PasteBox id="empty-q" />
         </div>
       )
-      : <div class="grid stagger">{result.results.map((t) => <ToolCard tool={t} level={2} />)}</div>}
+      : <div class="rows">{result.results.map((t) => <ToolRow tool={t} level={2} />)}</div>}
     {next && <p class="more"><a class="btn" href={next} rel="next nofollow">More results</a></p>}
   </div>
 </div>
 
+<script>
+  // Carry a pasted value from /input/{type}?value=… to each tool page, which fills its run command with it.
+  const value = new URLSearchParams(location.search).get("value");
+  if (value) {
+    for (const a of document.querySelectorAll<HTMLAnchorElement>("[data-tool-link]")) {
+      const u = new URL(a.href);
+      u.searchParams.set("value", value);
+      a.href = u.toString();
+    }
+  }
+</script>
+
 <style>
-  .results { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 32px; align-items: start; }
-  .facets-drawer { position: sticky; top: 84px; }
+  .results { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 32px; align-items: start; }
+  .facets-drawer { position: sticky; top: 76px; }
   .facets-toggle { display: none; list-style: none; }
   .facets-toggle::-webkit-details-marker { display: none; }
-  .facets { display: grid; gap: 4px; }
-  .toggle { display: flex; align-items: center; gap: 10px; padding: 10px 10px; border-radius: var(--radius); text-decoration: none; color: var(--text); font-weight: 600; font-size: var(--fs-1); border: 1px solid var(--border); background: var(--bg-raised); margin-bottom: 8px; }
-  .toggle:hover { border-color: var(--accent); }
-  .sw { width: 30px; height: 18px; border-radius: 999px; background: var(--border-strong); position: relative; transition: background var(--dur-2); flex: none; }
-  .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: translate var(--dur-2) var(--ease-spring); box-shadow: var(--shadow-1); }
-  .toggle.on .sw { background: var(--ok); }
-  .toggle.on .sw::after { translate: 12px 0; }
-  .facet { border-bottom: 1px solid var(--border); padding: 6px 0; }
-  .facet summary { cursor: pointer; font-weight: 600; font-size: var(--fs-1); padding: 6px 4px; display: flex; align-items: center; gap: 8px; list-style: none; border-radius: var(--radius-sm); }
-  .facet summary::-webkit-details-marker { display: none; }
-  .facet summary::before { content: ""; width: 7px; height: 7px; border-right: 2px solid var(--text-faint); border-bottom: 2px solid var(--text-faint); rotate: -45deg; transition: rotate var(--dur-2) var(--ease-out); margin-right: 2px; }
-  .facet[open] summary::before { rotate: 45deg; }
-  .facet summary:hover { background: var(--bg-subtle); }
-  .facet ul { margin: 4px 0 6px; max-height: 260px; overflow-y: auto; font-size: var(--fs-1); scrollbar-width: thin; }
-  .facet li + li { margin-top: 1px; }
-  .facet a { display: flex; justify-content: space-between; padding: 5px 8px 5px 20px; border-radius: var(--radius-sm); text-decoration: none; color: var(--text-muted); text-transform: capitalize; }
-  .facet a:hover { background: var(--bg-subtle); color: var(--text); }
-  .facet a[aria-current="page"] { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
-  .facet a[aria-current="page"]::after { content: "✕"; font-size: 0.75em; }
-  .toolbar { display: grid; gap: 10px; margin-bottom: 18px; }
-  .active .chip { font-size: var(--fs-0); padding: 3px 10px; }
-  .empty { text-align: center; padding: 48px 24px; display: grid; gap: 8px; justify-items: center; }
-  .empty:hover { translate: none; }
-  .glyph { font-family: var(--font-mono); font-size: 1.6rem; color: var(--text-faint); margin: 0; }
-  .empty h2 { margin: 0; }
-  .more { margin-top: 24px; text-align: center; }
+  .n { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; margin-left: 6px; background: var(--bg-inverse); color: var(--bg); font-size: var(--fs-0); }
+  .facets { display: grid; }
+  .facet { border-top: 1px solid var(--border); padding: 8px 0; }
+  .fl { margin: 0; cursor: pointer; font-size: var(--fs-0); text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-faint); padding: 6px 0; display: flex; align-items: center; list-style: none; }
+  .fl::-webkit-details-marker { display: none; }
+  details > .fl::after { content: "+"; margin-left: auto; color: var(--text-faint); }
+  details[open] > .fl::after { content: "−"; }
+  .facet ul { margin: 2px 0 4px; max-height: 280px; overflow-y: auto; font-size: var(--fs-1); scrollbar-width: thin; }
+  .facet li + li { margin-top: 0; }
+  .facet a { display: flex; justify-content: space-between; padding: 5px 6px; text-decoration: none; color: var(--text-muted); }
+  .facet a:hover { color: var(--text); background: var(--bg-subtle); }
+  .facet a[aria-current="page"] { color: var(--text); background: var(--accent-soft); }
+  .toolbar { display: grid; gap: 10px; margin-bottom: 12px; }
+  .empty { padding: 32px 0; display: grid; gap: 10px; border-top: 1px solid var(--border); }
+  .empty h2 { margin: 0; font-size: var(--fs-4); }
+  .empty p { margin: 0; }
+  .more { margin-top: 20px; text-align: center; }
   @media (max-width: 860px) {
-    .results { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+    .results { grid-template-columns: minmax(0, 1fr); gap: 12px; }
     .facets-drawer { position: static; }
     .facets-drawer:not([open]) .facets { display: none; }
     .facets-toggle { display: inline-flex; width: max-content; }
-    .facets { padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-raised); margin-top: 10px; }
+    .facets { padding: 0 12px; border: 1px solid var(--border); margin-top: 8px; }
   }
 </style>
 

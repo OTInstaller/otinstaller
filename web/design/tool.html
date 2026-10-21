@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OTInstaller — mockup: tool page</title>
+  <link rel="stylesheet" href="design.css" />
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="wrap bar">
+      <a class="brand" href="#"><span class="mark" aria-hidden="true">&gt;_</span><span>OTInstaller</span></a>
+      <nav class="main-nav" aria-label="Main">
+        <ul>
+          <li><a href="#" aria-current="page">Tools</a></li>
+          <li><a href="#">Guides</a></li>
+          <li><a href="#">Docs</a></li>
+          <li><a href="#">Publish</a></li>
+        </ul>
+      </nav>
+      <div class="tools">
+        <button class="search-btn" type="button"><span aria-hidden="true">⌕</span><span class="hint">Search or paste a value</span><kbd>/</kbd></button>
+        <a class="btn acct" href="#">dheeraj ▾</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="wrap">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="#">Tools</a> / <a href="#">osintverse-community</a></nav>
+    <div class="title-row">
+      <h1>maigret</h1>
+      <span class="ver">v0.6.6</span>
+      <span class="badge ok">Verified publisher</span>
+    </div>
+    <p class="lead">Builds a profile of a person from a username: accounts on 3,000+ sites and the details they expose.</p>
+    <p class="note"><b>Community-packaged</b> from <a href="#">soxoj/maigret</a>, pinned to the upstream release on PyPI. Maintain that project? <a href="#">Claim this package</a>.</p>
+
+    <nav class="tool-tabs" aria-label="Tool sections">
+      <a href="#" aria-current="page">Overview</a><a href="#">Security</a><a href="#">Versions</a>
+    </nav>
+
+    <section class="run" aria-labelledby="run-h">
+      <p class="eyebrow" id="run-h">Run</p>
+      <div class="cmd"><code><span class="ps">$</span>ot run osintverse-community/maigret --username <span class="val">jane_doe</span></code><button class="copy" type="button">Copy</button></div>
+      <div class="cmd"><code><span class="ps">$</span>ot install osintverse-community/maigret</code><button class="copy" type="button">Copy</button></div>
+      <p class="note">Python wheel, run inside a read-only container · network allowed (checks 3,000+ sites) · no API key · about 2 minutes for 500 sites.</p>
+      <details>
+        <summary>Don't have ot? Install it in one line</summary>
+        <div class="cmd"><code><span class="ps">$</span>curl -fsSL https://get.otinstaller.com/ot | sh</code><button class="copy" type="button">Copy</button></div>
+      </details>
+    </section>
+
+    <div class="two-col">
+      <div class="stack">
+        <section class="panel" aria-labelledby="ev-h">
+          <div class="ph"><h2 id="ev-h">Evidence</h2><a href="#">Security tab →</a></div>
+          <ul class="evidence">
+            <li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="k">Pinned</span><span class="v">wheel <span class="digest"><code>sha256:4f2a…9c1e</code><button type="button">copy</button><button type="button">expand</button></span>. The same bytes on every install; <code>ot</code> re-hashes after download.</span></li>
+            <li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="k">Signed</span><span class="v">by <b>GitHub: soxoj/maigret / python-publish.yml</b> via pypi.org (PEP 740 attestation), verified by the registry on <b>20 Oct 2026</b>. <code>ot</code> refuses a different signer. <a href="#">Attestation →</a></span></li>
+            <li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="k">Scanned</span><span class="v"><b>20 Oct 2026</b>: 0 critical, 0 high, 5 medium, 1 low vulnerabilities (none with fixes outstanding); no secrets; no malware heuristics (GuardDog); SBOM with 68 packages. <a href="#">Findings →</a></span></li>
+            <li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="k">Works</span><span class="v">smoke test passed <b>20 Oct 2026</b> (exit 0 in 4.1 s, offline sandbox); nightly health check passed <b>last night</b>. <a href="#">History →</a></span></li>
+            <li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="k">Backed up</span><span class="v">a copy of this wheel is kept by the registry (public, MIT licence). If PyPI removes it, <code>ot install</code> uses the copy and checks the same hash.</span></li>
+            <li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="k">Reviewed</span><span class="v"><b>osintverse-community</b> is a verified publisher; its first release was reviewed by a person against the <a href="#">acceptable-use rules</a>.</span></li>
+          </ul>
+        </section>
+
+        <section class="panel" aria-labelledby="out-h">
+          <div class="ph"><h2 id="out-h">What you get back</h2><a href="#">Result envelope →</a></div>
+          <pre class="sample"><code>{
+  <span class="k">"envelope"</span>: 1, <span class="k">"tool"</span>: <span class="s">"osintverse-community/maigret@0.6.6"</span>,
+  <span class="k">"entities"</span>: [
+    { <span class="k">"type"</span>: <span class="s">"account"</span>, <span class="k">"site"</span>: <span class="s">"github.com"</span>, <span class="k">"username"</span>: <span class="s">"jane_doe"</span>, <span class="k">"url"</span>: <span class="s">"https://github.com/jane_doe"</span> },
+    { <span class="k">"type"</span>: <span class="s">"person"</span>, <span class="k">"name"</span>: <span class="s">"Jane Doe"</span>, <span class="k">"source"</span>: <span class="s">"gitlab.com"</span> }
+  ]
+}</code></pre>
+          <p class="small muted pad">Every tool returns this shape. <code>--format table</code> to read it; <code>ot extract</code> and <code>ot pivot</code> to continue.</p>
+        </section>
+
+        <article class="prose" aria-label="README">
+          <h2>maigret (community package)</h2>
+          <p>This repository packages <a href="#">github.com/soxoj/maigret</a> for the OTInstaller Registry as <code>osintverse-community/maigret</code>. The tool is the work of its authors, under the MIT licence; this repository only holds the manifest and release workflow.</p>
+          <p>Report problems with the tool upstream, and problems with the packaging here. If you maintain the upstream project and want to publish it yourself, run <code>ot claim osintverse-community/maigret</code>: the package is transferred to you.</p>
+          <p>It installs the upstream project's own release from PyPI, pinned by version and hash; nothing here is rebuilt.</p>
+        </article>
+
+        <section aria-labelledby="g-h">
+          <div class="section-head"><h2 id="g-h">Guides using this tool</h2></div>
+          <div class="guide-row"><div><a href="#">Username investigation playbook</a><p class="sum">From a name or one handle to verified accounts across thousands of sites.</p></div><span class="small muted">beginner · 4 tools</span></div>
+        </section>
+
+        <section aria-labelledby="next-h">
+          <div class="section-head"><h2 id="next-h">What next</h2></div>
+          <p class="small muted mb-2">maigret finds accounts, URLs and people. Tools that take those:</p>
+          <p class="pivots"><a class="chip" href="#">account → 6 tools</a><a class="chip" href="#">url → 9 tools</a><a class="chip" href="#">person → 2 tools</a><a class="chip" href="#">ot pivot results.json</a></p>
+        </section>
+      </div>
+
+      <aside class="panel facts" aria-label="Facts">
+        <section>
+          <h3>Takes</h3>
+          <ul>
+            <li><code>--username</code> username <span class="faint">required</span></li>
+            <li><code>--site</code> string <span class="faint">optional</span><div class="desc">Only check this site, such as GitHub</div></li>
+            <li><code>--top_sites</code> integer <span class="faint">optional</span><div class="desc">How many of the most popular sites to check (default 500)</div></li>
+          </ul>
+        </section>
+        <section class="finds">
+          <h3>Finds</h3>
+          <ul>
+            <li><a href="#">account</a> <span class="n">→ 6 tools take it</span></li>
+            <li><a href="#">url</a> <span class="n">→ 9 tools</span></li>
+            <li><a href="#">person</a> <span class="n">→ 2 tools</span></li>
+          </ul>
+        </section>
+        <section>
+          <h3>Keys</h3>
+          <ul><li class="muted">None needed.</li></ul>
+        </section>
+        <section>
+          <h3>Behaviour</h3>
+          <ul class="beh">
+            <li>Does not contact the target</li>
+            <li>Does not log in to accounts</li>
+            <li class="yes">Collects personal data</li>
+          </ul>
+          <p class="small muted mt-2">Talks to: 3,000+ public sites (declared egress).</p>
+        </section>
+        <section>
+          <h3>Details</h3>
+          <dl>
+            <dt>Licence</dt><dd>MIT</dd>
+            <dt>Runtime</dt><dd>pipx (Python 3.12 wheel)</dd>
+            <dt>Source</dt><dd><a href="#">github.com/osintverse-community/maigret</a></dd>
+            <dt>Upstream</dt><dd><a href="#">github.com/soxoj/maigret</a></dd>
+            <dt>Categories</dt><dd><a href="#">username</a>, <a href="#">social-media</a></dd>
+            <dt>Published</dt><dd>20 Oct 2026</dd>
+          </dl>
+        </section>
+        <section>
+          <ul>
+            <li><a href="#">View as JSON</a> <span class="faint">api.otinstaller.com/v1/tools/…</span></li>
+            <li><a href="#">Manifest</a> · <a href="#">Report this tool</a></li>
+          </ul>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap foot-bar"><span>© 2026 OSINTverse · Apache-2.0 · <a href="#">Source</a></span><span><a href="#">Security model</a> · <a href="#">Transparency</a> · <a href="#">Feedback</a></span></div>
+  </footer>
+</body>
+</html>

@@ -1,26 +1,21 @@
 ---
 import Base from "../layouts/Base.astro";
+import PasteBox from "../components/PasteBox.astro";
 
 Astro.response.status = 404;
 ---
 <Base title="Not found" noindex>
-  <div class="nf card fade-in">
-    <p class="code" aria-hidden="true">404</p>
+  <div class="nf">
+    <p class="eyebrow">404</p>
     <h1>Nothing lives at this address</h1>
-    <p class="muted">If you followed a link to a tool, it may have been renamed or removed. Try a search instead.</p>
-    <form action="/search" method="get" role="search" class="row">
-      <label class="sr-only" for="nf-q">Search the registry</label>
-      <input id="nf-q" type="search" name="q" placeholder="Search tools" class="grow" />
-      <button class="btn btn-primary" type="submit">Search</button>
-    </form>
-    <p class="small"><a href="/">Home</a> · <a href="/search">All tools</a> · <a href="/guides">Guides</a> · <a href="/policy/transparency">Removed packages</a></p>
+    <p class="muted">If you followed a link to a tool, it may have been renamed or removed. Paste the value you have, or search by name.</p>
+    <PasteBox id="nf-q" />
+    <p class="small muted"><a href="/">Home</a> · <a href="/search">All tools</a> · <a href="/guides">Guides</a> · <a href="/policy/transparency">Removed packages</a></p>
   </div>
 </Base>
 
 <style>
-  .nf { max-width: 560px; margin: 6vh auto; padding: 40px 32px; text-align: center; display: grid; gap: 10px; justify-items: center; }
-  .nf:hover { translate: none; }
-  .code { font-family: var(--font-mono); font-size: var(--fs-6); font-weight: 800; letter-spacing: -0.05em; margin: 0; background: linear-gradient(120deg, var(--accent), var(--ok)); -webkit-background-clip: text; background-clip: text; color: transparent; line-height: 1; }
-  .nf h1 { margin: 0; font-size: var(--fs-4); }
-  .nf form { width: 100%; justify-content: center; }
+  .nf { max-width: 640px; margin: 8vh auto; display: grid; gap: 12px; }
+  .nf .eyebrow, .nf h1, .nf p { margin: 0; }
+  .nf h1 { font-size: var(--fs-5); }
 </style>

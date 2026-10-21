@@ -1,4 +1,6 @@
 ---
+// The HTML shell: head, header with account state, main, lean footer, and the site-wide client code (copy
+// buttons, the account menu). No content is hidden waiting for JavaScript and nothing animates on its own.
 import "../styles/global.css";
 import { Font } from "astro:assets";
 import { SITE_URL } from "../lib/api";
@@ -18,10 +20,12 @@ interface Props {
   noindex?: boolean;
   /** Full-bleed pages (the home page) draw their own sections. */
   bleed?: boolean;
+  /** The API route that holds this page's data, linked as its JSON twin. */
+  jsonHref?: string;
   /** URL of the page's Markdown twin, announced as a rel="alternate" link for agents. */
   markdown?: string;
 }
-const { title, description = "Find, install and run OSINT tools and investigation guides with one command.", canonical, jsonLd, noindex, bleed = false, markdown } = Astro.props;
+const { title, description = "Find, install and run OSINT tools and investigation guides with one command.", canonical, jsonLd, noindex, bleed = false, jsonHref, markdown } = Astro.props;
 const fullTitle = title === "OTInstaller Registry" ? "OTInstaller — the OSINT tool registry" : `${title} · OTInstaller`;
 const canonicalUrl = `${SITE_URL}${canonical ?? Astro.url.pathname}`;
 const path = Astro.url.pathname;
@@ -29,9 +33,10 @@ const nav = [
   { href: "/search", label: "Tools" },
   { href: "/guides", label: "Guides" },
   { href: "/docs", label: "Docs" },
-  { href: "/import", label: "Publish" },
+  { href: "/publish", label: "Publish" },
 ];
-const isCurrent = (href: string) => path === href || path.startsWith(href + "/") || (href === "/search" && (path.startsWith("/input/") || path.startsWith("/category/")));
+const isCurrent = (href: string) =>
+  path === href || path.startsWith(href + "/") || (href === "/search" && (path.startsWith("/input/") || path.startsWith("/category/"))) || (href === "/publish" && path.startsWith("/import"));
 ---
 <!doctype html>
 <html lang="en">
@@ -44,8 +49,7 @@ const isCurrent = (href: string) => path === href || path.startsWith(href + "/")
     <link rel="canonical" href={canonicalUrl} />
     {markdown && <link rel="alternate" type="text/markdown" href={markdown} />}
     {(noindex || Astro.url.search !== "") && <meta name="robots" content="noindex" />}
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f8fb" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0f17" />
+    <meta name="theme-color" content="#0a0a0a" />
     <meta property="og:site_name" content="OTInstaller" />
     <meta property="og:title" content={fullTitle} />
     <meta property="og:description" content={description} />
@@ -54,21 +58,20 @@ const isCurrent = (href: string) => path === href || path.startsWith(href + "/")
     <meta property="og:image" content={`${SITE_URL}/og.png`} />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="OTInstaller: find, install and run OSINT tools with one command" />
+    <meta property="og:image:alt" content="OTInstaller: paste what you have, run the right OSINT tool" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <Font cssVariable="--font-inter" preload />
-    <Font cssVariable="--font-jbm" preload />
+    {jsonHref && <link rel="alternate" type="application/json" href={jsonHref} />}
+    <Font cssVariable="--font-geist" preload />
     {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd).replace(/</g, "\\u003c")} />}
   </head>
   <body>
-    <div class="bg" aria-hidden="true"></div>
     <a class="skip" href="#main">Skip to content</a>
     <BetaNotice />
     <header class="site-header glass" data-header>
       <div class="wrap bar">
         <a class="brand" href="/" aria-label="OTInstaller home">
-          <span class="mark"><Logo size={22} /></span>
+          <span class="mark"><Logo size={16} /></span>
           <span class="word">OTInstaller</span>
         </a>
         <nav class="main-nav" aria-label="Main">
@@ -77,19 +80,27 @@ const isCurrent = (href: string) => path === href || path.startsWith(href + "/")
           </ul>
         </nav>
         <div class="tools">
-          <button class="search-btn" type="button" data-open-search aria-label="Search tools and guides (press / or Ctrl K)">
+          <button class="search-btn" type="button" data-open-search aria-label="Search, or paste a value (press / or Ctrl K)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
-            <span class="hint">Search</span>
+            <span class="hint">Search or paste a value</span>
             <kbd class="kbd">/</kbd>
           </button>
           <ThemeToggle />
-          <a class="btn btn-ghost acct" href="/admin" data-staff hidden aria-current={path.startsWith("/admin") ? "page" : undefined}>Admin</a>
-          <a class="btn btn-ghost acct" href="/dashboard" aria-current={path.startsWith("/dashboard") ? "page" : undefined}>Dashboard</a>
-          <details class="menu">
+          <a class="btn btn-sm acct" href="/dashboard" data-signin aria-current={path.startsWith("/dashboard") ? "page" : undefined}>Sign in</a>
+          <details class="menu acct-menu" data-account hidden>
+            <summary><span class="login" data-login>account</span> <span aria-hidden="true">▾</span></summary>
+            <ul class="list-plain">
+              <li><a href="/dashboard">Dashboard</a></li>
+              <li data-staff hidden><a href="/admin">Admin</a></li>
+              <li><a href="/settings/accounts">Accounts</a></li>
+              <li><a href="/feedback">Feedback</a></li>
+            </ul>
+          </details>
+          <details class="menu nav-menu">
             <summary aria-label="Menu"><span class="burger" aria-hidden="true"><i></i><i></i><i></i></span></summary>
             <ul class="list-plain">
               {nav.map((n) => <li><a href={n.href} aria-current={isCurrent(n.href) ? "page" : undefined}>{n.label}</a></li>)}
-              <li><a href="/dashboard">Dashboard</a></li>
+              <li><a href="/dashboard" data-signin-mobile>Sign in</a></li>
               <li data-staff hidden><a href="/admin">Admin</a></li>
             </ul>
           </details>
@@ -103,54 +114,43 @@ const isCurrent = (href: string) => path === href || path.startsWith(href + "/")
       <div class="wrap">
         <div class="foot-grid">
           <div class="foot-brand">
-            <a class="brand" href="/"><span class="mark"><Logo size={20} /></span><span class="word">OTInstaller</span></a>
-            <p class="small muted">A free, public registry of OSINT tools and investigation guides, and <code>ot</code>, the command that runs them on your own machine.</p>
-            <p class="small muted">By <a href="https://osintverse.com" rel="noopener">OSINTverse</a></p>
+            <p class="eyebrow">OTInstaller</p>
+            <p class="small muted">A free registry of OSINT tools and investigation guides, and <code>ot</code>, the command that runs them on your own machine. By <a href="https://osintverse.com" rel="noopener">OSINTverse</a>.</p>
           </div>
           <div>
-            <h2>Use</h2>
+            <p class="eyebrow">Use</p>
             <ul class="list-plain small">
               <li><a href="/search">All tools</a></li>
               <li><a href="/guides">Guides</a></li>
               <li><a href="/docs/getting-started">Install ot</a></li>
               <li><a href="/docs/cli">CLI reference</a></li>
               <li><a href="/docs/automation">Scripts and agents</a></li>
-              <li><a href="/llms.txt">llms.txt</a></li>
-              <li><a href="https://github.com/OTInstaller/otinstaller" rel="noopener">Source code</a></li>
+              {jsonHref ? <li><a href={jsonHref}>This page as JSON</a>{markdown && <> · <a href={markdown}>Markdown</a></>}</li> : <li><a href="/llms.txt">llms.txt</a></li>}
             </ul>
           </div>
           <div>
-            <h2>Publish</h2>
+            <p class="eyebrow">Publish</p>
             <ul class="list-plain small">
+              <li><a href="/publish">How publishing works</a></li>
               <li><a href="/import">Import a repository</a></li>
-              <li><a href="/docs/publishing">Publishing</a></li>
               <li><a href="/docs/manifest">Manifest reference</a></li>
               <li><a href="/docs/guides">Writing guides</a></li>
             </ul>
           </div>
           <div>
-            <h2>Trust</h2>
+            <p class="eyebrow">Trust</p>
             <ul class="list-plain small">
               <li><a href="/docs/security">Security model</a></li>
               <li><a href="/policy/transparency">Transparency</a></li>
               <li><a href="/policy/takedown">Reports and takedowns</a></li>
-              <li><a href="/policy/acceptable-use">Acceptable use</a></li>
-            </ul>
-          </div>
-          <div>
-            <h2>Company</h2>
-            <ul class="list-plain small">
-              <li><a href="/policy/terms">Terms</a></li>
-              <li><a href="/policy/privacy">Privacy</a></li>
-              <li><a href="/feedback">Feedback</a></li>
-              <li><a href="mailto:support@otinstaller.com">Contact</a></li>
-              <li><a href="mailto:security@otinstaller.com">Report a vulnerability</a></li>
+              <li><a href="/policy/privacy">Privacy</a> · <a href="/policy/terms">Terms</a> · <a href="/policy/acceptable-use">Acceptable use</a></li>
+              <li><a href="mailto:security@otinstaller.com">security@otinstaller.com</a></li>
             </ul>
           </div>
         </div>
         <div class="foot-bar small muted">
-          <span>© {new Date().getFullYear()} OSINTverse</span>
-          <span class="foot-cmd"><code>curl -fsSL https://get.otinstaller.com/ot | sh</code></span>
+          <span>© {new Date().getFullYear()} OSINTverse · Apache-2.0 · <a href="https://github.com/OTInstaller/otinstaller" rel="noopener">Source</a></span>
+          <span><a href="/feedback">Feedback</a> · <a href="mailto:support@otinstaller.com">Contact</a></span>
         </div>
       </div>
     </footer>
@@ -179,124 +179,83 @@ const isCurrent = (href: string) => path === href || path.startsWith(href + "/")
     }, 1600);
   });
 
-  // Reveal-on-scroll and count-up. Content is only hidden when the boot script added html.js.
-  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n));
-  const countUp = (el: HTMLElement) => {
-    const end = Number(el.dataset.count ?? 0);
-    if (!end || reduce) return;
-    const start = performance.now();
-    const dur = 1100;
-    const tick = (now: number) => {
-      const p = Math.min(1, (now - start) / dur);
-      const eased = 1 - Math.pow(1 - p, 3);
-      el.textContent = fmt(Math.round(end * eased));
-      if (p < 1) requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  };
-  const io = new IntersectionObserver(
-    (entries) => {
-      for (const en of entries) {
-        if (!en.isIntersecting) continue;
-        en.target.classList.add("in");
-        if ((en.target as HTMLElement).dataset.count) countUp(en.target as HTMLElement);
-        io.unobserve(en.target);
-      }
-    },
-    { rootMargin: "0px 0px -8% 0px", threshold: 0.05 },
-  );
-  for (const el of document.querySelectorAll(".reveal, [data-count]")) io.observe(el);
-
-  // Compact header once the page scrolls.
-  const header = document.querySelector<HTMLElement>("[data-header]");
-  const onScroll = () => header?.classList.toggle("scrolled", scrollY > 8);
-  onScroll();
-  addEventListener("scroll", onScroll, { passive: true });
-
-  // Reviewers and admins get an Admin link. The answer is kept for 10 minutes per tab, so the API is
-  // not asked on every page; signing in or out on the dashboard refreshes it.
-  const STAFF_KEY = "ot-staff";
-  const showStaff = (on: boolean) => {
-    for (const el of document.querySelectorAll<HTMLElement>("[data-staff]")) el.hidden = !on;
+  // Account state in the header. /me is asked once per tab every 10 minutes (the session cookie is httpOnly, so
+  // there is no cheaper way to know); signing in or out on the dashboard refreshes the answer.
+  const ACCOUNT_KEY = "ot-account";
+  const show = (login: string | null, staff: boolean) => {
+    for (const el of document.querySelectorAll<HTMLElement>("[data-staff]")) el.hidden = !staff;
+    for (const el of document.querySelectorAll<HTMLElement>("[data-signin]")) el.hidden = !!login;
+    for (const el of document.querySelectorAll<HTMLElement>("[data-account]")) el.hidden = !login;
+    for (const el of document.querySelectorAll<HTMLElement>("[data-login]")) el.textContent = login ?? "";
+    for (const el of document.querySelectorAll<HTMLAnchorElement>("[data-signin-mobile]")) el.textContent = login ? `Dashboard (${login})` : "Sign in";
   };
   try {
-    const cached = JSON.parse(sessionStorage.getItem(STAFF_KEY) ?? "null") as { staff: boolean; at: number } | null;
-    if (cached && Date.now() - cached.at < 10 * 60 * 1000) showStaff(cached.staff);
+    const cached = JSON.parse(sessionStorage.getItem(ACCOUNT_KEY) ?? "null") as { login: string | null; staff: boolean; at: number } | null;
+    if (cached && Date.now() - cached.at < 10 * 60 * 1000) show(cached.login, cached.staff);
     else
       fetch(`${API_URL}/v1/me`, { credentials: "include" })
         .then((r) => (r.ok ? r.json() : null))
-        .then((me: { admin?: boolean; reviewer?: boolean } | null) => {
+        .then((me: { login?: string; admin?: boolean; reviewer?: boolean } | null) => {
+          const login = me?.login ?? null;
           const staff = !!(me && (me.admin || me.reviewer));
-          showStaff(staff);
-          sessionStorage.setItem(STAFF_KEY, JSON.stringify({ staff, at: Date.now() }));
+          show(login, staff);
+          sessionStorage.setItem(ACCOUNT_KEY, JSON.stringify({ login, staff, at: Date.now() }));
         })
         .catch(() => {});
   } catch {
-    // Storage unavailable (private mode): skip the link rather than call the API on every page.
+    // Storage unavailable (private mode): the header stays signed out rather than asking on every page.
   }
 
-  // Close the mobile menu after navigating or when clicking outside.
-  const menu = document.querySelector<HTMLDetailsElement>("details.menu");
+  // Close open menus when clicking outside.
   document.addEventListener("click", (e) => {
-    if (menu?.open && !menu.contains(e.target as Node)) menu.open = false;
+    for (const menu of document.querySelectorAll<HTMLDetailsElement>("details.menu[open]")) {
+      if (!menu.contains(e.target as Node)) menu.open = false;
+    }
   });
 </script>
 
 <style>
-  [data-staff][hidden] { display: none; }
-  .site-header { position: sticky; top: 0; z-index: 50; border-bottom: 1px solid transparent; transition: border-color var(--dur-2), box-shadow var(--dur-2); }
-  .site-header.scrolled { border-bottom-color: var(--border); box-shadow: 0 8px 30px -20px rgb(0 0 0 / 50%); }
-  .bar { display: flex; align-items: center; gap: 18px; min-height: 64px; transition: min-height var(--dur-2); }
-  .scrolled .bar { min-height: 56px; }
-  .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 760; color: var(--text); text-decoration: none; font-size: 1.05rem; letter-spacing: -0.02em; }
-  .mark { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--bg-inverse); color: var(--accent); box-shadow: 0 6px 16px -8px rgb(var(--accent-rgb) / 70%); transition: rotate var(--dur-3) var(--ease-spring); }
-  :root[data-theme="dark"] .mark, :root:not([data-theme="light"]) .mark { background: var(--accent-soft); }
-  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .mark { background: var(--bg-inverse); } }
-  .brand:hover .mark { rotate: -8deg; }
-  .main-nav ul { display: flex; gap: 2px; list-style: none; margin: 0; padding: 0; }
-  .main-nav a { position: relative; display: block; padding: 8px 12px; border-radius: var(--radius-sm); color: var(--text-muted); text-decoration: none; font-size: var(--fs-1); font-weight: 550; transition: color var(--dur-1), background var(--dur-1); }
-  .main-nav a::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 4px; height: 2px; border-radius: 2px; background: var(--accent); scale: 0 1; transform-origin: left; transition: scale var(--dur-2) var(--ease-out); }
-  .main-nav a:hover { color: var(--text); background: var(--bg-subtle); }
-  .main-nav a[aria-current="page"] { color: var(--text); }
-  .main-nav a[aria-current="page"]::after { scale: 1 1; }
-  .tools { margin-left: auto; display: flex; align-items: center; gap: 6px; }
-  .search-btn { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px 0 12px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--bg-raised); color: var(--text-muted); font-size: var(--fs-1); transition: border-color var(--dur-1), color var(--dur-1), box-shadow var(--dur-2); }
-  .search-btn:hover { border-color: var(--accent); color: var(--text); box-shadow: var(--shadow-1); }
+  [hidden] { display: none !important; }
+  .site-header { position: sticky; top: 0; z-index: 50; border-bottom: 1px solid var(--border); }
+  .bar { display: flex; align-items: center; gap: 24px; min-height: 57px; }
+  .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; color: var(--text); text-decoration: none; }
+  .mark { display: grid; place-items: center; width: 22px; height: 22px; background: var(--bg-inverse); color: var(--bg); }
+  .main-nav ul { display: flex; gap: 4px; list-style: none; margin: 0; padding: 0; }
+  .main-nav a { display: block; padding: 8px 10px; color: var(--text-muted); text-decoration: none; transition: color var(--dur-1); }
+  .main-nav a:hover { color: var(--text); }
+  .main-nav a[aria-current="page"] { color: var(--text); box-shadow: inset 0 -2px 0 var(--text); }
+  .tools { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .search-btn { display: inline-flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px; border: 1px solid var(--border-strong); background: transparent; color: var(--text-muted); min-width: 220px; transition: border-color var(--dur-1), color var(--dur-1); }
+  .search-btn:hover { border-color: var(--text); color: var(--text); }
   .search-btn svg { width: 16px; height: 16px; }
-  .search-btn .hint { min-width: 120px; text-align: left; }
-  .acct { font-weight: 550; color: var(--text-muted); }
-  .acct[aria-current="page"] { color: var(--text); }
-  .menu { display: none; position: relative; }
-  .menu summary { list-style: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: var(--radius); cursor: pointer; }
+  .search-btn .hint { text-align: left; flex: 1; font-size: var(--fs-1); }
+  .acct { font-weight: 500; }
+  .menu { position: relative; }
+  .menu summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px; border: 1px solid var(--border-strong); cursor: pointer; font-size: var(--fs-1); }
   .menu summary::-webkit-details-marker { display: none; }
-  .menu summary:hover { background: var(--bg-subtle); }
+  .menu summary:hover { border-color: var(--text); }
+  .nav-menu { display: none; }
+  .nav-menu summary { width: 36px; padding: 0; justify-content: center; }
   .burger { display: grid; gap: 4px; }
-  .burger i { display: block; width: 18px; height: 2px; border-radius: 2px; background: var(--text); transition: translate var(--dur-2) var(--ease-out), rotate var(--dur-2) var(--ease-out), opacity var(--dur-1); }
-  .menu[open] .burger i:nth-child(1) { translate: 0 6px; rotate: 45deg; }
-  .menu[open] .burger i:nth-child(2) { opacity: 0; }
-  .menu[open] .burger i:nth-child(3) { translate: 0 -6px; rotate: -45deg; }
-  .menu ul { position: absolute; right: 0; top: calc(100% + 8px); min-width: 200px; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-2); transition: opacity var(--dur-2) var(--ease-out), translate var(--dur-2) var(--ease-out), display var(--dur-2) allow-discrete; }
-  .menu:not([open]) ul { display: none; opacity: 0; translate: 0 -6px; }
-  @starting-style { .menu[open] ul { opacity: 0; translate: 0 -6px; } }
-  .menu li + li { margin-top: 2px; }
-  .menu ul a { display: block; padding: 9px 12px; border-radius: var(--radius-sm); text-decoration: none; color: var(--text); font-weight: 550; }
-  .menu ul a:hover, .menu ul a[aria-current="page"] { background: var(--bg-subtle); color: var(--accent); }
+  .burger i { display: block; width: 16px; height: 2px; background: var(--text); }
+  .menu ul { position: absolute; right: 0; top: calc(100% + 6px); min-width: 200px; padding: 4px; border: 1px solid var(--border-strong); background: var(--bg); z-index: 60; }
+  .menu:not([open]) ul { display: none; }
+  .menu li + li { margin-top: 0; }
+  .menu ul a { display: block; padding: 8px 10px; text-decoration: none; color: var(--text); }
+  .menu ul a:hover, .menu ul a[aria-current="page"] { background: var(--bg-subtle); }
   @media (max-width: 820px) {
-    .main-nav, .acct, .search-btn .hint, .search-btn .kbd { display: none; }
-    .search-btn { padding: 0; width: 38px; justify-content: center; }
-    .menu { display: block; }
+    .main-nav, .acct, .acct-menu, .search-btn .hint, .search-btn .kbd { display: none; }
+    .search-btn { min-width: 0; width: 36px; padding: 0; justify-content: center; }
+    .nav-menu { display: block; }
   }
 
-  .site-footer { border-top: 1px solid var(--border); padding: 48px 0 28px; background: var(--bg-subtle); }
-  .foot-grid { display: grid; gap: 28px; grid-template-columns: 1.6fr repeat(4, minmax(0, 1fr)); }
-  .foot-grid h2 { font-size: var(--fs-0); text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-faint); margin: 0 0 12px; font-weight: 650; }
-  .foot-grid li + li { margin-top: 8px; }
+  .site-footer { border-top: 1px solid var(--border); padding: 40px 0 24px; }
+  .foot-grid { display: grid; gap: 24px; grid-template-columns: 1.5fr repeat(3, minmax(0, 1fr)); }
+  .foot-grid .eyebrow { margin: 0 0 10px; color: var(--text); }
+  .foot-grid li + li { margin-top: 6px; }
   .foot-grid a { color: var(--text-muted); text-decoration: none; }
-  .foot-grid a:hover { color: var(--accent); }
-  .foot-brand p { max-width: 36ch; }
-  .foot-bar { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; border-top: 1px solid var(--border); margin-top: 36px; padding-top: 18px; }
-  .foot-cmd { min-width: 0; max-width: 100%; overflow-x: auto; }
-  .foot-cmd code { font-size: 0.8rem; white-space: nowrap; }
-  @media (max-width: 900px) { .foot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .foot-brand { grid-column: 1 / -1; } }
+  .foot-grid a:hover { color: var(--text); text-decoration: underline; }
+  .foot-brand p:not(.eyebrow) { max-width: 40ch; margin: 0; }
+  .foot-bar { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; border-top: 1px solid var(--border); margin-top: 28px; padding-top: 16px; }
+  @media (max-width: 820px) { .foot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .foot-brand { grid-column: 1 / -1; } }
 </style>

@@ -1,54 +1,69 @@
 ---
+// A publisher's page: who they are, what they publish about, and their tools and guides as rows.
 import Base from "../../layouts/Base.astro";
-import ToolCard from "../../components/ToolCard.astro";
+import ToolRow from "../../components/ToolRow.astro";
 import { apiOrNull, type Namespace } from "../../lib/api";
-import { formatDate } from "../../lib/format";
+import { formatDate, inputLabel } from "../../lib/format";
 import { cacheFor } from "../../lib/page";
 
 const ns = Astro.params.ns!;
 const n = await apiOrNull<Namespace>(`/namespaces/${encodeURIComponent(ns)}`);
 if (!n) return Astro.rewrite("/404");
-const tools = n.tools.filter((t) => t.kind === "tool");
+const want = Astro.url.searchParams.get("input");
+const tools = n.tools.filter((t) => t.kind === "tool").filter((t) => !want || t.inputs.includes(want));
 const guides = n.tools.filter((t) => t.kind === "guide");
 const profile = n.provider === "github" ? `https://github.com/${n.name}` : n.provider === "gitlab" ? `https://gitlab.com/${n.name}` : null;
 const name = n.display_name ?? n.name;
+const about = [...new Set(n.tools.filter((t) => t.kind === "tool").flatMap((t) => t.inputs))].sort();
 cacheFor(Astro, 300);
 ---
-<Base title={name} description={`OSINT tools and guides published by ${name}.`}>
-  <header class="pub fade-in">
-    <span class:list={["avatar", { verified: n.verified }]}>
-      {n.avatar_url ? <img src={n.avatar_url} alt="" width="72" height="72" /> : <span class="initial" aria-hidden="true">{n.name.slice(0, 1).toUpperCase()}</span>}
+<Base title={name} description={`OSINT tools and guides published by ${name}.`} jsonHref={`https://api.otinstaller.com/v1/namespaces/${encodeURIComponent(n.name)}`}>
+  <header class="pub">
+    <span class="avatar" aria-hidden="true">
+      {n.avatar_url ? <img src={n.avatar_url} alt="" width="56" height="56" /> : <span class="initial">{n.name.slice(0, 1).toUpperCase()}</span>}
     </span>
     <div>
       <p class="eyebrow">Publisher</p>
       <h1>{name}</h1>
-      <div class="badges">
+      <p class="small muted meta">
         {n.verified && <span class="badge ok">Verified publisher</span>}
-        <span class="badge">{n.kind === "user" ? "User" : n.kind === "group" ? "Group" : "Organization"} on {n.provider === "gitlab" ? "GitLab" : "GitHub"}</span>
-        <span class="badge plain">{tools.length} {tools.length === 1 ? "tool" : "tools"}{guides.length > 0 && <>, {guides.length} {guides.length === 1 ? "guide" : "guides"}</>}</span>
-      </div>
-      <p class="small muted">Publishing since {formatDate(n.created_at)}{profile && <> · <a href={profile} rel="nofollow noopener">{profile.replace("https://", "")}</a></>}</p>
+        <span>{n.kind === "user" ? "User" : n.kind === "group" ? "Group" : "Organization"} on {n.provider === "gitlab" ? "GitLab" : "GitHub"}</span>
+        <span>· publishing since {formatDate(n.created_at)}</span>
+        {profile && <span>· <a href={profile} rel="nofollow noopener">{profile.replace("https://", "")}</a></span>}
+      </p>
+      {n.verified && <p class="small muted note">Verified: the registry confirmed who runs this namespace, and a person reviewed its first release.</p>}
     </div>
   </header>
+  {about.length > 0 && (
+    <p class="about row small">
+      <span class="muted">Publishes about:</span>
+      <a class="chip" href={`/${n.name}`} aria-current={!want ? "page" : undefined}>All</a>
+      {about.map((t) => <a class="chip" href={`/${n.name}?input=${t}`} rel="nofollow" aria-current={want === t ? "page" : undefined}>{inputLabel(t)}</a>)}
+    </p>
+  )}
   <section aria-labelledby="tools">
-    <h2 id="tools">Tools</h2>
-    {tools.length ? <div class="grid stagger">{tools.map((t) => <ToolCard tool={t} />)}</div> : <p class="muted">No tools yet.</p>}
+    <div class="section-head"><h2 id="tools">{tools.length} {tools.length === 1 ? "tool" : "tools"}{want && <> that take {inputLabel(want).toLowerCase()}</>}</h2></div>
+    {tools.length ? <div class="rows">{tools.map((t) => <ToolRow tool={t} />)}</div> : <p class="muted">No tools yet.</p>}
   </section>
   {guides.length > 0 && (
     <section aria-labelledby="guides">
-      <h2 id="guides">Guides</h2>
-      <div class="grid stagger">{guides.map((t) => <ToolCard tool={t} />)}</div>
+      <div class="section-head"><h2 id="guides">{guides.length} {guides.length === 1 ? "guide" : "guides"}</h2></div>
+      <div class="rows">{guides.map((t) => <ToolRow tool={t} />)}</div>
     </section>
   )}
 </Base>
 
 <style>
-  .pub { display: flex; gap: 20px; align-items: center; padding-bottom: 24px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
-  .pub h1 { margin: 0 0 8px; }
+  .pub { display: flex; gap: 16px; align-items: start; padding-bottom: 20px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+  .pub h1 { margin: 4px 0 6px; }
   .pub .eyebrow { margin: 0; }
-  .avatar { display: grid; place-items: center; flex: none; width: 76px; height: 76px; border-radius: 50%; padding: 2px; background: var(--border); }
-  .avatar.verified { background: linear-gradient(135deg, var(--ok), var(--accent)); box-shadow: 0 0 24px -6px rgb(var(--ok-rgb) / 60%); }
-  .avatar img, .initial { width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; background: var(--bg-raised); object-fit: cover; }
-  .initial { font-family: var(--font-mono); font-weight: 700; font-size: 1.6rem; color: var(--accent); }
-  .badges { margin-bottom: 6px; }
+  .avatar { display: grid; place-items: center; flex: none; width: 56px; height: 56px; border: 1px solid var(--border-strong); overflow: hidden; margin-top: 4px; }
+  .avatar img { width: 56px; height: 56px; object-fit: cover; }
+  .initial { font-weight: 600; font-size: var(--fs-5); }
+  .meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 0; }
+  .note { margin: 6px 0 0; max-width: 70ch; }
+  .about { margin: 0 0 24px; gap: 6px; }
+  section + section { margin-top: 32px; }
+  .section-head { margin-bottom: 0; }
+  .section-head h2 { font-size: var(--fs-4); margin-bottom: 8px; }
 </style>

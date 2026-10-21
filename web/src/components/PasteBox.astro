@@ -1,0 +1,80 @@
+---
+// The way in: paste a value, see what it looks like, get the tools that take it. A plain form to /search (which
+// redirects typed values to their input page on the server), so it works without JavaScript; the script only
+// keeps the "treat as" chip in step with what is typed.
+import { inputLabel } from "../lib/format";
+
+interface Props {
+  id?: string;
+  value?: string;
+  large?: boolean;
+}
+const { id = "paste", value = "", large = false } = Astro.props;
+const TYPES = ["email", "username", "phone", "domain", "ip", "url", "image", "crypto_address", "hash", "name", "company"];
+---
+<form class:list={["paste", { large }]} action="/search" method="get" role="search" data-paste>
+  <div class="field">
+    <label class="sr-only" for={id}>Paste an email, username, domain, IP, phone, URL, wallet or hash, or type a word</label>
+    <input id={id} name="q" type="search" value={value} placeholder="Paste an email, username, domain, IP, phone, URL or wallet…" autocomplete="off" spellcheck="false" />
+    <label class="treat" data-treat>
+      <span class="treat-label" data-treat-label>treat as</span>
+      <select name="type" aria-label="Treat the value as">
+        <option value="auto" selected>auto</option>
+        {TYPES.map((t) => <option value={t}>{inputLabel(t).toLowerCase()}</option>)}
+        <option value="name">a name to search</option>
+      </select>
+    </label>
+  </div>
+  <button class:list={["btn btn-strong", { "btn-lg": large }]} type="submit">Find tools →</button>
+</form>
+
+<script>
+  import { detect } from "../lib/detect";
+  for (const form of document.querySelectorAll<HTMLFormElement>("[data-paste]")) {
+    const input = form.querySelector<HTMLInputElement>("input[name=q]")!;
+    const select = form.querySelector<HTMLSelectElement>("select")!;
+    const label = form.querySelector<HTMLElement>("[data-treat-label]")!;
+    const treat = form.querySelector<HTMLElement>("[data-treat]")!;
+    let touched = false;
+    const update = () => {
+      const v = input.value.trim();
+      if (!v) {
+        treat.hidden = true;
+        return;
+      }
+      treat.hidden = false;
+      if (touched) return;
+      const kind = detect(v);
+      select.value = kind ?? "auto";
+      label.textContent = kind ? "looks like" : "search by";
+      if (!kind) select.value = "name";
+    };
+    select.addEventListener("change", () => {
+      touched = select.value !== "auto";
+      label.textContent = "treat as";
+    });
+    input.addEventListener("input", update);
+    update();
+  }
+</script>
+
+<style>
+  .paste { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .paste.large { max-width: 820px; }
+  .field { display: flex; align-items: center; border: 1px solid var(--border-strong); background: var(--bg); min-height: 44px; padding: 0 6px 0 12px; gap: 8px; }
+  .large .field { min-height: 48px; }
+  .field:focus-within { border-color: var(--text); }
+  .field input { flex: 1; min-width: 0; border: 0; background: none; padding: 8px 0; font-size: var(--fs-2); }
+  .large .field input { font-size: var(--fs-3); }
+  .field input:focus-visible { outline: none; }
+  .field input::-webkit-search-cancel-button { display: none; }
+  .treat { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 4px 0 10px; border: 1px solid var(--border-strong); font-size: var(--fs-1); color: var(--text-muted); white-space: nowrap; }
+  .treat[hidden] { display: none; }
+  .treat select { border: 0; background: transparent; padding: 0 4px; font-size: var(--fs-0); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text); cursor: pointer; }
+  .treat select:focus-visible { outline-offset: 0; }
+  @media (max-width: 640px) {
+    .paste { grid-template-columns: 1fr; }
+    .field { flex-wrap: wrap; padding: 8px 12px; }
+    .field input { flex-basis: 100%; }
+  }
+</style>

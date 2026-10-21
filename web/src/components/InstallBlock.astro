@@ -1,0 +1,77 @@
+---
+// The install block: one command per platform (radio tabs, so it works without JavaScript; a small script picks
+// the visitor's platform), what the script does before anything runs, and the three first-run steps. Used on the
+// home page and tool pages; the commands come from lib/install.ts so the docs say the same.
+import CopyCommand from "./CopyCommand.astro";
+import { INSTALLS, INSTALL_SCRIPT_URL, RELEASES_URL } from "../lib/install";
+
+interface Props {
+  /** Prefix for the radio group, so two blocks on one page do not collide. */
+  name?: string;
+  /** Only the commands and the "what this does" disclosure (tool pages). */
+  compact?: boolean;
+  /** The run command to show in the first-run strip. */
+  example?: string;
+}
+const { name = "os", compact = false, example = "ot run osintverse-community/holehe --email ada@example.com" } = Astro.props;
+---
+<div class:list={["install", { compact }]} data-install>
+  <div class="tabs" role="tablist" aria-label="Operating system">
+    {INSTALLS.map((i, idx) => (
+      <>
+        <input type="radio" name={name} id={`${name}-${i.id}`} value={i.id} checked={idx === 0} class="sr-only" />
+        <label for={`${name}-${i.id}`} role="tab">{i.label}</label>
+      </>
+    ))}
+  </div>
+  {INSTALLS.map((i) => (
+    <div class="pane" data-pane={i.id} role="tabpanel">
+      <CopyCommand label={`Install on ${i.label}`} command={i.command} />
+      <details class="what small">
+        <summary>What this script does</summary>
+        <ol>
+          <li>Downloads the latest <code>ot</code> release for your machine from <a href={RELEASES_URL} rel="noopener">GitHub Releases</a>.</li>
+          <li>Checks its SHA-256 against <code>checksums.txt</code>, and the Ed25519 signature on that file against the key built into the script.</li>
+          <li>Puts <code>ot</code> in {i.where}. Nothing else is written. <a href={INSTALL_SCRIPT_URL} rel="noopener">Read the script</a>.</li>
+        </ol>
+      </details>
+    </div>
+  ))}
+  {!compact && (
+    <ol class="steps small">
+      <li><code>ot doctor</code> <span class="muted">checks Docker or Podman and your keychain</span></li>
+      <li><code>{example}</code> <span class="muted">installs the tool after asking once, then runs it</span></li>
+      <li><code>ot auto ada@example.com</code> <span class="muted">runs everything you have installed that takes that value</span></li>
+    </ol>
+  )}
+</div>
+
+<script>
+  // Pick the visitor's platform; the first tab stays selected when it cannot be told.
+  const ua = navigator.userAgent;
+  const pick = /Windows/i.test(ua) ? "windows" : /Mac|Linux|X11/i.test(ua) ? "unix" : null;
+  if (pick) {
+    for (const r of document.querySelectorAll<HTMLInputElement>("[data-install] input[type=radio]")) r.checked = r.value === pick;
+  }
+</script>
+
+<style>
+  .install { display: grid; gap: 10px; }
+  .tabs { display: inline-flex; border: 1px solid var(--border-strong); width: max-content; max-width: 100%; }
+  .tabs label { cursor: pointer; padding: 6px 12px; color: var(--text-muted); font-size: var(--fs-1); transition: background var(--dur-1), color var(--dur-1); }
+  .tabs label:hover { color: var(--text); }
+  .tabs input:focus-visible + label { outline: 2px solid var(--text); outline-offset: -2px; }
+  .pane { display: none; }
+  .pane > * + * { margin-top: 8px; }
+  .what summary { cursor: pointer; color: var(--text-muted); }
+  .what summary:hover { color: var(--text); }
+  .what ol { margin: 8px 0 0; padding-left: 20px; color: var(--text-muted); display: grid; gap: 4px; }
+  .steps { margin: 4px 0 0; padding-left: 20px; display: grid; gap: 4px; }
+  .steps code { color: var(--text); }
+  .install:has(#os-unix:checked) [data-pane="unix"], .install:has(#os-windows:checked) [data-pane="windows"],
+  .install:has(#cta-unix:checked) [data-pane="unix"], .install:has(#cta-windows:checked) [data-pane="windows"],
+  .install:has(#tool-unix:checked) [data-pane="unix"], .install:has(#tool-windows:checked) [data-pane="windows"] { display: block; }
+  .tabs:has(#os-unix:checked) label[for="os-unix"], .tabs:has(#os-windows:checked) label[for="os-windows"],
+  .tabs:has(#cta-unix:checked) label[for="cta-unix"], .tabs:has(#cta-windows:checked) label[for="cta-windows"],
+  .tabs:has(#tool-unix:checked) label[for="tool-unix"], .tabs:has(#tool-windows:checked) label[for="tool-windows"] { background: var(--bg-inverse); color: var(--bg); }
+</style>

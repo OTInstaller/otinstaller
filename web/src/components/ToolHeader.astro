@@ -1,23 +1,22 @@
 ---
-// The header and tab bar shared by a tool's pages.
-import Badges from "./Badges.astro";
+// The header and tab bar shared by a tool's pages: name, version, summary, the notices that change a decision,
+// and at most three badges. The evidence lives in the body of the page, not up here.
 import type { ToolDetail } from "../lib/api";
-import { formatCount } from "../lib/format";
 
 interface Props {
   tool: ToolDetail;
   active: "overview" | "docs" | "versions" | "security";
   hasDocs: boolean;
-  scanStatus?: string;
 }
-const { tool: t, active, hasDocs, scanStatus } = Astro.props;
+const { tool: t, active, hasDocs } = Astro.props;
 const ref = `${t.namespace}/${t.name}`;
 const tabs = [
   { key: "overview", href: `/${ref}`, label: "Overview" },
-  ...(hasDocs ? [{ key: "docs", href: `/${ref}/docs`, label: "Docs" }] : []),
-  { key: "versions", href: `/${ref}/versions`, label: "Versions" },
   { key: "security", href: `/${ref}/security`, label: "Security" },
+  { key: "versions", href: `/${ref}/versions`, label: "Versions" },
+  ...(hasDocs ? [{ key: "docs", href: `/${ref}/docs`, label: "Docs" }] : []),
 ];
+const upstream = t.homepage && t.homepage !== t.repo_url ? t.homepage : t.repo_url;
 ---
 <header class="tool-head">
   <nav class="small crumbs" aria-label="Breadcrumb">
@@ -26,42 +25,37 @@ const tabs = [
   <div class="title-row">
     <h1>{t.name}</h1>
     <span class="ver">v{t.latest_version}</span>
+    {t.verified && <span class="badge ok">Verified publisher</span>}
+    {t.health === "broken" && <span class="badge warn">Possibly broken</span>}
+    {t.status === "deprecated" && <span class="badge warn">Deprecated</span>}
   </div>
   <p class="lead">{t.summary}</p>
-  <div class="row meta-row">
-    <Badges tool={t} scanStatus={scanStatus} />
-    <span class="small muted stats">
-      <span title="Stars">★ {formatCount(t.stars)}</span>
-      <span title="Installs in the last 30 days">↓ {formatCount(t.installs_30d)} <span class="faint">/ 30 days</span></span>
-    </span>
-  </div>
   {t.deprecated_message && (
-    <p class="notice warn">Deprecated: {t.deprecated_message}{t.deprecated_replacement && <> Use <a href={`/${t.deprecated_replacement}`}>{t.deprecated_replacement}</a> instead.</>}</p>
+    <p class="notice warn"><b>Deprecated.</b> {t.deprecated_message}{t.deprecated_replacement && <> Use <a href={`/${t.deprecated_replacement}`}>{t.deprecated_replacement}</a> instead.</>}</p>
   )}
   {t.community_packaged && (
-    <p class="notice small">Packaged by the community from <a href={t.homepage ?? t.repo_url ?? "#"} rel="nofollow noopener">its upstream project</a>. Maintain that project? <a href={`/${t.namespace}/${t.name}/claim`}>Claim this package</a>.</p>
+    <p class="notice small"><b>Community-packaged</b> from <a href={upstream ?? "#"} rel="nofollow noopener">{(upstream ?? "its upstream project").replace(/^https?:\/\//, "")}</a>: the registry's community pins the upstream release; the tool is its authors' work. Maintain that project? <a href={`/${ref}/claim`}>Claim this package</a>.</p>
   )}
-  {t.source_unavailable && <p class="notice bad">The source repository is gone or private. Installed copies keep working, but no new versions will come.</p>}
+  {t.manifest_held_by_registry && <p class="notice small"><b>Manifest held by the registry.</b> The repository has no <code>otinstaller.yaml</code> yet, so releases are unsigned until it is added.</p>}
+  {t.source_unavailable && <p class="notice bad"><b>Source unavailable.</b> The repository is gone or private. Installed copies keep working, but no new versions will come.</p>}
   <nav class="tabs" aria-label="Tool sections">
     {tabs.map((tab) => <a href={tab.href} aria-current={tab.key === active ? "page" : undefined}>{tab.label}</a>)}
   </nav>
 </header>
 
 <style>
-  .tool-head { margin-bottom: 26px; }
-  .crumbs { margin: 0 0 6px; color: var(--text-faint); display: flex; gap: 8px; }
+  .tool-head { margin-bottom: 24px; }
+  .crumbs { margin: 0 0 8px; color: var(--text-faint); display: flex; gap: 8px; }
   .crumbs a { color: var(--text-muted); text-decoration: none; }
-  .crumbs a:hover { color: var(--accent); }
+  .crumbs a:hover { color: var(--text); text-decoration: underline; }
   .title-row { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-  h1 { margin: 0; font-family: var(--font-mono); font-size: var(--fs-5); letter-spacing: -0.03em; word-break: break-word; }
-  .ver { font-family: var(--font-mono); font-size: var(--fs-1); color: var(--text-muted); padding: 2px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-subtle); }
-  .lead { margin: 8px 0 12px; }
-  .meta-row { gap: 10px 20px; }
-  .stats { display: inline-flex; gap: 14px; }
-  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-top: 22px; overflow-x: auto; scrollbar-width: none; }
-  .tabs a { position: relative; padding: 10px 14px; text-decoration: none; color: var(--text-muted); font-weight: 550; font-size: var(--fs-1); white-space: nowrap; border-radius: var(--radius-sm) var(--radius-sm) 0 0; transition: color var(--dur-1), background var(--dur-1); }
-  .tabs a::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); scale: 0 1; transition: scale var(--dur-2) var(--ease-out); }
-  .tabs a:hover { color: var(--text); background: var(--bg-subtle); }
-  .tabs a[aria-current="page"] { color: var(--text); font-weight: 650; }
-  .tabs a[aria-current="page"]::after { scale: 1 1; }
+  h1 { margin: 0; font-size: var(--fs-6); word-break: break-word; }
+  .ver { color: var(--text-muted); }
+  .lead { margin: 8px 0 10px; }
+  .notice { margin: 10px 0 0; max-width: 90ch; }
+  .notice b { font-weight: 600; }
+  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-top: 20px; overflow-x: auto; scrollbar-width: none; }
+  .tabs a { padding: 10px 14px; text-decoration: none; color: var(--text-muted); white-space: nowrap; transition: color var(--dur-1); }
+  .tabs a:hover { color: var(--text); }
+  .tabs a[aria-current="page"] { color: var(--text); box-shadow: inset 0 -2px 0 var(--text); }
 </style>

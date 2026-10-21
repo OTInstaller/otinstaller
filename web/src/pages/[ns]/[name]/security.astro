@@ -1,8 +1,11 @@
 ---
+// The long form of the evidence panel: the signature and where it was verified, every scan grouped by the run
+// that produced it (newest first), and the registry's own copies of the artifact.
 import Base from "../../../layouts/Base.astro";
 import ToolHeader from "../../../components/ToolHeader.astro";
-import { apiOrNull, type Scans } from "../../../lib/api";
+import { apiOrNull, type ManifestResponse, type Scans } from "../../../lib/api";
 import { formatDate } from "../../../lib/format";
+import { scanRuns } from "../../../lib/evidence";
 import { loadTool } from "../../../lib/tool";
 import { cacheFor } from "../../../lib/page";
 
@@ -11,8 +14,15 @@ if ("response" in loaded) return loaded.response;
 const { tool: t, hasDocs } = loaded;
 const ref = `${t.namespace}/${t.name}`;
 const version = Astro.url.searchParams.get("v") ?? t.latest_version;
-const scans = await apiOrNull<Scans>(`/tools/${ref}/${encodeURIComponent(version)}/scans`);
+const [scans, manifest] = await Promise.all([
+  apiOrNull<Scans>(`/tools/${ref}/${encodeURIComponent(version)}/scans`),
+  apiOrNull<ManifestResponse>(`/tools/${ref}/${encodeURIComponent(version)}/manifest`),
+]);
 cacheFor(Astro, 300);
+const m = manifest?.manifest ?? t.manifest;
+const image = m.runtime?.image;
+const wheel = m.runtime?.wheel_sha256;
+const runs = scanRuns(scans);
 const title: Record<string, string> = {
   signature: "Signature", vuln: "Vulnerabilities", malware: "Malware and secrets", smoke: "Smoke test", sbom: "Software bill of materials",
   links: "Links", pii: "Personal data",
@@ -25,7 +35,7 @@ function describe(kind: string, s: any): string {
     case "signature": return s.status === "pass" ? `Signed by ${s.identity}` : s.status === "absent" ? "Not signed" : `Did not verify: ${s.detail ?? "identity mismatch"}`;
     case "vuln": return `${s.critical} critical, ${s.high} high, ${s.medium} medium, ${s.low} low (${s.fixable_critical + s.fixable_high} high or critical with fixes available)`;
     case "malware": return `${s.malware?.count ?? 0} malware heuristics, ${s.secrets?.count ?? 0} embedded secrets`;
-    case "smoke": return s.status === "skipped" ? "Skipped" : `Exit code ${s.exit_code ?? "?"}${s.duration_ms ? ` in ${(s.duration_ms / 1000).toFixed(1)} s` : ""}`;
+    case "smoke": return s.status === "skipped" ? "Skipped" : `Exit code ${s.exit_code ?? "?"}${s.duration_ms ? ` in ${(s.duration_ms / 1000).toFixed(1)} s` : ""}, offline sandbox with the manifest's test input`;
     case "sbom": return `${s.packages} packages`;
     case "links": return `${s.checked} links checked, ${s.dead} dead, ${s.missing} to missing pages${s.malicious ? `, ${s.malicious} malicious` : ""}`;
     case "pii": return s.hits ? `${s.hits} line(s) looked like personal data and were reviewed` : "Nothing that looks like personal data";
@@ -33,72 +43,78 @@ function describe(kind: string, s: any): string {
   return "";
 }
 ---
-<Base title={`${ref} security`} description={`Signature, scan results and checks for ${ref} ${version}.`}>
-  <ToolHeader tool={t} active="security" hasDocs={hasDocs} scanStatus={scans?.scan_status} />
+<Base title={`${ref} security`} description={`Signature, scan results and registry copies for ${ref} ${version}.`} jsonHref={`https://api.otinstaller.com/v1/tools/${ref}/${encodeURIComponent(version)}/scans`}>
+  <ToolHeader tool={t} active="security" hasDocs={hasDocs} />
   {!scans
     ? <p class="notice">No version {version} of {ref}.</p>
     : (
       <div class="sec">
-        <section class:list={["cert", scans.signed ? "signed" : "unsigned"]} aria-labelledby="sig">
-          <div class="cert-head">
-            <span class="seal" aria-hidden="true">{scans.signed ? "✓" : "!"}</span>
-            <div>
-              <h2 id="sig">{scans.signed ? "Signed release" : "Unsigned release"} <span class="faint">v{scans.version}</span></h2>
-              <p class="small muted">{scans.signed
-                ? <><code>ot</code> checks this signature against the identity below on every install and refuses a mismatch.</>
-                : <>This version is not signed, so <code>ot</code> installs it after a warning.</>}</p>
-            </div>
-          </div>
-          {scans.signed && (
-            <dl class="cert-body">
-              <dt>Identity</dt><dd><code>{scans.signer_identity}</code></dd>
-              <dt>Issuer</dt><dd><code>{scans.signer_issuer}</code></dd>
-            </dl>
+        <section class="panel block" aria-labelledby="art-h">
+          <h2 id="art-h">Artifact <span class="faint">v{scans.version}</span></h2>
+          <dl class="kv small">
+            {image && image.includes("@sha256:") && <><dt>Image</dt><dd><code>{image.split("@")[0]}</code></dd><dt>Digest</dt><dd><code class="digest">{image.split("@")[1]}</code> <button class="btn btn-sm copy" type="button" data-copy={image.split("@")[1]} aria-label="Copy the digest"><span class="label">Copy</span></button></dd></>}
+            {wheel && <><dt>Wheel</dt><dd><code>{m.runtime?.package}{m.runtime?.package_version ? ` ${m.runtime.package_version}` : ""}</code> from PyPI</dd><dt>SHA-256</dt><dd><code class="digest">{wheel}</code> <button class="btn btn-sm copy" type="button" data-copy={wheel} aria-label="Copy the hash"><span class="label">Copy</span></button></dd></>}
+            {!image && !wheel && <><dt>Pinned</dt><dd class="muted">No digest or hash is recorded for this version.</dd></>}
+            <dt>Registry copy</dt>
+            <dd>{manifest?.mirror_image ? <>Mirror image <code>{manifest.mirror_image}</code>, same digest.</> : manifest?.wheel_url ? <>Wheel copy served by the registry, same hash.</> : <span class="muted">None public. Copies of non-OSI licences are private; new releases are copied after their scan.</span>}</dd>
+          </dl>
+        </section>
+
+        <section class="panel block" aria-labelledby="sig-h">
+          <h2 id="sig-h">{scans.signed ? "Signature" : "No signature"}</h2>
+          {scans.signed ? (
+            <>
+              <dl class="kv small">
+                <dt>Identity</dt><dd><code>{scans.signer_identity}</code></dd>
+                <dt>Issuer</dt><dd><code>{scans.signer_issuer}</code></dd>
+              </dl>
+              <p class="small muted">Signed by the repository's own release workflow (cosign keyless, or a PyPI attestation for wheels). <code>ot</code> verifies this identity before every install and refuses a mismatch, including from the registry's mirror.</p>
+            </>
+          ) : (
+            <p class="small muted">{t.manifest_held_by_registry ? "The manifest is held by the registry, so no release workflow signs this artifact." : "This version carries no signature the registry could verify."} <code>ot</code> installs it after a warning.</p>
           )}
         </section>
-        {scans.scans.length === 0
-          ? <p class="notice">No scan results recorded for this version.</p>
-          : (
-            <ol class="checks stagger" aria-label="Checks">
-              {scans.scans.map((s) => (
-                <li class:list={["check reveal", resultClass[s.result]]}>
-                  <span class="rail" aria-hidden="true"></span>
-                  <div class="check-main">
-                    <h3>{title[s.kind] ?? s.kind}</h3>
-                    <p class="small muted">{describe(s.kind, s.summary)}</p>
-                  </div>
-                  <div class="check-side">
-                    <span class={`badge ${resultClass[s.result]}`}>{resultLabel[s.result]}</span>
-                    <span class="small faint">{formatDate(s.ran_at)}</span>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          )}
+
+        <section aria-labelledby="runs-h">
+          <h2 id="runs-h">Scans</h2>
+          {runs.length === 0 ? <p class="notice">No scan results recorded for this version.</p> : runs.map((run, i) => (
+            <section class="run-group" aria-label={`Scan run on ${formatDate(run.ran_at)}`}>
+              <p class="small run-head"><b>{i === 0 ? "Latest run" : "Earlier run"}</b> · {formatDate(run.ran_at)}{i > 0 && <span class="muted"> · superseded by the run above</span>}</p>
+              <ol class="checks">
+                {run.rows.map((s) => (
+                  <li class:list={["check", resultClass[s.result]]}>
+                    <span class={`status ${resultClass[s.result]}`}>{resultLabel[s.result]}</span>
+                    <div>
+                      <h3>{title[s.kind] ?? s.kind}</h3>
+                      <p class="small muted">{describe(s.kind, s.summary)}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ))}
+        </section>
       </div>
     )}
-  <p class="small muted foot">How releases are checked: <a href="/docs/security">security model</a>. Found a problem? Email <a href="mailto:security@otinstaller.com">security@otinstaller.com</a>.</p>
+  <p class="small muted foot">How releases are checked: <a href="/docs/security">security model</a>. Found a problem? Email <a href="mailto:security@otinstaller.com">security@otinstaller.com</a>, or <a href={`/${ref}/report`}>report this tool</a>.</p>
 </Base>
 
 <style>
-  .sec { display: grid; gap: 18px; max-width: 820px; }
-  .cert { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-raised); overflow: hidden; }
-  .cert-head { display: flex; gap: 16px; align-items: center; padding: 18px; }
-  .cert h2 { margin: 0; font-size: var(--fs-3); }
-  .cert p { margin: 4px 0 0; }
-  .seal { display: grid; place-items: center; flex: none; width: 46px; height: 46px; border-radius: 50%; font-weight: 800; font-size: 1.3rem; }
-  .signed .seal { background: var(--ok-soft); color: var(--ok); box-shadow: 0 0 0 6px rgb(var(--ok-rgb) / 12%), 0 0 24px -4px rgb(var(--ok-rgb) / 60%); }
-  .unsigned .seal { background: var(--warn-soft); color: var(--warn); }
-  .cert-body { margin: 0; padding: 14px 18px; border-top: 1px dashed var(--border); background: var(--code-bg); color: var(--code-text); display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: var(--fs-1); }
-  .cert-body dt { color: var(--code-muted); font-family: var(--font-mono); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; align-self: center; }
-  .cert-body dd { margin: 0; overflow-wrap: anywhere; }
-  .cert-body code { color: var(--code-accent); }
-  .checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-  .check { display: grid; grid-template-columns: 4px 1fr auto; gap: 16px; align-items: center; padding: 14px 16px 14px 0; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-raised); overflow: hidden; }
-  .rail { height: 100%; min-height: 48px; border-radius: 0 4px 4px 0; background: var(--border-strong); }
-  .check.ok .rail { background: var(--ok); } .check.warn .rail { background: var(--warn); } .check.bad .rail { background: var(--bad); }
+  .sec { display: grid; gap: 16px; max-width: 880px; }
+  .block h2 { font-size: var(--fs-2); text-transform: none; letter-spacing: 0; color: var(--text); margin: 0 0 10px; }
+  .kv { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; }
+  .kv dt { color: var(--text-muted); }
+  .kv dd { margin: 0; overflow-wrap: anywhere; }
+  .digest { word-break: break-all; }
+  .block p { margin: 10px 0 0; }
+  h2#runs-h { font-size: var(--fs-4); margin: 8px 0 12px; }
+  .run-group + .run-group { margin-top: 18px; }
+  .run-head { margin: 0 0 6px; }
+  .checks { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); }
+  .check { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border); align-items: start; }
+  .check:last-child { border-bottom: 0; }
   .check h3 { margin: 0; font-size: var(--fs-2); }
   .check p { margin: 2px 0 0; }
-  .check-side { display: grid; justify-items: end; gap: 4px; }
   .foot { margin-top: 24px; }
+  @media (max-width: 640px) { .check { grid-template-columns: 1fr; gap: 4px; } }
 </style>

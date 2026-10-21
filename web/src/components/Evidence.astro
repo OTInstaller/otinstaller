@@ -1,0 +1,46 @@
+---
+// The evidence panel: six sentences with dates and links. Unmet lines stay, in neutral, with the reason.
+import type { EvidenceLine } from "../lib/evidence";
+
+interface Props {
+  lines: EvidenceLine[];
+  securityHref: string;
+}
+const { lines, securityHref } = Astro.props;
+---
+<section class="panel ev" aria-labelledby="ev-h">
+  <div class="ph"><h2 id="ev-h">Evidence</h2><a href={securityHref}>Security tab →</a></div>
+  <ul class="evidence">
+    {lines.map((l) => (
+      <li class:list={[l.met ? "ok" : "none"]}>
+        <span class="mark" aria-hidden="true">{l.met ? "✓" : "–"}</span>
+        <span class="k">{l.href ? <a href={l.href}>{l.label}</a> : l.label}</span>
+        <span class="v">
+          {l.parts.map((p) => (typeof p === "string" ? p : "strong" in p ? <b>{p.strong}</b> : "code" in p ? <code>{p.code}</code> : <a href={p.href}>{p.link}</a>))}
+        </span>
+      </li>
+    ))}
+  </ul>
+</section>
+
+<style>
+  .ev { padding: 0; }
+  .ph { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  .ph h2 { margin: 0; }
+  .ph a { font-size: var(--fs-1); color: var(--text-muted); }
+  .evidence { list-style: none; margin: 0; padding: 0; }
+  .evidence li { display: grid; grid-template-columns: 16px 96px minmax(0, 1fr); gap: 6px 12px; padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: var(--fs-1); align-items: start; }
+  .evidence li + li { margin-top: 0; }
+  .evidence li:last-child { border-bottom: 0; }
+  .mark { font-weight: 700; }
+  li.ok .mark { color: var(--ok); }
+  li.none .mark { color: var(--text-faint); }
+  .k { font-weight: 600; }
+  .k a { text-decoration: none; }
+  .k a:hover { text-decoration: underline; }
+  li.none .k { color: var(--text-muted); }
+  .v { color: var(--text-muted); overflow-wrap: anywhere; }
+  .v b { color: var(--text); font-weight: 500; }
+  .v code { color: var(--text); }
+  @media (max-width: 640px) { .evidence li { grid-template-columns: 16px minmax(0, 1fr); } .v { grid-column: 2; } }
+</style>
