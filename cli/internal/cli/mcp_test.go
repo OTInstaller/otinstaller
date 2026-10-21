@@ -258,6 +258,8 @@ func TestMCPConsentTokenFallback(t *testing.T) {
 	}
 	if _, e := h.call("run_tool", args); e == nil || e["code"] != "consent_token_invalid" {
 		t.Fatalf("a token works once: %v", e)
+	} else if msg, _ := e["message"].(string); !strings.Contains(msg, "restarted") {
+		t.Fatalf("the message should say a restart also ends tokens: %q", msg)
 	}
 }
 
