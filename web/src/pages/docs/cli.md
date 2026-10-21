@@ -26,6 +26,9 @@ that prints data takes `--json`, and errors then come as one line of JSON on std
 | `ot uninstall <ns/name>` | Remove a tool |
 | `ot keys set\|list\|rm <NAME>` | API keys in the OS keychain (`set --from-env VAR`); an environment variable of the same name always wins |
 | `ot doctor` | Check Docker, pipx, Python, cosign, the keychain and the registry |
+| `ot pivot <run-id \| saved file> [--registry]` | Suggest the next runs from what a saved run found, with the `ot run` command for each; runs nothing |
+| `ot mcp` | Serve [MCP](/docs/agents) over stdio for AI agents; `ot mcp install claude\|claude-desktop\|cursor\|vscode\|codex\|gemini` adds it to a client |
+| `ot mcp policy` · `ot mcp audit [--since 24h]` · `ot mcp tools` | The rules agents run under, what they did, and what the server offers |
 | `ot report <ns/name> [--reason … --details …]` | Report a package to the reviewers (opens the form without `--reason`) |
 | `ot feedback [--kind bug\|idea\|question\|other] [--about …] "message"` | Send feedback to the team with your `ot` version and OS; reads piped text, or opens the form with no message |
 | `ot self-update [--check]` | Update ot itself; the release signature is checked first |
@@ -99,5 +102,6 @@ registry's copy and checks the same SHA-256. You see a note when this happens; n
 | `OT_OUTPUT=json` | JSON output and JSON errors from every command, as if `--json` were given |
 | `OT_NONINTERACTIVE=1` | Never prompt, even at a terminal (`ot` never prompts without one) |
 | `OT_MAX_RAW` | Default for `ot run --max-raw` |
+| `OT_CONSENT=off` | Don't stop unattended runs that need consent (see [AI agents](/docs/agents#agents-that-use-a-shell)) |
 | `OT_RESULTS_DIR` | Where runs are saved (default `./results`) |
 | `OTINSTALLER_TOKEN` | The registry token, instead of the keychain |

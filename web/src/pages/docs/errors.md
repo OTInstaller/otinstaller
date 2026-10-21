@@ -251,3 +251,43 @@ The run was stopped with Ctrl-C. Its partial output is saved. Exit code 130.
 
 ### failed
 Anything else, including a tool that exited with an error (its own exit code is in the envelope). Exit code 1.
+
+## Agents and MCP
+
+Codes from `ot mcp` and from runs without a terminal. Set-up and the consent rules are in [AI agents and MCP](/docs/agents).
+
+### consent_required
+The run, install or uninstall needs the consent of the person the agent works for. From the MCP server, the error has a `summary` to show them and a `consent_token` for that exact call (valid once, for 10 minutes). Call again with the token only if they say yes. From `ot run` without a terminal, ask them and run again with `--yes`. Exit code 2.
+
+### consent_declined
+The person declined. Don't run it again for the same target unless they ask.
+
+### consent_token_invalid
+The `consent_token` was for a different call (other arguments), was already used, or has expired. Call without it to get a new one, and ask again.
+
+### consent_expired
+A consent answer arrived for a call that changed or is more than 10 minutes old. Call the tool again.
+
+### agent_disabled
+The person turned agents off (`enabled: false` in the agent policy). Only they can change it. Exit code 4 from `ot run`.
+
+### tool_not_allowed
+The package is in the policy's `deny_tools`, or not in its `allow_tools`. Exit code 4 from `ot run`.
+
+### rate_limited
+The session reached one of the policy's run limits (`max_runs_per_hour`, `max_runs_per_target_per_hour`). Wait `retry_after_s` seconds.
+
+### sandbox_unavailable
+The policy is in sandbox mode, which runs tools only on their own test input, and this tool has none.
+
+### run_not_found
+No saved run, or no run in this session, has that `run_id`. `list_runs` lists them.
+
+### batch_not_found
+No batch in this session has that `batch_id`. Its runs are still saved; `list_runs` with the batch's case lists them.
+
+### playbook_not_found
+No playbook has that name. `list_playbooks` lists them.
+
+### no_runs
+There are no saved runs (or not enough to compare) for that tool, target or case.

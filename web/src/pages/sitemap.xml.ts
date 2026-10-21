@@ -3,7 +3,7 @@
 import type { APIRoute } from "astro";
 import { api, type SearchResult, type Types } from "../lib/api";
 
-const DOCS = ["", "/getting-started", "/cli", "/automation", "/results", "/manifest", "/publishing", "/guides", "/errors", "/security", "/faq"];
+const DOCS = ["", "/getting-started", "/cli", "/agents", "/mcp-tools", "/automation", "/results", "/manifest", "/publishing", "/guides", "/errors", "/security", "/faq"];
 const POLICIES = ["/acceptable-use", "/terms", "/privacy", "/takedown", "/transparency"];
 
 async function all(path: string) {

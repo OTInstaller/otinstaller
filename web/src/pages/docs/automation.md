@@ -90,6 +90,12 @@ A tool that runs but exits non-zero makes `ot run` exit 1; the tool's own exit c
 | `ot playbook` with tools missing | `--yes` installs them |
 | `ot init`, `ot import` | `--yes` accepts the defaults; pass the rest as flags |
 
+**Runs that need consent.** Without a terminal, `ot run`, `run --all`, `playbook` and `auto` also stop before running a
+tool that touches a target, goes online or collects personal data. They fail with `consent_required` (exit 2) unless
+`--yes` is given, so an agent has to ask the person first. Passive tools (offline, no target contact, no personal data)
+run as before. Every such run is written to the local audit log (`ot mcp audit`). `OT_CONSENT=off` turns the check off
+for a script that doesn't need it. The rules are the same as the [MCP server's](/docs/agents#consent).
+
 Links are printed instead of opened in a browser. `ot keys set NAME` still reads a piped value from stdin, or use
 `--from-env VAR`.
 
@@ -114,6 +120,9 @@ is `true` and a warning says where the full output was saved. Entities are alway
 disk.
 
 ## For AI agents
+
+The best way for an agent to use OTInstaller is the MCP server, `ot mcp`: see [AI agents and MCP](/docs/agents). An
+agent that uses the command line instead should follow the same rules:
 
 - **Plan first.** Use `ot search --json` (filter with `--input email`, `--no-keys`) and `ot info <tool> --json` to see a
   tool's inputs and outputs, the keys it needs, and its `ethics` flags before running it. `ot run --all ... --dry-run`

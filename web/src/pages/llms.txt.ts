@@ -4,7 +4,7 @@ import { api, SITE_URL, type SearchResult } from "../lib/api";
 import { cacheControl } from "../lib/page";
 import { DOC_PAGES, POLICY_PAGES, markdownUrl, type MarkdownPage } from "../lib/markdown";
 
-const START = ["getting-started", "cli", "automation", "results", "errors"];
+const START = ["getting-started", "agents", "mcp-tools", "cli", "automation", "results", "errors"];
 
 const link = (page: MarkdownPage) => `- [${page.title}](${markdownUrl(page)})${page.description ? `: ${page.description}` : ""}`;
 
