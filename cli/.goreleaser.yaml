@@ -1,8 +1,9 @@
 # GoReleaser v2 config for ot. Run by .github/workflows/release-cli.yml on a vX.Y.Z tag.
 #
-# Releases are published to a public repository (RELEASE_OWNER/RELEASE_NAME, default otinstaller/ot) because the source
-# repository is private. checksums.txt is signed with the Ed25519 release key (checksums.txt.sig, which
+# Releases are published to their own repository (RELEASE_OWNER/RELEASE_NAME, default otinstaller/ot), where the install
+# scripts and `ot self-update` look for them. checksums.txt is signed with the Ed25519 release key (checksums.txt.sig, which
 # `ot self-update` and the install scripts verify) and with cosign keyless (for the transparency log).
+# ot.exe is Authenticode-signed and the macOS binaries signed and notarized when their credentials are set.
 # Homebrew and Scoop are only updated when their tokens are set.
 version: 2
 project_name: ot
@@ -24,6 +25,28 @@ builds:
       - -X github.com/otinstaller/otinstaller/cli/internal/cli.Version=v{{ .Version }}
       - -X github.com/otinstaller/otinstaller/cli/internal/selfupdate.Repo={{ envOrDefault "RELEASE_OWNER" "otinstaller" }}/{{ envOrDefault "RELEASE_NAME" "ot" }}
       - -X github.com/otinstaller/otinstaller/cli/internal/selfupdate.PublicKey={{ .Env.OT_RELEASE_PUBLIC_KEY }}
+    hooks:
+      post:
+        # Authenticode for ot.exe, before archives and checksums; a no-op until WINDOWS_SIGN_STORETYPE is set
+        # (docs/code-signing.md).
+        - cmd: sh scripts/sign-windows.sh "{{ .Path }}" "{{ .Target }}"
+          output: true
+
+# Signs and notarizes the macOS binaries with an Apple Developer ID (runs on Linux; no Mac needed). Off until
+# MACOS_SIGN_P12 is set; notarization also needs the App Store Connect API key (docs/code-signing.md).
+notarize:
+  macos:
+    - enabled: '{{ if index .Env "MACOS_SIGN_P12" }}true{{ else }}false{{ end }}'
+      ids: [ot]
+      sign:
+        certificate: "{{ .Env.MACOS_SIGN_P12 }}"
+        password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
+      notarize:
+        issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
+        key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
+        key: "{{ .Env.MACOS_NOTARY_KEY }}"
+        wait: true
+        timeout: 20m
 
 archives:
   - id: ot

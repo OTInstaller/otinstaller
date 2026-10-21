@@ -43,7 +43,7 @@ Every tool page on this site shows the same: what it takes, what it finds, wheth
 ## 3. Run it
 
 ```sh
-ot run dheeraj/holehe-lite --email someone@example.com
+ot run osintverse-community/holehe --email someone@example.com
 ```
 
 The first run installs the tool after asking once. Docker tools run in a container with no host files, no extra privileges and a memory limit; Python tools run inside the same kind of container when Docker is available.
@@ -64,6 +64,6 @@ Guides are step-by-step investigation playbooks that use registry tools:
 
 ```sh
 ot guide search email
-ot guide read dheeraj/email-investigation-playbook
-ot guide tools dheeraj/email-investigation-playbook
+ot guide read osintverse-community/email-investigation
+ot guide tools osintverse-community/email-investigation
 ```

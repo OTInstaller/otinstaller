@@ -4,6 +4,14 @@
 # Secrets: RELEASE_GITHUB_TOKEN (contents: write on the release repository), OT_RELEASE_KEY (the Ed25519 private
 # key, PEM), optional TAP_GITHUB_TOKEN (homebrew-tap and scoop-bucket). Variables: OT_RELEASE_PUBLIC_KEY (base64
 # raw public key), optional RELEASE_OWNER and RELEASE_NAME (default otinstaller/ot).
+#
+# Code signing, each off until its settings exist (docs/code-signing.md):
+# - Windows, Azure Trusted Signing: variables AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID,
+#   TRUSTED_SIGNING_ENDPOINT (e.g. https://eus.codesigning.azure.net), TRUSTED_SIGNING_ACCOUNT, TRUSTED_SIGNING_PROFILE.
+#   Or an OV certificate on a cloud HSM: variables WINDOWS_SIGN_STORETYPE, WINDOWS_SIGN_KEYSTORE, WINDOWS_SIGN_ALIAS
+#   and secret WINDOWS_SIGN_STOREPASS.
+# - macOS, Apple Developer ID: secrets MACOS_SIGN_P12 (base64), MACOS_SIGN_PASSWORD, MACOS_NOTARY_KEY (base64 .p8),
+#   MACOS_NOTARY_KEY_ID, MACOS_NOTARY_ISSUER_ID.
 name: release ot
 on:
   push:
@@ -39,6 +47,46 @@ jobs:
             sed "s|__OT_RELEASE_PUBLIC_KEY__|${OT_RELEASE_PUBLIC_KEY}|" "scripts/install/$s" > "dist/install/$s"
           done
           grep -q "__OT_RELEASE_PUBLIC_KEY__" dist/install/* && { echo "::error::OT_RELEASE_PUBLIC_KEY is not set"; exit 1; } || true
+      # Windows signing. Azure Trusted Signing signs in with OIDC (a federated credential on the app registration), so
+      # there is no Azure secret to store; the access token lasts about an hour, longer than the release takes.
+      - name: Sign in to Azure (Trusted Signing)
+        if: vars.AZURE_CLIENT_ID != ''
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Set up Windows signing
+        if: vars.AZURE_CLIENT_ID != '' || vars.WINDOWS_SIGN_STORETYPE != ''
+        env:
+          TRUSTED: ${{ vars.AZURE_CLIENT_ID != '' }}
+          ENDPOINT: ${{ vars.TRUSTED_SIGNING_ENDPOINT }}
+          ACCOUNT: ${{ vars.TRUSTED_SIGNING_ACCOUNT }}
+          PROFILE: ${{ vars.TRUSTED_SIGNING_PROFILE }}
+          STORETYPE: ${{ vars.WINDOWS_SIGN_STORETYPE }}
+          KEYSTORE: ${{ vars.WINDOWS_SIGN_KEYSTORE }}
+          ALIAS: ${{ vars.WINDOWS_SIGN_ALIAS }}
+        run: |
+          jar="$RUNNER_TEMP/jsign.jar"
+          curl -fsSL -o "$jar" https://github.com/ebourg/jsign/releases/download/7.5/jsign-7.5.jar
+          echo "602a51c3545a6dc4fb99bd2ea7152b26d1345916d0c93ddfbd5936cb735af91c  $jar" | sha256sum -c -
+          echo "JSIGN_JAR=$jar" >> "$GITHUB_ENV"
+          if [ "$TRUSTED" = true ]; then
+            token=$(az account get-access-token --resource https://codesigning.azure.net --query accessToken -o tsv)
+            echo "::add-mask::$token"
+            {
+              echo "WINDOWS_SIGN_STORETYPE=TRUSTEDSIGNING"
+              echo "WINDOWS_SIGN_KEYSTORE=${ENDPOINT#https://}"
+              echo "WINDOWS_SIGN_ALIAS=$ACCOUNT/$PROFILE"
+              echo "WINDOWS_SIGN_STOREPASS=$token"
+            } >> "$GITHUB_ENV"
+          else
+            {
+              echo "WINDOWS_SIGN_STORETYPE=$STORETYPE"
+              echo "WINDOWS_SIGN_KEYSTORE=$KEYSTORE"
+              echo "WINDOWS_SIGN_ALIAS=$ALIAS"
+            } >> "$GITHUB_ENV"
+          fi
       - uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
@@ -51,6 +99,13 @@ jobs:
           # An unset variable is an empty string, which GoReleaser's envOrDefault takes as set: default here.
           RELEASE_OWNER: ${{ vars.RELEASE_OWNER || 'OTInstaller' }}
           RELEASE_NAME: ${{ vars.RELEASE_NAME || 'ot' }}
+          # OV certificate on a cloud HSM; with Trusted Signing the step above sets the token instead.
+          WINDOWS_SIGN_STOREPASS: ${{ env.WINDOWS_SIGN_STOREPASS || secrets.WINDOWS_SIGN_STOREPASS }}
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
       - name: Remove the release key
         if: always()
         run: rm -f "$RUNNER_TEMP/release-key.pem"

@@ -112,7 +112,7 @@ short-lived signed URLs, and reports back; a weekly job bundles every active sou
 refuses an image (401, 403, 404, "denied"), `ot install` pulls the same digest from `mirror.otinstaller.com` and verifies it;
 when PyPI no longer serves a wheel, it uses the registry's copy with the same SHA-256 check. Owners get Restore from
 backup and Switch source on the dashboard. Rules: public repositories of published packages only; 500 MB per bundle and
-2 GB per image; public mirrors only for OSI-approved licenses; takedowns delete backups within 30 days unless on legal
+2 GB per image; public mirrors only for OSI-approved licenses; takedowns delete backups 14 days later unless on legal
 hold; owners can opt out of git backups. Setup (R2 buckets, the mirror Worker, DNS, credentials):
 [docs/publishing-setup.md, section 11](docs/publishing-setup.md#11-backups-the-image-mirror-r2-buckets-and-restore-drills).
 

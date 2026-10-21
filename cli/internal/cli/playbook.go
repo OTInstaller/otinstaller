@@ -31,7 +31,7 @@ Playbooks are bundled with ot, or are YAML files in <ot home>/playbooks or ./pla
   description: "What it is for"
   tools:
     - osintverse-community/dnstwist
-    - osintverse-community/ctfr
+    - osintverse-community/crtsh-subdomains
 
 Flags:
   -l, --list                list the playbooks

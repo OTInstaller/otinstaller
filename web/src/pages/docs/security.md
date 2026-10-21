@@ -20,6 +20,7 @@ Each tool's **Security** tab shows the results for every version.
 
 - `ot` checks the image signature against the identity recorded at publish and refuses a mismatch.
 - Containers run read-only, with all capabilities dropped, no new privileges, a non-root user, a process limit, 1 GB of memory and 2 CPUs. No host folders are mounted.
+- Containers have no network unless the manifest declares `network.egress: true`.
 - Input values are passed as separate arguments, never through a shell.
 - API keys come from your OS keychain and are passed to that container only.
 - Removed versions are refused with the reason.
@@ -28,7 +29,7 @@ Each tool's **Security** tab shows the results for every version.
 
 - Every published image is copied, with its signatures and the same digest, to `mirror.otinstaller.com`; every wheel and a bundle of the source repository are kept too.
 - If an image's registry refuses it, `ot` pulls the same digest from the mirror and checks the same signature, so a backup can't be swapped for something else. Wheels from the backup are held to the same SHA-256.
-- Public mirrors exist only for OSI-approved licenses. When a package is removed for policy or legal reasons, its backups stop being served at once and are deleted within 30 days.
+- Public mirrors exist only for OSI-approved licenses. When a package is removed for policy or legal reasons, its backups stop being served at once and are deleted 14 days later, unless a legal hold applies.
 - A restore drill each month restores a random backup and verifies a mirrored image's signature; a failure alerts the team.
 
 ## Reporting a problem

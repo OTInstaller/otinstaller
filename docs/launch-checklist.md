@@ -26,7 +26,7 @@ invitations can go out.
 | Item | State | What it needs |
 |------|-------|---------------|
 | This branch (`claude/week12-beta-7d9771`) | Production runs `90b9c2c`: main (weeks 1–11, PR #3, PR #4) plus all of week 12; migrations up to 0012 applied. Only docs were committed after it. **Done:** merged as [PR #5](https://github.com/OTInstaller/otinstaller/pull/5) (21 Oct, `ot install` matrix green), followed by PRs #6–#12; main's `ot install` workflow is green. Week 11's resources exist (checked 21 Oct): R2 buckets `otinstaller-backups` and `otinstaller-mirror`, the `otinstaller-mirror` Worker (mirror.otinstaller.com answers `/v2/` with 401 as expected) with `MIRROR_PUSH_TOKEN`, the `R2_*` secrets on the API, and migrations 0011 and 0012 applied remotely. | Nothing. |
-| Week 11 backups ([PR #3](https://github.com/OTInstaller/otinstaller/pull/3), merged into main 21 Oct) | Merged into this branch too (conflicts resolved; API 278/278). Not deployed. Migration `0011_backups.sql` applies cleanly after `0012_feedback.sql` (D1 applies whichever is missing). | **(you)** R2 buckets `otinstaller-backups` and `otinstaller-mirror`; an R2 API token (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`); `MIRROR_PUSH_TOKEN` on the mirror Worker and in registry-ops; deploy the mirror Worker (`wrangler.mirror.jsonc`, creates mirror.otinstaller.com; Workers Paid is now on); `npx wrangler d1 migrations apply otinstaller --remote` for 0011; copy `ops/scanner/backup.py` and `ops/workflows/scan.yml` into registry-ops. Not needed for the beta to start; needed before launch per the plan. |
+| Week 11 backups ([PR #3](https://github.com/OTInstaller/otinstaller/pull/3), merged into main 21 Oct) | **Live** (checked 21 Oct, see "Backups and restore drill" below): both R2 buckets, the R2 token secrets and `MIRROR_PUSH_TOKEN` on the API, the mirror Worker at mirror.otinstaller.com, migration 0011 applied remotely, and `backup.py`, `scan.py` and `scan.yml` in registry-ops identical to this repo. | Nothing. |
 | PR #2 (Python package manager merge) | Merged into main on 20 Oct (`6b8f6a6`). Deployed with this branch. | Nothing. |
 | Site docs that went live "at the next deploy" | Live since today's deploy. | Nothing. |
 | API `total` on `/v1/tools` and `/v1/guides` | Live (`/v1/tools?kind=tool` total 38, `/v1/guides` total 10). | Nothing. |
@@ -57,6 +57,41 @@ invitations can go out.
 
 Production deploys on 21 Oct: `8556684` (06:14 UTC), `d9a19a0` (06:55), then week 11's `claude/backup-backfill` from another session (07:01, which dropped the beta work), then `c242065` = main with week 11 + this branch (07:10). Then `90b9c2c` (adds PR #4, the backup backfill) at about 07:20 UTC, which is what production runs now.
 
+## Backups and restore drill (21 October 2026)
+
+Checked before changing anything; nothing needed creating.
+
+| Item | State |
+|------|-------|
+| R2 buckets `otinstaller-backups`, `otinstaller-mirror` | Exist (created 21 Oct 06:41 UTC) |
+| API secrets `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | Set on `otinstaller-registry-api` |
+| `MIRROR_PUSH_TOKEN` | Set on `otinstaller-mirror` and in registry-ops |
+| Mirror Worker | Deployed; `https://mirror.otinstaller.com/v2/` answers 401 with a Bearer challenge |
+| Migration 0011 | Applied remotely (after 0012) |
+| registry-ops | `ops/scanner/backup.py`, `ops/scanner/scan.py`, `.github/workflows/scan.yml` match this repo byte for byte; recent `otinstaller-backup` runs succeed |
+| Coverage | Every published tool version has a stored git bundle and its image or wheel: 49 bundles, 32 images, 12 wheels. 6 git uploads failed at about 07:30 UTC (`SignatureDoesNotMatch`, before the R2 token was fixed, and one GitLab 403); all were retried and stored later. |
+| Automatic drill | `otinstaller-drill` at 07:58 UTC: bundle pass (10 refs), image pass, signature verified |
+
+**Drill by hand** (against production, `osintverse-community/image-hash` 0.1.0):
+
+1. *Back up.* `POST /v1/admin/tools/osintverse-community/image-hash/0.1.0/backup` answered `nothing_to_do`: the release
+   bundle and image were already stored by the scan job.
+2. *Restore the git bundle into an empty repository.* Downloaded `git/github/1427216588/2026-10-21-v0.1.0.bundle` from
+   R2: SHA-256 `6b7c52b9…f748495` matches the record, `git bundle verify` OK, `git clone --mirror` then
+   `git push --mirror` into a new bare repository, `git fsck --full` clean, refs (`main`, `v0.1.0` at `e1b8149`)
+   identical to GitHub's. (The owner's **Restore from backup** link wasn't requested in this run; the bundle came
+   straight from R2.)
+3. *Pull the mirrored image by digest with the signature verified.* `docker pull
+   mirror.otinstaller.com/osintverse-community/image-hash@sha256:588a79f1…` then `cosign verify` with the recorded
+   signer (`…/otinstaller-release.yml@refs/heads/main`, GitHub OIDC): verified.
+4. *`ot` falls back to the mirror.* A local proxy in front of the production API rewrote the manifest's image to
+   `ghcr.io/otinstaller/drill-gone@sha256:588a79f1…` (same digest, a repository ghcr refuses). `ot install` printed
+   `error from registry: denied`, then "ghcr.io refused the image; pulling the same digest from the OTInstaller
+   mirror", verified the signature and installed (`from_backup: true`); `ot run … --url <jpeg>` exited 0 with hashes.
+
+Note for Windows hosts: restoring a bundle into a repository under a long path (such as the Claude scratchpad) fails
+with "Filename too long"; use a short path or `git config core.longpaths true`.
+
 ## Install matrix
 
 | Platform | How | Result |
@@ -76,9 +111,23 @@ Production deploys on 21 Oct: `8556684` (06:14 UTC), `d9a19a0` (06:55), then wee
 ## Before the public launch (week 13)
 
 - [ ] Beta exit criteria met (Beta tab), survey read ([beta/feedback-survey.md](beta/feedback-survey.md)).
-- [ ] Week 11 backups merged and deployed; restore drill run once.
+- [x] Week 11 backups merged and deployed; restore drill run once (21 Oct, below).
 - [ ] Build the site with `PUBLIC_BETA=0` to drop the beta strip.
-- [ ] Yank the dry-run packages (`ot yank dheerajydv19/ot-test-tool@0.3.6`, `osintversehq/ot-test-tool`), or
-      remove them in the admin console.
+- [x] Remove the dry-run packages. Done 21 Oct about 10:24 UTC in the admin console (Reports → Take down, every
+      version, category `other`): `dheerajydv19/ot-test-tool` and `osintversehq/ot-test-tool`. Their pages and API
+      reads answer 410, search no longer finds them (`/v1/tools?kind=tool` total 39 → 37), and the Beta tab shows 0
+      external publishers (was 2, both test namespaces). They are listed on the public transparency page as two
+      `other` removals, and their backups are deleted after 14 days. Their old failed publishes stay in the Beta
+      tab's 7-day list until they age out.
+- [ ] **(you)** Legal review: hire a lawyer and send them the lawyer brief (`docs/legal/lawyer-brief.md`, not legal
+      advice, prepared 21 Oct) with the draft policy fixes. Both are on the local branch `claude/legal-drafts` only,
+      kept out of this repository because it is public; open points are marked `[[…]]`. Before or alongside: confirm
+      OSINTverse's exact legal name and form, register a DMCA agent, name a grievance officer.
+- [ ] **(you)** Receive mail at otinstaller.com: the domain has **no MX record**, so support@, privacy@, abuse@ and
+      security@ (all named in the policies) bounce. Cloudflare → Email → Email Routing, forward them to a mailbox.
+- [ ] **(you)** Code signing ([code-signing.md](code-signing.md)): wired into the release workflow and off until set
+      up. Windows: Azure Trusted Signing (about $9.99/month; check eligibility) or an OV certificate on a cloud HSM.
+      macOS: Apple Developer Program ($99/year) for Developer ID signing and notarization.
 - [ ] Resubmit the sitemap in Google Search Console (crawlers saw 404s and 500s on 21 Oct).
-- [ ] On-call rota for launch week; launch posts (plan, week 13).
+- [ ] On-call rota for launch week; launch posts (plan, week 13). Drafts and templates in [launch/](launch/README.md)
+      (21 Oct): rota and reviewer schedule, posts for each channel, demo video script. Nothing posted; each needs your OK.

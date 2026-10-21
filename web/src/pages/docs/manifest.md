@@ -11,7 +11,7 @@ Every package has one `otinstaller.yaml` at its repository root. `ot init` write
 ```yaml
 schema: 1
 name: holehe-lite
-namespace: dheeraj
+namespace: alice
 version: 1.2.0
 summary: Checks which sites an email address is registered on
 readme: README.md
@@ -25,7 +25,7 @@ outputs:
   - type: account
 runtime:
   kind: docker
-  image: ghcr.io/dheeraj/holehe-lite@sha256:3b1f…
+  image: ghcr.io/alice/holehe-lite@sha256:3b1f…
   platforms: [linux/amd64, linux/arm64]
   command: ["holehe", "--json", "{email}"]
   output_format: json
@@ -63,7 +63,7 @@ A Python tool replaces `runtime` with `kind: pipx`, `package`, `package_version`
 | `runtime.output_format` | Tools | `json`, `jsonl`, `csv` or `text` |
 | `runtime.timeout_seconds` | No | Default 300, at most 3600 |
 | `secrets` | No | API keys the tool reads from its environment: `name` (`UPPER_CASE`), `required`, `description`, `url` |
-| `network` | No | `egress` and the `domains` it talks to (shown on the tool page) |
+| `network` | No | `egress` and the `domains` it talks to (shown on the tool page). Tools run with no network unless `egress` is `true` |
 | `ethics` | Tools | `touches_target`, `auth_required`, `collects_personal_data`: shown on the tool page |
 | `test.input` | Recommended | Safe example values for the smoke test and nightly health checks |
 | `docs` | No | `root` folder and `nav` list of Markdown pages for the tool's Docs tab |
