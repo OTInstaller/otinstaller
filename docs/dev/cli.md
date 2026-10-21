@@ -632,7 +632,7 @@ whenever a token is loaded, so a signed-in user's ping carries their token.
 
 Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-only --tmpfs /tmp:rw,size=256m
 --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --memory 1g --cpus 2 --user 65534:65534 -e HOME=/tmp`,
-`--network none` **only when the manifest has `network.egress: false`**, `-e NAME` per secret, `-v <out-dir>:/out:rw`,
+`--network none` unless the manifest has `network.egress: true`, `-e NAME` per secret, `-v <out-dir>:/out:rw`,
 `--entrypoint <command[0]> <image> <command[1:]...>`. Sandboxed pipx images are built from `python:3.12-slim` as
 `ot-local/<ns>-<name>:<version>` (`docker build --pull`).
 
