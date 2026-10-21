@@ -94,6 +94,18 @@ class ChunkedUploadTests(unittest.TestCase):
         self.assertEqual(auth, "Bearer tok")
 
 
+class UploadTests(unittest.TestCase):
+    def test_a_refused_upload_reports_r2s_error_code(self):
+        def refuse(req, timeout=None):
+            body = b'<?xml version="1.0"?><Error><Code>SignatureDoesNotMatch</Code><Message>no</Message></Error>'
+            raise backup.urllib.error.HTTPError(req.full_url, 403, "Forbidden", {}, io.BytesIO(body))
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "x.bundle"
+            f.write_bytes(b"bundle")
+            with self.assertRaisesRegex(RuntimeError, "upload answered 403: SignatureDoesNotMatch"):
+                backup.upload("https://acct.r2.cloudflarestorage.com/b/k?X-Amz-Signature=1", f, opener=refuse)
+
+
 class GitTests(unittest.TestCase):
     def test_bundle_restores_into_an_empty_repository(self):
         with tempfile.TemporaryDirectory() as d:
