@@ -4,6 +4,7 @@ import Base from "./Base.astro";
 import SideNav from "../components/SideNav.astro";
 import { markdownPage } from "../lib/markdown";
 import CopyCode from "../components/CopyCode.astro";
+import { breadcrumbs, faqFromMarkdown, faqPage, graph, ORGANIZATION } from "../lib/seo";
 
 interface Props {
   frontmatter: { title: string; description?: string };
@@ -27,13 +28,21 @@ const pages: [string, string][] = [
   ["/docs/faq", "FAQ"],
 ];
 const path = Astro.url.pathname.replace(/\/$/, "") || "/docs";
-const twin = markdownPage(path) ? `${path}.md` : undefined;
+const source = markdownPage(path);
+const twin = source ? `${path}.md` : undefined;
 const idx = pages.findIndex(([href]) => href === path);
+// The FAQ page's questions are real questions with real answers, so they are also offered as FAQPage data.
+const faq = path === "/docs/faq" && source ? faqFromMarkdown(source.body) : [];
+const jsonLd = graph(
+  { "@type": "TechArticle", headline: frontmatter.title, description: frontmatter.description, url: `${Astro.site}${path.slice(1)}`, inLanguage: "en", author: ORGANIZATION, publisher: ORGANIZATION, isPartOf: { "@type": "WebSite", url: Astro.site?.toString() } },
+  breadcrumbs([["Docs", "/docs"], ...(path !== "/docs" ? [[frontmatter.title, path] as [string, string]] : [])]),
+  ...(faq.length ? [faqPage(faq)] : []),
+);
 const prev = idx > 0 ? pages[idx - 1] : null;
 const next = idx >= 0 && idx < pages.length - 1 ? pages[idx + 1] : null;
 Astro.response.headers.set("Cache-Control", "public, max-age=300, s-maxage=3600");
 ---
-<Base title={frontmatter.title} description={frontmatter.description} markdown={twin}>
+<Base title={path === "/docs" ? "Documentation: install ot, run OSINT tools, publish your own" : frontmatter.title} description={frontmatter.description} markdown={twin} ogType="article" jsonLd={jsonLd}>
   <div class="docs">
     <SideNav label="Documentation" pages={pages} current={path} headings={headings} />
     <article class="prose doc-body">

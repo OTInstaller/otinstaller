@@ -8,6 +8,8 @@ import ToolRow from "../../components/ToolRow.astro";
 import { api, type SearchResult, type Types } from "../../lib/api";
 import { entityLabel, inputLabel } from "../../lib/format";
 import { cacheFor, searchFrom } from "../../lib/page";
+import { GENERIC_INPUTS, INPUT_LANDING } from "../../lib/landing";
+import { breadcrumbs, graph, itemList } from "../../lib/seo";
 
 const type = Astro.params.type!;
 const types = await api<Types>("/types");
@@ -23,18 +25,38 @@ const article = /^[aeiou]/i.test(lower) ? "an" : "a";
 const leads = new Map<string, number>();
 for (const t of result.results) for (const o of t.outputs) if (types.inputs.includes(o) && o !== type) leads.set(o, (leads.get(o) ?? 0) + 1);
 const pivots = [...leads.entries()].sort((a, b) => b[1] - a[1]);
+const total = result.total ?? result.results.length;
+// The page's copy (lib/landing.ts); generic value types (string, integer…) have none and stay out of search engines.
+const copy = INPUT_LANDING[type];
+const generic = GENERIC_INPUTS.has(type) || !copy;
+const title = copy?.title ?? `${label} OSINT tools`;
+const description = copy ? `${copy.description} ${total} ${total === 1 ? "tool" : "tools"} listed today.` : `OSINT tools that take ${article} ${lower}.`;
+const typed = { email: "e", username: "u", domain: "d", phone: "p", ip: "ip", url: "url" }[type] ?? null;
+const jsonLd = graph(
+  { "@type": "CollectionPage", name: title, description, url: `${Astro.site}input/${type}`, isPartOf: { "@type": "WebSite", url: Astro.site?.toString() } },
+  breadcrumbs([["Tools", "/search"], [label, `/input/${type}`]]),
+  itemList(`${label} OSINT tools`, result.results),
+);
 cacheFor(Astro, 600);
 ---
-<Base title={`${label} OSINT tools`} description={`OSINT tools that take ${article} ${lower}: what they find, whether they need a key, and whether they still work.`} jsonHref={`https://api.otinstaller.com/v1/tools?kind=tool&input=${encodeURIComponent(type)}`}>
+<Base title={title} description={description} noindex={generic} jsonLd={jsonLd} jsonHref={`https://api.otinstaller.com/v1/tools?kind=tool&input=${encodeURIComponent(type)}`}>
   <header class="page-head">
     <p class="eyebrow">I have {article}…</p>
-    <h1>{label}</h1>
+    <h1>{label} OSINT tools</h1>
     <p class="muted lead-line">
-      {result.total ?? result.results.length} {result.results.length === 1 ? "tool takes" : "tools take"} {article} {lower}<span data-value-note hidden> like <code data-value-text></code></span>. Pick one, and its run command is ready to copy.
+      {total} {result.results.length === 1 ? "tool takes" : "tools take"} {article} {lower}<span data-value-note hidden> like <code data-value-text></code></span>. Pick one, and its run command is ready to copy.
       {guides.results.length > 0 && <> New to this? Start with the <a href={`/guides/${guides.results[0]!.namespace}/${guides.results[0]!.name}`}>{guides.results[0]!.title ?? "guide"}</a>.</>}
     </p>
+    {copy && <p class="lead-copy">{copy.lead}</p>}
   </header>
   <Results result={result} types={types} fixed={["input"]} />
+  {copy && copy.steps.length > 0 && (
+    <section class="how" aria-labelledby="how-h">
+      <div class="section-head"><h2 id="how-h">How {article} {lower} investigation usually starts</h2></div>
+      <ol class="steps">{copy.steps.map((s) => <li>{s}</li>)}</ol>
+      <p class="small muted">Every tool here runs on your machine in a sandbox{typed && <>; <code>ot auto {typed}:…</code> runs all of them on one value and <a href="/docs/results">saves the results</a></>}.</p>
+    </section>
+  )}
   {pivots.length > 0 && (
     <section class="pivots" aria-labelledby="leads-h">
       <div class="section-head"><h2 id="leads-h">Where {article} {lower} leads</h2></div>
@@ -46,6 +68,17 @@ cacheFor(Astro, 600);
     <section aria-labelledby="guides-h">
       <div class="section-head"><h2 id="guides-h">Guides about {lower} investigations</h2><a href={`/guides?input=${type}`}>All guides →</a></div>
       <div class="rows">{guides.results.map((g) => <ToolRow tool={g} />)}</div>
+    </section>
+  )}
+  {copy && copy.faq.length > 0 && (
+    <section class="faq" aria-labelledby="faq-h">
+      <div class="section-head"><h2 id="faq-h">Before you run one</h2></div>
+      {copy.faq.map(([q, a]) => (
+        <details class="qa">
+          <summary><h3>{q}</h3></summary>
+          <p class="small muted">{a}</p>
+        </details>
+      ))}
     </section>
   )}
 </Base>
@@ -67,7 +100,17 @@ cacheFor(Astro, 600);
   .page-head .eyebrow { margin: 0; }
   .page-head h1 { margin: 6px 0; }
   .lead-line { margin: 0; max-width: 72ch; }
-  .pivots, section[aria-labelledby="guides-h"] { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--border); }
+  .lead-copy { margin: 12px 0 0; max-width: 80ch; font-size: var(--fs-2); line-height: 1.6; color: var(--text-muted); }
+  .how, .faq, .pivots, section[aria-labelledby="guides-h"] { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--border); }
+  .steps { margin: 8px 0 12px; padding-left: 22px; max-width: 80ch; display: grid; gap: 6px; }
+  .how p { margin: 0; }
+  .qa { border-bottom: 1px solid var(--border); padding: 10px 0; }
+  .qa summary { cursor: pointer; list-style: none; display: flex; gap: 10px; align-items: baseline; }
+  .qa summary::-webkit-details-marker { display: none; }
+  .qa summary::before { content: "+"; color: var(--text-faint); flex: none; width: 1ch; }
+  .qa[open] summary::before { content: "−"; }
+  .qa h3 { display: inline; margin: 0; font-size: var(--fs-2); font-weight: 500; }
+  .qa p { margin: 8px 0 0 calc(1ch + 10px); max-width: 80ch; line-height: 1.6; }
   .pivots .section-head, section .section-head { margin-bottom: 8px; }
   .pivots p { margin: 6px 0 0; }
   .pivots .chip { text-transform: none; letter-spacing: 0; font-size: var(--fs-1); height: 28px; }

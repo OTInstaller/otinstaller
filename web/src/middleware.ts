@@ -3,6 +3,7 @@
 import { defineMiddleware } from "astro:middleware";
 import { markdownPage, markdownResponse, prefersMarkdown } from "./lib/markdown";
 import { guideTwin, SLUG, toolTwin } from "./lib/twins";
+import { canonicalRedirect } from "./lib/redirects";
 
 /** First path segments that are site sections, not namespaces. */
 const RESERVED = new Set(["docs", "policy", "schema", "admin", "category", "input", "settings", "transfers", "guides", "search", "import", "feedback", "dashboard", "removed", "publish"]);
@@ -40,6 +41,8 @@ function vary(res: Response): Response {
 export const onRequest = defineMiddleware(async (ctx, next) => {
   const { pathname } = ctx.url;
   if (ctx.request.method !== "GET" && ctx.request.method !== "HEAD") return next();
+  const redirect = canonicalRedirect(ctx.url);
+  if (redirect) return redirect;
   const wantsMd = prefersMarkdown(ctx.request.headers.get("accept"));
 
   // The Markdown answer is private: shared caches (Cloudflare's included) don't key on Vary, so a public copy

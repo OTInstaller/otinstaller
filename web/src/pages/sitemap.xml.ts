@@ -1,7 +1,9 @@
-// sitemap.xml from the API: landing pages, every listed tool and guide, and the docs. Cached for a day at the
-// edge, which is the plan's nightly regeneration.
+// sitemap.xml from the API: landing pages that list something, every listed tool and guide, and the docs. Cached for
+// a day at the edge, which is the plan's nightly regeneration. Input types with no tools and the generic value types
+// (string, integer…) are left out: their pages are noindex.
 import type { APIRoute } from "astro";
-import { api, type SearchResult, type Types } from "../lib/api";
+import { api, type Facets, type SearchResult, type Types } from "../lib/api";
+import { GENERIC_INPUTS } from "../lib/landing";
 
 const DOCS = ["", "/getting-started", "/cli", "/agents", "/mcp-tools", "/automation", "/results", "/api", "/manifest", "/publishing", "/guides", "/errors", "/security", "/faq"];
 const POLICIES = ["/acceptable-use", "/terms", "/privacy", "/takedown", "/transparency"];
@@ -18,11 +20,12 @@ async function all(path: string) {
 }
 
 export const GET: APIRoute = async ({ site }) => {
-  const [types, tools, guides] = await Promise.all([api<Types>("/types"), all("/tools?kind=tool"), all("/guides")]);
+  const [types, tools, guides, facets] = await Promise.all([api<Types>("/types"), all("/tools?kind=tool"), all("/guides"), api<Facets>("/facets?kind=tool").catch(() => null)]);
+  const listed = (counts: Record<string, number> | undefined, v: string) => !counts || (counts[v] ?? 0) > 0;
   const paths = [
     "/", "/search", "/guides", "/publish",
-    ...types.inputs.map((t) => `/input/${t}`),
-    ...types.categories.map((c) => `/category/${c}`),
+    ...types.inputs.filter((t) => !GENERIC_INPUTS.has(t) && listed(facets?.inputs, t)).map((t) => `/input/${t}`),
+    ...types.categories.filter((c) => listed(facets?.categories, c)).map((c) => `/category/${c}`),
     ...tools.map((t) => `/${t.namespace}/${t.name}`),
     ...guides.map((g) => `/guides/${g.namespace}/${g.name}`),
     ...[...new Set([...tools, ...guides].map((t) => t.namespace))].map((n) => `/${n}`),

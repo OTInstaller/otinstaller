@@ -5,6 +5,7 @@ import ToolRow from "../../components/ToolRow.astro";
 import { apiOrNull, type Namespace } from "../../lib/api";
 import { formatDate, inputLabel } from "../../lib/format";
 import { cacheFor } from "../../lib/page";
+import { breadcrumbs, graph, itemList } from "../../lib/seo";
 
 const ns = Astro.params.ns!;
 const n = await apiOrNull<Namespace>(`/namespaces/${encodeURIComponent(ns)}`);
@@ -15,9 +16,18 @@ const guides = n.tools.filter((t) => t.kind === "guide");
 const profile = n.provider === "github" ? `https://github.com/${n.name}` : n.provider === "gitlab" ? `https://gitlab.com/${n.name}` : null;
 const name = n.display_name ?? n.name;
 const about = [...new Set(n.tools.filter((t) => t.kind === "tool").flatMap((t) => t.inputs))].sort();
+const allTools = n.tools.filter((t) => t.kind === "tool");
+const counts = [allTools.length ? `${allTools.length} OSINT ${allTools.length === 1 ? "tool" : "tools"}` : "", guides.length ? `${guides.length} ${guides.length === 1 ? "guide" : "guides"}` : ""].filter(Boolean).join(" and ");
+const title = counts ? `${name}: ${counts}` : name;
+const description = `${counts || "Tools and guides"} published by ${name} on the OTInstaller Registry${about.length ? `, for ${about.map(inputLabel).join(", ").toLowerCase()} investigations` : ""}. Signed, scanned and health-checked; install any of them with one command.`;
+const jsonLd = graph(
+  { "@type": "ProfilePage", name, url: `${Astro.site}${n.name}`, mainEntity: { "@type": "Organization", name, url: profile ?? `${Astro.site}${n.name}`, ...(n.avatar_url ? { logo: n.avatar_url } : {}) } },
+  breadcrumbs([["Tools", "/search"], [name, `/${n.name}`]]),
+  itemList(`Published by ${name}`, [...allTools, ...guides]),
+);
 cacheFor(Astro, 300);
 ---
-<Base title={name} description={`OSINT tools and guides published by ${name}.`} jsonHref={`https://api.otinstaller.com/v1/namespaces/${encodeURIComponent(n.name)}`}>
+<Base title={title} description={description} noindex={!!want} jsonLd={jsonLd} jsonHref={`https://api.otinstaller.com/v1/namespaces/${encodeURIComponent(n.name)}`}>
   <header class="pub">
     <span class="avatar" aria-hidden="true">
       {n.avatar_url ? <img src={n.avatar_url} alt="" width="56" height="56" /> : <span class="initial">{n.name.slice(0, 1).toUpperCase()}</span>}
