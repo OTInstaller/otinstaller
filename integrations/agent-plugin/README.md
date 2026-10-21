@@ -21,8 +21,8 @@ target, goes online or involves a person's identifiers, and every run is logged 
      claude plugin install otinstaller@otinstaller
      ```
 
-   - **Cursor:** install OTInstaller from the Cursor marketplace, or run `ot mcp install cursor` for the MCP server
-     alone.
+   - **Cursor:** run `ot mcp install cursor` for the MCP server, and copy `rules/otinstaller.mdc` into your project's
+     `.cursor/rules/` for the rules. A Cursor marketplace listing is planned.
    - **Other clients:** `ot mcp install claude-desktop`, `vscode`, `codex` or `gemini`.
 
 ## What's inside
