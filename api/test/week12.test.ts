@@ -123,3 +123,24 @@ describe("beta metrics", () => {
     expect(m.exit.no_open_sev1.met).toBe(false);
   });
 });
+
+// ---------- email test ----------
+
+describe("test email", () => {
+  it("sends one to the calling admin and passes Resend's error back", async () => {
+    let answer: () => Response | object = () => ({ id: "e" });
+    const emails: { to: string[]; subject: string }[] = [];
+    fakeHosts({ "POST https://api.resend.com/emails": async (req) => (emails.push(await req.json() as any), answer()) });
+    expect((await post("/admin/email-test", (await person({ reviewer: true })).auth)).status).toBe(403);
+    const admin = await person();
+    await DB().prepare(`UPDATE users SET is_admin = 1 WHERE id = ?`).bind(admin.id).run();
+
+    expect(await (await post("/admin/email-test", admin.auth)).json()).toEqual({ status: "sent", to: `${admin.login}@example.com` });
+    expect(emails.at(-1)).toMatchObject({ to: [`${admin.login}@example.com`], subject: "OTInstaller test email" });
+
+    answer = () => new Response('{"message":"API key is invalid"}', { status: 401 });
+    const bad = await post("/admin/email-test", admin.auth);
+    expect(bad.status).toBe(502);
+    expect(await bad.json()).toMatchObject({ status: "failed", error: expect.stringMatching(/^401 .*invalid/) });
+  });
+});

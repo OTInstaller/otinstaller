@@ -6,7 +6,8 @@ import { deps } from "../env";
 import { apiError } from "../lib/errors";
 import { ulid } from "../lib/crypto";
 import { audit } from "./auth";
-import { requireReviewer } from "./review";
+import { requireAdmin, requireReviewer } from "./review";
+import { sendEmail } from "../notify";
 import { overLimit } from "../trust";
 import { COMMUNITY_NAMESPACE } from "../imports";
 
@@ -96,6 +97,25 @@ export function betaRoutes(app: App) {
   });
 
   app.get("/admin/beta-metrics", (c) => betaMetrics(c));
+
+  // Sends a test email to the calling admin, to check RESEND_API_KEY after it changes. Answers with Resend's error.
+  app.post("/admin/email-test", async (c) => {
+    const admin = requireAdmin(c);
+    const row = await c.env.DB.prepare(
+      `SELECT COALESCE(u.email, (SELECT a.email FROM accounts a WHERE a.user_id = u.id AND a.email IS NOT NULL LIMIT 1)) AS email
+       FROM users u WHERE u.id = ?`,
+    ).bind(admin.id).first<{ email: string | null }>();
+    if (!row?.email) apiError(409, "no_email", "your account has no email address to send to");
+    const key = `email-test:${admin.id}:${Date.now()}`;
+    const status = await sendEmail(c.env, {
+      to: [row.email], kind: "test", key, subject: "OTInstaller test email",
+      text: `This is a test email from the OTInstaller Registry, sent by ${admin.login} from the admin API.\n\n${c.env.SITE_URL}`,
+    });
+    const failed = status === "failed"
+      ? await c.env.DB.prepare(`SELECT error FROM notifications WHERE idempotency_key = ?`).bind(key).first<{ error: string | null }>()
+      : null;
+    return c.json({ status, to: row.email, ...(failed ? { error: failed.error } : {}) }, status === "failed" ? 502 : 200);
+  });
 }
 
 async function betaMetrics(c: Context<AppEnv>) {
