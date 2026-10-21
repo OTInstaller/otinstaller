@@ -1,0 +1,62 @@
+name: Bug report
+description: Something in ot, the website or publishing doesn't work.
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing OTInstaller. **Security problems** (a way to run code on someone's machine, read someone's
+        keys, or publish as someone else) go to security@otinstaller.com, not here.
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How bad is it? A maintainer may change it after triage.
+      options:
+        - "sev-1: blocks installing, running or publishing, loses data, or the site or API is down"
+        - "sev-2: something is broken but there is a workaround, or it affects one tool or platform"
+        - "sev-3: minor, cosmetic, or a docs problem"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - ot (installing ot, or a command)
+        - Running a tool
+        - Publishing (GitHub)
+        - Publishing (GitLab)
+        - Import wizard
+        - Website or dashboard
+        - Guides
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What did you do, what did you expect, and what happened instead?
+      placeholder: |
+        1. ot install alice/whois-plus
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: The command's output, any error and request ID (paste text, not a screenshot). Remove keys and tokens.
+      render: text
+  - type: textarea
+    id: doctor
+    attributes:
+      label: ot doctor
+      description: For ot problems, the output of `ot --version` and `ot doctor`.
+      render: text
+  - type: input
+    id: where
+    attributes:
+      label: Operating system, package or repository
+      placeholder: "Windows 11 / macOS 15 (Apple silicon) / Ubuntu 24.04; alice/whois-plus 1.2.0; gitlab.com/alice/tool"
