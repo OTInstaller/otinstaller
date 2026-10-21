@@ -343,26 +343,40 @@ out); signed out shows "Sign in". The all-visitors "Dashboard" link goes.
 
 ### 4.9 Design system
 
-**Direction (recommended): "Terminal, shared with OSINTverse".** OSINTverse (checked 21 Oct) uses Geist Mono for
-everything, `--radius: 0`, near-black `#0a0a0a` on white and the inverse, grey primary actions, and semantic
-colours only: success `#187c49`, warning `#cf5604`, info `#1f6cb0`, destructive `#e7000b`. Its home page even
-has "Start from what you have" with EMAIL / USERNAME / PHONE / DOMAIN chips, the same idea as §4.4. The product
-plan asks the registry to "reuse OSINTverse's existing brand tokens (colours, type) so the registry reads as part
-of the product"; the current site (Inter, 10–24 px radii, blue accent, glows) does not. The alternative, keeping
-the current look and fixing only the findings, is cheaper but leaves the two sites unrelated; not recommended.
+**Direction (decided 21 Oct 2026 by the owner): adopt the design of osintverse.com**, because the registry is
+part of that ecosystem. The product plan already asked for it ("reuse OSINTverse's existing brand tokens
+(colours, type) so the registry reads as part of the product"); the current site (Inter, 10–24 px radii, blue
+accent, glows) does not. What osintverse.com does, measured in the browser on 21 Oct:
 
-Tokens (`tokens.css`; values proposed, each pair to be checked by the contrast script before use):
+- **Dark by default** (`html.dark`), with a light theme available. Page `#0a0a0a`, text `#fafafa`, cards
+  `#191919`, muted text `#b3b3b3` at 80 %, borders `rgb(102 102 102 / 20%)`, primary `#fafafa` on `#171717`.
+  Light: `#ffffff`, text `#0a0a0a`, muted surfaces `#f5f5f5`, muted text `#6d6d6d`, border `#e5e5e5`.
+- **Geist Mono for everything**, body 16 px / 24 px. `h1` 52 px, weight 600, line-height 1.1, letter-spacing
+  −1.3 px; `h2` 30 px, 600, −0.75 px. Eyebrows 11 px, weight 500, uppercase, letter-spacing 0.16 em, muted.
+- **Chips**: 11 px uppercase, letter-spacing 0.08 em, 1 px border, padding 4 × 10 px; the selected chip inverts
+  (light on dark). Its hero has "Start from what you have" with EMAIL · USERNAME · PHONE · DOMAIN · NAME · PHOTO
+  · IP · WALLET chips over a single input, which is the same idea as §4.4.
+- **Buttons**: primary is grey (`#737373`) with white text, 12 px at 28 px tall in the header, 14 px at 40 px
+  in the hero; secondary is a translucent fill with a 1 px border. `--radius: 0` everywhere.
+- **Header** 57 px, bottom border, translucent background with backdrop blur. **Cards** sit in a grid of 1 px
+  borders (eyebrow, title, one paragraph, small CTA). Numbered "01 / 02" steps for "How it works", a row of big
+  mono statistics, and "✓" lists for guarantees. Semantic colours only: success `#187c49`, warning `#cf5604`,
+  info `#1f6cb0`, destructive `#e7000b`.
 
-| Group | Light | Dark | Notes |
+Tokens (`tokens.css`; taken from osintverse.com. Two values are nudged for AA: the light warning `#cf5604` is
+4.2:1 on white at small sizes, so the site uses `#a84500`; muted text is `#525252` on light instead of `#6d6d6d`
+for 12 px text):
+
+| Group | Dark (default) | Light | Notes |
 | --- | --- | --- | --- |
-| Surfaces | `--bg #ffffff` · `--bg-subtle #f5f5f5` · `--bg-raised #fafafa` · `--bg-inverse #0a0a0a` | `#0a0a0a` · `#141414` · `#111111` · `#fafafa` | No gradients, no blur. |
-| Text | `--text #0a0a0a` · `--text-muted #525252` (7.4:1) · `--text-faint #6d6d6d` (4.6:1) | `#fafafa` · `#b5b5b5` · `#8a8a8a` | Faint only at ≥ 14 px. |
-| Lines | `--border #e5e5e5` · `--border-strong #a3a3a3` | `#262626` · `#525252` | 1 px; no shadows for structure. |
-| Action | `--action #0a0a0a`, hover `#262626` | `#fafafa`, hover `#e5e5e5` | Primary buttons are inverse blocks, as on OSINTverse. |
-| Semantic | `--ok #187c49` · `--warn #cf5604` · `--bad #e7000b` · `--info #1f6cb0` | `#4ade80` · `#fbbf24` · `#f87171` · `#60a5fa` | Always with a word next to them. |
-| Terminal | `--term-bg #0a0a0a` · `--term-text #e5e5e5` · `--term-dim #8a8a8a` · `--term-ok #4ade80` · `--term-accent #60a5fa` | same | The run block is always dark. |
-| Type | Display and UI: Geist Mono (OFL, `@fontsource/geist-mono`, latin subset). Prose (README, guides, docs): Inter, kept. JetBrains Mono dropped. | | 12 / 13 / 14 / 16 / 18 / 22 / 28 / 36 px; line-height 1.5, prose 1.65. |
-| Space | 4-px grid: 4 8 12 16 24 32 48 64 | | Page 1180 px; gutter `clamp(16px, 4vw, 32px)`; prose 72 ch. |
+| Surfaces | `--bg #0a0a0a` · `--bg-subtle #121212` · `--bg-card #191919` · `--bg-inverse #fafafa` | `#ffffff` · `#f5f5f5` · `#fafafa` · `#0a0a0a` | No gradients; blur only on the sticky header, as OSINTverse does. |
+| Text | `--text #fafafa` · `--text-muted #b3b3b3` (10:1) · `--text-faint #8c8c8c` (5.6:1) | `#0a0a0a` · `#525252` · `#6d6d6d` (4.6:1) | Faint only at ≥ 14 px (OSINTverse's `#b3b3b3cc` is kept as the muted value). |
+| Lines | `--border rgb(102 102 102 / 25%)` · `--border-strong #525252` | `#e5e5e5` · `#a3a3a3` | 1 px; grids of borders instead of shadows. |
+| Action | `--action #737373` text `#fafafa` (primary); `--action-strong #fafafa` text `#171717` (the one inverted call to action per page) | `#737373` / `#fafafa`; strong `#0a0a0a` / `#fafafa` | As on OSINTverse: grey primary, inverted only for the main CTA. |
+| Semantic | `--ok #4ade80` · `--warn #fbbf24` · `--bad #f87171` · `--info #60a5fa` (on dark) | `#187c49` · `#a84500` · `#e7000b` · `#1f6cb0` | OSINTverse's light values (warning darkened for AA); always with a word next to them. |
+| Terminal | `--term-bg #0a0a0a` · `--term-text #e5e5e5` · `--term-dim #8c8c8c` · `--term-ok #4ade80` · `--term-accent #60a5fa` | same | The run block is dark in both themes. |
+| Type | Geist Mono for everything, as OSINTverse (OFL, `@fontsource/geist-mono`, latin subset). Inter and JetBrains Mono dropped. Long prose (README, guides, docs) stays mono at 15–16 px / 1.65 with a 68 ch measure, as on osintverse.com/docs. | | 11 / 12 / 14 / 16 / 18 / 22 / 30 / 52 px (52 only for the home `h1`; other pages 30). |
+| Space | 4-px grid: 4 8 12 16 24 32 48 64 | | Page 1216 px (OSINTverse's `76rem`); gutter 16 px; prose 42–68 ch. |
 | Radius | 0 | | |
 | Motion | `--dur-1 100ms` (state), `--dur-2 180ms` (open/close); nothing longer | | Reduced motion zeroes both and stops the terminal typing. No loops, no reveal-on-scroll. |
 | Focus | 2 px solid `--text`, 2 px offset | | |
@@ -370,8 +384,9 @@ Tokens (`tokens.css`; values proposed, each pair to be checked by the contrast s
 Components (one file each in `src/components`, each with a purpose comment): `PasteBox` (small island, works
 as a form without JS), `RunBlock`, `Evidence`, `ToolRow`, `GuideRow`, `FactsRail`, `Pivots`, `InstallBlock`
 (the single source for docs too), `Status` (pill with a word), `Note` (callout with a label word), `Chip`
-(filter link), `Badge` (three states), `DataTable`, `Steps`, `Timeline`, `Disclosure`. `ToolCard` survives
-only for home-page strips. Icons: a 16-icon inline SVG set, always `aria-hidden` with a word beside them.
+(11 px uppercase filter link; selected inverts), `Badge` (three states), `Stats` (OSINTverse's row of big mono
+numbers), `Steps` (numbered "01 / 02", as OSINTverse's "How it works"), `DataTable`, `Timeline`, `Disclosure`.
+`ToolCard` survives only for home-page strips, as a cell in a 1 px-bordered grid. Icons: a 16-icon inline SVG set, always `aria-hidden` with a word beside them.
 `Terminal.astro` stays as the only animated thing (types once, home page only, off under reduced motion, final
 frame server-rendered). The logo mark stays; the wordmark is set in Geist Mono.
 
@@ -554,8 +569,9 @@ visible ones.
 
 | Risk | Likelihood | Mitigation |
 | --- | --- | --- |
-| The mono, square direction reads as "hacker aesthetic" to non-technical investigators | Medium | Mono for display and chrome only, Inter for prose, generous spacing; show the mockups to two or three beta users before building phase 1. |
-| Geist Mono adds weight | Low | Latin subset only (about 40 KB); JetBrains Mono removed, so one mono font, not two. |
+| All-mono prose (README, guides) is slower to read than Inter for long pages | Medium | Follow osintverse.com/docs: 15–16 px, line-height 1.65, 68 ch measure, generous paragraph spacing; if beta readers complain, Inter for prose only is a one-line token change. |
+| Geist Mono adds weight | Low | Latin subset only (about 40 KB); Inter and JetBrains Mono removed, so one font instead of two. |
+| Dark by default surprises visitors who had light | Low | The theme toggle and the stored choice stay; only the default for first visits changes. |
 | Type detection guesses wrong (a username that looks like a domain) | Medium | The chip is always editable; a wrong guess costs one click; the rules are the CLI's, so site and `ot auto` agree. |
 | Facet counts and per-removal reasons need API work | Certain for phase 4 | Both additive; phases 1–3 need no API change. |
 | Zero install counts for months make "most installed" look dead | Certain | Hide zeros; browse default is health date; counts return at ≥ 10. |
@@ -567,8 +583,9 @@ visible ones.
 
 ## 9. Open questions
 
-1. **Brand direction**: adopt OSINTverse's mono/square system (recommended) or keep the current blue, rounded
-   look and fix only the audit findings?
+1. **Brand direction**: decided on 21 Oct 2026: adopt the design of osintverse.com (§4.9), including dark by
+   default. Still open within that: should the light theme be reachable from the header toggle (as today) or
+   only follow the OS?
 2. **Default browse sort**: "Recently verified working" (recommended) or "Most installed" once counts are real?
 3. **Sample output**: should the scanner record a trimmed envelope from the smoke test so every tool page can
    show real output? A scanner and API change outside this plan.
