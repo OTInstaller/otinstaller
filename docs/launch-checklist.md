@@ -123,11 +123,20 @@ with "Filename too long"; use a short path or `git config core.longpaths true`.
       advice, prepared 21 Oct) with the draft policy fixes. Both are on the local branch `claude/legal-drafts` only,
       kept out of this repository because it is public; open points are marked `[[…]]`. Before or alongside: confirm
       OSINTverse's exact legal name and form, register a DMCA agent, name a grievance officer.
-- [ ] **(you)** Receive mail at otinstaller.com: the domain has **no MX record**, so support@, privacy@, abuse@ and
-      security@ (all named in the policies) bounce. Cloudflare → Email → Email Routing, forward them to a mailbox.
+- [ ] Receive mail at otinstaller.com. 21 Oct: Email Routing is enabled (MX records live) and hi@osintverse.com is
+      added as the destination. **(you)** Click Cloudflare's verification link in the hi@osintverse.com inbox; then
+      create the forwarding rules for support@, privacy@, abuse@, security@, legal@ and dmca@:
+      `npx wrangler email routing rules create otinstaller.com --match-type literal --match-field to --match-value support@otinstaller.com --action-type forward --action-value hi@osintverse.com`
+      (once per address). Until then mail to them bounces.
 - [ ] **(you)** Code signing ([code-signing.md](code-signing.md)): wired into the release workflow and off until set
       up. Windows: Azure Trusted Signing (about $9.99/month; check eligibility) or an OV certificate on a cloud HSM.
       macOS: Apple Developer Program ($99/year) for Developer ID signing and notarization.
+- [x] Source public: `OTInstaller/otinstaller` made public 21 Oct (history scanned with gitleaks first: no secrets).
+- [x] Site deployed without the beta strip (21 Oct, `a8ff315`); `ot` v0.12.1 released.
+- [ ] Dummy repositories out of public view: `dheerajydv19/ot-test-tool` and `dheerajydv19/ot-test-guide` are private
+      and archived (21 Oct). **(you)** GitLab `osintversehq/ot-test-tool` is still public: Settings → General →
+      Visibility → Private → Save, or Settings → General → Advanced → Delete. To delete the GitHub ones for good:
+      `gh repo delete dheerajydv19/ot-test-tool` and `gh repo delete dheerajydv19/ot-test-guide`.
 - [ ] Resubmit the sitemap in Google Search Console (crawlers saw 404s and 500s on 21 Oct).
 - [ ] On-call rota for launch week; launch posts (plan, week 13). Drafts and templates in [launch/](launch/README.md)
       (21 Oct): rota and reviewer schedule, posts for each channel, demo video script. Nothing posted; each needs your OK.
