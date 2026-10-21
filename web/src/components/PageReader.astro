@@ -1,5 +1,8 @@
 ---
-// A rendered page with its navigation and table of contents: the guide reader and the tool docs tab.
+// A rendered page with its navigation and table of contents: the guide reader and the tool docs tab. Content
+// comes first. On wide screens the page list is on the left and "On this page" (plus whatever the `rail` slot
+// holds, such as the tools a guide uses) on the right; on phones both fold into a sticky bar of disclosures
+// above the content.
 import CopyCode from "./CopyCode.astro";
 import type { NavEntry, Page } from "../lib/api";
 
@@ -9,20 +12,39 @@ interface Props {
   /** The site address of a page in this navigation. */
   hrefFor: (path: string) => string;
   label: string;
+  /** Label for the rail slot's disclosure on phones, e.g. "Tools (6)". */
+  railLabel?: string;
 }
-const { page, nav, hrefFor, label } = Astro.props;
+const { page, nav, hrefFor, label, railLabel } = Astro.props;
 const toc = page.toc.filter((t) => t.depth >= 2);
 const pos = nav.findIndex((n) => n.path === page.path);
+const hasRail = Astro.slots.has("rail");
 ---
-<div class="three-col reader">
-  <nav class="side" aria-label={label}>
+<div class="reader">
+  <div class="mbar" aria-label="Page tools">
+    {nav.length > 1 && (
+      <details class="mdis">
+        <summary>Contents <span class="faint">{page.position}/{page.pages}</span></summary>
+        <ol class="list-plain small">
+          {nav.map((n, i) => <li class:list={{ done: i < pos }}><a href={hrefFor(n.path)} aria-current={n.path === page.path ? "page" : undefined}><span class="num">{i + 1}</span> {n.title}</a></li>)}
+        </ol>
+      </details>
+    )}
+    {hasRail && (
+      <details class="mdis">
+        <summary>{railLabel ?? "More"}</summary>
+        <div class="mrail"><slot name="rail" /></div>
+      </details>
+    )}
+  </div>
+  <nav class="side small" aria-label={label}>
     <p class="eyebrow">Contents</p>
-    <ol class="list-plain small">
+    <ol class="list-plain">
       {nav.map((n, i) => (
         <li class:list={{ done: i < pos }}><a href={hrefFor(n.path)} aria-current={n.path === page.path ? "page" : undefined}><span class="num">{i + 1}</span> {n.title}</a></li>
       ))}
     </ol>
-    {nav.length > 1 && <p class="small faint progress">Page {page.position} of {page.pages}</p>}
+    {nav.length > 1 && <p class="faint progress">Page {page.position} of {page.pages}</p>}
   </nav>
   <article>
     <div class="prose" set:html={page.body} />
@@ -31,12 +53,13 @@ const pos = nav.findIndex((n) => n.path === page.path);
       {page.next && <a class="pg next" href={hrefFor(page.next.path)} rel="next"><span class="small muted">Next →</span><strong>{page.next.title}</strong></a>}
     </nav>
   </article>
-  <aside class="toc small" aria-label="On this page">
+  <aside class="rail small" aria-label="On this page and tools">
+    {hasRail && <div class="rail-slot"><slot name="rail" /></div>}
     {toc.length > 0 && (
-      <>
+      <div class="toc">
         <p class="eyebrow">On this page</p>
         <ul class="list-plain" data-toc>{toc.map((t) => <li class={`d${t.depth}`}><a href={`#${t.id}`}>{t.text}</a></li>)}</ul>
-      </>
+      </div>
     )}
   </aside>
 </div>
@@ -65,25 +88,39 @@ const pos = nav.findIndex((n) => n.path === page.path);
 </script>
 
 <style>
-  .side, .toc { position: sticky; top: 84px; max-height: calc(100vh - 100px); overflow-y: auto; scrollbar-width: thin; }
-  .eyebrow { margin: 0 0 8px; font-size: 0.7rem; }
-  .side li + li { margin-top: 2px; }
-  .side a { display: flex; gap: 10px; align-items: baseline; padding: 6px 10px; border-radius: var(--radius-sm); text-decoration: none; color: var(--text-muted); transition: background var(--dur-1), color var(--dur-1); }
-  .side a:hover { background: var(--bg-subtle); color: var(--text); }
-  .side a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-  .num { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-faint); min-width: 1.4em; }
+  .reader { display: grid; grid-template-columns: 220px minmax(0, 1fr) 240px; gap: 32px; align-items: start; }
+  .mbar { display: none; }
+  .side, .rail { position: sticky; top: 76px; max-height: calc(100vh - 92px); overflow-y: auto; scrollbar-width: thin; }
+  .eyebrow { margin: 0 0 8px; }
+  .side li + li { margin-top: 0; }
+  .side a, .mdis a { display: flex; gap: 10px; align-items: baseline; padding: 6px 8px; text-decoration: none; color: var(--text-muted); transition: background var(--dur-1), color var(--dur-1); }
+  .side a:hover, .mdis a:hover { background: var(--bg-subtle); color: var(--text); }
+  .side a[aria-current="page"], .mdis a[aria-current="page"] { background: var(--accent-soft); color: var(--text); font-weight: 600; }
+  .num { font-size: var(--fs-0); color: var(--text-faint); min-width: 1.4em; }
   .done .num { color: var(--ok); }
   .done .num::before { content: "✓ "; }
-  .progress { margin: 12px 10px 0; }
-  article { max-width: 74ch; }
-  .toc a { display: block; padding: 4px 10px; text-decoration: none; color: var(--text-muted); border-left: 2px solid transparent; transition: color var(--dur-1), border-color var(--dur-1); }
+  .progress { margin: 12px 8px 0; }
+  article { max-width: 74ch; min-width: 0; }
+  .rail-slot + .toc { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); }
+  .toc a { display: block; padding: 4px 8px; text-decoration: none; color: var(--text-muted); border-left: 2px solid transparent; transition: color var(--dur-1), border-color var(--dur-1); }
   .toc a:hover { color: var(--text); }
-  .toc a[aria-current="location"] { color: var(--accent); border-left-color: var(--accent); }
-  .toc .d3 { padding-left: 12px; }
+  .toc a[aria-current="location"] { color: var(--text); border-left-color: var(--text); }
+  .toc .d3 { padding-left: 16px; }
   .pager { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 40px; border-top: 1px solid var(--border); padding-top: 20px; }
-  .pg { display: grid; gap: 2px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); text-decoration: none; color: var(--text); background: var(--bg-raised); transition: border-color var(--dur-2), translate var(--dur-2) var(--ease-out), box-shadow var(--dur-2); }
-  .pg:hover { border-color: var(--accent); translate: 0 -2px; box-shadow: var(--shadow-2); }
+  .pg { display: grid; gap: 2px; padding: 12px 14px; border: 1px solid var(--border); text-decoration: none; color: var(--text); transition: border-color var(--dur-1); }
+  .pg:hover { border-color: var(--text); }
   .pg.next { text-align: right; }
   @media (max-width: 600px) { .pager { grid-template-columns: 1fr; } .pg.next { text-align: left; } }
-  @media (max-width: 960px) { .side { position: static; max-height: none; } }
+  @media (max-width: 960px) {
+    .reader { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+    .side, .rail { display: none; }
+    .mbar { display: flex; gap: 8px; position: sticky; top: 57px; z-index: 5; background: var(--bg); padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .mdis { position: static; }
+    .mdis summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 12px; border: 1px solid var(--border-strong); font-size: var(--fs-1); }
+    .mdis summary::-webkit-details-marker { display: none; }
+    .mdis[open] summary { background: var(--bg-inverse); color: var(--bg); }
+    .mdis[open] summary .faint { color: inherit; }
+    .mdis ol, .mrail { position: absolute; left: 0; right: 0; top: calc(100% - 2px); max-height: 60vh; overflow-y: auto; padding: 6px; border: 1px solid var(--border-strong); background: var(--bg); z-index: 6; margin: 0; }
+    .mdis li + li { margin-top: 0; }
+  }
 </style>

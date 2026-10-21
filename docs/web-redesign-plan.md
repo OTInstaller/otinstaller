@@ -560,8 +560,15 @@ contrast`; detector tests. Measured in the preview build: LCP of the home `h1` 2
 no hidden-until-JS content; the in-page contrast scan passes in both themes. Not in phase 1: the axe run in
 `npm test` (Playwright would add a browser download to every install; revisit in phase 4 with the screenshot job),
 and the docs' install commands still live in Markdown (phase 2 converts the getting-started page to use
-`InstallBlock`). AGENTS.md's website section still names `InstallTabs`, `Stat`, `FeatureCard` and `Pipeline`, which
+`InstallBlock`). AGENTS.md's website section still names `InstallTabs`, `Stat`, `FeatureCard`, `Pipeline` and `Badges`, which
 no longer exist; it is updated when the plan is merged.
+
+**Phase 2 (21 Oct 2026, later):** the guide index has one filter rail and rows; the reader puts the content first
+with the page list on the left and "Tools used" plus "On this page" on the right, folding into a sticky
+"Contents · Tools (N)" bar on phones; the version select goes on change; docs pages have previous/next links,
+a Markdown-twin link and the two new tables in the security model (what `ot` refuses, what the registry stores);
+every list and guide page links its JSON twin; a test keeps the getting-started doc's install commands equal to
+`lib/install.ts` (the doc stays Markdown so its own twin keeps working).
 
 Effort is for one person who knows the codebase, including verification.
 

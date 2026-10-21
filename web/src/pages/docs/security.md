@@ -25,6 +25,34 @@ Each tool's **Security** tab shows the results for every version.
 - API keys come from your OS keychain and are passed to that container only.
 - Removed versions are refused with the reason.
 
+## What `ot` refuses
+
+`ot` exits with code 4 and says why, instead of installing or running, when:
+
+| Situation | What you see |
+| --- | --- |
+| The image's signature does not verify against the identity the registry recorded at publish | `signature verification failed for <image>; refusing to install` |
+| The manifest's image is not pinned by digest | `image <image> is not pinned by digest` |
+| No wheel on PyPI matches the manifest's hash, or the downloaded wheel hashes differently | `no wheel for <package> matches the manifest's sha256` or `downloaded wheel hash … does not match the manifest` |
+| The package or version was removed by the registry | `tool_removed` with the public reason |
+| An agent asks for an unsigned image, or cosign is missing | a refusal saying agents may only install verified images; install it yourself if you trust it |
+
+A missing API key exits with code 3 instead, naming the key and where to get it.
+
+A network error never makes `ot` fall back to the mirror; only an explicit refusal from the original host does (403, 404, 410, "denied", "manifest unknown"), and the fallback is held to the same digest and signature.
+
+## What the registry stores about you
+
+| When | What is kept | What is not |
+| --- | --- | --- |
+| Browsing the site or API | Cloudflare's cookieless analytics; the edge cache keys anonymous reads by URL | No IP addresses, no cookies without a sign-in |
+| `ot install` (the install ping) | A per-day counter per package version | No IP, user, token or machine identifier; `OT_NO_TELEMETRY=1` turns the ping off |
+| Signing in | Your login and a hashed session or API token; provider tokens encrypted at rest | Your email address is never shown publicly and accounts are never linked by email |
+| Publishing | The manifest, scan results, backups of public artifacts, and an audit log of staff actions | Private repositories are never read |
+| Reporting a tool | The report text and your reporter identity if signed in | Anonymous reports are allowed and rate-limited by IP, which is not stored |
+
+The [privacy policy](/policy/privacy) is the full statement.
+
 ## Backups
 
 - Every published image is copied, with its signatures and the same digest, to `mirror.otinstaller.com`; every wheel and a bundle of the source repository are kept too.

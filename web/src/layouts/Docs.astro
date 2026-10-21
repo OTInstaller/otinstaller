@@ -28,6 +28,9 @@ const pages: [string, string][] = [
 ];
 const path = Astro.url.pathname.replace(/\/$/, "") || "/docs";
 const twin = markdownPage(path) ? `${path}.md` : undefined;
+const idx = pages.findIndex(([href]) => href === path);
+const prev = idx > 0 ? pages[idx - 1] : null;
+const next = idx >= 0 && idx < pages.length - 1 ? pages[idx + 1] : null;
 Astro.response.headers.set("Cache-Control", "public, max-age=300, s-maxage=3600");
 ---
 <Base title={frontmatter.title} description={frontmatter.description} markdown={twin}>
@@ -38,6 +41,13 @@ Astro.response.headers.set("Cache-Control", "public, max-age=300, s-maxage=3600"
       <h1>{frontmatter.title}</h1>
       {frontmatter.description && <p class="lead">{frontmatter.description}</p>}
       <slot />
+      {(prev || next) && (
+        <nav class="pager" aria-label="Docs pages">
+          {prev ? <a class="pg" href={prev[0]} rel="prev"><span class="small muted">← Previous</span><strong>{prev[1]}</strong></a> : <span />}
+          {next && <a class="pg next" href={next[0]} rel="next"><span class="small muted">Next →</span><strong>{next[1]}</strong></a>}
+        </nav>
+      )}
+      {twin && <p class="small muted twin">This page as <a href={twin}>Markdown</a>.</p>}
     </article>
   </div>
   <CopyCode />
@@ -50,4 +60,10 @@ Astro.response.headers.set("Cache-Control", "public, max-age=300, s-maxage=3600"
   .doc-body .eyebrow { margin: 0; }
   .doc-body h1 { margin-top: 0.2em; }
   .doc-body .lead { margin-top: 0; margin-bottom: 1.6em; }
+  .pager { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 40px; border-top: 1px solid var(--border); padding-top: 20px; }
+  .pg { display: grid; gap: 2px; padding: 12px 14px; border: 1px solid var(--border); text-decoration: none; color: var(--text); transition: border-color var(--dur-1); }
+  .pg:hover { border-color: var(--text); }
+  .pg.next { text-align: right; }
+  .twin { margin-top: 16px; }
+  @media (max-width: 600px) { .pager { grid-template-columns: 1fr; } .pg.next { text-align: left; } }
 </style>

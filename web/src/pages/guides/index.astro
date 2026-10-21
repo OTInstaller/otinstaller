@@ -1,6 +1,7 @@
 ---
+// The guide index: a search box, one filter rail (Investigating, Level, Format, Category) and rows.
 import Base from "../../layouts/Base.astro";
-import ToolCard from "../../components/ToolCard.astro";
+import ToolRow from "../../components/ToolRow.astro";
 import { api, type Types } from "../../lib/api";
 import { categoryLabel, inputLabel } from "../../lib/format";
 import { cacheFor, searchFrom, withParam } from "../../lib/page";
@@ -10,58 +11,95 @@ const [{ result }, types] = await Promise.all([searchFrom(url, {}, "/guides"), a
 const current = (k: string) => url.searchParams.get(k);
 const facets = [
   { key: "input", label: "Investigating", values: types.inputs.filter((t) => !["string", "integer", "boolean", "enum"].includes(t)), name: inputLabel },
-  { key: "category", label: "Category", values: types.categories, name: categoryLabel },
   { key: "level", label: "Level", values: ["beginner", "intermediate", "advanced"], name: (v: string) => v[0]!.toUpperCase() + v.slice(1) },
   { key: "format", label: "Format", values: ["guide", "reference"], name: (v: string) => (v === "guide" ? "Guide" : "Reference") },
+  { key: "category", label: "Category", values: types.categories, name: categoryLabel },
 ];
-const sorts = [["relevance", "Best match"], ["stars", "Most starred"], ["updated", "Newest"]];
+const sorts = [["relevance", "Best match"], ["updated", "Newest"], ["stars", "Most starred"]];
 const next = result.next_cursor ? `/guides?${new URLSearchParams({ ...Object.fromEntries(url.searchParams), cursor: result.next_cursor })}` : null;
+const activeFilters = facets.filter((f) => current(f.key)).map((f) => ({ key: f.key, label: f.name(current(f.key)!) }));
+const q = current("q") ?? "";
 cacheFor(Astro, 300);
 ---
-<Base title="OSINT investigation guides" description="Step-by-step investigation playbooks and references that use registry tools.">
-  <header class="page-head fade-in">
+<Base title="OSINT investigation guides" description="Step-by-step investigation playbooks and references that use registry tools." jsonHref={`https://api.otinstaller.com/v1/guides${q ? `?q=${encodeURIComponent(q)}` : ""}`}>
+  <header class="page-head">
     <p class="eyebrow">Playbooks, versioned like tools</p>
     <h1>Guides</h1>
-    <p class="lead">Investigation playbooks and references. Read them here, or in a terminal with <code>ot guide read</code>; install everything one uses with <code>ot guide tools</code>.</p>
+    <p class="muted">{result.total ?? result.results.length} investigation playbooks and references. Read them here, or in a terminal with <code>ot guide read</code>; <code>ot guide tools</code> installs everything one uses.</p>
     <form method="get" action="/guides" role="search" class="gsearch">
       <label class="sr-only" for="gq">Search guides</label>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
-      <input id="gq" type="search" name="q" value={current("q") ?? ""} placeholder="Search guides" />
-      <button class="btn btn-sm" type="submit">Search</button>
+      <input id="gq" type="search" name="q" value={q} placeholder="Search guides" />
+      <button class="btn" type="submit">Search</button>
     </form>
   </header>
-  <div class="filters">
-    {facets.map((f) => (
-      <div class="row facet" role="group" aria-label={f.label}>
-        <span class="small muted fl">{f.label}</span>
-        {f.values.map((v) => <a class="chip" href={withParam(url, f.key, current(f.key) === v ? null : v)} rel="nofollow" aria-current={current(f.key) === v ? "page" : undefined}>{f.name(v)}</a>)}
+  <div class="results">
+    <details class="facets-drawer" open>
+      <summary class="btn btn-sm facets-toggle">Filters{activeFilters.length > 0 && <span class="n">{activeFilters.length}</span>}</summary>
+      <aside class="facets" aria-label="Filters">
+        {facets.map((f) => (
+          <details class="facet" open={!!current(f.key) || f.key === "input"}>
+            <summary class="fl">{f.label}{current(f.key) && <span class="n">1</span>}</summary>
+            <ul class="list-plain">
+              {f.values.map((v) => <li><a href={withParam(url, f.key, current(f.key) === v ? null : v)} rel="nofollow" aria-current={current(f.key) === v ? "page" : undefined}>{f.name(v)}</a></li>)}
+            </ul>
+          </details>
+        ))}
+      </aside>
+    </details>
+    <div class="list">
+      <div class="toolbar">
+        <div class="segmented" aria-label="Sort">{sorts.map(([k, label]) => <a href={withParam(url, "sort", k)} rel="nofollow" aria-current={(current("sort") ?? "relevance") === k ? "page" : undefined}>{label}</a>)}</div>
+        {activeFilters.length > 0 && (
+          <div class="row active small">
+            {activeFilters.map((f) => <a class="chip" href={withParam(url, f.key, null)} rel="nofollow" aria-label={`Remove filter ${f.label}`}>{f.label} ✕</a>)}
+            <a class="btn btn-ghost btn-sm" href={q ? `/guides?q=${encodeURIComponent(q)}` : "/guides"} rel="nofollow">Clear all</a>
+          </div>
+        )}
       </div>
-    ))}
-    <div class="row facet" role="group" aria-label="Sort">
-      <span class="small muted fl">Sort</span>
-      <div class="segmented">{sorts.map(([k, label]) => <a href={withParam(url, "sort", k)} rel="nofollow" aria-current={(current("sort") ?? "relevance") === k ? "page" : undefined}>{label}</a>)}</div>
+      {result.results.length === 0
+        ? <p class="notice">No guides match these filters yet. <a href="/guides">All guides</a>.</p>
+        : <div class="rows">{result.results.map((g) => <ToolRow tool={g} level={2} />)}</div>}
+      {next && <p class="more"><a class="btn" href={next} rel="next nofollow">More guides</a></p>}
+      <p class="small muted write">Write one: <code>ot init --guide</code> scaffolds a guide repository. <a href="/docs/guides">How guides are published</a>.</p>
     </div>
   </div>
-  {result.results.length === 0
-    ? <p class="notice">No guides match these filters yet.</p>
-    : <div class="grid stagger">{result.results.map((g) => <ToolCard tool={g} level={2} />)}</div>}
-  {next && <p class="more"><a class="btn" href={next} rel="next nofollow">More guides</a></p>}
-  <p class="small muted write">Write one: <code>ot init --guide</code> scaffolds a guide repository. <a href="/docs/guides">How guides are published</a>.</p>
 </Base>
+
+<script>
+  const d = document.querySelector<HTMLDetailsElement>(".facets-drawer");
+  if (d && matchMedia("(max-width: 860px)").matches) d.open = false;
+</script>
 
 <style>
   .page-head { margin-bottom: 20px; }
   .page-head .eyebrow { margin: 0; }
-  .page-head h1 { margin: 6px 0 8px; }
-  .gsearch { display: flex; align-items: center; gap: 8px; max-width: 520px; padding: 6px 6px 6px 14px; border: 1px solid var(--border-strong); border-radius: 14px; background: var(--bg-raised); margin-top: 16px; transition: border-color var(--dur-1), box-shadow var(--dur-2); }
-  .gsearch:focus-within { border-color: var(--accent); box-shadow: var(--ring); }
-  .gsearch svg { width: 18px; height: 18px; color: var(--text-faint); flex: none; }
-  .gsearch input { flex: 1; border: 0; background: transparent; padding: 8px 0; }
-  .gsearch input:focus-visible { box-shadow: none; }
-  .filters { margin: 8px 0 24px; display: grid; gap: 10px; }
-  .facet { gap: 6px; }
-  .fl { min-width: 92px; }
-  .filters .chip { font-size: var(--fs-0); padding: 3px 10px; }
-  .more { margin-top: 24px; text-align: center; }
-  .write { margin-top: 28px; }
+  .page-head h1 { margin: 6px 0; }
+  .page-head p { margin: 0; max-width: 72ch; }
+  .gsearch { display: flex; gap: 8px; max-width: 520px; margin-top: 14px; }
+  .gsearch input { flex: 1; }
+  .results { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 32px; align-items: start; }
+  .facets-drawer { position: sticky; top: 76px; }
+  .facets-toggle { display: none; list-style: none; }
+  .facets-toggle::-webkit-details-marker { display: none; }
+  .n { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; margin-left: 6px; background: var(--bg-inverse); color: var(--bg); font-size: var(--fs-0); }
+  .facet { border-top: 1px solid var(--border); padding: 8px 0; }
+  .fl { margin: 0; cursor: pointer; font-size: var(--fs-0); text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-faint); padding: 6px 0; display: flex; align-items: center; list-style: none; }
+  .fl::-webkit-details-marker { display: none; }
+  .fl::after { content: "+"; margin-left: auto; }
+  .facet[open] > .fl::after { content: "−"; }
+  .facet ul { margin: 2px 0 4px; max-height: 280px; overflow-y: auto; font-size: var(--fs-1); }
+  .facet li + li { margin-top: 0; }
+  .facet a { display: block; padding: 5px 6px; text-decoration: none; color: var(--text-muted); }
+  .facet a:hover { color: var(--text); background: var(--bg-subtle); }
+  .facet a[aria-current="page"] { color: var(--text); background: var(--accent-soft); }
+  .toolbar { display: grid; gap: 10px; margin-bottom: 12px; }
+  .more { margin-top: 20px; text-align: center; }
+  .write { margin-top: 24px; }
+  @media (max-width: 860px) {
+    .results { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    .facets-drawer { position: static; }
+    .facets-drawer:not([open]) .facets { display: none; }
+    .facets-toggle { display: inline-flex; width: max-content; }
+    .facets { padding: 0 12px; border: 1px solid var(--border); margin-top: 8px; }
+  }
 </style>
