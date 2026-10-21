@@ -39,6 +39,7 @@ export default defineConfig(async () => {
           OPS_REPO: "osintverse/registry-ops",
           OPS_INSTALLATION_ID: "999",
           RESEND_API_KEY: "re_test",
+          EDGE_CACHE: "off",
         } },
       }),
     ],

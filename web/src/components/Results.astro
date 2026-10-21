@@ -1,5 +1,7 @@
 ---
-// A search result list with facets, used by /search, /input/{type} and /category/{slug}.
+// A search result list with facets, used by /search, /input/{type} and /category/{slug}. Filter and sort links
+// are nofollow (and filtered pages noindex, see Base.astro): crawlers walking every combination used up the
+// registry database's daily reads.
 import ToolCard from "./ToolCard.astro";
 import type { SearchResult, Types } from "../lib/api";
 import { categoryLabel, inputLabel } from "../lib/format";
@@ -31,7 +33,7 @@ const suggestions = ["email", "username", "domain", "phone", "image"];
   <details class="facets-drawer" open>
     <summary class="btn facets-toggle">Filters{activeFilters.length > 0 && <span class="badge info plain">{activeFilters.length}</span>}</summary>
     <aside class="facets" aria-label="Filters">
-      <a class:list={["toggle", { on: !!current("no_keys") }]} href={withParam(url, "no_keys", current("no_keys") ? null : "1")} aria-pressed={!!current("no_keys")}>
+      <a class:list={["toggle", { on: !!current("no_keys") }]} href={withParam(url, "no_keys", current("no_keys") ? null : "1")} rel="nofollow" aria-pressed={!!current("no_keys")}>
         <span class="sw" aria-hidden="true"></span> No API key needed
       </a>
       {facets.map((f) => (
@@ -39,7 +41,7 @@ const suggestions = ["email", "username", "domain", "phone", "image"];
           <summary>{f.label}{current(f.key) && <span class="badge info plain">1</span>}</summary>
           <ul class="list-plain">
             {f.values.map((v) => (
-              <li><a href={withParam(url, f.key, current(f.key) === v ? null : v)} aria-current={current(f.key) === v ? "page" : undefined}>{f.name(v)}</a></li>
+              <li><a href={withParam(url, f.key, current(f.key) === v ? null : v)} rel="nofollow" aria-current={current(f.key) === v ? "page" : undefined}>{f.name(v)}</a></li>
             ))}
           </ul>
         </details>
@@ -49,12 +51,12 @@ const suggestions = ["email", "username", "domain", "phone", "image"];
   <div class="list">
     <div class="toolbar">
       <div class="segmented" aria-label="Sort">
-        {sorts.map(([k, label]) => <a href={withParam(url, "sort", k)} aria-current={(current("sort") ?? "relevance") === k ? "page" : undefined}>{label}</a>)}
+        {sorts.map(([k, label]) => <a href={withParam(url, "sort", k)} rel="nofollow" aria-current={(current("sort") ?? "relevance") === k ? "page" : undefined}>{label}</a>)}
       </div>
       {activeFilters.length > 0 && (
         <div class="row active small">
-          {activeFilters.map((f) => <a class="chip" href={withParam(url, f.key, null)} aria-label={`Remove filter ${f.label}`}>{f.label} <span aria-hidden="true">✕</span></a>)}
-          <a class="btn btn-ghost btn-sm" href={clearAll}>Clear all</a>
+          {activeFilters.map((f) => <a class="chip" href={withParam(url, f.key, null)} rel="nofollow" aria-label={`Remove filter ${f.label}`}>{f.label} <span aria-hidden="true">✕</span></a>)}
+          <a class="btn btn-ghost btn-sm" href={clearAll} rel="nofollow">Clear all</a>
         </div>
       )}
     </div>
@@ -68,7 +70,7 @@ const suggestions = ["email", "username", "domain", "phone", "image"];
         </div>
       )
       : <div class="grid stagger">{result.results.map((t) => <ToolCard tool={t} level={2} />)}</div>}
-    {next && <p class="more"><a class="btn" href={next} rel="next">More results</a></p>}
+    {next && <p class="more"><a class="btn" href={next} rel="next nofollow">More results</a></p>}
   </div>
 </div>
 

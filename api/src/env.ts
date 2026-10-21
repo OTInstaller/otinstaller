@@ -29,6 +29,7 @@ export interface Env {
   EMAIL_FROM?: string;
   CF_URLSCAN_ACCOUNT_ID?: string; // with CF_URLSCAN_TOKEN, guide links are checked with Cloudflare URL Scanner
   CF_URLSCAN_TOKEN?: string;
+  EDGE_CACHE?: string; // "off" sends every anonymous read to D1 (the tests do this)
 }
 
 /**

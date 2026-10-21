@@ -34,18 +34,18 @@ cacheFor(Astro, 300);
     {facets.map((f) => (
       <div class="row facet" role="group" aria-label={f.label}>
         <span class="small muted fl">{f.label}</span>
-        {f.values.map((v) => <a class="chip" href={withParam(url, f.key, current(f.key) === v ? null : v)} aria-current={current(f.key) === v ? "page" : undefined}>{f.name(v)}</a>)}
+        {f.values.map((v) => <a class="chip" href={withParam(url, f.key, current(f.key) === v ? null : v)} rel="nofollow" aria-current={current(f.key) === v ? "page" : undefined}>{f.name(v)}</a>)}
       </div>
     ))}
     <div class="row facet" role="group" aria-label="Sort">
       <span class="small muted fl">Sort</span>
-      <div class="segmented">{sorts.map(([k, label]) => <a href={withParam(url, "sort", k)} aria-current={(current("sort") ?? "relevance") === k ? "page" : undefined}>{label}</a>)}</div>
+      <div class="segmented">{sorts.map(([k, label]) => <a href={withParam(url, "sort", k)} rel="nofollow" aria-current={(current("sort") ?? "relevance") === k ? "page" : undefined}>{label}</a>)}</div>
     </div>
   </div>
   {result.results.length === 0
     ? <p class="notice">No guides match these filters yet.</p>
     : <div class="grid stagger">{result.results.map((g) => <ToolCard tool={g} level={2} />)}</div>}
-  {next && <p class="more"><a class="btn" href={next} rel="next">More guides</a></p>}
+  {next && <p class="more"><a class="btn" href={next} rel="next nofollow">More guides</a></p>}
   <p class="small muted write">Write one: <code>ot init --guide</code> scaffolds a guide repository. <a href="/docs/guides">How guides are published</a>.</p>
 </Base>
 
