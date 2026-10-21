@@ -66,8 +66,9 @@ func TestBundles(t *testing.T) {
 	}
 
 	var s struct {
-		Name     string
-		Packages []struct {
+		Name        string
+		Description string
+		Packages    []struct {
 			RegistryType string
 			Identifier   string
 			FileSha256   string
@@ -75,7 +76,7 @@ func TestBundles(t *testing.T) {
 	}
 	b, _ := os.ReadFile(filepath.Join(out, "server.json"))
 	json.Unmarshal(b, &s)
-	if s.Name != "com.otinstaller/ot" || len(s.Packages) != 2 {
+	if s.Name != "com.otinstaller/ot" || len(s.Packages) != 2 || len(s.Description) > 100 {
 		t.Fatalf("server.json: %s", b)
 	}
 	for _, p := range s.Packages {
@@ -92,4 +93,23 @@ func keys(m map[string]string) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// The remote server's registry entry is written by hand; the registry refuses it with a description over 100
+// characters.
+func TestRemoteServerEntry(t *testing.T) {
+	b, err := os.ReadFile("../../../integrations/mcp-registry/server.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s struct {
+		Name, Description string
+		Remotes           []struct{ Type, URL string }
+	}
+	if err := json.Unmarshal(b, &s); err != nil {
+		t.Fatal(err)
+	}
+	if s.Name != "com.otinstaller/registry" || len(s.Description) > 100 || len(s.Remotes) != 1 || s.Remotes[0].URL != "https://api.otinstaller.com/mcp" {
+		t.Fatalf("integrations/mcp-registry/server.json: %+v", s)
+	}
 }

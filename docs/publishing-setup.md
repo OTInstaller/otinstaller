@@ -257,9 +257,13 @@ signed with `mcpb sign` yet.
 
 Listing a release in the registry is a manual step:
 
-1. Once: install [`mcp-publisher`](https://github.com/modelcontextprotocol/registry), then prove you own
-   `otinstaller.com` so the server can be named `com.otinstaller/ot`. Follow the registry's DNS authentication
-   instructions: `mcp-publisher login dns --domain otinstaller.com` with a TXT record on the domain (Cloudflare → DNS).
+1. Once: install [`mcp-publisher`](https://github.com/modelcontextprotocol/registry)
+   (`go install github.com/modelcontextprotocol/registry/cmd/publisher@v1.8.1`). The registry checks that we own
+   `otinstaller.com` (so the servers can be named `com.otinstaller/*`) by reading the public key the site serves at
+   `/.well-known/mcp-registry-auth` (`web/public/.well-known/`). The matching private key is in the owner's
+   `~/.mcp-registry/otinstaller.com.ed25519.hex`, outside the repository. Sign in with
+   `mcp-publisher login http --domain otinstaller.com --private-key <that key>`, and again if a publish says the
+   sign-in has expired. If the key is lost, make a new pair, replace the site file, and deploy the site.
 2. For each release: download its `server.json`, check it with `mcp-publisher validate server.json` (or
    `mcp-publisher publish --dry-run`), then run `mcp-publisher publish server.json`.
 
@@ -367,7 +371,8 @@ The plugin lives in `integrations/agent-plugin/` and is published as its own pub
 root. Its tests are in `cli/internal/cli/mcp_test.go` (`TestAgentPluginMatchesServer`): every tool and prompt it names
 must exist in `ot mcp`.
 
-1. Once: create the public repository `OTInstaller/agent-plugin` (Apache 2.0), empty.
+1. Once: create the public repository `OTInstaller/agent-plugin` (Apache 2.0), empty. Done 21 Oct 2026; v0.1.0 is
+   published there.
 2. To publish a version: bump `version` in both `.claude-plugin/plugin.json` and `.cursor-plugin/plugin.json`, then
    copy the folder's contents to the repository's root and push:
    ```bash
