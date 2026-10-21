@@ -189,7 +189,11 @@ func printInfo(w io.Writer, m *manifest.Manifest, t *api.ToolDetail) {
 		if s.Required {
 			req = "required"
 		}
-		fmt.Fprintf(w, "Key:     %s (%s) %s\n", s.Name, req, s.URL)
+		where := ""
+		if s.URL != "" {
+			where = " (get one at " + s.URL + ")"
+		}
+		fmt.Fprintf(w, "Key:     %s (%s): set it with `ot keys set %s`%s\n", s.Name, req, s.Name, where)
 	}
 	if e := m.Ethics; e != nil {
 		fmt.Fprintf(w, "Ethics:  %s, %s, %s\n",
@@ -197,7 +201,11 @@ func printInfo(w io.Writer, m *manifest.Manifest, t *api.ToolDetail) {
 			yesNo(e.AuthRequired, "logs in to accounts", "does not log in to accounts"),
 			yesNo(e.CollectsPersonalData, "collects personal data", "no personal data"))
 	}
-	fmt.Fprintf(w, "\nRun:     ot run %s %s\n", m.Ref(), exampleArgs(m))
+	if m.Test != nil && len(m.Test.Input) > 0 {
+		fmt.Fprintf(w, "\nRun:     %s\n         (the registry's own test input; the first run installs the tool after asking once)\n", runner.ExampleCommand(m))
+	} else {
+		fmt.Fprintf(w, "\nRun:     %s\n", runner.ExampleCommand(m))
+	}
 }
 
 func yesNo(b bool, y, n string) string {
@@ -205,16 +213,6 @@ func yesNo(b bool, y, n string) string {
 		return y
 	}
 	return n
-}
-
-func exampleArgs(m *manifest.Manifest) string {
-	var parts []string
-	for _, in := range m.Inputs {
-		if in.Required {
-			parts = append(parts, "--"+in.Name+" <"+in.Type+">")
-		}
-	}
-	return strings.Join(parts, " ")
 }
 
 func (a *App) installCmd() *cobra.Command {
