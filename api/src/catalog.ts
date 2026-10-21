@@ -15,7 +15,7 @@ export const LISTED = `NOT EXISTS (SELECT 1 FROM sources s WHERE s.tool_id = t.i
 
 export const SUMMARY_COLUMNS = `
   t.id, t.rowid AS rowid, n.name AS namespace, t.name, t.kind, t.summary, t.categories, t.status,
-  t.stars_count, t.installs_30d, t.health_status, t.community_packaged, t.needs_update, n.verified,
+  t.stars_count, t.installs_30d, t.health_status, t.health_checked_at, t.community_packaged, t.needs_update, n.verified,
   v.version AS latest_version, v.runtime_kind, v.signer_identity,
   json_extract(v.manifest_json, '$.title') AS title, json_extract(v.manifest_json, '$.level') AS level,
   json_extract(v.manifest_json, '$.format') AS format, json_extract(v.manifest_json, '$.language') AS language,
@@ -42,6 +42,7 @@ export type SummaryRow = {
   stars_count: number;
   installs_30d: number;
   health_status: string;
+  health_checked_at: number | null;
   community_packaged: number;
   needs_update: number;
   verified: number;
@@ -79,6 +80,8 @@ export function summary(r: SummaryRow) {
     stars: r.stars_count,
     installs_30d: r.installs_30d,
     health: r.health_status,
+    // When the nightly health check last ran (ms), so the site can say "worked last night"; null when never.
+    health_checked_at: r.health_checked_at ?? null,
     verified: r.verified === 1,
     // Registry-held manifests never get the Signed badge.
     signed: !!r.signer_identity && r.manifest_mode !== "registry",

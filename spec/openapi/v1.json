@@ -2208,10 +2208,11 @@
                 "relevance",
                 "installs",
                 "stars",
-                "updated"
+                "updated",
+                "health"
               ]
             },
-            "description": "relevance (default), installs, stars or updated"
+            "description": "relevance (default), installs, stars, updated, or health (healthy tools by their last passing nightly check first)"
           },
           {
             "name": "no_keys",
@@ -3674,6 +3675,49 @@
         },
         "security": []
       }
+    },
+    "/facets": {
+      "get": {
+        "operationId": "facet_counts",
+        "tags": [
+          "Registry"
+        ],
+        "summary": "How many visible packages match each facet value",
+        "description": "Counts over tools (or guides with kind=guide) for the site's filter rail: inputs, outputs, categories, runtimes, and how many need no key. Counts ignore other filters, so they describe the catalogue, not a search.",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "tool",
+                "guide"
+              ]
+            },
+            "description": "tool (default) or guide"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Facets"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          }
+        },
+        "security": []
+      }
     }
   },
   "components": {
@@ -3936,6 +3980,13 @@
           },
           "needs_update": {
             "type": "boolean"
+          },
+          "health_checked_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "When the nightly health check last ran, in Unix milliseconds; null when never"
           }
         }
       },
@@ -4308,6 +4359,53 @@
               "integer",
               "null"
             ]
+          }
+        }
+      },
+      "Facets": {
+        "type": "object",
+        "required": [
+          "kind",
+          "inputs",
+          "outputs",
+          "categories",
+          "runtimes",
+          "no_keys"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "tool",
+              "guide"
+            ]
+          },
+          "inputs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "outputs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "categories": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "runtimes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "no_keys": {
+            "type": "integer",
+            "description": "Packages that need no API key"
           }
         }
       }

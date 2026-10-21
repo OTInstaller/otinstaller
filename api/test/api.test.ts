@@ -198,6 +198,32 @@ describe("namespaces, pivots, types, installs", () => {
   });
 });
 
+describe("facets and health", () => {
+  it("counts facet values over the visible catalogue", async () => {
+    const { status, body } = await get("/facets");
+    expect(status).toBe(200);
+    expect(body.kind).toBe("tool");
+    expect(body.inputs.email).toBeGreaterThanOrEqual(1);
+    expect(Object.keys(body.categories).length).toBeGreaterThan(0);
+    expect(typeof body.no_keys).toBe("number");
+    expect(body.runtimes.docker).toBeGreaterThanOrEqual(1);
+    const guides = (await get("/facets?kind=guide")).body;
+    expect(guides.kind).toBe("guide");
+    expect((await get("/facets?kind=nope")).status).toBe(400);
+  });
+
+  it("sorts by the last passing health check and exposes when it ran", async () => {
+    const { status, body } = await get("/tools?kind=tool&sort=health&limit=100");
+    expect(status).toBe(200);
+    expect(body.results.length).toBeGreaterThan(0);
+    for (const t of body.results) expect("health_checked_at" in t).toBe(true);
+    const order = body.results.map((t: any) => (t.health === "healthy" ? 2 : t.health === "broken" ? 0 : 1));
+    expect([...order].sort((a, b) => b - a)).toEqual(order);
+    const detail = (await get("/tools/osintverse/phone-parse")).body;
+    expect("health_checked_at" in detail).toBe(true);
+  });
+});
+
 describe("helpers", () => {
   it("builds safe FTS queries", () => {
     expect(ftsQuery("holehe lite")).toBe('"holehe"* "lite"*');
