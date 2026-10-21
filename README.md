@@ -181,8 +181,8 @@ of it ("OTinstaller by OSINTverse"). Tools installed by either CLI, and the upst
   note in the merge request to include it; an existing pipeline is never rewritten.
 - The mirror is a small OCI registry of our own on R2 (`api/src/mirror/registry.ts`) rather than a fork of Cloudflare's
   serverless-registry: it only needs pulls, the scanner's pushes (including chunked uploads, for layers over the Workers
-  request limit) and deletes for takedowns. It has no referrers API, so signatures use the tag schema, which `cosign copy`
-  and `cosign verify` handle. Each repository keeps its own blobs, so a takedown never touches another package.
+  request limit) and deletes for takedowns. It has no referrers API, so signatures use the tag schema: the scanner copies
+  those tags with crane, and `cosign verify` reads them. Each repository keeps its own blobs, so a takedown never touches another package.
 - Git bundles hold branches and tags only, not the hosts' own refs (`refs/pull/*`, `refs/merge-requests/*`), which
   cannot be pushed to the other host.
 - A registry-held manifest is published with the version from each new tag, and the image tagged with that version (or

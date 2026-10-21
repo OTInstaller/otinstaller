@@ -12,7 +12,7 @@
 //   hidden/<name>, hidden/<name>@<digest> taken-down images: not served to the public while they wait for deletion
 //
 // The referrers API is not implemented, so cosign and other clients use the tag schema (sha256-<hex>.sig,
-// sha256-<hex>) and signatures copied with `cosign copy` keep verifying.
+// sha256-<hex>); the scanner copies those tags, so signatures keep verifying on the mirror.
 
 export interface MirrorEnv {
   MIRROR: R2Bucket;

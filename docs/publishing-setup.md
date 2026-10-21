@@ -254,7 +254,7 @@ installs or loses a tool's code (plan section "Source and artifact backups"):
 
 | What | Where | Made by |
 | --- | --- | --- |
-| Container image of each published version, all platforms, with its signatures | `mirror.otinstaller.com/<ns>/<name>@sha256:…` (non-OSI licenses: `private/<ns>/<name>`, readable only with the push credential) | the scan job after a passing verdict: `crane copy` (same digest), `cosign copy`, and the `sha256-<hex>[.sig/.att/.sbom]` tags |
+| Container image of each published version, all platforms, with its signatures | `mirror.otinstaller.com/<ns>/<name>@sha256:…` (non-OSI licenses: `private/<ns>/<name>`, readable only with the push credential) | the scan job after a passing verdict: `crane copy` (same digest), then its signature, attestation and SBOM tags (`sha256-<hex>[.sig/.att/.sbom]`, and `sha256-<hex>` for cosign v3 bundles), also with crane |
 | PyPI wheel of each published version | R2 `otinstaller-backups`, `wheels/<ns>/<name>/<sha256>.whl` | the scan job, through a signed upload URL |
 | Git repository (all branches and tags) | R2 `otinstaller-backups`, `git/<provider>/<project_id>/<date>-<version or weekly>.bundle` | the scan job at every release, and a weekly job (Mondays 04:41 UTC) for every active source |
 
@@ -304,7 +304,7 @@ and checks the same SHA-256. Both exist only for OSI-approved licenses. Network 
    the scanner pushes layers over 90 MB in 50 MB chunks because request bodies are capped at 100 MB.
    `MIRROR_HOST` in `wrangler.jsonc` is the host the API puts in `mirror_image` (default `mirror.otinstaller.com`).
 4. **registry-ops**: the secret `MIRROR_PUSH_TOKEN` (the same credential) and, if the mirror lives elsewhere, the variable
-   `MIRROR_HOST`. The workflow installs crane and logs in to the mirror with it; cosign uses the same login.
+   `MIRROR_HOST`. The workflow installs crane and logs in to the mirror with it.
 5. **Migration 0011** adds the backup tables and columns: `npx wrangler d1 migrations apply otinstaller --remote`, then
    `npx wrangler deploy` (the weekly backup and monthly drill cron triggers come with the deploy).
 
