@@ -1,0 +1,176 @@
+# Tests otlite, the no-Docker edition in otlite/ (the registry CLI is in cli/).
+name: otlite
+
+on:
+  push:
+    paths: ["otlite/**", ".github/workflows/otlite-ci.yml"]
+  pull_request:
+    paths: ["otlite/**", ".github/workflows/otlite-ci.yml"]
+
+defaults:
+  run:
+    working-directory: otlite
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: pip install -e ".[dev,pipeline]"
+      - name: Ruff check
+        run: ruff check .
+      - name: Ruff format check
+        run: ruff format --check .
+      - name: Run tests
+        run: pytest
+
+  test-debian:
+    # Debian 12 (bookworm) - Kali is Debian-based and covered by this
+    runs-on: ubuntu-24.04
+    container: debian:12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: |
+          apt-get update && apt-get install -y python3 python3-venv python3-pip git
+      - name: Create virtualenv
+        run: python3 -m venv .venv
+      - name: Install project
+        run: .venv/bin/pip install -e ".[dev,pipeline]"
+      - name: Ruff check
+        run: .venv/bin/ruff check .
+      - name: Ruff format check
+        run: .venv/bin/ruff format --check .
+      - name: Run tests
+        run: .venv/bin/pytest
+        env:
+          RUN_NETWORK_TESTS: "0"
+
+  test-arch:
+    # Arch Linux
+    runs-on: ubuntu-24.04
+    container: archlinux:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: |
+          pacman -Sy --noconfirm python python-pip git
+      - name: Create virtualenv
+        run: python -m venv .venv
+      - name: Install project
+        run: .venv/bin/pip install -e ".[dev,pipeline]"
+      - name: Ruff check
+        run: .venv/bin/ruff check .
+      - name: Ruff format check
+        run: .venv/bin/ruff format --check .
+      - name: Run tests
+        run: .venv/bin/pytest
+        env:
+          RUN_NETWORK_TESTS: "0"
+
+  test-kali:
+    # Kali Linux: build the Debian package with Kali's own Python libraries,
+    # run the test suite during the build, then install the .deb and use it
+    runs-on: ubuntu-24.04
+    container: kalilinux/kali-rolling
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies from Kali
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential debhelper dh-python pybuild-plugin-pyproject python3-all \
+            python3-hatchling python3-click python3-rich python3-sentry-sdk python3-typer \
+            python3-yaml python3-pytest python3-pytest-asyncio python3-requests git python3-venv
+          python3 --version
+          dpkg -l python3-typer python3-click python3-rich python3-sentry-sdk | tail -4
+      - name: Build the package (runs the tests)
+        run: dpkg-buildpackage -us -uc -b
+      - name: Install the package and use it
+        run: |
+          DEBIAN_FRONTEND=noninteractive apt-get install -y ../otlite_*_all.deb man-db
+          export HOME="$(mktemp -d)" DO_NOT_TRACK=1
+          otlite --version
+          otlite init --yes
+          otlite doctor || true
+          otlite install sherlock -y
+          otlite run sherlock -- --version
+          man -P cat otlite | head -5
+
+  test-packages:
+    # The wheels and sdists that the release workflow publishes: build them, check their metadata,
+    # then install otlite with pipx and the otinstaller shim with pip, as users will
+    runs-on: ubuntu-24.04
+    env:
+      DO_NOT_TRACK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build otlite and the otinstaller shim
+        run: |
+          pip install build twine
+          python -m build --outdir dist .
+          python -m build --outdir dist otinstaller-shim
+          twine check dist/*
+          ls -l dist
+      - name: Install otlite with pipx
+        run: |
+          pip install pipx
+          pipx install dist/otlite-*.whl
+          otlite --version
+          otlite --help
+          otlite init --yes
+          otlite list --json | python -c "import json,sys; print(len(json.load(sys.stdin)), 'tools')"
+      - name: The otinstaller shim installs otlite and keeps the old command
+        run: |
+          python -m venv shim-venv
+          shim-venv/bin/pip install --find-links dist dist/otinstaller-*.whl
+          shim-venv/bin/otinstaller --version 2>shim.err
+          grep -q "now otlite" shim.err
+      - name: Upgrading from otinstaller copies keys and settings
+        run: |
+          export HOME="$(mktemp -d)"
+          mkdir -p "$HOME/.otinstaller"
+          echo "EXAMPLE_KEY=value" > "$HOME/.otinstaller/.env"
+          otlite doctor 2>note.err || true
+          grep -q "copied .env" note.err
+          test -f "$HOME/.otlite/.env"
+
+  test-browser-tool:
+    # MailAccess downloads Chromium's headless shell into its own folder at install.
+    # Check the download works and that MailAccess's browser checks run with it.
+    runs-on: ubuntu-24.04
+    env:
+      DO_NOT_TRACK: "1"
+      MAILACCESS_NO_UPDATE_CHECK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install otlite
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install .
+      - name: Install MailAccess and its browser
+        run: |
+          .venv/bin/otlite init --yes
+          .venv/bin/otlite install mailaccess -y
+          ls ~/.otlite/tools/mailaccess/playwright-browsers
+      - name: Browser checks run instead of being skipped
+        run: |
+          .venv/bin/otlite run mailaccess -- investigate test@example.com --modules browser_account_probe
+          cat results/mailaccess/*/*.txt
+          grep -q "browser_account_probe" results/mailaccess/*/*.txt
+          ! grep -E "browser_account_probe +SKIPPED" results/mailaccess/*/*.txt
