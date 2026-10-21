@@ -899,6 +899,23 @@ depend on MCP spec churn, and it carries the least risk.
   - consent matrix tests: classes × policy × client capabilities
   - a stdio round-trip test
 - Done when the eval suite passes on Claude Code, Cursor and Codex.
+- **Status (2026-10-21): built on `claude/agent-friendly-plan-a8afd5`**, except the eval suite. Differences from this
+  plan:
+  - The server lives in package `cli` (`mcp_*.go`), not its own `mcpserver` package, because it reuses the commands'
+    unexported code. The policy, consent, tokens and audit are in `cli/internal/agent`. The pivot map and the result
+    schemas are embedded by `cli/internal/specfiles`.
+  - Go SDK `github.com/modelcontextprotocol/go-sdk` v1.8.0 (2026-09-04). It supports 2026-07-28 multi round-trip
+    requests and handles older clients by eliciting directly, which answers open question 6. Consent is one code path:
+    an input request, a `consent_token` for clients without elicitation, and a signed request state bound to the
+    call's arguments.
+  - 24 tools: `get_batch` was added for `run_all` and `run_playbook` batches. `run_playbook` has no `install_missing`;
+    the agent installs tools with `install_tool`, which asks on its own.
+  - Long runs use `wait_seconds` and polling only; neither the Tasks extension nor progress notifications are used
+    yet.
+  - `--http` (loopback Streamable HTTP) is not built.
+  - Agent installs also refuse yanked versions, failed scans, broken health, local manifests and `--native` pipx
+    tools.
+  - `OT_CONSENT=off` (not a `config.json` key) turns the unattended CLI check off.
 
 ### Phase 3: packaging and listings (≈ 4–6 days, overlaps Phase 2's end)
 
