@@ -140,7 +140,8 @@ with "Filename too long"; use a short path or `git config core.longpaths true`.
       Visibility → Private → Save, or Settings → General → Advanced → Delete. To delete the GitHub ones for good:
       `gh repo delete dheerajydv19/ot-test-tool` and `gh repo delete dheerajydv19/ot-test-guide`.
 - [ ] **Agents** ([agent-friendly-plan.md](agent-friendly-plan.md), phases 1–5 merged in
-      [PR #18](https://github.com/OTInstaller/otinstaller/pull/18), not deployed). Decided 21 Oct:
+      [PR #18](https://github.com/OTInstaller/otinstaller/pull/18) and [PR #20](https://github.com/OTInstaller/otinstaller/pull/20),
+      **deployed 21 Oct**). Decided 21 Oct:
       - **Consent from launch:** `ot run`, `--all`, playbooks and `auto` without a terminal need `--yes` for tools
         that aren't passive. The release notes and the beta email must say: add `--yes`, or set `OT_CONSENT=off`.
       - **Version:** the release is `ot` v0.13.0 (the manifest docs already say so).
@@ -163,9 +164,18 @@ with "Filename too long"; use a short path or `git config core.longpaths true`.
 
         `/v1/types` is still the copy cached before the deploy (`max-age=86400`, no `ETag` and no pivot map) until
         about 10:00 UTC on 22 Oct.
-      - **Stage 2,** once stage 1 has run cleanly for a while: push the `v0.13.0` tag to release `ot`, then deploy the
-        site straight after (its docs describe `ot mcp` and `/mcp`, and `ot` links to the site's `.md` pages).
-      - **(you) Rate-limit rule, before stage 2.** In the Cloudflare dashboard, open the otinstaller.com zone, then
+      - **Stage 2 done 21 Oct.**
+        - `ot` v0.13.0 was tagged on `97b67b8` and released on `OTInstaller/ot` with the archives, `.deb` and
+          `.rpm`, signed checksums, six `.mcpb` bundles and `server.json`.
+        - The release notes open with what's new and the `--yes` breaking change, above GoReleaser's commit list.
+        - `get.otinstaller.com` serves the install scripts, which take the latest release (not run from here).
+        - PR #19 (redesign phase 1, which was already live as `88b96ef6` from its branch) was merged, and the site
+          was deployed from `main` `661fa7d` with `PUBLIC_BETA=0` as version `72849570`.
+        - Checked: every page answers 200, with no beta strip; the redesign is live; `/docs/agents` (with the remote
+          server), `/docs/mcp-tools`, `llms.txt` and the `.md` versions are live; there are no CSP errors in the
+          browser. The only console error is the expected signed-out 401 from `/v1/me`.
+        - Still to do: the beta email about `--yes`.
+      - **Rate-limit rule:** in place (you, 21 Oct). The settings it was created from: In the Cloudflare dashboard, open the otinstaller.com zone, then
         Security → WAF → Rate limiting rules → Create rule:
         - Name: `API reads and MCP`.
         - Expression: `(http.host eq "api.otinstaller.com" and (http.request.uri.path eq "/mcp" or
@@ -177,7 +187,7 @@ with "Filename too long"; use a short path or `git config core.longpaths true`.
 
         This keeps D1 reads in check if someone scripts `/mcp` or the search filters. If one rule isn't enough, a
         Workers rate-limiting binding in `/mcp` can follow.
-      - **After stage 2:** create `OTInstaller/agent-plugin` and publish the plugin, publish both MCP Registry
+      - **Next:** create `OTInstaller/agent-plugin` and publish the plugin, publish both MCP Registry
         entries (the release's `server.json` and `integrations/mcp-registry/server.json`), and add the `.mcpb`
         download to `/docs/agents` ([publishing-setup.md](publishing-setup.md) sections 10 and 12). Each directory
         and marketplace submission needs your OK.
