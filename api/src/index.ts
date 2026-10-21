@@ -136,7 +136,7 @@ app.get("/tools", async (c) => {
   const format = oneOf(c.req.query("format"), ["guide", "reference"], "format");
   const lang = c.req.query("lang")?.trim() || undefined;
   if (lang && !/^[a-z]{2}(-[A-Z]{2})?$/.test(lang)) apiError(400, "invalid_parameter", "lang must be a language code such as en or pt-BR");
-  const sort = oneOf(c.req.query("sort"), ["relevance", "installs", "stars", "updated"], "sort") ?? "relevance";
+  const sort = oneOf(c.req.query("sort"), ["relevance", "installs", "stars", "updated", "health"], "sort") ?? "relevance";
   const noKeys = c.req.query("no_keys") === "1" || c.req.query("no_keys") === "true";
   // Tools that run offline, touch no target and collect no personal data: what agents may run without asking.
   const passiveOnly = c.req.query("passive_only") === "1" || c.req.query("passive_only") === "true";
@@ -210,6 +210,11 @@ app.get("/tools", async (c) => {
     installs: (a, b) => b.r.installs_30d - a.r.installs_30d,
     stars: (a, b) => b.r.stars_count - a.r.stars_count,
     updated: (a, b) => ((b.r as any).updated_at ?? 0) - ((a.r as any).updated_at ?? 0),
+    // "Recently verified working": healthy tools by the time of their last passing nightly check, then the rest.
+    health: (a, b) => {
+      const h = (x: typeof a) => (x.r.health_status === "healthy" ? 2 : x.r.health_status === "broken" ? 0 : 1);
+      return h(b) - h(a) || (b.r.health_checked_at ?? 0) - (a.r.health_checked_at ?? 0) || b.score - a.score;
+    },
   };
   scored.sort(by[sort]);
   const page = scored.slice(offset, offset + limit);
@@ -288,6 +293,7 @@ app.get("/tools/:ns/:name/:version/manifest", async (c) => {
     signer_issuer: v.signer_issuer ?? undefined,
     scan_status: v.scan_status,
     health: row.health_status,
+    health_checked_at: row.health_checked_at ?? null,
     verified_publisher: row.verified === 1,
     source_unavailable: row.source_status === "unavailable",
     moved_to: movedTo,
@@ -360,6 +366,23 @@ app.get("/namespaces/:ns", async (c) => {
 });
 
 // Tools whose inputs accept the given output types, for chaining results into the next lookup.
+// How many visible packages each facet value matches, for the site's filter rail. Counts are over tools (or
+// guides with kind=guide) and ignore other filters, so they describe the catalogue, not the current search.
+app.get("/facets", async (c) => {
+  const kind = oneOf(c.req.query("kind"), ["tool", "guide"], "kind") ?? "tool";
+  const base = `FROM tools t JOIN namespaces n ON n.id = t.namespace_id JOIN versions v ON v.id = t.latest_version_id WHERE ${VISIBLE} AND ${LISTED} AND t.kind = ?`;
+  const res = await c.env.DB.batch([
+    c.env.DB.prepare(`SELECT io.type AS k, COUNT(DISTINCT t.id) AS n FROM tools t JOIN namespaces n ON n.id = t.namespace_id JOIN versions v ON v.id = t.latest_version_id JOIN tool_io io ON io.tool_id = t.id AND io.direction = 'in' WHERE ${VISIBLE} AND ${LISTED} AND t.kind = ? GROUP BY io.type`).bind(kind),
+    c.env.DB.prepare(`SELECT io.type AS k, COUNT(DISTINCT t.id) AS n FROM tools t JOIN namespaces n ON n.id = t.namespace_id JOIN versions v ON v.id = t.latest_version_id JOIN tool_io io ON io.tool_id = t.id AND io.direction = 'out' WHERE ${VISIBLE} AND ${LISTED} AND t.kind = ? GROUP BY io.type`).bind(kind),
+    c.env.DB.prepare(`SELECT j.value AS k, COUNT(DISTINCT t.id) AS n FROM tools t JOIN namespaces n ON n.id = t.namespace_id JOIN versions v ON v.id = t.latest_version_id, json_each(t.categories) j WHERE ${VISIBLE} AND ${LISTED} AND t.kind = ? GROUP BY j.value`).bind(kind),
+    c.env.DB.prepare(`SELECT v.runtime_kind AS k, COUNT(*) AS n ${base} GROUP BY v.runtime_kind`).bind(kind),
+    c.env.DB.prepare(`SELECT 'no_keys' AS k, COUNT(*) AS n ${base} AND NOT EXISTS (SELECT 1 FROM tool_secrets WHERE tool_id = t.id AND required = 1)`).bind(kind),
+  ]);
+  const counts = (i: number) => Object.fromEntries(((res[i]?.results ?? []) as { k: string | null; n: number }[]).filter((x) => x.k).map((x) => [x.k as string, x.n]));
+  cached(c, 600);
+  return c.json({ kind, inputs: counts(0), outputs: counts(1), categories: counts(2), runtimes: counts(3), no_keys: ((res[4]?.results ?? [])[0] as { n: number } | undefined)?.n ?? 0 });
+});
+
 app.get("/pivots", async (c) => {
   const from = (c.req.query("from") ?? "")
     .split(",")

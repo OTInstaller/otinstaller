@@ -51,7 +51,7 @@ to the public routes below through `edgeCached`, with none of the caller's heade
 | --- | --- | --- | --- | --- | --- |
 | GET | `/health` | none | - | index.ts | `{ok: true}` |
 | GET | `/types` | none | `cached(c, 86400)` | index.ts | Input, output and category enums from `spec/schema/v1.json` |
-| GET | `/tools` | none | `cached(c, 60)` | index.ts | Search. Params `q`, `input`, `output`, `category`, `runtime`, `kind`, `level`, `format`, `lang`, `sort` (relevance, installs, stars, updated), `no_keys`, `limit` (1–100, default 25), `cursor` (offset). FTS path caps at 200 rows, non-FTS at 1000 |
+| GET | `/tools` | none | `cached(c, 60)` | index.ts | Search. Params `q`, `input`, `output`, `category`, `runtime`, `kind`, `level`, `format`, `lang`, `sort` (relevance, installs, stars, updated, health: healthy tools by their last passing nightly check first), `no_keys`, `limit` (1–100, default 25), `cursor` (offset). FTS path caps at 200 rows, non-FTS at 1000 |
 | GET | `/guides` | none | 60 (inherited) | index.ts | Re-dispatches internally to `/v1/tools?kind=guide` with `app.fetch`, so the `/tools` response (and its `max-age=60`) is returned |
 | GET | `/tools/:ns/:name` | none | `cached(c, 60)` | index.ts | Follows aliases (`moved_to`); not found goes through `notFound()`: 410 `tool_removed` or 404 `tool_not_found` |
 | GET | `/tools/:ns/:name/versions` | none | `cached(c, 60)` | index.ts | Published, yanked and removed versions, semver-sorted |
@@ -59,6 +59,7 @@ to the public routes below through `edgeCached`, with none of the caller's heade
 | GET | `/tools/:ns/:name/:version/scans` | none | `cached(c, 300)` | index.ts | PII scan summaries reduced to `{hits: <count>}` |
 | GET | `/tools/:ns/:name/:version` | none | `cached(c, 3600)` | index.ts | Also 3600 for `latest` (unlike `/manifest`, which uses 60 for `latest`) |
 | GET | `/namespaces/:ns` | none | `cached(c, 300)` | index.ts | Active namespaces only; visible tools ordered by `installs_30d` |
+| GET | `/facets` | none | `cached(c, 600)` | index.ts | How many visible packages match each facet value: `inputs`, `outputs`, `categories`, `runtimes`, `no_keys`. `kind` is tool (default) or guide; counts ignore other filters |
 | GET | `/pivots` | none | `cached(c, 600)` | index.ts | `from=` comma list of entity types; top 10 non-broken tools per usable type |
 | POST | `/installs` | none | - | index.ts | Anonymous per-day counter; always 204 (also for unknown packages) |
 

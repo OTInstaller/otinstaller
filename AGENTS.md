@@ -110,7 +110,7 @@ The main development machine is Windows. Use forward slashes in scripts, keep fi
 | Regenerate API template copy | `cd api && npm run sync:templates` |
 | Site dev server | `cd web && npm run dev` (port 4321; CSP **not** enforced) |
 | Site production preview | `cd web && npm run build && npm run preview -- --port 4322` (CSP enforced; without `--port` Astro uses 4321) |
-| Site typecheck / tests | `cd web && npm run check` / `npm test` |
+| Site typecheck / tests / contrast | `cd web && npm run check` / `npm test` / `npm run contrast` |
 | Social image | `cd web && npm run og` (re-renders `public/og.png`) |
 | Scanner tests | `python -m unittest discover ops/scanner` |
 | Seed tool tests | `python -m unittest` inside a `seed/first-party/<tool>/` folder |
@@ -574,16 +574,23 @@ Astro 7 with `output: "server"` on `@astrojs/cloudflare`, Preact islands, no CSS
   `dashboard`, `import`, `feedback`, `settings/accounts`, `transfers/[id]`, `admin/[...section]`, `docs/*.md`,
   `policy/*`, `removed.astro`, `404.astro`, `500.astro` (API trouble, shows the request ID), `robots.txt.ts`,
   `sitemap.xml.ts`. Only `schema/v1.json.ts` is prerendered.
-- `src/layouts/`: `Base.astro` (HTML shell, beta strip, header/footer, the one inline script, global client JS for copy
-  buttons, reveal-on-scroll, count-up, staff link), `Docs.astro`, `Policy.astro`.
-- `src/components/*.astro`: server components (ToolCard, ToolHeader, Results, PageReader, Terminal, InstallTabs,
-  BetaNotice, Badges, CopyCode, CopyCommand, FeatureCard, Logo, PageHead, Pipeline, SideNav, Stat, ThemeToggle).
+- `src/layouts/`: `Base.astro` (HTML shell, beta strip, header with the account menu, lean footer, the one inline
+  script, global client JS for copy buttons and the `/me` account check), `Docs.astro` (with prev/next links),
+  `Policy.astro`.
+- `src/components/*.astro`: server components (PasteBox, InstallBlock, ToolRow, ToolCard, ToolHeader, Evidence,
+  Results, PageReader, Terminal, BetaNotice, CopyCode, CopyCommand, Logo, PageHead, SideNav, ThemeToggle).
+  The design follows osintverse.com (`docs/web-redesign-plan.md` section 4.9): Geist Mono, dark by default, no radius.
 - `src/islands/*.tsx`: Preact islands for anything signed-in or interactive (AdminConsole with review, reports,
-  transfers, audit, feedback and beta tabs; Dashboard; Backups (used by Dashboard); ImportWizard, Accounts, ClaimFlow, TransferView,
-  ReportForm, FeedbackForm, VersionActions, SearchDialog). `shared.tsx` has `useMe`, `SignIn`, `ErrorNote`, `Status`, `Loading`.
+  transfers, audit, feedback and beta tabs; Dashboard; PackageDetail and JobView (the `/dashboard/{ns}/{name}` and
+  `/dashboard/publish/{jobId}` pages); Backups (used by Dashboard and PackageDetail); ImportWizard (four steps; its
+  forms write YAML blocks through `lib/yaml-blocks.ts`), Accounts, ClaimFlow, TransferView, ReportForm, FeedbackForm,
+  VersionActions, SearchDialog). `shared.tsx` has `useMe`, `SignIn`, `ErrorNote`, `Status`, `Loading`, `Confirm`.
 - `src/lib/`: `api.ts` (the only fetch helper: `api<T>()`, `apiOrNull`, `ApiError`, `signInUrl`, response types, and the
   `BETA` / `ISSUES_URL` settings), `page.ts` (`cacheFor`, `searchFrom`, `withParam`), `tool.ts` (`loadTool` handles
-  404/410/moved/guide redirects), `theme-boot.ts`, `format.ts` (+ `format.test.ts`, including `hintParts`).
+  404/410/moved/guide redirects), `theme-boot.ts`, `format.ts` (+ `format.test.ts`, including `hintParts`),
+  `detect.ts` (the paste box's type detection, the CLI's rules; `/search` redirects typed values to `/input/{type}`),
+  `evidence.ts` (the tool page's evidence lines and sample envelope), `install.ts` (the install commands; a test
+  keeps `docs/getting-started.md` equal to them), `yaml-blocks.ts`.
 - `src/styles/`: `tokens.css` (all colours, radii, motion, type scale; light and dark), `global.css` (shared classes),
   `admin.css` (admin console only).
 
@@ -613,12 +620,14 @@ Environment: `PUBLIC_API_URL` (default production), `PUBLIC_BETA` (`"0"` hides t
   `noindex` automatically.
 - New docs pages need adding to the hardcoded nav in `Docs.astro` and to `DOCS` in `sitemap.xml.ts`. Policy pages go in
   the nav in `Policy.astro`; the sitemap has no policy pages today.
-- Install instructions appear in both `InstallTabs.astro` and `docs/getting-started.md`; Homebrew, Scoop and Go installs
-  are hidden until after the beta.
+- Install instructions come from `lib/install.ts` (used by `InstallBlock.astro`) and are repeated in
+  `docs/getting-started.md`, which `install.test.ts` checks; Homebrew, Scoop and Go installs are hidden until after the
+  beta.
+- Nothing may be hidden at first paint waiting for JavaScript (no `opacity: 0` reveals), and nothing loops: the old
+  reveal-on-scroll hid the whole home page in some browsers. `npm run contrast` checks the token pairs for AA.
 - HTML from the registry (READMEs, guide pages) is already sanitized server-side and rendered with `set:html`; don't
   render other untrusted HTML that way.
-- Every component and island file opens with a one-line purpose comment (`Badges.astro` and `ToolCard.astro` are
-  missing theirs).
+- Every component and island file opens with a one-line purpose comment.
 
 ### Local environments
 
@@ -874,8 +883,7 @@ change. Keep this list current when you fix one or find another.
 - CI runs no Go, API, site or scanner tests; there is no `engines` field for Node; `cli/internal/api`, `keys`,
   `state` and `selfupdate` have no test files of their own.
 - `ops/scanner/__pycache__/scan.cpython-313.pyc` is committed and the root `.gitignore` has no `__pycache__/` rule.
-- `api/src/env.ts`, `index.ts`, `lib/errors.ts`, `web/src/components/Badges.astro` and `ToolCard.astro` miss their
-  opening purpose comment.
+- `api/src/env.ts`, `index.ts` and `lib/errors.ts` miss their opening purpose comment.
 - Schema: `versions.status` allows `received`/`validating`, which nothing writes; `tools.latest_version_id` and
   `audit_log.actor_id` have no foreign key.
 - The `week10` write-limit test is flaky under load.

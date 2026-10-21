@@ -1,6 +1,6 @@
 // Helpers for server-rendered pages.
 import type { AstroGlobal } from "astro";
-import { api, type SearchResult } from "./api";
+import { api, ApiError, type SearchResult } from "./api";
 
 /** The Cache-Control value for a public response kept `seconds` at the edge (browsers keep it a minute at most). */
 export function cacheControl(seconds: number): string {
@@ -21,8 +21,19 @@ export async function searchFrom(url: URL, extra: Record<string, string> = {}, p
   }
   if (url.searchParams.get("no_keys")) params.set("no_keys", "1");
   for (const [k, v] of Object.entries(extra)) params.set(k, v);
+  // Browsing (no words to match) lists recently verified working tools first; a query keeps relevance.
+  if (!params.has("sort") && !params.get("q") && !extra.sort && path === "/tools" && extra.kind !== "guide") params.set("sort", "health");
   if (!params.has("limit")) params.set("limit", "24");
-  const result = await api<SearchResult>(`${path}?${params}`);
+  let result: SearchResult;
+  try {
+    result = await api<SearchResult>(`${path}?${params}`);
+  } catch (e) {
+    // An API that predates the health sort answers 400; fall back to its default order.
+    if (e instanceof ApiError && e.status === 400 && params.get("sort") === "health" && !url.searchParams.get("sort")) {
+      params.delete("sort");
+      result = await api<SearchResult>(`${path}?${params}`);
+    } else throw e;
+  }
   return { params, result };
 }
 
