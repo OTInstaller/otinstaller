@@ -20,8 +20,33 @@ export interface ScanResults {
   vulnerabilities: { critical: number; high: number; medium: number; low: number; fixable_critical: number; fixable_high: number } | null;
   secrets: { count: number; findings?: unknown[] };
   malware: { count: number; findings?: unknown[] };
-  smoke: { status: "pass" | "fail" | "skipped"; exit_code?: number; duration_ms?: number; output_excerpt?: string };
+  smoke: { status: "pass" | "fail" | "skipped"; exit_code?: number; duration_ms?: number; output_excerpt?: string; sample?: SmokeSample };
   sbom?: { packages: number };
+}
+
+/** What the test input produced: a few entities (json, jsonl) or the start of stdout (csv, text). Shown on the tool page. */
+export interface SmokeSample {
+  output_format: string;
+  entities?: unknown[];
+  entity_count?: number;
+  stdout?: string;
+}
+
+/** Caps a sample the scanner sent so a verbose tool cannot bloat the scan row or the tool page. */
+export function trimSample(s: unknown): SmokeSample | undefined {
+  if (!s || typeof s !== "object") return undefined;
+  const x = s as SmokeSample;
+  const out: SmokeSample = { output_format: typeof x.output_format === "string" ? x.output_format.slice(0, 10) : "json" };
+  if (Array.isArray(x.entities) && x.entities.length) {
+    out.entities = x.entities.slice(0, 5).filter((e) => e && typeof e === "object" && JSON.stringify(e).length <= 600);
+    out.entity_count = Number.isInteger(x.entity_count) && (x.entity_count as number) >= out.entities.length ? x.entity_count : x.entities.length;
+  }
+  if (!out.entities?.length && typeof x.stdout === "string" && x.stdout.trim()) {
+    delete out.entities;
+    delete out.entity_count;
+    out.stdout = x.stdout.slice(0, 2000);
+  }
+  return out.entities?.length || out.stdout ? out : undefined;
 }
 
 export type Verdict = { result: "pass" | "warn" } | { result: "fail"; code: string; message: string };
