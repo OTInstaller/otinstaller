@@ -29,10 +29,12 @@ func TestBundledToolsAreSeeded(t *testing.T) {
 	all, _ := All(nil)
 	for _, p := range all {
 		for _, ref := range p.Tools {
-			ns, name, _ := strings.Cut(ref, "/")
-			dir := map[string]string{"osintverse": "first-party", "osintverse-community": "community"}[ns]
-			if _, err := os.Stat(filepath.Join("../../../seed", dir, name, "otinstaller.yaml")); err != nil {
-				t.Errorf("%s: %s is not in seed/: %v", p.Name, ref, err)
+			_, name, _ := strings.Cut(ref, "/")
+			// First-party tools are published in osintverse-community too.
+			_, errCommunity := os.Stat(filepath.Join("../../../seed/community", name, "otinstaller.yaml"))
+			_, errFirst := os.Stat(filepath.Join("../../../seed/first-party", name, "otinstaller.yaml"))
+			if errCommunity != nil && errFirst != nil {
+				t.Errorf("%s: %s is not in seed/", p.Name, ref)
 			}
 		}
 	}
