@@ -116,7 +116,8 @@ printf '%s' "$PUSH_TOKEN" | crane auth login "$MIRROR" -u scanner --password-std
 backup_job() { # backup_job <ns/name> <version>
   curl -sf "${AUTH[@]}" -X POST "$API/v1/admin/tools/$1/$2/backup" -d '{"dispatch":false}' >"$WORK/job.json" || { bad "creating the backup job for $1"; return 1; }
   python -c "import json,sys;j=json.load(open(sys.argv[1]));sys.exit(0 if j.get('job') else 1)" "$WORK/job.json" || { bad "no backup job for $1: $(cat "$WORK/job.json")"; return 1; }
-  MIRROR_PUSH_TOKEN="$PUSH_TOKEN" python ops/scanner/scan.py "$WORK/job.json" >"$WORK/backup-${1//\//-}.log" 2>&1 \
+  # One blob upload at a time: local workerd drops concurrent upload finishes (the deployed mirror does not).
+  CRANE_JOBS=1 MIRROR_PUSH_TOKEN="$PUSH_TOKEN" python ops/scanner/scan.py "$WORK/job.json" >"$WORK/backup-${1//\//-}.log" 2>&1 \
     && ok "scanner backed up $1 $2" || { bad "scanner backup of $1"; tail -20 "$WORK/backup-${1//\//-}.log"; }
 }
 backup_job sigstore/cosign 3.1.3
