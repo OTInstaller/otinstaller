@@ -120,6 +120,20 @@ export const templates = {
       `${env.SITE_URL}/admin`,
     ].filter(Boolean).join("\n\n"),
   }),
+  backupTooLarge: (env: Env, ref: string, items: { kind: string; size_bytes: number | null }[]) => ({
+    subject: `Part of ${ref} is too large to back up`,
+    text: `The registry keeps backup copies of every package so installs keep working if its host removes it by mistake. ` +
+      `These were over the limit and are not backed up:\n\n` +
+      items.map((i) => `  ${i.kind === "git" ? "git repository bundle (limit 500 MB)" : i.kind === "image" ? "container image (limit 2 GB)" : i.kind}` +
+        `${i.size_bytes ? `: ${Math.round(i.size_bytes / 1024 ** 2)} MB` : ""}`).join("\n") +
+      `\n\nEverything else is backed up as usual${items.some((i) => i.kind === "git") ? " (an artifact-only backup)" : ""}. ` +
+      `To get under the limit, move large files out of the repository's history or slim the image.` + footer(env),
+  }),
+  drillFailed: (env: Env, id: string, status: string, detail: string) => ({
+    subject: `Restore drill ${status === "expired" ? "did not report back" : "failed"}`,
+    text: `This month's restore drill (${id}) ${status === "expired" ? "did not report back" : "failed"}:\n\n${detail || "(no detail)"}\n\n` +
+      `Check the drill run in registry-ops (Actions → scan) and the backups bucket. ${env.SITE_URL}/admin`,
+  }),
   namespaceRejected: (env: Env, ns: string, reason: string) => ({
     subject: `${ns} was not approved`,
     text: `Your namespace ${ns} was not approved for the OTInstaller Registry.\n\nReason: ${reason}\n\nYou can appeal once by replying to this email.` + footer(env),

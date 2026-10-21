@@ -15,17 +15,25 @@
     }
   ],
   // Rendered READMEs, guide pages and tool docs. Create with `wrangler r2 bucket create otinstaller-content`.
-  "r2_buckets": [{ "binding": "CONTENT", "bucket_name": "otinstaller-content" }],
+  // BACKUPS holds git bundles and wheels (wrangler r2 bucket create otinstaller-backups); MIRROR is the image
+  // mirror's bucket, shared with the mirror Worker (wrangler.mirror.jsonc), so takedowns can hide and delete images.
+  "r2_buckets": [
+    { "binding": "CONTENT", "bucket_name": "otinstaller-content" },
+    { "binding": "BACKUPS", "bucket_name": "otinstaller-backups" },
+    { "binding": "MIRROR", "bucket_name": "otinstaller-mirror" }
+  ],
   "queues": {
     "producers": [{ "binding": "PUBLISH_QUEUE", "queue": "otinstaller-publish" }],
     "consumers": [{ "queue": "otinstaller-publish", "max_batch_size": 5, "max_retries": 5, "retry_delay": 30 }]
   },
-  "triggers": { "crons": ["17 3 * * *", "*/15 * * * *"] },
+  // Nightly, every 15 minutes, weekly git backups (Mondays) and the monthly restore drill.
+  "triggers": { "crons": ["17 3 * * *", "*/15 * * * *", "41 4 * * 1", "23 5 1 * *"] },
   "vars": {
     "SITE_URL": "https://otinstaller.com",
     "API_URL": "https://api.otinstaller.com",
     "OPS_REPO": "OTInstaller/registry-ops",
-    "EMAIL_FROM": "OTInstaller Registry <registry@otinstaller.com>"
+    "EMAIL_FROM": "OTInstaller Registry <registry@otinstaller.com>",
+    "MIRROR_HOST": "mirror.otinstaller.com"
     // "GITHUB_APP_SLUG": "otinstaller" is the App's URL name for install links (this is the default)
   }
   // Secrets (set with `wrangler secret put`, or in .dev.vars locally):
@@ -33,5 +41,7 @@
   //   GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, GITLAB_CLIENT_ID, GITLAB_CLIENT_SECRET,
   //   OSINTVERSE_CLIENT_ID and OSINTVERSE_CLIENT_SECRET (Sign in with OSINTverse; the button fails without them),
   //   TOKEN_ENC_KEY (32 random bytes, base64), OPS_DISPATCH_TOKEN or OPS_INSTALLATION_ID, RESEND_API_KEY,
-  //   CF_URLSCAN_ACCOUNT_ID and CF_URLSCAN_TOKEN (optional: URL Scanner checks of guide links; skipped when unset)
+  //   CF_URLSCAN_ACCOUNT_ID and CF_URLSCAN_TOKEN (optional: URL Scanner checks of guide links; skipped when unset),
+  //   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY (an R2 API token for otinstaller-backups: backup uploads
+  //   and restore downloads then go straight to R2; without them they go through this Worker, 100 MB at most)
 }

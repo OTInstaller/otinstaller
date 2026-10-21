@@ -78,8 +78,9 @@ GitLab.com → Edit profile (or the group) → Applications → Add new applicat
 
 Security scans run as a GitHub Actions workflow in a private repository the registry dispatches to.
 
-1. Create `OTInstaller/registry-ops` (private) and copy into it: `ops/scanner/scan.py` → `ops/scanner/scan.py`,
-   and `ops/workflows/scan.yml` → `.github/workflows/scan.yml`.
+1. Create `OTInstaller/registry-ops` (private) and copy into it: `ops/scanner/scan.py` and `ops/scanner/backup.py` →
+   `ops/scanner/`, and `ops/workflows/scan.yml` → `.github/workflows/scan.yml`. The same workflow runs backups and
+   restore drills (section 11).
 2. Starting a scan (`repository_dispatch`) needs **Contents: Read and write** on registry-ops. Pick one:
    - Recommended: a fine-grained personal access token with access to `OTInstaller/registry-ops` only and
      **Contents: Read and write** → `OPS_DISPATCH_TOKEN`. The App stays read-only on publishers' repositories.
@@ -245,3 +246,97 @@ send server errors to Sentry with their request ID; request headers and bodies a
 
 `ot self-update` and the install scripts refuse a release whose checksums are not signed by the key built into them.
 winget, macOS notarization and Windows code signing need accounts of their own and are not set up yet.
+
+## 11. Backups: the image mirror, R2 buckets and restore drills
+
+Every published package keeps a registry-held copy, so a mistaken ban or takedown on GitHub or GitLab never breaks
+installs or loses a tool's code (plan section "Source and artifact backups"):
+
+| What | Where | Made by |
+| --- | --- | --- |
+| Container image of each published version, all platforms, with its signatures | `mirror.otinstaller.com/<ns>/<name>@sha256:…` (non-OSI licenses: `private/<ns>/<name>`, readable only with the push credential) | the scan job after a passing verdict: `crane copy` (same digest), `cosign copy`, and the `sha256-<hex>[.sig/.att/.sbom]` tags |
+| PyPI wheel of each published version | R2 `otinstaller-backups`, `wheels/<ns>/<name>/<sha256>.whl` | the scan job, through a signed upload URL |
+| Git repository (all branches and tags) | R2 `otinstaller-backups`, `git/<provider>/<project_id>/<date>-<version or weekly>.bundle` | the scan job at every release, and a weekly job (Mondays 04:41 UTC) for every active source |
+
+The registry hands the scanner short-lived signed upload URLs and a single-use token with the scan callback's answer
+(or in an `otinstaller-backup` event, for weekly backups and for versions published after review), and checks what
+arrived: the object exists, is within the limit (500 MB per bundle, 2 GB per image; above that the owner is emailed and
+the other artifacts are kept), and a wheel matches the manifest's SHA-256. Every release bundle and the last 4 weekly
+bundles are kept. Only public repositories of published packages are backed up. A removed package (any category, DMCA
+included) stops being served by the mirror and the wheel route at once, and its backups are deleted 14 days later by the
+nightly cron, unless an admin put it on legal hold (`POST /v1/admin/tools/<ns>/<name>/legal-hold {"hold": true, "reason": "…"}`).
+Owners can turn off git backups on the dashboard (existing bundles are deleted that night); images and wheels stay
+mirrored because installs depend on them.
+
+`ot` falls back on its own: when pulling an image by digest fails with 401, 403, 404, "denied" (or Docker's "error from registry"), it pulls the same
+digest from the `mirror_image` the registry returns with the manifest, and cosign verifies the same signer; when PyPI
+answers 403, 404 or 410 or no longer has a file with the manifest's hash, it downloads the registry's copy (`wheel_url`)
+and checks the same SHA-256. Both exist only for OSI-approved licenses. Network errors never trigger a fallback.
+
+### What to configure
+
+1. **R2 buckets** (the API binds both; the mirror Worker binds `otinstaller-mirror`):
+   ```bash
+   cd api
+   npx wrangler r2 bucket create otinstaller-backups
+   npx wrangler r2 bucket create otinstaller-mirror
+   ```
+   Neither bucket needs public access: wheels are served by the API (`/v1/tools/<ns>/<name>/<version>/wheel/<file>`)
+   and images by the mirror Worker.
+2. **An R2 API token for signed URLs** (recommended: without it uploads go through the API Worker, which takes at most
+   100 MB per request, so bigger bundles fail). R2 → Manage R2 API tokens → Create API token, **Object Read & Write**,
+   limited to `otinstaller-backups`. Then:
+   ```bash
+   npx wrangler secret put R2_ACCOUNT_ID         # the ID in the R2 endpoint https://<id>.r2.cloudflarestorage.com
+   npx wrangler secret put R2_ACCESS_KEY_ID
+   npx wrangler secret put R2_SECRET_ACCESS_KEY
+   ```
+   If the bucket has another name, set `BACKUPS_BUCKET` in `wrangler.jsonc`.
+3. **The mirror Worker** at `mirror.otinstaller.com` (an OCI registry on R2, `api/src/mirror/`):
+   ```bash
+   openssl rand -base64 32                                          # → the push credential
+   npx wrangler secret put MIRROR_PUSH_TOKEN -c wrangler.mirror.jsonc
+   npx wrangler deploy -c wrangler.mirror.jsonc
+   ```
+   **DNS**: the custom domain in `wrangler.mirror.jsonc` makes Cloudflare create the record for `mirror.otinstaller.com`
+   on deploy (the `otinstaller.com` zone is on the same account). Check it with `curl -i https://mirror.otinstaller.com/v2/`
+   (401 with a Bearer challenge). It needs the Workers Paid plan: uploads are hashed in the Worker (`limits.cpu_ms`), and
+   the scanner pushes layers over 90 MB in 50 MB chunks because request bodies are capped at 100 MB.
+   `MIRROR_HOST` in `wrangler.jsonc` is the host the API puts in `mirror_image` (default `mirror.otinstaller.com`).
+4. **registry-ops**: the secret `MIRROR_PUSH_TOKEN` (the same credential) and, if the mirror lives elsewhere, the variable
+   `MIRROR_HOST`. The workflow installs crane and logs in to the mirror with it; cosign uses the same login.
+5. **Migration 0011** adds the backup tables and columns: `npx wrangler d1 migrations apply otinstaller --remote`, then
+   `npx wrangler deploy` (the weekly backup and monthly drill cron triggers come with the deploy).
+
+### Restore drill and alerts
+
+On the 1st of each month (05:23 UTC) the registry picks a random git bundle and a random publicly mirrored image and
+dispatches `otinstaller-drill`: registry-ops downloads the bundle, checks its SHA-256, clones it and pushes everything
+into an empty repository, runs `git fsck` and compares refs, then pulls the image from the mirror by digest and runs
+`cosign verify` with the recorded signer. A failed drill, or one that has not reported back within 6 hours, emails the
+admins. Backup jobs that never report back are marked failed when their URLs expire (3 hours for releases, 12 for
+weekly runs).
+
+An admin can back up a version again with `POST /v1/admin/tools/<ns>/<name>/<version>/backup`; with `{"dispatch": false}`
+it returns the job instead, to run by hand: `MIRROR_PUSH_TOKEN=… python ops/scanner/scan.py job.json`.
+
+### Restore from backup and switching the source
+
+The owner's side is on the dashboard under **Backups** (public docs: `/docs/publishing#backups`):
+
+1. **Restore from backup** (`POST /v1/packages/<ns>/<name>/backups/restore`, namespace owners and admins only) returns a
+   one-hour download link for the latest bundle, its SHA-256, and the commands to push it to a new repository:
+   `git bundle verify`, `git clone --mirror <bundle>`, `git remote set-url origin <new>`, `git push --mirror`.
+2. **Switch source** (`POST /v1/packages/<ns>/<name>/source {"repo": "https://gitlab.com/group/name"}`) points the
+   package at the new repository. The caller must own the package and be an admin (GitHub, with the App installed there)
+   or Maintainer (GitLab, signed in with the `api` scope so the webhook can be created) of the new, public repository.
+   The package keeps its name, versions and installs; the old GitLab webhook is removed; tags already in the new
+   repository are recorded as a baseline and not published again; new releases must be signed by the new repository's CI.
+
+### Check it locally
+
+`bash scripts/e2e-backups.sh` runs the week 11 exit test on one machine: the API and the mirror under `wrangler dev`, a
+local registry as the seeded `sigstore/cosign` image's original registry, and a local repository as its source. It runs
+the scanner's backup jobs, blocks the original registry (403 DENIED) and removes `tldextract` from "PyPI", installs both
+with `ot` (from the mirror with the signature verified, and from the wheel copy), and restores the bundle into an empty
+repository standing in for the other host. It needs Docker, cosign, crane, git, Go, Node and Python.
