@@ -4,7 +4,7 @@
 #
 # Downloads the latest release for this machine, checks its SHA-256 against checksums.txt, checks checksums.txt
 # against the ot release key when openssl is available (Git for Windows ships it), and installs to
-# $env:OT_INSTALL_DIR (default %LOCALAPPDATA%\Programs\ot), adding it to your user PATH.
+# $env:OT_INSTALL_DIR (default %LOCALAPPDATA%\Programs\ot), adding it to your user PATH unless OT_NO_MODIFY_PATH=1.
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
@@ -16,7 +16,9 @@ $arch = switch ($env:PROCESSOR_ARCHITECTURE) { 'AMD64' { 'amd64' } 'ARM64' { 'ar
 $tag = if ($env:OT_VERSION) { $env:OT_VERSION } else { (Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest").tag_name }
 $version = $tag.TrimStart('v')
 $archive = "ot_${version}_windows_$arch.zip"
-$base = "https://github.com/$repo/releases/download/$tag"
+# OT_DOWNLOAD_BASE serves a release from elsewhere (the CI install test uses a local server); the checksum and
+# signature checks below still apply.
+$base = if ($env:OT_DOWNLOAD_BASE) { $env:OT_DOWNLOAD_BASE } else { "https://github.com/$repo/releases/download/$tag" }
 
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ("ot-install-" + [Guid]::NewGuid())
 New-Item -ItemType Directory -Path $tmp | Out-Null
@@ -51,8 +53,9 @@ try {
     Expand-Archive -Path (Join-Path $tmp $archive) -DestinationPath (Join-Path $tmp 'x') -Force
     Copy-Item (Join-Path $tmp 'x\ot.exe') (Join-Path $dir 'ot.exe') -Force
 
+    # OT_NO_MODIFY_PATH=1 leaves the user PATH alone (CI, or managing PATH yourself).
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-    if (-not (($userPath -split ';') -contains $dir)) {
+    if ($env:OT_NO_MODIFY_PATH -ne '1' -and -not (($userPath -split ';') -contains $dir)) {
         [Environment]::SetEnvironmentVariable('Path', ($userPath.TrimEnd(';') + ';' + $dir), 'User')
         Write-Host "Added $dir to your PATH (open a new terminal to use it)."
     }

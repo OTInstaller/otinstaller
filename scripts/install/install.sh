@@ -34,7 +34,9 @@ tag="${OT_VERSION:-$(curl -fsSL "https://api.github.com/repos/$REPO/releases/lat
 [ -n "$tag" ] || fail "could not find the latest release of $REPO"
 version="${tag#v}"
 archive="ot_${version}_${os}_${arch}.tar.gz"
-base="https://github.com/$REPO/releases/download/$tag"
+# OT_DOWNLOAD_BASE serves a release from elsewhere (the CI install test uses a local server); the checksum and
+# signature checks below still apply.
+base="${OT_DOWNLOAD_BASE:-https://github.com/$REPO/releases/download/$tag}"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -43,18 +45,29 @@ curl -fsSL -o "$tmp/$archive" "$base/$archive"
 curl -fsSL -o "$tmp/checksums.txt" "$base/checksums.txt"
 curl -fsSL -o "$tmp/checksums.txt.sig" "$base/checksums.txt.sig"
 
+# An openssl that can check Ed25519 signatures. macOS ships LibreSSL, which can't, so Homebrew's OpenSSL 3 is tried too.
+ed25519_openssl() {
+  for o in openssl /opt/homebrew/opt/openssl@3/bin/openssl /usr/local/opt/openssl@3/bin/openssl; do
+    if command -v "$o" >/dev/null 2>&1 && "$o" genpkey -algorithm ed25519 >/dev/null 2>&1; then
+      echo "$o"
+      return
+    fi
+  done
+}
+
 case "$PUBLIC_KEY" in
   __*) say "warning: this copy of the script has no release key; only the checksum is checked" ;;
   *)
-    if command -v openssl >/dev/null 2>&1; then
+    ssl="$(ed25519_openssl)"
+    if [ -n "$ssl" ]; then
       # Ed25519 SubjectPublicKeyInfo: a fixed 12-byte prefix, then the 32-byte key.
-      { printf '\060\052\060\005\006\003\053\145\160\003\041\000'; printf '%s' "$PUBLIC_KEY" | openssl base64 -d -A; } > "$tmp/key.der"
-      openssl pkey -pubin -inform DER -in "$tmp/key.der" -out "$tmp/key.pem" 2>/dev/null || fail "the release key in this script is malformed"
-      openssl pkeyutl -verify -pubin -inkey "$tmp/key.pem" -rawin -in "$tmp/checksums.txt" -sigfile "$tmp/checksums.txt.sig" >/dev/null 2>&1 \
+      { printf '\060\052\060\005\006\003\053\145\160\003\041\000'; printf '%s' "$PUBLIC_KEY" | "$ssl" base64 -d -A; } > "$tmp/key.der"
+      "$ssl" pkey -pubin -inform DER -in "$tmp/key.der" -out "$tmp/key.pem" 2>/dev/null || fail "the release key in this script is malformed"
+      "$ssl" pkeyutl -verify -pubin -inkey "$tmp/key.pem" -rawin -in "$tmp/checksums.txt" -sigfile "$tmp/checksums.txt.sig" >/dev/null 2>&1 \
         || fail "checksums.txt is not signed by the ot release key"
       say "Signature verified."
     else
-      say "warning: openssl not found; only the checksum is checked"
+      say "warning: no openssl with Ed25519 support (OpenSSL 3) found; only the checksum is checked"
     fi
     ;;
 esac
