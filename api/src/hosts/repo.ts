@@ -141,14 +141,15 @@ export function gitlabRepo(env: Env, projectId: string, userId: string): RepoHos
       return new Uint8Array(await res.arrayBuffer());
     },
     async setStatus(sha, state, description, targetUrl) {
-      await check(
-        await deps.fetch(`${api}/statuses/${sha}`, {
-          method: "POST",
-          headers: { ...(await auth()), "Content-Type": "application/json" },
-          body: JSON.stringify({ state: GL_STATE[state], name: "otinstaller/publish", description: description.slice(0, 255), target_url: targetUrl }),
-        }),
-        "setting commit status",
-      );
+      const res = await deps.fetch(`${api}/statuses/${sha}`, {
+        method: "POST",
+        headers: { ...(await auth()), "Content-Type": "application/json" },
+        body: JSON.stringify({ state: GL_STATE[state], name: "otinstaller/publish", description: description.slice(0, 255), target_url: targetUrl }),
+      });
+      // GitLab refuses to set a status to the state it already has ("Cannot transition status via :run from
+      // :running"), e.g. "validating" then "scans running", which are both running. The status is still right.
+      if (res.status === 400 && (await res.clone().text()).includes("Cannot transition status")) return;
+      await check(res, "setting commit status");
     },
     async listTags(etag) {
       const res = await deps.fetch(`${api}/repository/tags?per_page=100&order_by=updated`, { headers: { ...(await auth()), ...(etag ? { "If-None-Match": etag } : {}) } });
