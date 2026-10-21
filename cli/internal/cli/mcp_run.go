@@ -910,7 +910,11 @@ func (s *mcpServer) batch(ctx context.Context, req *mcp.CallToolRequest, b batch
 				c := *j.row.ExitCode
 				code = &c
 			}
-			s.audit(req, "run", j.inst, j.values, agent.Classify(j.inst.Manifest, j.values), consent, j.row.Status, code, j.row.RunID, j.row.Reason, 0)
+			var ms int64
+			if m := results.MetaFor(j.row.OutputPath); j.row.OutputPath != "" && m != nil {
+				ms = int64(m.DurationSeconds * 1000)
+			}
+			s.audit(req, "run", j.inst, j.values, agent.Classify(j.inst.Manifest, j.values), consent, j.row.Status, code, j.row.RunID, j.row.Reason, ms)
 		}
 	}()
 	waitFor(ctx, lr, b.wait)
