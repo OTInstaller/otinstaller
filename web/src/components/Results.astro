@@ -85,11 +85,42 @@ const clearAll = `${url.pathname}${current("q") ? `?q=${encodeURIComponent(curre
         </div>
       )
       : <div class="rows">{result.results.map((t) => <ToolRow tool={t} level={2} />)}</div>}
-    {next && <p class="more"><a class="btn" href={next} rel="next nofollow">More results</a></p>}
+    {next && <p class="more"><a class="btn" href={next} rel="next nofollow" data-more>More results</a></p>}
+    <p class="sr-only" aria-live="polite" data-more-live></p>
   </div>
 </div>
 
 <script>
+  // "More results" fetches the next page and appends its rows here, so the scroll position and filters stay;
+  // without JavaScript it is an ordinary link to the next page.
+  document.addEventListener("click", async (e) => {
+    const a = (e.target as HTMLElement).closest<HTMLAnchorElement>("a[data-more]");
+    if (!a) return;
+    e.preventDefault();
+    const rows = document.querySelector(".results .rows");
+    const live = document.querySelector<HTMLElement>("[data-more-live]");
+    if (!rows) return (location.href = a.href);
+    a.setAttribute("aria-busy", "true");
+    a.textContent = "Loading…";
+    try {
+      const html = await (await fetch(a.href, { headers: { Accept: "text/html" } })).text();
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const incoming = [...doc.querySelectorAll(".results .rows > *")];
+      const first = incoming[0] as HTMLElement | undefined;
+      for (const el of incoming) rows.appendChild(el);
+      const nextLink = doc.querySelector<HTMLAnchorElement>("a[data-more]");
+      if (nextLink) {
+        a.href = nextLink.href;
+        a.textContent = "More results";
+        a.removeAttribute("aria-busy");
+      } else a.parentElement!.remove();
+      if (live) live.textContent = `${incoming.length} more results added`;
+      first?.querySelector<HTMLElement>("a")?.focus({ preventScroll: true });
+    } catch {
+      location.href = a.href;
+    }
+  });
+
   // Carry a pasted value from /input/{type}?value=… to each tool page, which fills its run command with it.
   const value = new URLSearchParams(location.search).get("value");
   if (value) {

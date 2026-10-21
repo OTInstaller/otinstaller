@@ -10,7 +10,8 @@
     "test": "vitest run",
     "og": "node scripts/og.mjs",
     "deploy": "astro build && wrangler deploy",
-    "contrast": "node scripts/contrast.mjs"
+    "contrast": "node scripts/contrast.mjs",
+    "a11y": "node scripts/a11y.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "14.3.3",
@@ -21,6 +22,8 @@
   },
   "devDependencies": {
     "@astrojs/check": "0.9.10",
+    "axe-core": "^4.14.0",
+    "jsdom": "^30.1.3",
     "sharp": "0.35.5",
     "typescript": "^5.9.3",
     "vitest": "~4.1.0",
