@@ -9,6 +9,7 @@ import ToolRow from "../components/ToolRow.astro";
 import { api, type SearchResult } from "../lib/api";
 import { START_INPUTS, inputLabel } from "../lib/format";
 import { cacheFor } from "../lib/page";
+import { graph, ORGANIZATION } from "../lib/seo";
 
 // "Image" tools take a URL, so that row comes from the images-geo category instead of an input type.
 const rowQuery = (t: string) => (t === "image" ? `/tools?kind=tool&category=images-geo&limit=4` : `/tools?kind=tool&input=${t}&limit=4`);
@@ -23,7 +24,16 @@ const [updated, guides, allTools, allGuides] = await Promise.all([
 const totals = { tools: allTools.total ?? 0, guides: allGuides.total ?? 0 };
 cacheFor(Astro, 300);
 ---
-<Base title="OTInstaller Registry" bleed jsonLd={{ "@context": "https://schema.org", "@type": "WebSite", name: "OTInstaller Registry", url: Astro.site?.toString(), potentialAction: { "@type": "SearchAction", target: `${Astro.site}search?q={query}`, "query-input": "required name=query" } }}>
+<Base
+  title="OTInstaller Registry"
+  description={`Free, public registry of ${totals.tools} open-source OSINT tools and ${totals.guides} investigation guides. Paste an email, username, phone, domain, IP or URL and run the right tool on your own machine with one command: pinned, signed, scanned and sandboxed.`}
+  bleed
+  jsonLd={graph(
+    { "@type": "WebSite", "@id": `${Astro.site}#website`, name: "OTInstaller Registry", alternateName: "OTInstaller", url: Astro.site?.toString(), publisher: { "@id": ORGANIZATION["@id"] }, potentialAction: { "@type": "SearchAction", target: { "@type": "EntryPoint", urlTemplate: `${Astro.site}search?q={query}` }, "query-input": "required name=query" } },
+    ORGANIZATION,
+    { "@type": "SoftwareApplication", name: "ot", description: "The OTInstaller command-line tool: installs digest-pinned, signature-verified OSINT tools from the registry and runs them in a locked-down container.", applicationCategory: "SecurityApplication", operatingSystem: "Windows, macOS, Linux", url: `${Astro.site}docs/getting-started`, downloadUrl: "https://github.com/OTInstaller/ot/releases", license: "https://www.apache.org/licenses/LICENSE-2.0", offers: { "@type": "Offer", price: "0", priceCurrency: "USD" }, isAccessibleForFree: true, publisher: { "@id": ORGANIZATION["@id"] } },
+  )}
+>
   <section class="hero">
     <div class="wrap">
       <p class="eyebrow">Free public registry of OSINT tools</p>

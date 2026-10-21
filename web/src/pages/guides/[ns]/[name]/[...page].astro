@@ -6,6 +6,7 @@ import PageReader from "../../../../components/PageReader.astro";
 import { api, apiOrNull, type GuideDetail, type Page, type Version } from "../../../../lib/api";
 import { formatDate, guidePageHref, inputLabel } from "../../../../lib/format";
 import { cacheFor } from "../../../../lib/page";
+import { breadcrumbs, graph, ORGANIZATION } from "../../../../lib/seo";
 
 const { ns, name } = Astro.params as { ns: string; name: string };
 const want = Astro.params.page ?? "";
@@ -30,23 +31,35 @@ const first = !want || page?.position === 1;
 const tools = guide.related_tools;
 const available = tools.filter((t) => t.available);
 cacheFor(Astro, version ? 3600 : 600);
-const canonical = page ? hrefFor(page.path).split("?")[0] : base;
+// The first page is the guide's address itself, as the sitemap and the guide index link it.
+const canonical = page && !first ? hrefFor(page.path).split("?")[0] : base;
 // The Markdown twin of this page (/guides/<ns>/<name>.md is the first page).
 const markdown = `${canonical}.md${version ? `?v=${encodeURIComponent(version)}` : ""}`;
 const jsonHref = `https://api.otinstaller.com/v1/guides/${ref}${version ? `/${encodeURIComponent(version)}` : ""}`;
-const jsonLd = {
-  "@context": "https://schema.org",
-  "@type": "TechArticle",
-  headline: page?.title ?? guide.title,
-  name: guide.title,
-  description: guide.summary,
-  version: guide.version,
-  license: guide.license,
-  url: `${Astro.site}${hrefFor(page?.path ?? "").slice(1)}`,
-  author: { "@type": "Organization", name: guide.namespace },
-};
+const topics = guide.topics.map(inputLabel);
+const title = page && !first ? `${page.title} · ${guide.title}` : `${guide.title ?? ref}${topics.length ? `: ${topics.join(", ").toLowerCase()} OSINT, step by step` : ""}`;
+const description = page && !first ? `${page.title}: page ${page.position} of ${page.pages} in the ${guide.title ?? ref}. ${guide.summary}.` : `${guide.summary}. ${guide.level ? `${guide.level[0]!.toUpperCase()}${guide.level.slice(1)}-level ` : ""}${guide.format === "reference" ? "reference" : "investigation guide"}${available.length ? ` using ${available.length} free ${available.length === 1 ? "tool" : "tools"} you run sandboxed with one command` : ""}; version ${guide.version}, ${guide.license}.`;
+const jsonLd = graph(
+  {
+    "@type": "TechArticle",
+    headline: page && !first ? page.title : guide.title,
+    name: guide.title,
+    description: guide.summary,
+    version: guide.version,
+    license: guide.license,
+    url: `${Astro.site}${canonical.slice(1)}`,
+    inLanguage: guide.language ?? "en",
+    ...(guide.published_at ? { datePublished: new Date(guide.published_at).toISOString(), dateModified: new Date(guide.published_at).toISOString() } : {}),
+    author: { "@type": "Organization", name: guide.namespace, url: `${Astro.site}${guide.namespace}` },
+    publisher: ORGANIZATION,
+    isPartOf: { "@type": "WebSite", url: Astro.site?.toString() },
+    ...(topics.length ? { about: topics, keywords: topics.map((t) => `${t.toLowerCase()} OSINT`).join(", ") } : {}),
+    ...(available.length ? { mentions: available.map((t) => ({ "@type": "SoftwareApplication", name: t.ref.split("/")[1], url: `${Astro.site}${t.ref}` })) } : {}),
+  },
+  breadcrumbs([["Guides", "/guides"], [guide.title ?? ref, base], ...(page && !first ? [[page.title, canonical] as [string, string]] : [])]),
+);
 ---
-<Base title={page && !first ? `${page.title} · ${guide.title}` : guide.title ?? ref} description={guide.summary} canonical={canonical} jsonLd={jsonLd} markdown={markdown} jsonHref={jsonHref}>
+<Base title={title} description={description} canonical={canonical} ogType="article" jsonLd={jsonLd} markdown={markdown} jsonHref={jsonHref}>
   <header class="ghead">
     <nav class="small crumbs" aria-label="Breadcrumb"><a href="/guides">Guides</a> <span aria-hidden="true">/</span> <a href={`/${guide.namespace}`}>{guide.namespace}</a></nav>
     <div class="title-row">
@@ -75,7 +88,7 @@ const jsonLd = {
 
   {page
     ? (
-      <PageReader page={page} nav={guide.nav} hrefFor={hrefFor} label={`${guide.title} pages`} railLabel={`Tools (${available.length})`}>
+      <PageReader page={page} nav={guide.nav} hrefFor={hrefFor} label={`${guide.title} pages`} railLabel={`Tools (${available.length})`} title={guide.title ?? undefined}>
         {tools.length > 0 && (
           <div slot="rail" class="tools">
             <p class="eyebrow">Tools used in this guide</p>

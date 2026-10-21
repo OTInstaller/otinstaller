@@ -3,6 +3,7 @@ import type { APIRoute } from "astro";
 import { api, API_URL, SITE_URL, type SearchResult } from "../lib/api";
 import { cacheControl } from "../lib/page";
 import { DOC_PAGES, POLICY_PAGES, markdownUrl, type MarkdownPage } from "../lib/markdown";
+import { INPUT_LANDING } from "../lib/landing";
 
 const START = ["getting-started", "agents", "mcp-tools", "cli", "automation", "results", "errors", "api"];
 
@@ -39,6 +40,7 @@ export const GET: APIRoute = async () => {
       `- [Error](${SITE_URL}/schema/error-v1.json): JSON Schema for JSON errors from \`ot\` and the registry API`,
     ].join("\n"),
     `## Policies\n\n${POLICY_PAGES.map(link).join("\n")}`,
+    `## Tools by what you have\n\n${Object.entries(INPUT_LANDING).map(([type, l]) => `- [${l.title}](${SITE_URL}/input/${type}): ${l.description}`).join("\n")}`,
   ];
   if (tools?.length) sections.push(`## Popular tools\n\n${tools.map((t) => `- [${t.namespace}/${t.name}](${SITE_URL}/${t.namespace}/${t.name}.md): ${t.summary}`).join("\n")}`);
   if (guides?.length) sections.push(`## Guides\n\n${guides.map((g) => `- [${g.namespace}/${g.name}](${SITE_URL}/guides/${g.namespace}/${g.name}.md): ${g.title ? `${g.title}. ` : ""}${g.summary}`).join("\n")}`);
