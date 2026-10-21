@@ -406,7 +406,7 @@ frame server-rendered). The logo mark stays; the wordmark is set in Geist Mono.
 | Contrast | AA for all text in both themes, including on soft fills | `web/scripts/contrast.mjs` (new) over the token pairs; the audit's in-page scan in the preview build |
 | Keyboard | Everything reachable and operable; focus visible; dialogs trap and return | Manual pass per phase in the preview build |
 | Motion | Nothing moves under reduced motion; nothing loops otherwise | Audit of `@keyframes` |
-| Semantics | One `h1`; footer titles are not headings; icons hidden; tabs use the tabs pattern | `astro check` plus a Playwright axe run in `npm test` |
+| Semantics | One `h1`; footer titles are not headings; icons hidden; tabs use the tabs pattern | `astro check` plus `npm run a11y` (axe-core in jsdom against the preview build) |
 | LCP | < 1.0 s at p75 on a warm edge (today 2.4 s warm) | Cloudflare Web Vitals; no hidden-until-JS content |
 | INP / CLS | < 100 ms / 0 | Small islands, no scroll work; fonts preloaded with `size-adjust` fallbacks |
 | Weight | Home ≤ 90 KB compressed excluding fonts; fonts ≤ 60 KB | Build output check |
@@ -591,6 +591,13 @@ this branch: facet counts on `/types`, a health-date sort for "recently verified
 jobs in `/me/publish-jobs`, and a public `health_checked_at` so the evidence panel can date the nightly check.
 Also left: an axe run in `npm test` (needs Playwright) and converting the getting-started doc to the shared
 install block (it would lose its Markdown twin).
+
+**Phase 5 (21 Oct 2026, later still):** the API follow-ups landed (`/facets`, `sort=health`, public `health_checked_at`,
+GitLab jobs) and the site uses them; the run block has a Terminal / Agent switch with the `run_tool` arguments for
+`ot mcp`, filled with the pasted value; "More results" appends the next page in place and announces it; `npm run
+a11y` runs axe-core over thirteen pages in jsdom (static rules; contrast is the token script's job) and found the
+radio-driven tabs misusing `role="tab"`, now a radio group. Still open: converting the getting-started doc to the
+shared install block (it would lose its Markdown twin), and a signed-in walk through the wizard and dashboard.
 
 Effort is for one person who knows the codebase, including verification.
 

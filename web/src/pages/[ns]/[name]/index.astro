@@ -42,6 +42,10 @@ const runtimeLine = [
   m.secrets?.some((s) => s.required) ? `needs ${m.secrets.filter((s) => s.required).map((s) => s.name).join(", ")}` : "no key",
   m.runtime?.timeout_seconds ? `up to ${Math.round(m.runtime.timeout_seconds / 60)} min` : null,
 ].filter(Boolean).join(" · ");
+// What an agent sends `ot mcp` to run this tool (docs/agents): one target with its type, or inputs by name.
+const agentCall = first
+  ? JSON.stringify({ tool: ref, target: ex(first).replace(/^"|"$/g, ""), input_type: first.type })
+  : JSON.stringify({ tool: ref });
 const sample = sampleEnvelope(ref, t.latest_version, m.runtime?.kind ?? "docker", pivotFrom, Object.fromEntries(required.map((i) => [i.name, ex(i).replace(/^"|"$/g, "")])));
 const leads = pivotFrom.filter((o) => pivots?.pivots[o]?.length).map((o) => ({ type: o, n: pivots!.pivots[o]!.length }));
 const jsonHref = `https://api.otinstaller.com/v1/tools/${ref}`;
@@ -68,7 +72,24 @@ const jsonLd = {
 <Base title={ref} description={t.summary} jsonLd={jsonLd} jsonHref={jsonHref} markdown={`/${ref}.md`}>
   <ToolHeader tool={t} active="overview" hasDocs={hasDocs} />
   <section class="run" aria-labelledby="run-h" data-run data-input={first?.name} data-type={first?.type}>
-    <p class="eyebrow" id="run-h">Run</p>
+    <div class="run-head">
+      <p class="eyebrow" id="run-h">Run</p>
+      <div class="rtabs" role="radiogroup" aria-label="Run from">
+        <input type="radio" name="runfrom" id="rf-term" value="term" checked class="sr-only" />
+        <label for="rf-term">Terminal</label>
+        <input type="radio" name="runfrom" id="rf-agent" value="agent" class="sr-only" />
+        <label for="rf-agent">Agent</label>
+      </div>
+    </div>
+    <div class="rpane" data-pane="agent">
+      <p class="note small">Through <code>ot mcp</code>, an agent calls <code>run_tool</code> with this; <code>ot</code> asks you before anything that goes online or touches a target. <a href="/docs/agents">Set it up</a>: <code>ot mcp install claude</code> (or cursor, vscode, codex, gemini).</p>
+      <div class="cmd agent-cmd" role="group" aria-label="run_tool arguments">
+        <code data-agent-call data-template={agentCall}>{agentCall}</code>
+        <button class="btn copy" type="button" data-copy={agentCall} aria-label="Copy the run_tool arguments"><span class="label">Copy</span></button>
+      </div>
+      <p class="note small">Or just say: "Run {ref} on {first ? ex(first).replace(/^"|"$/g, "") : "…"} with OTInstaller." The registry's read-only MCP server at <code>api.otinstaller.com/mcp</code> can find tools without installing anything.</p>
+    </div>
+    <div class="rpane" data-pane="term">
     <div class="cmd" role="group" aria-label="Run command">
       <code data-run-cmd data-template={runCmd}>{runCmd}</code>
       <button class="btn copy" type="button" data-copy={runCmd} aria-label="Copy the run command"><span class="label">Copy</span></button>
@@ -82,6 +103,7 @@ const jsonLd = {
       <summary class="small">Don't have <code>ot</code>? Install it in one line</summary>
       <InstallBlock name="tool" compact />
     </details>
+    </div>
   </section>
 
   <div class="two-col">
@@ -187,14 +209,35 @@ const jsonLd = {
     const safe = /^[\w@.+:\/%-]+$/.test(value) ? value : `"${value.replace(/"/g, '\\"')}"`;
     const cmd = code.dataset.template!.replace(new RegExp(`--${input} \\S+`), `--${input} ${safe}`);
     code.textContent = cmd;
-    const btn = run.querySelector<HTMLButtonElement>("button[data-copy]");
+    const btn = run.querySelector<HTMLButtonElement>("[data-pane=term] button[data-copy]");
     if (btn) btn.dataset.copy = cmd;
+    const agent = document.querySelector<HTMLElement>("[data-agent-call]");
+    if (agent) {
+      try {
+        const call = JSON.parse(agent.dataset.template!) as Record<string, string>;
+        call.target = value;
+        const json = JSON.stringify(call);
+        agent.textContent = json;
+        const abtn = run.querySelector<HTMLButtonElement>("[data-pane=agent] button[data-copy]");
+        if (abtn) abtn.dataset.copy = json;
+      } catch {}
+    }
   }
 </script>
 
 <style>
   .run { background: var(--code-bg); color: var(--code-text); border: 1px solid var(--border-strong); padding: 14px; display: grid; gap: 10px; }
   .run .eyebrow { margin: 0; color: var(--code-muted); }
+  .run-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .rtabs { display: inline-flex; border: 1px solid var(--code-border); }
+  .rtabs label { cursor: pointer; padding: 4px 10px; color: var(--code-muted); font-size: var(--fs-1); }
+  .rtabs input:focus-visible + label { outline: 2px solid var(--code-text); outline-offset: -2px; }
+  .rpane { display: none; }
+  .rpane > * + * { margin-top: 10px; }
+  .run:has(#rf-term:checked) [data-pane="term"], .run:has(#rf-agent:checked) [data-pane="agent"] { display: block; }
+  .rtabs:has(#rf-term:checked) label[for="rf-term"], .rtabs:has(#rf-agent:checked) label[for="rf-agent"] { background: var(--code-text); color: var(--code-bg); }
+  .agent-cmd::before { content: "{}"; }
+  .agent-cmd code { white-space: pre-wrap; }
   .run .note { margin: 0; color: var(--code-muted); }
   .run .note code { color: var(--code-text); }
   /* The install block inside the dark run block reads the terminal palette in both themes. */

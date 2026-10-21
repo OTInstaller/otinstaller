@@ -1,5 +1,5 @@
 ---
-// The install block: one command per platform (radio tabs, so it works without JavaScript; a small script picks
+// The install block: one command per platform (a radio group styled as tabs, so it works without JavaScript; a small script picks
 // the visitor's platform), what the script does before anything runs, and the three first-run steps. Used on the
 // home page and tool pages; the commands come from lib/install.ts so the docs say the same.
 import CopyCommand from "./CopyCommand.astro";
@@ -16,16 +16,16 @@ interface Props {
 const { name = "os", compact = false, example = "ot run osintverse-community/holehe --email ada@example.com" } = Astro.props;
 ---
 <div class:list={["install", { compact }]} data-install>
-  <div class="tabs" role="tablist" aria-label="Operating system">
+  <div class="tabs" role="radiogroup" aria-label="Operating system">
     {INSTALLS.map((i, idx) => (
       <>
         <input type="radio" name={name} id={`${name}-${i.id}`} value={i.id} checked={idx === 0} class="sr-only" />
-        <label for={`${name}-${i.id}`} role="tab">{i.label}</label>
+        <label for={`${name}-${i.id}`}>{i.label}</label>
       </>
     ))}
   </div>
   {INSTALLS.map((i) => (
-    <div class="pane" data-pane={i.id} role="tabpanel">
+    <div class="pane" data-pane={i.id}>
       <CopyCommand label={`Install on ${i.label}`} command={i.command} />
       <details class="what small">
         <summary>What this script does</summary>
