@@ -315,7 +315,8 @@ dispatches `otinstaller-drill`: registry-ops downloads the bundle, checks its SH
 into an empty repository, runs `git fsck` and compares refs, then pulls the image from the mirror by digest and runs
 `cosign verify` with the recorded signer. A failed drill, or one that has not reported back within 6 hours, emails the
 admins. Backup jobs that never report back are marked failed when their URLs expire (3 hours for releases, 12 for
-weekly runs).
+weekly runs). An admin can run a drill at any time with `POST /v1/admin/backups/drill` and read the last 20 results with
+`GET /v1/admin/backups/drills`.
 
 An admin can back up a version again with `POST /v1/admin/tools/<ns>/<name>/<version>/backup`; with `{"dispatch": false}`
 it returns the job instead, to run by hand: `MIRROR_PUSH_TOKEN=… python ops/scanner/scan.py job.json`.
