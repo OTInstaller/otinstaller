@@ -189,10 +189,14 @@ with "Filename too long"; use a short path or `git config core.longpaths true`.
         Workers rate-limiting binding in `/mcp` can follow.
       - **Plugin:** [OTInstaller/agent-plugin](https://github.com/OTInstaller/agent-plugin) is public with v0.1.0
         (21 Oct), and `/docs/agents` gives its install commands and the one-click `.mcpb` download for Claude Desktop.
-      - **Next:** publish both MCP Registry entries (the release's `server.json` and
-        `integrations/mcp-registry/server.json`; [publishing-setup.md](publishing-setup.md) section 10). Each
-        directory and marketplace submission needs your OK.
-      - Try `ot mcp` and the remote server in a real client.
+      - **MCP Registry (21 Oct):** `com.otinstaller/ot` 0.13.0 (the six `.mcpb` bundles) and `com.otinstaller/registry`
+        1.0.0 (`https://api.otinstaller.com/mcp`) are listed and active. The domain is proven by the public key at
+        `https://otinstaller.com/.well-known/mcp-registry-auth`; the private key is in the owner's `~/.mcp-registry/`.
+        The v0.13.0 entry was published with a shortened description (the registry allows 100 characters); releases
+        from now on write a short one. Each future release needs `mcp-publisher publish` with its `server.json`
+        ([publishing-setup.md](publishing-setup.md) section 10).
+      - **Next:** the Anthropic directory and Cursor marketplace submissions (each needs your OK), the beta email about
+        `--yes`, and a test in a real client.
 - [ ] Resubmit the sitemap in Google Search Console (crawlers saw 404s and 500s on 21 Oct).
 - [ ] On-call rota for launch week; launch posts (plan, week 13). Drafts and templates in [launch/](launch/README.md)
       (21 Oct): rota and reviewer schedule, posts for each channel, demo video script. Nothing posted; each needs your OK.
