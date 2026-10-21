@@ -62,7 +62,8 @@ and `--no-save` skips saving. The result envelope still goes to stdout.
 | `ot init [--kind docker\|pipx\|guide] [--guide]` | Create `otinstaller.yaml`, a README and a release workflow |
 | `ot validate [path] [--tag vX.Y.Z] [--smoke]` | Check the manifest and pages as the registry will; `--smoke` runs the test input |
 | `ot release <version> [path] [--no-push]` | Release a guide: set the version, check, commit, tag and push, without CI |
-| `ot login [--gitlab \| --osintverse] [--print-token]` · `ot logout` · `ot whoami` | Sign in with GitHub, GitLab or OSINTverse (publishing needs GitHub or GitLab); `--print-token` for machines without a keychain |
+| `ot login [--gitlab \| --osintverse] [--print-token] [--scope …]` · `ot logout` · `ot whoami` | Sign in with GitHub, GitLab or OSINTverse (publishing needs GitHub or GitLab); `--print-token` for machines without a keychain, `--scope` to limit the token |
+| `ot token create <name> [--scope …] [--expires 90]` · `ot token list` · `ot token revoke <id>` | Registry API tokens with [scopes](/docs/api#signing-in-tokens-and-scopes), for scripts, CI and agents |
 | `ot import <repository URL>` | The import wizard in the terminal |
 | `ot sync <ns/name> [--log]` | Check the source repository now, or show recent sync events |
 | `ot yank <ns/name@version> [--undo]` | Hide a version from search and `@latest` (still installable by exact version) |

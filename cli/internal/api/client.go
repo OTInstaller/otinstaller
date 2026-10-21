@@ -82,6 +82,9 @@ type ToolSummary struct {
 	NeedsKeys     bool     `json:"needs_keys"`
 	ManifestHeld  bool     `json:"manifest_held_by_registry"`
 	Status        string   `json:"status"`
+	// Tools only: what a run does (from the manifest), so callers can tell which runs need consent.
+	Ethics *Ethics `json:"ethics,omitempty"`
+	Egress *bool   `json:"egress,omitempty"`
 	// Guides only.
 	Title       string `json:"title,omitempty"`
 	Level       string `json:"level,omitempty"`
@@ -90,9 +93,17 @@ type ToolSummary struct {
 	NeedsUpdate bool   `json:"needs_update,omitempty"`
 }
 
+// Ethics is the manifest's ethics section as search results carry it.
+type Ethics struct {
+	TouchesTarget        bool `json:"touches_target"`
+	AuthRequired         bool `json:"auth_required"`
+	CollectsPersonalData bool `json:"collects_personal_data"`
+}
+
 type SearchResult struct {
 	Results    []ToolSummary `json:"results"`
 	NextCursor string        `json:"next_cursor,omitempty"`
+	Total      int           `json:"total,omitempty"`
 }
 
 type ToolDetail struct {
@@ -177,6 +188,8 @@ type SearchParams struct {
 	Limit               int
 	// Cursor is a previous page's next_cursor.
 	Cursor string
+	// PassiveOnly keeps tools that run offline, touch no target and collect no personal data.
+	PassiveOnly bool
 }
 
 func (c *Client) Search(ctx context.Context, p SearchParams) (*SearchResult, error) {
@@ -193,6 +206,9 @@ func (c *Client) Search(ctx context.Context, p SearchParams) (*SearchResult, err
 	set("runtime", p.Runtime)
 	set("kind", p.Kind)
 	set("cursor", p.Cursor)
+	if p.PassiveOnly {
+		q.Set("passive_only", "1")
+	}
 	if p.NoKeys {
 		q.Set("no_keys", "1")
 	}
@@ -218,8 +234,9 @@ func (c *Client) Manifest(ctx context.Context, ns, name, version string) (*Manif
 }
 
 // InstallPing is anonymous: only the package and version are sent.
-func (c *Client) InstallPing(ctx context.Context, ref, version string) error {
-	return c.anon().do(ctx, http.MethodPost, "/installs", map[string]string{"tool": ref, "version": version}, nil)
+// InstallPing counts an install anonymously; client is cli, mcp or ci (no identifiers).
+func (c *Client) InstallPing(ctx context.Context, ref, version, client string) error {
+	return c.anon().do(ctx, http.MethodPost, "/installs", map[string]string{"tool": ref, "version": version, "client": client}, nil)
 }
 
 type DeviceStart struct {
@@ -232,9 +249,10 @@ type DeviceStart struct {
 }
 
 type DeviceToken struct {
-	Status string `json:"status"` // ok, pending, slow_down, expired, denied
-	Token  string `json:"token,omitempty"`
-	Login  string `json:"login,omitempty"`
+	Status string   `json:"status"` // ok, pending, slow_down, expired, denied
+	Token  string   `json:"token,omitempty"`
+	Login  string   `json:"login,omitempty"`
+	Scopes []string `json:"scopes,omitempty"`
 }
 
 func (c *Client) StartDeviceLogin(ctx context.Context, provider string) (*DeviceStart, error) {
@@ -242,9 +260,13 @@ func (c *Client) StartDeviceLogin(ctx context.Context, provider string) (*Device
 	return &out, c.anon().do(ctx, http.MethodPost, "/auth/device/start", map[string]string{"provider": provider}, &out)
 }
 
-func (c *Client) PollDeviceLogin(ctx context.Context, provider, deviceCode, tokenName string) (*DeviceToken, error) {
+// PollDeviceLogin asks whether a device sign-in was approved. scopes, when given, limit the token it mints.
+func (c *Client) PollDeviceLogin(ctx context.Context, provider, deviceCode, tokenName string, scopes ...string) (*DeviceToken, error) {
 	var out DeviceToken
-	body := map[string]string{"provider": provider, "device_code": deviceCode, "token_name": tokenName}
+	body := map[string]any{"provider": provider, "device_code": deviceCode, "token_name": tokenName}
+	if len(scopes) > 0 {
+		body["scopes"] = scopes
+	}
 	return &out, c.anon().do(ctx, http.MethodPost, "/auth/device/token", body, &out)
 }
 

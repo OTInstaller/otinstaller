@@ -262,3 +262,74 @@ describe("publish consumer", () => {
     expect(await DB().prepare(`SELECT status FROM publish_jobs WHERE id = ?`).bind(id).first()).toMatchObject({ status: "error" });
   });
 });
+
+// ---------- scoped tokens (docs/agent-friendly-plan.md, phase 4) ----------
+
+describe("scoped API tokens", () => {
+  async function legacyUser(admin = false) {
+    const { sha256Hex, ulid } = await import("../src/lib/crypto");
+    const id = ulid();
+    const token = `ot_test_${id}`;
+    await DB().batch([
+      DB().prepare(`INSERT INTO users (id, login, is_admin, created_at) VALUES (?, ?, ?, ?)`).bind(id, `scoped${id.slice(-6).toLowerCase()}`, admin ? 1 : 0, Date.now()),
+      // Like every token minted before scopes: scoped = 0.
+      DB().prepare(`INSERT INTO api_tokens (id, user_id, name, token_hash, created_at) VALUES (?, ?, 'old', ?, ?)`).bind(ulid(), id, await sha256Hex(token), Date.now()),
+    ]);
+    return { id, auth: { authorization: `Bearer ${token}` } };
+  }
+  const mint = async (auth: Record<string, string>, body: object) =>
+    call("/me/tokens", { method: "POST", headers: auth, body: JSON.stringify({ name: "agent", ...body }) });
+
+  it("mints tokens with scopes and an expiry, and refuses what a token's scopes don't cover", async () => {
+    const u = await legacyUser();
+    const res = await mint(u.auth, { scopes: ["read"], expires_in_days: 7 });
+    expect(res.status).toBe(201);
+    const ro = (await res.json()) as any;
+    expect(ro.scopes).toEqual(["read"]);
+    expect(ro.expires_at).toBeGreaterThan(Date.now() + 6 * 86_400_000);
+    const roAuth = { authorization: `Bearer ${ro.token}` };
+
+    expect((await call("/me", { headers: roAuth })).status).toBe(200);
+    const denied = await call("/feedback", { method: "POST", headers: roAuth, body: JSON.stringify({ kind: "idea", message: "scoped tokens are nice" }) });
+    expect(denied.status).toBe(403);
+    expect(denied.headers.get("www-authenticate")).toContain('scope="feedback"');
+    const err = ((await denied.json()) as any).error;
+    expect(err).toMatchObject({ code: "insufficient_scope", required_scope: "feedback" });
+    // A read-only token can't make tokens (manage), and a token can't mint more than it has.
+    expect((await mint(roAuth, {})).status).toBe(403);
+    const mgr = (await (await mint(u.auth, { scopes: ["manage"] })).json()) as any;
+    expect(mgr.scopes).toEqual(["read", "manage"]);
+    const escalate = await mint({ authorization: `Bearer ${mgr.token}` }, { scopes: ["publish"] });
+    expect(escalate.status).toBe(403);
+    expect((await mint(u.auth, { scopes: ["everything"] })).status).toBe(400);
+
+    // The token list says what each can do, and creating and revoking are audited.
+    const list = (await (await call("/me/tokens", { headers: u.auth })).json()) as any;
+    expect(list.tokens.find((t: any) => t.id === ro.id).scopes).toEqual(["read"]);
+    expect(list.tokens.find((t: any) => t.name === "old").scopes).toContain("publish");
+    expect((await call(`/me/tokens/${ro.id}`, { method: "DELETE", headers: u.auth })).status).toBe(204);
+    const actions = (await DB().prepare(`SELECT action FROM audit_log WHERE target_id = ? ORDER BY created_at`).bind(ro.id).all()).results.map((r: any) => r.action);
+    expect(actions).toEqual(["token.create", "token.revoke"]);
+    expect((await call("/me", { headers: roAuth })).status).toBe(401);
+  });
+
+  it("keeps staff powers off tokens unless minted with the staff scope, which tokens can't mint", async () => {
+    const admin = await legacyUser(true);
+    expect((await call("/admin/review-queue", { headers: admin.auth })).status).toBe(200);
+    const t = (await (await mint(admin.auth, {})).json()) as any;
+    expect(t.scopes).toEqual(["read", "publish", "manage", "feedback"]);
+    const res = await call("/admin/review-queue", { headers: { authorization: `Bearer ${t.token}` } });
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as any).error.required_scope).toBe("staff");
+    expect((await mint(admin.auth, { scopes: ["staff"] })).status).toBe(403);
+  });
+
+  it("audits writes made with a token", async () => {
+    const u = await legacyUser();
+    const t = (await (await mint(u.auth, { scopes: ["feedback"] })).json()) as any;
+    const res = await call("/feedback", { method: "POST", headers: { authorization: `Bearer ${t.token}` }, body: JSON.stringify({ kind: "idea", message: "audit me please" }) });
+    expect(res.status).toBeLessThan(300);
+    const row = await DB().prepare(`SELECT metadata_json FROM audit_log WHERE action = 'token.write' AND target_id = ?`).bind(t.id).first<{ metadata_json: string }>();
+    expect(JSON.parse(row!.metadata_json)).toMatchObject({ method: "POST", path: "/v1/feedback" });
+  });
+});

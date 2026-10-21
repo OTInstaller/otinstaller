@@ -29,7 +29,7 @@ These change nothing, so clients may allow them without asking.
 | `list_types` | The input types tools take, the entity types they find, and the pivot map: which input types each entity type can feed. | none |
 | `read_guide` | One page of a guide, as Markdown, with the list of its pages and the tools it uses. | `guide` (required), `page` |
 | `search_guides` | Search the registry's investigation guides (methods, checklists, references), by words, target type or level. | `input_type`, `level`, `limit`, `query` |
-| `search_tools` | Search the OTInstaller Registry for OSINT tools. Results list each tool's input and output types, whether it needs API keys, and its trust status (signed, verified publisher, health). | `category`, `cursor`, `input_type`, `limit`, `no_keys`, `output_type`, `query`, `runtime` |
+| `search_tools` | Search the OTInstaller Registry for OSINT tools. Results list each tool's input and output types, whether it needs API keys, its ethics flags and network access, and its trust status (signed, verified publisher, health). | `category`, `cursor`, `input_type`, `limit`, `no_keys`, `output_type`, `passive_only`, `query`, `runtime` |
 | `suggest_pivots` | Given a saved run (or entities), list what to look at next: each entity worth pivoting on, the input type it fits, and the installed tools (and optionally registry tools) that take it. Runs nothing. | `entities`, `limit`, `registry`, `run_id` |
 | `validate_manifest` | Check an otinstaller.yaml as the registry will, with the same error codes. For publishers packaging a tool or guide. | `path` |
 

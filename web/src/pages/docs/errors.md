@@ -291,3 +291,15 @@ No playbook has that name. `list_playbooks` lists them.
 
 ### no_runs
 There are no saved runs (or not enough to compare) for that tool, target or case.
+
+## Tokens
+
+### insufficient_scope
+The API token has no scope for this call; `required_scope` names the one it needs (see [Registry API](/docs/api#signing-in-tokens-and-scopes)). Create a token with it (`ot token create --scope publish`), or use one that has it. Staff actions need a token made on the website by a signed-in reviewer or admin.
+
+### invalid_scope
+A scope in the request is not one of read, publish, manage, feedback and staff.
+
+### token_not_found
+No token of yours has that id; `ot token list` lists them.
+

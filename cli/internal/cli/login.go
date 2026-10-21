@@ -30,6 +30,7 @@ var pollSleep = func(ctx context.Context, d time.Duration) error {
 
 func (a *App) loginCmd() *cobra.Command {
 	var gitlab, osintverse, printToken bool
+	var scopes []string
 	cmd := &cobra.Command{
 		Use:   "login",
 		Short: "Sign in with GitHub (or GitLab, or OSINTverse) to star tools and publish",
@@ -40,6 +41,9 @@ func (a *App) loginCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if gitlab && osintverse {
 				return exitErr(ExitUsage, "choose one of --gitlab and --osintverse")
+			}
+			if err := checkScopes(scopes); err != nil {
+				return err
 			}
 			provider := "github"
 			if gitlab {
@@ -66,7 +70,7 @@ func (a *App) loginCmd() *cobra.Command {
 				if err := pollSleep(ctx, interval); err != nil {
 					return err
 				}
-				res, err := a.API.PollDeviceLogin(ctx, provider, start.DeviceCode, "ot CLI on "+host)
+				res, err := a.API.PollDeviceLogin(ctx, provider, start.DeviceCode, "ot CLI on "+host, scopes...)
 				if err != nil {
 					return err
 				}
@@ -107,6 +111,7 @@ func (a *App) loginCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&gitlab, "gitlab", false, "sign in with GitLab instead of GitHub")
 	cmd.Flags().BoolVar(&osintverse, "osintverse", false, "sign in with an OSINTverse account (publishing still needs GitHub or GitLab)")
 	cmd.Flags().BoolVar(&printToken, "print-token", false, "print the token instead of saving it to the keychain")
+	cmd.Flags().StringSliceVar(&scopes, "scope", nil, "limit the token to these scopes (read, publish, manage, feedback); default: all four")
 	return cmd
 }
 

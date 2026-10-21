@@ -1,7 +1,7 @@
 // The import wizard's endpoints, and editing or moving a registry-held manifest.
 import { HTTPException } from "hono/http-exception";
 import { deps, type App, type Env } from "../env";
-import { apiError } from "../lib/errors";
+import { apiError, errorDocs } from "../lib/errors";
 import { parseManifest } from "../lib/manifest";
 import * as github from "../hosts/github";
 import * as gitlab from "../hosts/gitlab";
@@ -214,7 +214,9 @@ export function importRoutes(app: App) {
       problems.push({ code: "manifest_name_mismatch", path: "/name", message: `this manifest is for ${ns}/${name}; namespace and name cannot change` });
     }
     if (manifest) problems.push(...heldManifestProblems(manifest));
-    if (!manifest || problems.length) return c.json({ error: { code: "manifest_invalid", message: `the manifest has ${problems.length} problem(s)`, problems } }, 400);
+    if (!manifest || problems.length) {
+      return c.json({ error: { code: "manifest_invalid", message: `the manifest has ${problems.length} problem(s)`, docs: errorDocs("manifest_invalid"), problems } }, 400);
+    }
     await c.env.DB.batch([
       c.env.DB.prepare(`UPDATE sources SET registry_manifest_json = ? WHERE id = ?`).bind(JSON.stringify(manifest), s.id),
       audit(c.env.DB, u.id, "user", "manifest.edit", "source", s.id),

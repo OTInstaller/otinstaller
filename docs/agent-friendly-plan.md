@@ -960,6 +960,27 @@ depend on MCP spec churn, and it carries the least risk.
   - the `/pivots` map, `/types` descriptions, `passive_only`, README `format=md`
 - Site §7.3 for tool and guide `.md` twins, and §7.5 structured data.
 - The migrations need numbering against `main` at merge time.
+- **Status (2026-10-21): built on `claude/agent-friendly-plan-a8afd5`, not deployed.** Differences from this plan:
+  - **OpenAPI:** the document is JSON, not YAML (`spec/openapi/v1.json`, imported by the API, so no YAML parser is
+    needed). It is served at `/v1/openapi.json` and passes `redocly lint`.
+    - The drift test is in `api/test/api.test.ts`. It leaves out staff, internal, webhook and the OSINTverse device
+      pages.
+    - Each operation's `x-scope` names the scope a token needs.
+  - **Scopes:** read, publish, manage, feedback and staff, enforced by `api/src/scopes.ts`.
+    - Migration `0013_agent_tokens.sql` adds `api_tokens.scoped`, so tokens minted before scopes (`scoped = 0`) keep
+      their powers. Enforcing scopes on them would have broken every existing `ot login`.
+    - Staff powers need the staff scope, which only a session can mint.
+    - `/me/tokens` tokens default to 90 days; `ot login` tokens don't expire unless asked.
+  - **Audit:** instead of a `token_id` column, every write made with a token adds a `token.write` audit row whose
+    target is the token, and minting and revoking are audited. No `audit_log` rebuild is needed.
+  - **429s:** they keep their documented codes (`too_many_requests`, `too_many_reports`, `sync_rate_limited`) rather
+    than one `rate_limited` code, and gain `Retry-After`, `RateLimit-Policy` and `retry_after_s`.
+  - **Anonymous read limits** are left to a Cloudflare zone rate-limiting rule (operator step; open question 8), not
+    code.
+  - **Install pings:** deduped per address, version and day (only when `cf-connecting-ip` is present), with client
+    kinds counted in a new `install_clients` table.
+  - **Pagination:** `/tools` keeps its opaque offset cursor and gains `total_capped`; there is no keyset pagination.
+  - **Not done:** `/types` descriptions, and README `format=md` (the Markdown source isn't stored).
 
 ### Phase 5: manifest additions and the remote read-only server (≈ 7–9 days)
 
