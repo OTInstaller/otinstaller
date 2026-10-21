@@ -10,6 +10,7 @@ import { githubRepo, gitlabRepo, repoUrl, type RepoHost } from "./hosts/repo";
 import { checkImage, checkWheel } from "./hosts/artifacts";
 import { audit } from "./routes/auth";
 import { commitStatus, dispatchScan, loadVersion, publishVersion } from "./scans";
+import { backupVersion } from "./backups";
 import { copyImages, queueContentChecks, recheckLinks, relatedToolProblems, renderRelease, runContentChecks, storeContent, type RenderedRelease } from "./guides";
 import { ownerEmails, sendEmail, templates } from "./notify";
 import { COMMUNITY_NAMESPACE, detectQueued, failImport, heldManifestFor, parseRepoRef } from "./imports";
@@ -281,6 +282,7 @@ export async function handleBatch(batch: MessageBatch<PublishMessage>, env: Env)
       else if ("checkVersionId" in body) await runContentChecks(env, body.checkVersionId, body.attempt ?? 0);
       else if ("linkCheckToolId" in body) await recheckLinks(env, body.linkCheckToolId);
       else if ("publishVersionId" in body) await publishApproved(env, body.publishVersionId);
+      else if ("backupVersionId" in body) await backupVersion(env, body.backupVersionId);
       else await processJob(env, body.jobId);
       msg.ack();
     } catch (e) {
@@ -291,7 +293,8 @@ export async function handleBatch(batch: MessageBatch<PublishMessage>, env: Env)
         if ("importId" in body) await failImport(env, body.importId, "detection_failed", (e as Error).message);
         else if ("jobId" in body) await failJob(env, body.jobId, (e as Error).message);
         // A content check that keeps failing is rejected by expireStaleScans; a nightly link check waits for the
-        // next night; an approved release that cannot be published stays awaiting review for a reviewer.
+        // next night; an approved release that cannot be published stays awaiting review for a reviewer; a backup
+        // that cannot be dispatched waits for the weekly run (git) or an admin's "back up now".
         else console.error("queued work failed", body, e);
         msg.ack();
       }

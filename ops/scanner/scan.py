@@ -11,6 +11,10 @@ Reads the scan request the registry dispatched, checks the artifact, and posts r
   sbom             Trivy CycloneDX package count
   smoke            the manifest's test input, run with no network
 
+After a passing verdict the registry answers the callback with a backup job (signed upload URLs); this script
+then copies the image to the mirror, or uploads the wheel, and uploads a git bundle (see backup.py). The same
+request file can also hold a backup job ("otinstaller-backup") or a restore drill ("otinstaller-drill").
+
 Usage: scan.py request.json [--post]   (without --post the results are printed)
 """
 from __future__ import annotations
@@ -28,6 +32,8 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+
+import backup
 
 SCANNER_VERSION = "0.1.0"
 SMOKE_TIMEOUT = 120
@@ -304,7 +310,7 @@ def empty_results() -> dict:
     }
 
 
-def scan(req: dict) -> dict:
+def scan(req: dict, work: Path | None = None) -> dict:
     if req.get("kind") == "guide" or not req.get("runtime"):
         # Guides are checked by the registry (links, personal data), not by this scanner.
         return {**empty_results(), "scanner_version": SCANNER_VERSION}
@@ -312,34 +318,51 @@ def scan(req: dict) -> dict:
         if req["runtime"]["kind"] == "docker":
             results = scan_docker(req)
         else:
-            results = scan_pipx(req, Path(tmp))
+            results = scan_pipx(req, work or Path(tmp))
     results["scanner_version"] = SCANNER_VERSION
     return results
 
 
-def post(req: dict, results: dict) -> None:
+def post(req: dict, results: dict) -> dict:
+    """Posts the results; the registry's answer carries a backup job when the version was published."""
     body = json.dumps(results).encode()
     r = urllib.request.Request(req["callback_url"], data=body, method="POST", headers={
         "Authorization": f"Bearer {req['callback_token']}", "Content-Type": "application/json", "User-Agent": "otinstaller-scanner",
     })
     with urllib.request.urlopen(r, timeout=60) as resp:
-        log(f"registry answered {resp.status}: {resp.read().decode()[:300]}")
+        text = resp.read().decode()
+        log(f"registry answered {resp.status}: {text[:300]}")
+    try:
+        return json.loads(text or "{}")
+    except json.JSONDecodeError:
+        return {}
 
 
 def main() -> int:
     if len(sys.argv) < 2:
         print(__doc__, file=sys.stderr)
         return 2
-    req = json.loads(Path(sys.argv[1]).read_text())
-    req = req.get("scan", req)  # accept the whole client_payload too
+    payload = json.loads(Path(sys.argv[1]).read_text())
+    # The admin "back up now" endpoint answers {"status": ..., "job": <payload>}; accept that file as it is.
+    payload = payload.get("job") or payload
+    if "backup" in payload:
+        return backup.run_backup_request(payload["backup"])
+    if "drill" in payload:
+        return backup.drill(payload["drill"])
+    req = payload.get("scan", payload)  # accept the whole client_payload too
     log(f"scanning {req['ref']}")
-    results = scan(req)
-    summary = {k: (v.get("status", v.get("count", v)) if isinstance(v, dict) else v) for k, v in results.items()}
-    log(f"summary: {json.dumps(summary)}")
-    if "--post" in sys.argv:
-        post(req, results)
-    else:
-        print(json.dumps(results, indent=2))
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp)
+        results = scan(req, work)
+        summary = {k: (v.get("status", v.get("count", v)) if isinstance(v, dict) else v) for k, v in results.items()}
+        log(f"summary: {json.dumps(summary)}")
+        if "--post" not in sys.argv:
+            print(json.dumps(results, indent=2))
+            return 0
+        answer = post(req, results)
+        if answer.get("backup"):
+            # Backups never change the verdict; a failed one is reported to the registry and retried weekly.
+            backup.run_job(answer["backup"], work)
     return 0
 
 
