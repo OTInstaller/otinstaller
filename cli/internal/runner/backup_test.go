@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -95,6 +96,28 @@ func TestMirrorIsNotUsedForOtherFailures(t *testing.T) {
 		if len(fx.calls) != 1 {
 			t.Fatalf("%q: expected no second pull, got %v", msg, fx.calls)
 		}
+	}
+}
+
+func TestStoppedEngineSaysToStartIt(t *testing.T) {
+	m := load(t, "docker-tool.yaml")
+	for _, msg := range []string{
+		"failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine; check if the path is correct and if the daemon is running: open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.",
+		"Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?",
+	} {
+		fx := &registryExec{fakeExec: fakeExec{paths: map[string]bool{"docker": true}}, refused: map[string]string{m.Runtime.Image: msg}}
+		r := &Runner{Exec: fx, Stderr: io.Discard, Engine: "docker"}
+		_, err := r.Install(context.Background(), m, nil, InstallOptions{MirrorImage: mirrorOf(m.Runtime.Image)})
+		var rm *RuntimeMissingError
+		if !errors.As(err, &rm) || !strings.Contains(err.Error(), "not running") || strings.Contains(err.Error(), "<nil>") {
+			t.Fatalf("%q: expected a 'not running' runtime error, got %v", msg, err)
+		}
+	}
+	// Other failures keep the exit code and leave out a nil error.
+	fx := &registryExec{fakeExec: fakeExec{paths: map[string]bool{"docker": true}}, refused: map[string]string{m.Runtime.Image: "dial tcp: lookup ghcr.io: no such host"}}
+	_, err := (&Runner{Exec: fx, Stderr: io.Discard, Engine: "docker"}).Install(context.Background(), m, nil, InstallOptions{})
+	if err == nil || !strings.HasSuffix(err.Error(), "failed (exit 1)") {
+		t.Fatalf("expected 'failed (exit 1)', got %v", err)
 	}
 }
 

@@ -98,30 +98,30 @@ lists the rest.
 | `torbot` | none | not packaged: license NOASSERTION does not allow a community wrapper |
 | `toutatis` | none | not packaged: needs a login or config file first, which a wrapper can't provide |
 | `ivre` | none | not packaged: declares no typed inputs, so there is nothing to map onto manifest inputs |
-| `aliens-eye` | `osintverse-community/aliens-eye` | u: |
-| `paramspider` | `osintverse-community/paramspider` | d: |
-| `nexfil` | `osintverse-community/nexfil` | u: |
+| `aliens-eye` | `osintverse-community/aliens-eye` (packaged in `seed/`, not published yet) | u: |
+| `paramspider` | `osintverse-community/paramspider` (packaged in `seed/`, not published yet) | d: |
+| `nexfil` | `osintverse-community/nexfil` (packaged in `seed/`, not published yet) | u: |
 | `yark` | none | not packaged: declares no typed inputs, so there is nothing to map onto manifest inputs |
 | `ignorant` | `osintverse-community/ignorant` | --country-code p: |
 | `socialscan` | `osintverse-community/socialscan` | u: |
 | `fsociety` | none | not packaged: prompts for input or runs until stopped; `ot run` has no terminal for that |
-| `onionsearch` | `osintverse-community/onionsearch` | --query |
+| `onionsearch` | `osintverse-community/onionsearch` (packaged in `seed/`, not published yet) | --query |
 | `openosint` | none | not packaged: declares no typed inputs, so there is nothing to map onto manifest inputs |
 | `crosslinked` | none | not packaged: declares no typed inputs, so there is nothing to map onto manifest inputs |
 | `whatsapp-osint` | none | not packaged: needs a login or config file first, which a wrapper can't provide |
 | `instagram-monitor` | none | not packaged: prompts for input or runs until stopped; `ot run` has no terminal for that |
 | `mailaccess` | none | not packaged: writes into its own install folder at startup, which ot's read-only sandbox refuses |
 | `secator` | none | not packaged: license NOASSERTION does not allow a community wrapper |
-| `sublist3r` | `osintverse-community/sublist3r` | d: |
-| `socid-extractor` | `osintverse-community/socid-extractor` | url: |
+| `sublist3r` | `osintverse-community/sublist3r` (packaged in `seed/`, not published yet) | d: |
+| `socid-extractor` | `osintverse-community/socid-extractor` (packaged in `seed/`, not published yet) | url: |
 | `dnsgen` | none | not packaged: declares no typed inputs, so there is nothing to map onto manifest inputs |
 | `sitedorks` | none | not packaged: prompts for input or runs until stopped; `ot run` has no terminal for that |
-| `linkook` | `osintverse-community/linkook` | u: |
+| `linkook` | `osintverse-community/linkook` (packaged in `seed/`, not published yet) | u: |
 | `osint-brazuca-regex` | none | not packaged: declares no typed inputs, so there is nothing to map onto manifest inputs |
-| `finalrecon` | `osintverse-community/finalrecon` | url: |
-| `fierce` | `osintverse-community/fierce` | d: |
+| `finalrecon` | `osintverse-community/finalrecon` (packaged in `seed/`, not published yet) | url: |
+| `fierce` | `osintverse-community/fierce` (packaged in `seed/`, not published yet) | d: |
 | `pywerview` | none | not packaged: declares no typed inputs, so there is nothing to map onto manifest inputs |
-| `ctfr` | `osintverse-community/ctfr` | d: |
+| `ctfr` | `osintverse-community/ctfr` (packaged in `seed/`, not published yet) | d: |
 | `blackbird` | none | not packaged: its author removed its license in 2024, so it may not be redistributed |
 | `telegram-phone-number-checker` | none | not packaged: needs a login or config file first, which a wrapper can't provide |
 | `auto-archiver` | none | not packaged: needs a login or config file first, which a wrapper can't provide |
@@ -130,7 +130,7 @@ lists the rest.
 | `telepathy` | none | not packaged: needs a login or config file first, which a wrapper can't provide |
 | `neutrosint` | none | not packaged: ProtonMail's API rejects its requests, so it never returns a result |
 | `zen` | none | not packaged: GitHub answers its requests with an HTML page, so it never returns a result |
-| `thebigbrother` | `osintverse-community/thebigbrother` | u: |
+| `thebigbrother` | `osintverse-community/thebigbrother` (packaged in `seed/`, not published yet) | u: |
 
 Tools that are not packaged keep working in `otinstaller` until its end of life. Their maintainers can publish them
 (`ot import <repository>`), which also lifts the license limits on community wrappers.
