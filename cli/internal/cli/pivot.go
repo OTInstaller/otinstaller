@@ -44,11 +44,15 @@ func (a *App) pivotCmd() *cobra.Command {
 			} else {
 				r, err := findSavedRun(args[0])
 				if err != nil {
-					return exitErr(ExitUsage, "no saved run %s under %s; give a run id from `ot run` or a saved file", args[0], results.Dir(""))
+					return exitErr(ExitUsage, "no saved run %s under %s; give a run id from `ot run` or a saved file", args[0], strings.Join(resultDirs(), " or "))
 				}
 				meta = r.meta
 			}
-			out := a.pivots(cmd.Context(), meta.Entities, registry, limit)
+			var own []string
+			for _, v := range meta.Input {
+				own = append(own, v)
+			}
+			out := a.pivots(cmd.Context(), meta.Entities, registry, limit, own...)
 			st, _ := state.Load()
 			var rows []pivotCommand
 			for _, p := range out.Pivots {

@@ -110,10 +110,16 @@ func ptr[T any](v T) *T { return &v }
 
 var readOnly = &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: ptr(false)}
 
+// registryTools ask the registry over the network (read-only still); the rest read this machine only.
+var registryTools = map[string]bool{"search_tools": true, "get_tool": true, "suggest_pivots": true, "search_guides": true, "read_guide": true, "doctor": true}
+
 // readTool registers a tool with no side effects. Its errors become toolErrors.
 func readTool[In, Out any](s *mcpServer, name, title, desc string, h func(context.Context, In) (Out, error)) {
 	ann := *readOnly
 	ann.Title = title
+	if registryTools[name] {
+		ann.OpenWorldHint = ptr(true)
+	}
 	mcp.AddTool(s.srv, &mcp.Tool{Name: name, Title: title, Description: desc, Annotations: &ann},
 		func(ctx context.Context, _ *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
 			out, err := h(ctx, in)
@@ -195,24 +201,28 @@ func copyMap(m map[string]any) map[string]any {
 
 // ---------- consent ----------
 
-// consentSchema is the form a client shows the person.
-var consentSchema = map[string]any{
-	"type": "object",
-	"properties": map[string]any{
-		"decision": map[string]any{
-			"type":        "string",
-			"title":       "Your decision",
-			"enum":        []string{"allow_once", "allow_session", "decline"},
-			"enumNames":   []string{"Allow once", "Allow for this session", "Decline"},
-			"description": "Allow for this session covers the same tool (and target) for an hour.",
+// consentSchema is the form a client shows the person; allow_session is offered only where it means something.
+func consentSchema(session bool, ttlMinutes int) map[string]any {
+	choices := []map[string]string{{"const": "allow_once", "title": "Allow once"}}
+	desc := "Allow once covers just this call."
+	if session {
+		choices = append(choices, map[string]string{"const": "allow_session", "title": "Allow for this session"})
+		desc = fmt.Sprintf("Allow for this session also covers the same tool (and target) for %d minutes.", ttlMinutes)
+	}
+	choices = append(choices, map[string]string{"const": "decline", "title": "Decline"})
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"decision": map[string]any{"type": "string", "title": "Your decision", "description": desc, "oneOf": choices},
 		},
-	},
-	"required": []string{"decision"},
+		"required": []string{"decision"},
+	}
 }
 
 // consentRequest is what to ask the person.
 type consentRequest struct {
 	req      *mcp.CallToolRequest
+	kind     string   // run, install or uninstall
 	artifact string   // what exactly would run or be installed
 	question string   // "Run alice/probe 1.0.0 on domain=example.com?"
 	details  []string // one line each
@@ -227,21 +237,23 @@ type consentAnswer struct {
 	pending *mcp.CallToolResult
 }
 
-// ask gets the person's consent for one call. It returns a pending result (an input request the client answers by
-// asking the person), an error (declined, or consent_required with a token for clients that can't ask), or the
-// method by which consent was given.
-func (s *mcpServer) ask(c consentRequest) (consentAnswer, error) {
+// multiRoundTrip is the first protocol version where the client, not the server, asks the person.
+const multiRoundTrip = "2026-07-28"
+
+// ask gets the person's consent for one call.
+//   - Clients on the 2026-07-28 protocol get an input request back (pending) and call again with the answer.
+//   - Older clients that can show a form are asked directly.
+//   - Clients that can't ask, or whose form fails, get consent_required with a token to use after a yes.
+//
+// Every answer and token is bound to the call's arguments and works once.
+func (s *mcpServer) ask(ctx context.Context, c consentRequest) (consentAnswer, error) {
 	var args map[string]any
 	_ = json.Unmarshal(c.req.Params.Arguments, &args)
 	hash := agent.CallHash(c.req.Params.Name, c.artifact, args)
 	text := c.question + "\n\n- " + strings.Join(c.details, "\n- ") + "\n\nUse OTInstaller only for lawful investigation: https://otinstaller.com/policy/acceptable-use"
+	schema := consentSchema(len(c.keys) > 0, s.sess.Policy.ConsentTTLMinutes)
 
-	// The answer to a question asked on an earlier round of this call.
-	if resp, ok := c.req.Params.InputResponses["consent"]; ok {
-		if !agent.Open("cs_", c.req.Params.RequestState, hash) {
-			return consentAnswer{}, &toolError{Code: "consent_expired", Message: "the consent answer doesn't match this call or has expired", Hint: "call the tool again to ask again"}
-		}
-		er, _ := resp.(*mcp.ElicitResult)
+	decide := func(er *mcp.ElicitResult) (consentAnswer, error) {
 		decision := ""
 		if er != nil && er.Action == "accept" {
 			decision, _ = er.Content["decision"].(string)
@@ -255,25 +267,52 @@ func (s *mcpServer) ask(c consentRequest) (consentAnswer, error) {
 		case "allow_once":
 			return consentAnswer{method: "elicitation"}, nil
 		}
-		return consentAnswer{}, &toolError{Code: "consent_declined", Message: "the person declined: " + c.question, Hint: "don't run this again for the same target unless they ask"}
+		hint := "don't run this again for the same target unless they ask"
+		if c.kind != "run" {
+			hint = "don't ask again unless they bring it up"
+		}
+		return consentAnswer{}, &toolError{Code: "consent_declined", Message: "the person declined: " + c.question, Hint: hint}
+	}
+
+	// The answer to a question asked on an earlier round of this call (multi round-trip).
+	if resp, ok := c.req.Params.InputResponses["consent"]; ok {
+		switch {
+		case c.req.Params.RequestState == "":
+			return consentAnswer{}, &toolError{Code: "consent_expired", Message: "a consent answer came without the request state it answers", Hint: "call the tool again to ask again"}
+		case !agent.Open("cs_", c.req.Params.RequestState, hash):
+			return consentAnswer{}, &toolError{Code: "consent_expired", Message: "the consent answer doesn't match this call, or is more than 10 minutes old", Hint: "call the tool again to ask again"}
+		case !s.sess.SpendOnce(c.req.Params.RequestState):
+			return consentAnswer{}, &toolError{Code: "consent_expired", Message: "this consent answer was already used; each one allows a single call", Hint: "call the tool again to ask again"}
+		}
+		er, _ := resp.(*mcp.ElicitResult)
+		return decide(er)
 	}
 	if c.token != "" {
 		if !s.sess.UseToken(c.token, hash) {
-			return consentAnswer{}, &toolError{Code: "consent_token_invalid", Message: "the consent_token is not for this exact call, was already used, or has expired",
+			return consentAnswer{}, &toolError{Code: "consent_token_invalid", Message: "the consent_token is for a different call (other arguments), was already used, or is more than 10 minutes old",
 				Hint: "call without consent_token to get a new one, and ask the person again"}
 		}
 		return consentAnswer{method: "token"}, nil
 	}
+	params := &mcp.ElicitParams{Mode: "form", Message: text, RequestedSchema: schema}
+	var why string
 	if p := c.req.Session.InitializeParams(); p != nil && p.Capabilities != nil && p.Capabilities.Elicitation != nil {
-		return consentAnswer{pending: &mcp.CallToolResult{
-			InputRequests: mcp.InputRequestMap{"consent": &mcp.ElicitParams{Mode: "form", Message: text, RequestedSchema: consentSchema}},
-			RequestState:  agent.Seal("cs_", hash),
-		}}, nil
+		if p.ProtocolVersion >= multiRoundTrip {
+			return consentAnswer{pending: &mcp.CallToolResult{
+				InputRequests: mcp.InputRequestMap{"consent": params},
+				RequestState:  agent.Seal("cs_", hash),
+			}}, nil
+		}
+		er, err := c.req.Session.Elicit(ctx, params)
+		if err == nil {
+			return decide(er)
+		}
+		why = " (the client couldn't show the question: " + clean(err.Error()) + ")"
 	}
 	return consentAnswer{}, &toolError{
 		Code:    "consent_required",
-		Message: "this needs the consent of the person you are working for: " + c.question,
-		Hint:    "show them the summary and ask. Only if they say yes, call again with exactly the same arguments plus consent_token. If they say no, don't run it.",
+		Message: "this needs the consent of the person you are working for" + why + ": " + c.question,
+		Hint:    "show them the summary and ask. Only if they say yes, call again with exactly the same arguments plus consent_token. If they say no, don't do it.",
 		Extra:   map[string]any{"summary": text, "consent_token": s.sess.NewToken(hash), "expires_in_seconds": int(agent.TokenTTL.Seconds())},
 	}
 }
