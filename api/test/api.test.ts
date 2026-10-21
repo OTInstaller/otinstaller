@@ -155,7 +155,7 @@ describe("namespaces, pivots, types, installs", () => {
   it("shows ethics and network access in search, and filters to passive tools", async () => {
     const { body } = await get("/tools?q=holehe");
     const t = body.results.find((r: any) => r.name === "holehe-lite");
-    expect(t.ethics).toEqual({ touches_target: false, auth_required: false, collects_personal_data: true });
+    expect(t.ethics).toEqual({ touches_target: false, auth_required: false, collects_personal_data: true, notifies_target: false });
     expect(t.egress).toBe(true);
     const passive = await get("/tools?passive_only=1&limit=100");
     expect(passive.body.results.map((r: any) => r.name)).not.toContain("holehe-lite");
@@ -231,5 +231,114 @@ describe("OpenAPI", () => {
     expect([...routes].filter((r) => !documented.has(r)).sort()).toEqual([]);
     expect([...documented].filter((r) => !routes.has(r)).sort()).toEqual([]);
     for (const ops of Object.values(spec.paths) as any[]) for (const op of Object.values(ops) as any[]) expect(op.operationId).toMatch(/^[a-z_]+$/);
+  });
+});
+
+describe("install manifests for older ot", () => {
+  it("serves a manifest without the newer optional fields, and the full one beside it", async () => {
+    const { body } = await get("/tools/dheeraj/holehe-lite/1.2.0/manifest");
+    expect(body.manifest_full.runtime.typical_seconds).toBe(40);
+    expect(body.manifest_full.ethics.notifies_target).toBe(false);
+    expect(body.manifest.runtime.typical_seconds).toBeUndefined();
+    expect(body.manifest.ethics).toEqual({ touches_target: false, auth_required: false, collects_personal_data: true });
+    expect(body.manifest.inputs.some((i: any) => "example" in i)).toBe(false);
+    expect(body.manifest.outputs).toEqual([{ type: "account" }]);
+    expect(body.manifest.secrets[0].pricing).toBeUndefined();
+  });
+
+  it("serves only `manifest` when nothing had to be left out", async () => {
+    const { body } = await get("/tools/dheeraj/whois-lite/latest/manifest");
+    expect(body.manifest.name).toBe("whois-lite");
+    expect(body.manifest_full).toBeUndefined();
+  });
+
+  it("carries notifies_target in search results only when the publisher says", async () => {
+    const { body } = await get("/tools?limit=100");
+    const by = (n: string) => body.results.find((r: any) => r.name === n);
+    expect(by("holehe-lite").ethics.notifies_target).toBe(false);
+    expect("notifies_target" in by("whois-lite").ethics).toBe(false);
+  });
+});
+
+describe("remote MCP server", () => {
+  const rpc = async (body: unknown, init: RequestInit = {}) => {
+    const res = await SELF.fetch("https://api.otinstaller.com/mcp", {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
+      body: JSON.stringify(body),
+      ...init,
+    });
+    return { status: res.status, headers: res.headers, body: res.status === 202 ? null : ((await res.json()) as any) };
+  };
+  const callTool = async (name: string, args: unknown) => (await rpc({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } })).body.result;
+
+  it("initializes without a session and lists read-only tools", async () => {
+    const init = await rpc({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } } });
+    expect(init.status).toBe(200);
+    expect(init.body.result.protocolVersion).toBe("2025-06-18");
+    expect(init.body.result.instructions).toContain("ot mcp");
+    expect(init.headers.get("mcp-session-id")).toBeNull();
+    expect((await rpc({ jsonrpc: "2.0", method: "notifications/initialized" })).status).toBe(202);
+    const unknown = await rpc({ jsonrpc: "2.0", id: 2, method: "initialize", params: { protocolVersion: "1999-01-01" } });
+    expect(unknown.body.result.protocolVersion).toBe("2025-11-25");
+
+    const { body } = await rpc({ jsonrpc: "2.0", id: 3, method: "tools/list" });
+    const names = body.result.tools.map((t: any) => t.name);
+    expect(names).toEqual(["search_tools", "get_tool", "list_types", "suggest_pivots", "search_guides", "read_guide"]);
+    for (const t of body.result.tools) expect(t.annotations.readOnlyHint).toBe(true);
+    expect(names).not.toContain("run_tool");
+  });
+
+  it("searches, describes a tool with its consent class, and suggests pivots", async () => {
+    const search = await callTool("search_tools", { query: "hole" });
+    expect(search.isError).toBeUndefined();
+    expect(search.structuredContent.results[0].name).toBe("holehe-lite");
+    expect(JSON.parse(search.content[0].text).results[0].name).toBe("holehe-lite");
+
+    const tool = await callTool("get_tool", { tool: "dheeraj/holehe-lite" });
+    expect(tool.structuredContent).toMatchObject({ ref: "dheeraj/holehe-lite", consent_class: "personal", typical_seconds: 40, install: "ot install dheeraj/holehe-lite" });
+    expect(tool.structuredContent.effects).toContain("collects personal data");
+    expect(tool.structuredContent.outputs[0].attrs.map((a: any) => a.name)).toEqual(["site", "url", "recovery_hint"]);
+    const pinned = await callTool("get_tool", { tool: "dheeraj/holehe-lite@1.2.0" });
+    expect(pinned.structuredContent.version).toBe("1.2.0");
+    expect(pinned.structuredContent.ethics.notifies_target).toBe(false);
+
+    const pivots = await callTool("suggest_pivots", { entity_types: ["email"] });
+    expect(pivots.structuredContent.pivots.email.map((t: any) => t.name)).toContain("holehe-lite");
+    expect((await callTool("list_types", {})).structuredContent.inputs).toContain("email");
+  });
+
+  it("reports bad arguments and missing tools as tool errors", async () => {
+    const bad = await callTool("get_tool", { tool: "not a ref" });
+    expect(bad.isError).toBe(true);
+    expect(bad.structuredContent.error.code).toBe("invalid_params");
+    const missing = await callTool("get_tool", { tool: "dheeraj/no-such-tool" });
+    expect(missing.isError).toBe(true);
+    const guide = await callTool("get_tool", { tool: "dheeraj/email-investigation-playbook" });
+    expect(guide.structuredContent.error.code).toBe("usage");
+    const unknown = await rpc({ jsonrpc: "2.0", id: 9, method: "tools/call", params: { name: "run_tool", arguments: {} } });
+    expect(unknown.body.error.code).toBe(-32602);
+  });
+
+  it("reads guides", async () => {
+    const found = await callTool("search_guides", { query: "email" });
+    expect(found.structuredContent.results.map((r: any) => r.name)).toContain("email-investigation-playbook");
+    const page = await callTool("read_guide", { guide: "dheeraj/email-investigation-playbook" });
+    // The local seed doesn't render pages to R2, so either the page or the registry's own error comes back.
+    if (page.isError) expect(page.structuredContent.error.code).toMatch(/^page_/);
+    else expect(page.structuredContent.ref).toBe("dheeraj/email-investigation-playbook");
+  });
+
+  it("answers batches, refuses GET, allows CORS and never caches", async () => {
+    const batch = await rpc([{ jsonrpc: "2.0", id: 1, method: "ping" }, { jsonrpc: "2.0", method: "notifications/initialized" }, { jsonrpc: "2.0", id: 2, method: "nope" }]);
+    expect(batch.body).toEqual([{ jsonrpc: "2.0", id: 1, result: {} }, { jsonrpc: "2.0", id: 2, error: { code: -32601, message: "method nope is not supported" } }]);
+    expect(batch.headers.get("cache-control")).toBe("no-store");
+    expect(batch.headers.get("access-control-allow-origin")).toBe("*");
+    const get = await SELF.fetch("https://api.otinstaller.com/mcp");
+    expect(get.status).toBe(405);
+    const parse = await SELF.fetch("https://api.otinstaller.com/mcp", { method: "POST", body: "{" });
+    expect(((await parse.json()) as any).error.code).toBe(-32700);
+    const pre = await SELF.fetch("https://api.otinstaller.com/mcp", { method: "OPTIONS" });
+    expect(pre.status).toBe(204);
   });
 });

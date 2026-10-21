@@ -3814,6 +3814,10 @@
           },
           "collects_personal_data": {
             "type": "boolean"
+          },
+          "notifies_target": {
+            "type": "boolean",
+            "description": "Present only when the publisher says; unset on a tool that touches the target means it may"
           }
         }
       },
@@ -4035,7 +4039,12 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "The manifest without optional fields added after ot v0.12, which older ot rejects"
+          },
+          "manifest_full": {
+            "$ref": "https://otinstaller.com/schema/v1.json",
+            "description": "The whole manifest; present only when `manifest` leaves fields out"
           },
           "mirror_image": {
             "type": "string"

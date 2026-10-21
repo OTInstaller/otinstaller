@@ -12,12 +12,19 @@ inputs:
   - name: email
     type: email
     required: true
+    example: jane@example.com
   - name: timeout
     type: integer
     required: false
     default: 10
+    example: 20
 outputs:
   - type: account
+    description: One account per site the address is registered on
+    attrs:
+      - { name: site, type: string, description: The site's name }
+      - { name: url, type: url }
+      - { name: recovery_hint, type: string, description: "A masked recovery email or phone, when the site shows one" }
 runtime:
   kind: docker
   image: ghcr.io/dheeraj/holehe-lite@sha256:3b1f0c2d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8e9
@@ -25,11 +32,13 @@ runtime:
   command: ["holehe", "--json", "--timeout", "{timeout}", "{email}"]
   output_format: json
   timeout_seconds: 300
+  typical_seconds: 40
 secrets:
   - name: HIBP_API_KEY
     required: false
     description: Adds breach data to results
     url: https://haveibeenpwned.com/API/Key
+    pricing: paid
 network:
   egress: true
   domains: ["*.twitter.com", "api.github.com"]
@@ -37,6 +46,8 @@ ethics:
   touches_target: false
   auth_required: false
   collects_personal_data: true
+  notifies_target: false
+  notes: Checks use each site's sign-up form, so heavy use may get your IP rate-limited
 test:
   input: { email: "test@example.com" }
   expect_exit_code: 0

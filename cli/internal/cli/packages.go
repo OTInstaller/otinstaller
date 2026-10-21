@@ -281,8 +281,7 @@ func (a *App) install(ctx context.Context, ref pkgRef, native bool) (*state.Inst
 		if resp.MovedTo != "" {
 			fmt.Fprintf(a.Err, "note: %s has moved to %s\n", ref.Ref(), resp.MovedTo)
 		}
-		raw = resp.Manifest
-		if doc, m, err = manifest.ParseJSON(raw); err != nil {
+		if doc, m, raw, err = registryManifest(resp); err != nil {
 			return nil, err
 		}
 		opt.SignerIdentity, opt.SignerIssuer = resp.SignerIdentity, resp.SignerIssuer
@@ -430,4 +429,17 @@ func recordOf(i *state.Installed) installRecord {
 func writeJSON(w io.Writer, v any) error {
 	enc := newJSONEncoder(w)
 	return enc.Encode(v)
+}
+
+// registryManifest picks the manifest to install from a registry answer: the full one when this ot's schema accepts
+// it, else the one limited to the fields every ot since v0.12 knows. The registry adds optional fields over time
+// (examples, output attributes, notifies_target), and an older ot refuses a manifest with fields it doesn't know.
+func registryManifest(resp *api.ManifestResponse) (any, *manifest.Manifest, json.RawMessage, error) {
+	if len(resp.ManifestFull) > 0 && string(resp.ManifestFull) != "null" {
+		if doc, m, err := manifest.ParseJSON(resp.ManifestFull); err == nil && len(manifest.Validate(doc, m, manifest.Options{})) == 0 {
+			return doc, m, resp.ManifestFull, nil
+		}
+	}
+	doc, m, err := manifest.ParseJSON(resp.Manifest)
+	return doc, m, resp.Manifest, err
 }

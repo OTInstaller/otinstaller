@@ -63,6 +63,15 @@ func Describe(m *manifest.Manifest) []string {
 	if m.Ethics == nil || m.Ethics.TouchesTarget {
 		out = append(out, "sends requests to websites or services about the target")
 	}
+	switch {
+	case m.Ethics != nil && m.Ethics.NotifiesTarget != nil:
+		if *m.Ethics.NotifiesTarget {
+			out = append(out, "may notify the target (a sign-up or reset email, a login alert)")
+		}
+	case m.Ethics == nil || m.Ethics.TouchesTarget:
+		// Unset on a tool that touches the target: say so rather than guess it is quiet.
+		out = append(out, "may notify the target (the publisher doesn't say)")
+	}
 	if m.Ethics != nil && m.Ethics.CollectsPersonalData {
 		out = append(out, "collects personal data")
 	}

@@ -220,6 +220,15 @@ func waitFor(ctx context.Context, lr *liveRun, seconds int) {
 	}
 }
 
+// defaultWait is how long run_tool waits when the agent doesn't say: 60 seconds, or a bit longer than the tool's
+// typical_seconds when it usually takes more, so a normal run comes back in one call.
+func defaultWait(m *manifest.Manifest) int {
+	if m != nil && m.Runtime != nil && m.Runtime.TypicalSeconds > 50 {
+		return min(m.Runtime.TypicalSeconds+15, 300)
+	}
+	return 60
+}
+
 func effectful(title string, destructive, idempotent bool) *mcp.ToolAnnotations {
 	return &mcp.ToolAnnotations{Title: title, DestructiveHint: ptr(destructive), IdempotentHint: idempotent, OpenWorldHint: ptr(true)}
 }
@@ -431,7 +440,7 @@ func (s *mcpServer) runTool(ctx context.Context, req *mcp.CallToolRequest, in ru
 	if err != nil {
 		return nil, nil, asToolError(err)
 	}
-	waitFor(ctx, lr, in.WaitSeconds)
+	waitFor(ctx, lr, orInt(in.WaitSeconds, defaultWait(plan.inst.Manifest)))
 	return s.runResult(lr)
 }
 
@@ -554,13 +563,20 @@ func (s *mcpServer) withLink(out any, runID string) *mcp.CallToolResult {
 func (s *mcpServer) runDetails(inst *state.Installed) []string {
 	m := inst.Manifest
 	d := []string{"This tool " + strings.Join(agent.Describe(m), ", and ") + "."}
+	if m.Ethics != nil && m.Ethics.Notes != "" {
+		d = append(d, "The publisher notes: "+stripControl(m.Ethics.Notes))
+	}
 	var needs, ifSet []string
 	for _, sec := range m.Secrets {
+		name := sec.Name
+		if sec.Pricing == "paid" || sec.Pricing == "free_tier" {
+			name += " (" + strings.ReplaceAll(sec.Pricing, "_", " ") + ")"
+		}
 		switch {
 		case sec.Required:
-			needs = append(needs, sec.Name)
+			needs = append(needs, name)
 		case keySet(sec.Name):
-			ifSet = append(ifSet, sec.Name)
+			ifSet = append(ifSet, name)
 		}
 	}
 	if len(needs)+len(ifSet) > 0 {

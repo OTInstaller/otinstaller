@@ -98,6 +98,8 @@ type Ethics struct {
 	TouchesTarget        bool `json:"touches_target"`
 	AuthRequired         bool `json:"auth_required"`
 	CollectsPersonalData bool `json:"collects_personal_data"`
+	// NotifiesTarget is set only when the publisher says.
+	NotifiesTarget *bool `json:"notifies_target,omitempty"`
 }
 
 type SearchResult struct {
@@ -131,6 +133,9 @@ type ManifestResponse struct {
 	SourceGone     bool            `json:"source_unavailable"`
 	MovedTo        string          `json:"moved_to,omitempty"`
 	Manifest       json.RawMessage `json:"manifest"`
+	// ManifestFull is the manifest with every field. Manifest leaves out optional fields added since ot v0.12, whose
+	// schema rejects them; see registryManifest in the cli package.
+	ManifestFull json.RawMessage `json:"manifest_full,omitempty"`
 	// Backups the registry keeps, used when the original registry or PyPI refuses the artifact.
 	MirrorImage string `json:"mirror_image,omitempty"`
 	WheelURL    string `json:"wheel_url,omitempty"`
