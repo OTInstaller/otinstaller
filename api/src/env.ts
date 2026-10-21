@@ -5,6 +5,13 @@ export interface Env {
   DB: D1Database;
   PUBLISH_QUEUE: Queue<PublishMessage>;
   CONTENT: R2Bucket; // rendered READMEs, guide pages and tool docs
+  BACKUPS: R2Bucket; // git bundles (git/...) and wheels (wheels/...)
+  MIRROR: R2Bucket; // the image mirror's storage, shared with the mirror Worker (takedowns hide and delete images here)
+  MIRROR_HOST?: string; // defaults to mirror.otinstaller.com
+  BACKUPS_BUCKET?: string; // the BACKUPS bucket's name, for presigned URLs; defaults to otinstaller-backups
+  R2_ACCOUNT_ID?: string; // with R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY, uploads and downloads go straight to R2
+  R2_ACCESS_KEY_ID?: string;
+  R2_SECRET_ACCESS_KEY?: string;
   SITE_URL: string;
   API_URL: string;
   GITHUB_APP_ID?: string;
@@ -29,19 +36,24 @@ export interface Env {
   EMAIL_FROM?: string;
   CF_URLSCAN_ACCOUNT_ID?: string; // with CF_URLSCAN_TOKEN, guide links are checked with Cloudflare URL Scanner
   CF_URLSCAN_TOKEN?: string;
+  ISSUES_REPO?: string; // where beta bug reports are filed; defaults to OTInstaller/feedback
+  ISSUES_TOKEN?: string; // optional token with Issues: read, needed to count sev-1 issues while that repository is private
+  EDGE_CACHE?: string; // "off" sends every anonymous read to D1 (the tests do this)
 }
 
 /**
  * The queue carries publish jobs, bulk-import detection, guide content checks (the guide's equivalent
  * of a security scan; `attempt` counts rounds of waiting for URL Scanner), nightly link checks and the
- * releases a reviewer approved with their namespace (published one per message, not all in one request).
+ * releases a reviewer approved with their namespace (published one per message, not all in one request), and
+ * backups of versions published without a scanner run to do them (approved releases, guides).
  */
 export type PublishMessage =
   | { jobId: string }
   | { importId: string }
   | { checkVersionId: string; attempt?: number }
   | { linkCheckToolId: string }
-  | { publishVersionId: string };
+  | { publishVersionId: string }
+  | { backupVersionId: string };
 
 export interface User {
   id: string;

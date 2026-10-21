@@ -6,19 +6,29 @@ publishing intake (GitHub/GitLab sign-in, the GitHub App webhook, the queue that
 security scans with the review queue (scanner, verdicts, publishing, reviewer decisions, emails), and GitLab support
 with sync (connecting GitLab projects, GitLab webhooks and CI templates, and a poller that catches missed tags, renames,
 archiving and deleted repositories), and the import wizard (detecting what a repository contains, drafting its manifest,
-opening a pull or merge request, registry-held manifests, and bulk imports of up to 50 repositories).
+opening a pull or merge request, registry-held manifests, and bulk imports of up to 50 repositories), and source and
+artifact backups (week 11: the image mirror at mirror.otinstaller.com, wheel and git bundle copies in R2, `ot`'s
+fallback to them, Restore from backup, and a monthly restore drill).
 To connect real GitHub and GitLab apps, follow [docs/publishing-setup.md](docs/publishing-setup.md).
+
+It also holds `otinstaller`, the older Python package manager (from OSINTVerseHQ/OTinstaller, imported with its
+history into `python/`). `ot` is the one CLI going forward; `otinstaller` is in maintenance, and its tool catalog has
+been converted into registry packages (see [otinstaller (python/)](#otinstaller-python)). Moving from `otinstaller`
+to `ot`: [docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md).
 
 | Folder | What it is |
 | --- | --- |
 | `spec/` | Manifest JSON Schema (`schema/v1.json`), example manifests (3 valid, 24 invalid with expected error codes) and the release workflow templates (`templates/`) that `ot init` and the import wizard both use |
-| `cli/` | The `ot` CLI (Go): `init`, `validate`, `search`, `info`, `install`, `run`, `list`, `uninstall`, `keys`, `doctor`, `login`, `logout`, `whoami`, `import`, `sync` |
-| `api/` | Registry API (Cloudflare Workers + Hono + D1 + Queues): search and read endpoints, GitHub/GitLab sign-in and device flow, API tokens, GitHub App webhooks, publish validation, the import wizard |
+| `cli/` | The `ot` CLI (Go): `init`, `validate`, `search`, `info`, `install`, `run`, `playbook`, `auto`, `extract`, `diff`, `list`, `outdated`, `update`, `uninstall`, `keys`, `doctor`, `login`, `logout`, `whoami`, `import`, `sync`, `feedback` |
+| `api/` | Registry API (Cloudflare Workers + Hono + D1 + Queues + R2): search and read endpoints, GitHub/GitLab sign-in and device flow, API tokens, GitHub App webhooks, publish validation, the import wizard, backups; and the image mirror Worker (`src/mirror/`, `wrangler.mirror.jsonc`) |
 | `web/` | The website (Astro on Cloudflare, Preact islands): home, search, tool and guide pages, docs, policies, the import wizard, dashboard and admin console. `npm run dev` for a dev server, `npm run og` to re-render the social preview image |
-| `ops/` | The scanner (`scanner/scan.py` + its Docker image) and the GitHub Actions workflow for the registry-ops repo |
+| `python/` | `otinstaller`, the older package manager (Python, Linux): installs tools from pip or git into per-tool virtualenvs, typed inputs, saved results, Debian packaging. In maintenance; see below |
+| `seed/` | The launch seed: first-party tools, community wrappers (including those converted from `otinstaller`'s catalog), guides |
+| `ops/` | The scanner (`scanner/scan.py`, backups and restore drills in `scanner/backup.py`, its Docker image) and the GitHub Actions workflows for the registry-ops repo |
 | `examples/dns-lookup/` | A tiny real tool used by the end-to-end test |
 | `examples/tldextract/`, `examples/cosign/` | Real packages (a PyPI wheel and Sigstore's signed image) used by `scripts/e2e-real.sh` |
 | `scripts/e2e.sh` | Builds the example, pushes it to a local registry, then validates, smoke-tests and runs it with `ot` |
+| `scripts/e2e-backups.sh` | The week 11 exit test: installs from the mirror and the wheel copy with the original registry blocked, and restores a bundle into an empty repository |
 
 ## Requirements
 
@@ -93,6 +103,64 @@ Against real artifacts (a keyless-signed image and a real PyPI wheel), with Dock
 bash scripts/e2e-real.sh
 ```
 
+## Backups
+
+Every published package has a registry-held copy, so a mistaken ban or takedown on GitHub or GitLab never breaks installs
+or loses code. After a passing scan, the scan job copies the image with its signatures to the mirror (`crane copy`, same
+digest, so cosign verifies the same signature), uploads the verified wheel and a `git bundle` of a mirror clone through
+short-lived signed URLs, and reports back; a weekly job bundles every active source again. When the original registry
+refuses an image (401, 403, 404, "denied"), `ot install` pulls the same digest from `mirror.otinstaller.com` and verifies it;
+when PyPI no longer serves a wheel, it uses the registry's copy with the same SHA-256 check. Owners get Restore from
+backup and Switch source on the dashboard. Rules: public repositories of published packages only; 500 MB per bundle and
+2 GB per image; public mirrors only for OSI-approved licenses; takedowns delete backups within 30 days unless on legal
+hold; owners can opt out of git backups. Setup (R2 buckets, the mirror Worker, DNS, credentials):
+[docs/publishing-setup.md, section 11](docs/publishing-setup.md#11-backups-the-image-mirror-r2-buckets-and-restore-drills).
+
+```bash
+bash scripts/e2e-backups.sh   # needs Docker, cosign, crane, git, Go, Node and Python
+```
+
+## otinstaller (python/)
+
+`python/` is the OTinstaller package manager, imported with `git subtree` so its full history is kept (`git log
+python/` shows the import; `git log 3c3bfb5` the original commits). It keeps its own conventions in
+[python/AGENTS.md](python/AGENTS.md), its changelog and its Debian packaging (`python/debian/`, built from
+`python/`).
+
+How it fits with the registry:
+
+- **One CLI.** New work goes into `ot`. `otinstaller` gets security fixes only until its end of life on 30 June
+  2027, still ships on PyPI and as a Debian package for existing users, and no longer installs an `ot` command, since
+  that name belongs to the registry CLI. [docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md)
+  maps every `otinstaller` command to `ot` and explains the date.
+- **Catalog.** `otinstaller`'s tested catalog (`python/src/otinstaller/data/registry.yaml`) is converted into
+  `osintverse-community` wrappers in `seed/community/` by `python scripts/pm-catalog-to-wrappers.py`: a pinned pip
+  release with a pure-Python wheel on PyPI becomes a pipx package pinned by the wheel's SHA-256; git installs, extra
+  packages, Playwright browsers and releases without a wheel become Docker wrappers built at the same pinned
+  version. Typed inputs (`u:`, `e:`, `d:`, `url:`, `p:`) become manifest inputs, and the flags they map to become
+  the command template. Existing seed folders are never overwritten. Tools that need a login or a terminal, take no
+  typed input, or whose license doesn't allow a wrapper are listed and skipped; see [seed/README.md](seed/README.md).
+- **Install paths.** apt (Debian/Kali) and pip/pipx installs of `otinstaller` stay as they are. Through the
+  registry, the same tools install with `ot` as Docker images or sandboxed pipx wheels; the bare per-tool
+  virtualenvs and unpinned git checkouts don't carry over.
+
+Tests (Linux only, so on Windows run them in a container):
+
+```bash
+cd python
+pip install -e ".[dev,pipeline]"
+ruff check . && ruff format --check . && pytest
+```
+
+CI for it is `.github/workflows/python-ci.yml` and `python-nightly.yml`, scoped to `python/**`.
+
+## Licenses
+
+The whole repository is under the Apache License 2.0 ([LICENSE](LICENSE)). `python/` keeps its own copy of the same
+[LICENSE](python/LICENSE) and its [NOTICE](python/NOTICE), which must be kept with any redistribution or derived work
+of it ("OTinstaller by OSINTverse"). Tools installed by either CLI, and the upstream projects the community wrappers in
+`seed/` package, keep their own licenses.
+
 ## Notes on the plan
 
 - Guide manifests use `topics:` (not `inputs:`) for what a guide helps investigate, so `inputs` always means tool inputs.
@@ -111,5 +179,11 @@ bash scripts/e2e-real.sh
   requests use the author's own token with the `api` scope, asked for only when they finish an import.
 - A GitLab project that already has a `.gitlab-ci.yml` gets the release job as `.gitlab/otinstaller-release.yml`, with a
   note in the merge request to include it; an existing pipeline is never rewritten.
+- The mirror is a small OCI registry of our own on R2 (`api/src/mirror/registry.ts`) rather than a fork of Cloudflare's
+  serverless-registry: it only needs pulls, the scanner's pushes (including chunked uploads, for layers over the Workers
+  request limit) and deletes for takedowns. It has no referrers API, so signatures use the tag schema: the scanner copies
+  those tags with crane, and `cosign verify` reads them. Each repository keeps its own blobs, so a takedown never touches another package.
+- Git bundles hold branches and tags only, not the hosts' own refs (`refs/pull/*`, `refs/merge-requests/*`), which
+  cannot be pushed to the other host.
 - A registry-held manifest is published with the version from each new tag, and the image tagged with that version (or
   the PyPI wheel of that version) is looked up at publish time, so authors don't edit the manifest for every release.

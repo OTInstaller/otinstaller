@@ -33,7 +33,11 @@ archives:
     format_overrides:
       - goos: windows
         formats: [zip]
-    files: [README.md, LICENSE*]
+    # Paths are relative to cli/ (the workdir); the license is the repository's.
+    files:
+      - README.md
+      - src: ../LICENSE
+        strip_parent: true
 
 checksum:
   name_template: checksums.txt
@@ -91,5 +95,6 @@ release:
     owner: '{{ envOrDefault "RELEASE_OWNER" "otinstaller" }}'
     name: '{{ envOrDefault "RELEASE_NAME" "ot" }}'
   extra_files:
-    - glob: ../scripts/install/install.sh
-    - glob: ../scripts/install/install.ps1
+    # Copies with the public key filled in, written by the release workflow.
+    - glob: ../dist/install/install.sh
+    - glob: ../dist/install/install.ps1

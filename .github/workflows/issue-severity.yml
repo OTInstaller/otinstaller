@@ -1,0 +1,28 @@
+# Turns the Severity field of a bug report (.github/ISSUE_TEMPLATE/bug.yml) into a sev-1/sev-2/sev-3 label, so the
+# admin console's beta metrics can count open sev-1 bugs. Editing the field moves the label; a maintainer can also
+# change the label by hand afterwards (it is only set from the field when the issue is opened or its body edited).
+name: issue severity
+on:
+  issues:
+    types: [opened, edited]
+permissions:
+  issues: write
+jobs:
+  label:
+    if: contains(github.event.issue.body, '### Severity')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label by severity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BODY: ${{ github.event.issue.body }}
+          ISSUE: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          sev="$(printf '%s\n' "$BODY" | awk '/^### Severity/{f=1;next} f&&NF{print;exit}' | grep -o '^sev-[123]' || true)"
+          [ -n "$sev" ] || { echo "no severity chosen"; exit 0; }
+          for s in sev-1 sev-2 sev-3; do
+            [ "$s" = "$sev" ] || gh issue edit "$ISSUE" -R "$REPO" --remove-label "$s" 2>/dev/null || true
+          done
+          gh issue edit "$ISSUE" -R "$REPO" --add-label "$sev"
+          echo "labelled #$ISSUE $sev"

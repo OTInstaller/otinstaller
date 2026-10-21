@@ -15,6 +15,9 @@ import { guideRoutes } from "./routes/guides";
 import { trustRoutes } from "./routes/trust";
 import { transferRoutes } from "./routes/transfers";
 import { opsRoutes } from "./routes/ops";
+import { betaRoutes } from "./routes/beta";
+import { backupRoutes } from "./routes/backups";
+import { backfillBackups, expireDrills, expireRuns, installFallbacks, purgeBackups, RESTORE_DRILL_CRON, startDrill, WEEKLY_BACKUP_CRON, weeklyBackups } from "./backups";
 import { alertStuckJobs, dailyDigest, purgeRateLimits, reportError } from "./ops";
 import { queueNightlyLinkChecks } from "./guides";
 import { ulid } from "./lib/crypto";
@@ -22,6 +25,7 @@ import { overLimit } from "./trust";
 import { pollDueSources } from "./sync";
 import { expireStaleScans } from "./scans";
 import { handleBatch } from "./publish";
+import { edgeCached } from "./edge-cache";
 
 export type { Env } from "./env";
 
@@ -55,6 +59,8 @@ guideRoutes(app);
 trustRoutes(app);
 transferRoutes(app);
 opsRoutes(app);
+betaRoutes(app);
+backupRoutes(app);
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
@@ -250,6 +256,9 @@ app.get("/tools/:ns/:name/:version/manifest", async (c) => {
     source_unavailable: row.source_status === "unavailable",
     moved_to: movedTo,
     manifest: removed ? null : JSON.parse(v.manifest_json),
+    // Where ot retries when the original registry refuses (403, 404, denied): the same digest on the mirror,
+    // and the registry's copy of the wheel. Only for OSI-approved licenses.
+    ...(removed ? {} : await installFallbacks(c.env, v.id, row.namespace, row.name, v.version)),
   });
 });
 
@@ -367,18 +376,27 @@ app.post("/installs", async (c) => {
 });
 
 export default {
-  fetch: app.fetch,
+  fetch: (req: Request, env: Env, ctx: ExecutionContext) => edgeCached(req, env, ctx, async () => app.fetch(req, env, ctx)),
   queue: (batch: MessageBatch<PublishMessage>, env: Env) => handleBatch(batch, env),
   async scheduled(event: ScheduledController, env: Env) {
     // Every 15 minutes: close scans that never reported back, and poll sources that are due.
     await expireStaleScans(env);
     await pollDueSources(env);
     await alertStuckJobs(env);
+    await expireRuns(env);
+    await expireDrills(env);
+    // Published versions without an image or wheel backup (older than backups, or failed) get one.
+    await backfillBackups(env);
+    // Weekly (Mondays): a git backup of every active source, for code pushed between releases.
+    if (event.cron === WEEKLY_BACKUP_CRON) await weeklyBackups(env);
+    // Monthly: restore a random bundle into an empty repository and pull a mirrored image by digest.
+    if (event.cron === RESTORE_DRILL_CRON) await startDrill(env);
     // Nightly: recompute 30-day install totals that ranking uses, and re-check guides' links.
     if (event.cron === "17 3 * * *") {
       await queueNightlyLinkChecks(env);
       await dailyDigest(env);
       await purgeRateLimits(env);
+      await purgeBackups(env);
       await env.DB.prepare(
         `UPDATE tools SET installs_30d = COALESCE((SELECT SUM(count) FROM install_counts
            WHERE tool_id = tools.id AND day >= date('now', '-30 days')), 0)`,

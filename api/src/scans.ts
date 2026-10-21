@@ -69,11 +69,6 @@ export async function dispatchScan(env: Env, opts: { versionId: string; provider
     `UPDATE versions SET scan_token_hash = ?, scan_token_expires_at = ?, expected_signer_regexp = ?, expected_signer_issuer = ? WHERE id = ?`,
   ).bind(await sha256Hex(token), now + SCAN_TOKEN_TTL, signer.identityRegexp, signer.issuer, versionId).run();
 
-  // repository_dispatch needs Contents: write on registry-ops. A token limited to that repository keeps the
-  // App read-only on publishers' repositories; without one, the App's installation token is used.
-  const opsToken = env.OPS_DISPATCH_TOKEN?.trim() || await github.installationToken(
-    deps.fetch, requireSecret(env, "GITHUB_APP_ID"), requireSecret(env, "GITHUB_APP_PRIVATE_KEY"), Number(requireSecret(env, "OPS_INSTALLATION_ID")),
-  );
   // repository_dispatch allows at most 10 top-level keys in client_payload, so everything sits under "scan".
   const scan = {
     version_id: versionId,
@@ -92,14 +87,24 @@ export async function dispatchScan(env: Env, opts: { versionId: string; provider
     callback_url: `${env.API_URL}/v1/internal/scans`,
     callback_token: token,
   };
+  await dispatchOps(env, "otinstaller-scan", { scan });
+  // Only a delivered dispatch counts; a failed one is retried by the queue (see processJob).
+  await env.DB.prepare(`UPDATE versions SET scan_dispatched_at = ? WHERE id = ?`).bind(Date.now(), versionId).run();
+}
+
+/** Starts a workflow run in registry-ops (scans, backups, restore drills) with a repository_dispatch event. */
+export async function dispatchOps(env: Env, eventType: string, clientPayload: Record<string, unknown>) {
+  // repository_dispatch needs Contents: write on registry-ops. A token limited to that repository keeps the
+  // App read-only on publishers' repositories; without one, the App's installation token is used.
+  const opsToken = env.OPS_DISPATCH_TOKEN?.trim() || await github.installationToken(
+    deps.fetch, requireSecret(env, "GITHUB_APP_ID"), requireSecret(env, "GITHUB_APP_PRIVATE_KEY"), Number(requireSecret(env, "OPS_INSTALLATION_ID")),
+  );
   const res = await deps.fetch(`${github.GITHUB_API}/repos/${requireSecret(env, "OPS_REPO")}/dispatches`, {
     method: "POST",
     headers: { Authorization: `Bearer ${opsToken}`, Accept: "application/vnd.github+json", "Content-Type": "application/json", "User-Agent": "otinstaller-registry" },
-    body: JSON.stringify({ event_type: "otinstaller-scan", client_payload: { scan } }),
+    body: JSON.stringify({ event_type: eventType, client_payload: clientPayload }),
   });
-  if (!res.ok) throw new github.HostError(`scan dispatch failed: ${res.status} ${(await res.text()).slice(0, 200)}`, res.status, res.status >= 500 || res.status === 429);
-  // Only a delivered dispatch counts; a failed one is retried by the queue (see processJob).
-  await env.DB.prepare(`UPDATE versions SET scan_dispatched_at = ? WHERE id = ?`).bind(Date.now(), versionId).run();
+  if (!res.ok) throw new github.HostError(`${eventType} dispatch failed: ${res.status} ${(await res.text()).slice(0, 200)}`, res.status, res.status >= 500 || res.status === 429);
 }
 
 // ---------- outcome ----------
@@ -193,7 +198,8 @@ export async function applyScanResults(env: Env, v: VersionCtx, r: ScanResults):
   await db.batch(stmts);
 
   if (v.namespace_status === "active") {
-    await publishVersion(env, v.id);
+    // The scanner backs this version up itself, with the plan the callback answers with.
+    await publishVersion(env, v.id, { backupInline: true });
     return { status: "published", verdict: vd };
   }
   await db.batch([
@@ -246,7 +252,7 @@ export function latestMetadata(db: D1Database, toolId: string, kind: string, ver
 }
 
 /** Makes a version public, updates the tool's latest version and its search metadata. */
-export async function publishVersion(env: Env, versionId: string) {
+export async function publishVersion(env: Env, versionId: string, opts: { backupInline?: boolean } = {}) {
   const db = env.DB;
   const now = Date.now();
   const v = await loadVersion(env, "v.id = ?", versionId);
@@ -270,6 +276,8 @@ export async function publishVersion(env: Env, versionId: string) {
   if (v.kind === "guide" && isLatest) await updateLinkHealth(env, v.tool_id);
   const scan = await db.prepare(`SELECT scan_status FROM versions WHERE id = ?`).bind(versionId).first<{ scan_status: string }>();
   await commitStatus(env, v, "success", `Published ${refOf(v)}@${v.version}`);
+  // Backups never hold up publishing: a version the scanner did not just back up gets its own backup job.
+  if (!opts.backupInline) await env.PUBLISH_QUEUE.send({ backupVersionId: versionId }).catch((e) => console.error("queueing the backup failed", e));
   await sendEmail(env, { to: await ownerEmails(env, v.namespace_id), kind: "published", key: `published:${versionId}`, ...templates.published(env, refOf(v), v.version, scan?.scan_status === "warn") });
 }
 

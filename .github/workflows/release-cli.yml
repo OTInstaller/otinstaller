@@ -32,7 +32,13 @@ jobs:
       - name: Put the public key in the install scripts
         env:
           OT_RELEASE_PUBLIC_KEY: ${{ vars.OT_RELEASE_PUBLIC_KEY }}
-        run: sed -i "s|__OT_RELEASE_PUBLIC_KEY__|${OT_RELEASE_PUBLIC_KEY}|" scripts/install/install.sh scripts/install/install.ps1
+        # Written to dist/install (ignored by git): GoReleaser refuses to release from a checkout with modified files.
+        run: |
+          mkdir -p dist/install
+          for s in install.sh install.ps1; do
+            sed "s|__OT_RELEASE_PUBLIC_KEY__|${OT_RELEASE_PUBLIC_KEY}|" "scripts/install/$s" > "dist/install/$s"
+          done
+          grep -q "__OT_RELEASE_PUBLIC_KEY__" dist/install/* && { echo "::error::OT_RELEASE_PUBLIC_KEY is not set"; exit 1; } || true
       - uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
@@ -42,8 +48,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
           OT_RELEASE_PUBLIC_KEY: ${{ vars.OT_RELEASE_PUBLIC_KEY }}
-          RELEASE_OWNER: ${{ vars.RELEASE_OWNER }}
-          RELEASE_NAME: ${{ vars.RELEASE_NAME }}
+          # An unset variable is an empty string, which GoReleaser's envOrDefault takes as set: default here.
+          RELEASE_OWNER: ${{ vars.RELEASE_OWNER || 'OTInstaller' }}
+          RELEASE_NAME: ${{ vars.RELEASE_NAME || 'ot' }}
       - name: Remove the release key
         if: always()
         run: rm -f "$RUNNER_TEMP/release-key.pem"

@@ -377,11 +377,14 @@ describe("write limits", () => {
     const owner = await person();
     const p = await pkg(await namespace(owner), ["1.0.0", "1.1.0"]);
     const codes: number[] = [];
+    // The limit counts in fixed one-minute windows; 31 requests that straddle a window boundary would never hit it.
+    // Under a full parallel run they can take 10s or more, so start early in a minute.
+    if (Date.now() % 60_000 > 30_000) await new Promise((r) => setTimeout(r, 60_000 - (Date.now() % 60_000) + 50));
     for (let i = 0; i < 31; i++) codes.push((await post(`/tools/${p.ref}/1.1.0/${i % 2 ? "unyank" : "yank"}`, owner.auth)).status);
     expect(codes.slice(0, 30).every((c) => c === 200)).toBe(true);
     expect(codes[30]).toBe(429);
     const reviewer = await person({ reviewer: true });
     for (let i = 0; i < 31; i++) await post(`/admin/reports/none/resolve`, reviewer.auth, { status: "dismissed" });
     expect((await post(`/admin/reports/none/resolve`, reviewer.auth, { status: "dismissed" })).status).toBe(404);
-  });
+  }, 90_000);
 });

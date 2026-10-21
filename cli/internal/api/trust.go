@@ -88,3 +88,21 @@ func (c *Client) Deprecate(ctx context.Context, ns, name, message, replacement s
 func (c *Client) Undeprecate(ctx context.Context, ns, name string) error {
 	return c.do(ctx, http.MethodDelete, "/tools/"+pkgPath(ns, name)+"/deprecate", nil, nil)
 }
+
+type FeedbackResult struct {
+	ID   string `json:"id"`
+	Note string `json:"note"`
+}
+
+// Feedback sends beta feedback; it is linked to the account when the client has a token.
+func (c *Client) Feedback(ctx context.Context, kind, message, email, about, client string) (*FeedbackResult, error) {
+	var out FeedbackResult
+	body := map[string]string{"kind": kind, "message": message, "source": "cli", "client": client}
+	if email != "" {
+		body["email"] = email
+	}
+	if about != "" {
+		body["page"] = about
+	}
+	return &out, c.do(ctx, http.MethodPost, "/feedback", body, &out)
+}
