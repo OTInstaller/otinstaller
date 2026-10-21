@@ -139,13 +139,49 @@ with "Filename too long"; use a short path or `git config core.longpaths true`.
       and archived (21 Oct). **(you)** GitLab `osintversehq/ot-test-tool` is still public: Settings → General →
       Visibility → Private → Save, or Settings → General → Advanced → Delete. To delete the GitHub ones for good:
       `gh repo delete dheerajydv19/ot-test-tool` and `gh repo delete dheerajydv19/ot-test-guide`.
-- [ ] **Agents** ([agent-friendly-plan.md](agent-friendly-plan.md), branch `claude/agent-friendly-plan-a8afd5`, not
-      merged): decide whether `ot run` without a terminal should need `--yes` for non-passive tools from launch day
-      (it breaks CI scripts that relied on the old behaviour; `OT_CONSENT=off` restores it). Try `ot mcp` on a real
-      client. After the release that includes it: create `OTInstaller/agent-plugin` and publish the plugin,
-      publish `server.json` to the MCP Registry, and add the `.mcpb` download to `/docs/agents`
-      ([publishing-setup.md](publishing-setup.md) sections 10 and 12). Directory and marketplace submissions each need
-      your OK.
+- [ ] **Agents** ([agent-friendly-plan.md](agent-friendly-plan.md), phases 1–5 merged in
+      [PR #18](https://github.com/OTInstaller/otinstaller/pull/18), not deployed). Decided 21 Oct:
+      - **Consent from launch:** `ot run`, `--all`, playbooks and `auto` without a terminal need `--yes` for tools
+        that aren't passive. The release notes and the beta email must say: add `--yes`, or set `OT_CONSENT=off`.
+      - **Version:** the release is `ot` v0.13.0 (the manifest docs already say so).
+      - **Two stages.** Stage 1 is invisible to users, because the API stays compatible with `ot` v0.12:
+        1. **(you)** Apply migration 0013 to production. It must come before the API deploy: the new API reads
+           `api_tokens.scoped` on every request that carries a token. In `api/`: `npx wrangler d1 migrations list
+           otinstaller --remote` (only 0013 should be pending), then `npx wrangler d1 migrations apply otinstaller
+           --remote`.
+        2. Deploy the API from `main` (`npx wrangler deploy` in `api/`). Then check `/v1/health`, a search,
+           `/v1/openapi.json`, an `ETag` on a read, `POST /mcp` `tools/list`, and that `ot` v0.12.1 still installs a tool.
+      - **Stage 1 done 21 Oct.** Migration 0013 was applied at about 16:20 UTC, and the API was deployed from `main` as
+        version `f3d0d90b` (previous `9a497a34`, for `wrangler rollback`). The checks passed:
+        - `/v1/health`, search, `passive_only` (6 tools, all passive) and `/v1/pivots`
+        - `/v1/openapi.json` (3.1.0, 59 paths)
+        - ETags with `304` on fresh responses
+        - `/mcp` `tools/list` and `get_tool`
+        - a bad token answers 401, not 500
+        - `ot` v0.12.1 `info`, `search` and `install` read the new API (the install stopped only because Docker
+          wasn't running)
+
+        `/v1/types` is still the copy cached before the deploy (`max-age=86400`, no `ETag` and no pivot map) until
+        about 10:00 UTC on 22 Oct.
+      - **Stage 2,** once stage 1 has run cleanly for a while: push the `v0.13.0` tag to release `ot`, then deploy the
+        site straight after (its docs describe `ot mcp` and `/mcp`, and `ot` links to the site's `.md` pages).
+      - **(you) Rate-limit rule, before stage 2.** In the Cloudflare dashboard, open the otinstaller.com zone, then
+        Security → WAF → Rate limiting rules → Create rule:
+        - Name: `API reads and MCP`.
+        - Expression: `(http.host eq "api.otinstaller.com" and (http.request.uri.path eq "/mcp" or
+          starts_with(http.request.uri.path, "/v1/tools") or starts_with(http.request.uri.path, "/v1/guides") or
+          http.request.uri.path eq "/v1/pivots"))`. If your plan's editor has no "starts with", use "contains".
+        - Counting characteristic: IP.
+        - Rate: 30 requests per 10 seconds.
+        - Action: Block for 10 seconds.
+
+        This keeps D1 reads in check if someone scripts `/mcp` or the search filters. If one rule isn't enough, a
+        Workers rate-limiting binding in `/mcp` can follow.
+      - **After stage 2:** create `OTInstaller/agent-plugin` and publish the plugin, publish both MCP Registry
+        entries (the release's `server.json` and `integrations/mcp-registry/server.json`), and add the `.mcpb`
+        download to `/docs/agents` ([publishing-setup.md](publishing-setup.md) sections 10 and 12). Each directory
+        and marketplace submission needs your OK.
+      - Try `ot mcp` and the remote server in a real client.
 - [ ] Resubmit the sitemap in Google Search Console (crawlers saw 404s and 500s on 21 Oct).
 - [ ] On-call rota for launch week; launch posts (plan, week 13). Drafts and templates in [launch/](launch/README.md)
       (21 Oct): rota and reviewer schedule, posts for each channel, demo video script. Nothing posted; each needs your OK.

@@ -47,7 +47,6 @@ export const GET: APIRoute = async () => {
       "## Optional",
       "",
       `- [Full docs](${SITE_URL}/llms-full.txt): every docs and policy page in one file`,
-      "- [OSINTverse](https://osintverse.com/llms.txt): paid lookups and cases",
     ].join("\n"),
   );
   // A copy missing the API sections is kept only briefly.
