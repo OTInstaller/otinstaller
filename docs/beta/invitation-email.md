@@ -36,7 +36,7 @@ counts, and a place in the launch announcement. You keep full control of your na
 without a tag you push.
 
 What we'd ask in return: tell us what was confusing or broken. Use the feedback form on the site, `ot feedback`
-in the terminal, or reply to this email. For bugs that block you, please open an issue: {issues URL}.
+in the terminal, or reply to this email. For bugs that block you, please open an issue: https://github.com/OTInstaller/feedback/issues.
 
 If you'd rather not, no problem, and thank you for {tool name} either way.
 
@@ -69,7 +69,7 @@ you can spend an hour or two on real (or practice) cases in that time, it would 
 3. Try a few tools and a guide: https://otinstaller.com/guides
 
 Tell us what worked and what didn't: `ot feedback "…"` from the terminal, the form at https://otinstaller.com/feedback,
-or a reply to this email. Blocking bugs go here: {issues URL}. At the end we'll send a five-minute survey.
+or a reply to this email. Blocking bugs go here: https://github.com/OTInstaller/feedback/issues. At the end we'll send a five-minute survey.
 
 Thanks,
 {sender}

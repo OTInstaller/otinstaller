@@ -36,7 +36,7 @@ export interface Env {
   EMAIL_FROM?: string;
   CF_URLSCAN_ACCOUNT_ID?: string; // with CF_URLSCAN_TOKEN, guide links are checked with Cloudflare URL Scanner
   CF_URLSCAN_TOKEN?: string;
-  ISSUES_REPO?: string; // where beta bug reports are filed; defaults to OTInstaller/otinstaller
+  ISSUES_REPO?: string; // where beta bug reports are filed; defaults to OTInstaller/feedback
   ISSUES_TOKEN?: string; // optional token with Issues: read, needed to count sev-1 issues while that repository is private
   EDGE_CACHE?: string; // "off" sends every anonymous read to D1 (the tests do this)
 }

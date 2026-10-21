@@ -22,7 +22,7 @@ function text(v: unknown, max: number): string {
 
 /** Open sev-1 issues on the issue tracker, or null with the reason when GitHub can't be asked. */
 async function openSev1(env: Env): Promise<{ count: number | null; url: string; error?: string }> {
-  const repo = env.ISSUES_REPO ?? "OTInstaller/otinstaller";
+  const repo = env.ISSUES_REPO ?? "OTInstaller/feedback";
   const url = `https://github.com/${repo}/issues?q=${encodeURIComponent(`is:issue is:open label:${SEV1_LABEL}`)}`;
   const q = encodeURIComponent(`repo:${repo} is:issue is:open label:${SEV1_LABEL}`);
   const res = await deps.fetch(`https://api.github.com/search/issues?q=${q}&per_page=1`, {

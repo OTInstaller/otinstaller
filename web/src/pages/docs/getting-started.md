@@ -20,14 +20,8 @@ Windows (PowerShell):
 irm https://get.otinstaller.com/ot.ps1 | iex
 ```
 
-Package managers and other ways:
-
-| How | Command |
-| --- | --- |
-| Homebrew | `brew install --cask otinstaller/tap/ot` |
-| Scoop | `scoop bucket add otinstaller https://github.com/otinstaller/scoop-bucket` then `scoop install ot` |
-| deb, rpm, archives | [GitHub Releases](https://github.com/otinstaller/ot/releases) |
-| From source | `go install github.com/otinstaller/otinstaller/cli/cmd/ot@latest` (Go 1.25 or newer) |
+Archives for every platform, and deb and rpm packages, are on [GitHub Releases](https://github.com/OTInstaller/ot/releases),
+with `checksums.txt` signed by the release key. Homebrew and Scoop packages are coming after the beta.
 
 Later, `ot self-update` brings in new releases after checking their signature. Then check your machine:
 

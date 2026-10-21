@@ -4,7 +4,7 @@ export const SITE_URL = String(import.meta.env.SITE ?? "https://otinstaller.com"
 /** The closed beta: shows the beta strip. Build with PUBLIC_BETA=0 at launch. */
 export const BETA = String(import.meta.env.PUBLIC_BETA ?? "1") !== "0";
 /** Where bug reports go (GitHub issues with a severity). */
-export const ISSUES_URL = String(import.meta.env.PUBLIC_ISSUES_URL ?? "https://github.com/OTInstaller/otinstaller/issues").replace(/\/+$/, "");
+export const ISSUES_URL = String(import.meta.env.PUBLIC_ISSUES_URL ?? "https://github.com/OTInstaller/feedback/issues").replace(/\/+$/, "");
 
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public hint?: string, public problems?: Problem[]) {

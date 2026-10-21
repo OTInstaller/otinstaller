@@ -60,7 +60,7 @@ tag you push is published automatically once its checks pass, usually within two
 - **Nothing happens after the tag.** Run `ot sync you/tool`; it checks the repository right away and
   `ot sync --log you/tool` shows what the registry saw.
 - **Anything confusing**, even small: `ot feedback "…"` or https://otinstaller.com/feedback. Blocking bugs:
-  {issues URL}, with the *Bug report* form.
+  https://github.com/OTInstaller/feedback/issues, with the *Bug report* form.
 
 ## What we'll ask you afterwards
 
