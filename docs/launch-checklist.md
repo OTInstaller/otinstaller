@@ -123,11 +123,13 @@ with "Filename too long"; use a short path or `git config core.longpaths true`.
       advice, prepared 21 Oct) with the draft policy fixes. Both are on the local branch `claude/legal-drafts` only,
       kept out of this repository because it is public; open points are marked `[[…]]`. Before or alongside: confirm
       OSINTverse's exact legal name and form, register a DMCA agent, name a grievance officer.
-- [ ] Receive mail at otinstaller.com. 21 Oct: Email Routing is enabled (MX records live) and hi@osintverse.com is
-      added as the destination. **(you)** Click Cloudflare's verification link in the hi@osintverse.com inbox; then
-      create the forwarding rules for support@, privacy@, abuse@, security@, legal@ and dmca@:
-      `npx wrangler email routing rules create otinstaller.com --match-type literal --match-field to --match-value support@otinstaller.com --action-type forward --action-value hi@osintverse.com`
-      (once per address). Until then mail to them bounces.
+- [x] Receive mail at otinstaller.com (21 Oct). Cloudflare Email Routing is on (MX records `route1–3.mx.cloudflare.net`),
+      and support@, privacy@, abuse@, security@, legal@ and dmca@otinstaller.com forward to hi@osintverse.com
+      (verified destination). Other addresses at the domain are dropped (catch-all off). Tested: a message from an
+      ordinary mailbox to support@ arrived at hi@osintverse.com. Cloudflare only forwards mail that passes SPF or
+      DKIM, so a message sent straight from a script is refused with `550 5.7.26`; normal mail services pass. To add
+      an address: `npx wrangler email routing rules create otinstaller.com --match-type literal --match-field to
+      --match-value <name>@otinstaller.com --action-type forward --action-value hi@osintverse.com`.
 - [ ] **(you)** Code signing ([code-signing.md](code-signing.md)): wired into the release workflow and off until set
       up. Windows: Azure Trusted Signing (about $9.99/month; check eligibility) or an OV certificate on a cloud HSM.
       macOS: Apple Developer Program ($99/year) for Developer ID signing and notarization.
