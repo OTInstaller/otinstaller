@@ -24,7 +24,7 @@ These stop testers on day one. Don't send invitations until they are done.
 
 | Item | State | What it needs |
 |------|-------|---------------|
-| This branch (`claude/week12-beta-7d9771`) | Production runs `d9a19a0` (everything on this branch before week 11 was merged in: outage fix, feedback, beta strip, admin tabs, GitLab fixes; migration 0012 applied). The branch now also contains main with week 11 (`c242065`). | **(you)** Push, open a PR, merge to main. The CI install matrix runs on the PR. **Don't deploy main until week 11's resources exist** (next row): its `wrangler.jsonc` binds R2 buckets that aren't created yet. |
+| This branch (`claude/week12-beta-7d9771`) | Production runs `90b9c2c`: main (weeks 1–11, PR #3, PR #4) plus all of week 12; migrations up to 0012 applied. Only docs were committed after it. | **(you)** Push, open a PR, merge to main. The CI install matrix runs on the PR. **Don't deploy main until week 11's resources exist** (next row): its `wrangler.jsonc` binds R2 buckets that aren't created yet. |
 | Week 11 backups ([PR #3](https://github.com/OTInstaller/otinstaller/pull/3), merged into main 21 Oct) | Merged into this branch too (conflicts resolved; API 278/278). Not deployed. Migration `0011_backups.sql` applies cleanly after `0012_feedback.sql` (D1 applies whichever is missing). | **(you)** R2 buckets `otinstaller-backups` and `otinstaller-mirror`; an R2 API token (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`); `MIRROR_PUSH_TOKEN` on the mirror Worker and in registry-ops; deploy the mirror Worker (`wrangler.mirror.jsonc`, creates mirror.otinstaller.com; Workers Paid is now on); `npx wrangler d1 migrations apply otinstaller --remote` for 0011; copy `ops/scanner/backup.py` and `ops/workflows/scan.yml` into registry-ops. Not needed for the beta to start; needed before launch per the plan. |
 | PR #2 (Python package manager merge) | Merged into main on 20 Oct (`6b8f6a6`). Deployed with this branch. | Nothing. |
 | Site docs that went live "at the next deploy" | Live since today's deploy. | Nothing. |
@@ -54,7 +54,7 @@ These stop testers on day one. Don't send invitations until they are done.
 | Review | Not needed (namespace already approved) | **Waiting for you**: approve `osintversehq` at https://otinstaller.com/admin |
 | `ot install` / `ot run` on Windows | OK: cosign signature verified, `ot run … d:example.com` exit 0 | After approval: `ot install osintversehq/ot-test-tool` and `ot run osintversehq/ot-test-tool d:example.com` |
 
-Production deploys on 21 Oct: `8556684` (06:14 UTC), `d9a19a0` (06:55), then week 11's `claude/backup-backfill` from another session (07:01, which dropped the beta work), then `c242065` = main with week 11 + this branch (07:10). Since then the branch also has PR #4 (`57a958d`, backup backfill) merged in, **not yet deployed**.
+Production deploys on 21 Oct: `8556684` (06:14 UTC), `d9a19a0` (06:55), then week 11's `claude/backup-backfill` from another session (07:01, which dropped the beta work), then `c242065` = main with week 11 + this branch (07:10). Then `90b9c2c` (adds PR #4, the backup backfill) at about 07:20 UTC, which is what production runs now.
 
 ## Install matrix
 
