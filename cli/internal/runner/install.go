@@ -133,8 +133,10 @@ func (r *Runner) installDocker(ctx context.Context, m *manifest.Manifest, opt In
 	if !strings.Contains(image, "@sha256:") {
 		return "", false, &TrustError{"image " + image + " is not pinned by digest"}
 	}
+	// The engine's progress lines go to a buffer: a first run should read as three lines, not a screen of
+	// layer hashes. On failure the buffer is the error.
 	var out bytes.Buffer
-	code, err := r.Exec.Run(ctx, r.Engine, []string{"pull", image}, nil, nil, r.Stderr, io.MultiWriter(r.Stderr, &out))
+	code, err := r.Exec.Run(ctx, r.Engine, []string{"pull", image}, nil, nil, &out, &out)
 	if err != nil || code != 0 {
 		if opt.MirrorImage == "" || !sameDigest(image, opt.MirrorImage) || !unavailable.MatchString(out.String()) {
 			return "", false, commandFailed("pulling "+image, code, err, out.String())
@@ -142,10 +144,11 @@ func (r *Runner) installDocker(ctx context.Context, m *manifest.Manifest, opt In
 		fmt.Fprintf(r.Stderr, "note: %s refused the image; pulling the same digest from the OTInstaller mirror\n", strings.SplitN(image, "/", 2)[0])
 		image = opt.MirrorImage
 		out.Reset()
-		if code, err := r.Exec.Run(ctx, r.Engine, []string{"pull", image}, nil, nil, r.Stderr, io.MultiWriter(r.Stderr, &out)); err != nil || code != 0 {
+		if code, err := r.Exec.Run(ctx, r.Engine, []string{"pull", image}, nil, nil, &out, &out); err != nil || code != 0 {
 			return "", false, commandFailed("pulling "+image+" from the mirror", code, err, out.String())
 		}
 	}
+	fmt.Fprintf(r.Stderr, "pulled %s\n", shortImage(image))
 	if opt.SignerIdentity == "" {
 		if opt.RequireSignature {
 			return "", false, &TrustError{image + " is not signed, and agents may only install signed images; install it yourself with `ot install` if you trust it"}
@@ -160,10 +163,21 @@ func (r *Runner) installDocker(ctx context.Context, m *manifest.Manifest, opt In
 		return image, false, nil
 	}
 	args := []string{"verify", "--certificate-identity", opt.SignerIdentity, "--certificate-oidc-issuer", opt.SignerIssuer, image}
-	if code, err := r.Exec.Run(ctx, "cosign", args, nil, nil, io.Discard, r.Stderr); err != nil || code != 0 {
+	var verify bytes.Buffer
+	if code, err := r.Exec.Run(ctx, "cosign", args, nil, nil, &verify, &verify); err != nil || code != 0 {
+		fmt.Fprint(r.Stderr, verify.String())
 		return "", false, &TrustError{"signature verification failed for " + image + "; refusing to install"}
 	}
+	fmt.Fprintf(r.Stderr, "signature verified: signed by %s\n", opt.SignerIdentity)
 	return image, true, nil
+}
+
+// shortImage is the image name with its digest cut to twelve hex characters, for progress lines.
+func shortImage(image string) string {
+	if i := strings.Index(image, "@sha256:"); i >= 0 && len(image) > i+8+12 {
+		return image[:i+8+12] + "…"
+	}
+	return image
 }
 
 // PipxHome and PipxBinDir keep ot's packages apart from the user's own pipx apps.
