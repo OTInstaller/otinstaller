@@ -21,6 +21,8 @@ export default defineConfig({
   // Shiki highlights with inline styles, which the CSP below forbids.
   markdown: { syntaxHighlight: false },
   prefetch: { prefetchAll: true, defaultStrategy: "hover" },
+  // The nav's "Publish" is the import wizard; people type /publish too.
+  redirects: { "/publish": "/import" },
   // Self-hosted fonts (the CSP allows fonts from this site only). Latin subsets, upright only.
   fonts: [
     {

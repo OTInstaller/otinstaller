@@ -12,7 +12,7 @@ Guides are investigation playbooks and references, published from a repository l
 schema: 1
 kind: guide
 name: email-investigation-playbook
-namespace: dheeraj
+namespace: alice
 version: 1.0.0
 title: Email investigation playbook
 summary: A repeatable workflow from one email address to linked accounts and breaches
@@ -25,7 +25,7 @@ content:
   root: docs/
   nav: [index.md, 01-scope-and-legal.md, 02-passive-checks.md]
 related_tools:
-  - dheeraj/holehe-lite
+  - osintverse-community/holehe
 topics: [email]
 ```
 

@@ -4,10 +4,10 @@ import { withParam } from "./page";
 
 describe("format", () => {
   it("builds the example run line from required inputs only", () => {
-    expect(exampleRun("dheeraj/holehe-lite", [
+    expect(exampleRun("osintverse-community/holehe", [
       { name: "email", type: "email", required: true },
       { name: "timeout", type: "integer", required: false },
-    ])).toBe("ot run dheeraj/holehe-lite --email <email>");
+    ])).toBe("ot run osintverse-community/holehe --email <email>");
   });
 
   it("links guide pages without .md, pinning old versions only", () => {

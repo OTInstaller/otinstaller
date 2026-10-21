@@ -11,7 +11,7 @@ Every package has one `otinstaller.yaml` at its repository root. `ot init` write
 ```yaml
 schema: 1
 name: holehe-lite
-namespace: dheeraj
+namespace: alice
 version: 1.2.0
 summary: Checks which sites an email address is registered on
 readme: README.md
@@ -25,7 +25,7 @@ outputs:
   - type: account
 runtime:
   kind: docker
-  image: ghcr.io/dheeraj/holehe-lite@sha256:3b1f…
+  image: ghcr.io/alice/holehe-lite@sha256:3b1f…
   platforms: [linux/amd64, linux/arm64]
   command: ["holehe", "--json", "{email}"]
   output_format: json

@@ -230,7 +230,7 @@ send server errors to Sentry with their request ID; request headers and bodies a
 `ot` releases come from `.github/workflows/release-cli.yml` on a `vX.Y.Z` tag, built by GoReleaser (`cli/.goreleaser.yaml`).
 
 1. Create a **public** repository for releases (default `otinstaller/ot`; another one goes in the variables `RELEASE_OWNER` and `RELEASE_NAME`).
-   The source repository is private, so downloads cannot come from it.
+   The install scripts and `ot self-update` read releases from it, so keep it even though the source is public.
 2. Create the release signing key, once, on a trusted machine, and keep the private key offline as well:
    ```bash
    openssl genpkey -algorithm ed25519 -out ot-release-key.pem
