@@ -41,9 +41,9 @@ local audit log, the sandbox and signed artifacts.
 
 **Safety and data handling:**
 
-- Runs happen on the user's machine. The user's targets, inputs and results never leave it. OTInstaller only learns
-  when a tool is installed (an install count, tied to the account when the user is signed in), and
-  `OT_NO_TELEMETRY=1` switches even that off.
+- Runs happen on the user's machine. The user's targets, inputs and results never leave it. OTInstaller only counts
+  installs: a daily total per version, with no IP address, user or token stored. `OT_NO_TELEMETRY=1` switches even
+  that off.
 - Consent: passive runs (offline, no target contact, no personal data) need none. Every other run asks, once per tool
   for networked runs, and per tool and target for runs that touch a target or involve a person. A client that can't
   ask gets a single-use token bound to that exact call.

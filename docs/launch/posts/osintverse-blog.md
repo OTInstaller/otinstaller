@@ -67,6 +67,14 @@ tool and guide (10 in all). Each guide links only to
 tools on the registry, and `ot guide tools` installs all of them at once. Read them on the site or in the terminal
 with `ot guide read`.
 
+## Works with AI agents
+
+`ot` has an MCP server built in, so Claude, Cursor, Codex, VS Code and Gemini CLI can search the registry, install
+tools and run them for you: `ot mcp install claude` sets it up, and a Claude Code plugin adds investigation skills.
+The agent has to ask you before any run that goes online, contacts the target or involves a person, naming the exact
+tool and target, and every run it makes is written to a log on your machine (`ot mcp audit`). Tools still run in the
+same locked-down container on your computer. Details: https://otinstaller.com/docs/agents
+
 ## For tool authors
 
 Your code stays where it is. Sign in with GitHub or GitLab, open the [import wizard](https://otinstaller.com/import),
