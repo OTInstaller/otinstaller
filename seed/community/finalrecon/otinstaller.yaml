@@ -31,5 +31,7 @@ ethics:
   touches_target: true
   auth_required: false
   collects_personal_data: false
+  notifies_target: false
+  notes: "It requests pages from the site, so its web server logs see your IP address; heavy crawling can trip a firewall."
 test:
   input: {"url": "https://example.com"}

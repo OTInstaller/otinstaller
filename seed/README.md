@@ -167,3 +167,12 @@ The exit criterion is that every seeded package is healthy in the nightly check,
 
 Change `version` (and for pipx wrappers `package_version` and `wheel_sha256`, from
 `https://pypi.org/pypi/<package>/json`), then tag, or run the release workflow for Docker wrappers.
+
+## Not yet released: notifies_target and key pricing (22 Oct 2026)
+
+These folders gained the optional fields agents read (`ethics.notifies_target` and `ethics.notes`, or a key's
+`pricing`), but their published versions don't have them yet. Each needs a new release from its own repository, which
+needs the owner's go-ahead: dnsrecon, fierce, finalrecon, httpx, tlsx, holehe and shodan-host (community), exif-meta
+and image-hash (first-party). Until then, agents describe the seven that touch the target (all but holehe and shodan-host)
+as "may notify the target (the publisher doesn't say)". A manifest change alone can't be published under the same version: the release
+must bump it (Docker wrappers' release workflow does; pipx wrappers need a `version` bump by hand).

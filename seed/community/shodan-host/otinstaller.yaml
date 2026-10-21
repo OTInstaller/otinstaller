@@ -23,6 +23,7 @@ secrets:
     required: true
     description: "Your Shodan API key"
     url: https://account.shodan.io
+    pricing: free_tier
 runtime:
   kind: docker
   # Filled in by the release workflow with the pushed image's digest.

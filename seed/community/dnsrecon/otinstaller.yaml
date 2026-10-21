@@ -32,5 +32,7 @@ ethics:
   touches_target: true
   auth_required: false
   collects_personal_data: false
+  notifies_target: false
+  notes: "Its queries, including zone-transfer checks, reach the domain's own name servers, which may log or flag them."
 test:
   input: { domain: "example.com" }
