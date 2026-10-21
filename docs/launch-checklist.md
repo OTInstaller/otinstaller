@@ -143,7 +143,8 @@ with "Filename too long"; use a short path or `git config core.longpaths true`.
       [PR #18](https://github.com/OTInstaller/otinstaller/pull/18) and [PR #20](https://github.com/OTInstaller/otinstaller/pull/20),
       **deployed 21 Oct**). Decided 21 Oct:
       - **Consent from launch:** `ot run`, `--all`, playbooks and `auto` without a terminal need `--yes` for tools
-        that aren't passive. The release notes and the beta email must say: add `--yes`, or set `OT_CONSENT=off`.
+        that aren't passive. The release notes say: add `--yes`, or set `OT_CONSENT=off`. There was no beta cohort to
+        email; the launch is public.
       - **Version:** the release is `ot` v0.13.0 (the manifest docs already say so).
       - **Two stages.** Stage 1 is invisible to users, because the API stays compatible with `ot` v0.12:
         1. **(you)** Apply migration 0013 to production. It must come before the API deploy: the new API reads
@@ -174,7 +175,6 @@ with "Filename too long"; use a short path or `git config core.longpaths true`.
         - Checked: every page answers 200, with no beta strip; the redesign is live; `/docs/agents` (with the remote
           server), `/docs/mcp-tools`, `llms.txt` and the `.md` versions are live; there are no CSP errors in the
           browser. The only console error is the expected signed-out 401 from `/v1/me`.
-        - Still to do: the beta email about `--yes`.
       - **Rate-limit rule:** in place (you, 21 Oct). The settings it was created from: In the Cloudflare dashboard, open the otinstaller.com zone, then
         Security → WAF → Rate limiting rules → Create rule:
         - Name: `API reads and MCP`.
@@ -195,8 +195,10 @@ with "Filename too long"; use a short path or `git config core.longpaths true`.
         The v0.13.0 entry was published with a shortened description (the registry allows 100 characters); releases
         from now on write a short one. Each future release needs `mcp-publisher publish` with its `server.json`
         ([publishing-setup.md](publishing-setup.md) section 10).
-      - **Next:** the Anthropic directory and Cursor marketplace submissions (each needs your OK), the beta email about
-        `--yes`, and a test in a real client.
+      - **Next:**
+        - the Anthropic directory and Cursor marketplace submissions (each needs your OK; texts in
+          [launch/agent-listings.md](launch/agent-listings.md));
+        - a test in a real client.
 - [ ] Resubmit the sitemap in Google Search Console (crawlers saw 404s and 500s on 21 Oct).
 - [ ] On-call rota for launch week; launch posts (plan, week 13). Drafts and templates in [launch/](launch/README.md)
       (21 Oct): rota and reviewer schedule, posts for each channel, demo video script. Nothing posted; each needs your OK.
