@@ -55,6 +55,10 @@ further detail). `type` is normally one of the manifest's output types: `account
 `domain`, `subdomain`, `ip`, `url`, `person`, `organization`, `location`, `breach`, `certificate`, `dns_record`, `image`,
 `document`, `crypto_address`, `transaction`, `other`.
 
+Tools whose output is text or CSV don't report entities themselves. For those, `ot` lists the emails, URLs, IP
+addresses and domains their output mentions (up to 200), with `"confidence": "low"` and `"attrs": {"found_in": "text
+output"}`, and leaves out the values you gave as inputs. They are pattern matches, so check them before relying on one.
+
 Many entities can feed another tool: an `email` into a tool whose input type is `email`, a `subdomain` into a `domain`
 input. `ot extract` collects them from saved runs, and `ot run --all e:<email>` runs everything that takes one.
 
