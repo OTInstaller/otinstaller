@@ -18,8 +18,10 @@ interface Props {
   noindex?: boolean;
   /** Full-bleed pages (the home page) draw their own sections. */
   bleed?: boolean;
+  /** URL of the page's Markdown twin, announced as a rel="alternate" link for agents. */
+  markdown?: string;
 }
-const { title, description = "Find, install and run OSINT tools and investigation guides with one command.", canonical, jsonLd, noindex, bleed = false } = Astro.props;
+const { title, description = "Find, install and run OSINT tools and investigation guides with one command.", canonical, jsonLd, noindex, bleed = false, markdown } = Astro.props;
 const fullTitle = title === "OTInstaller Registry" ? "OTInstaller — the OSINT tool registry" : `${title} · OTInstaller`;
 const canonicalUrl = `${SITE_URL}${canonical ?? Astro.url.pathname}`;
 const path = Astro.url.pathname;
@@ -40,6 +42,7 @@ const isCurrent = (href: string) => path === href || path.startsWith(href + "/")
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonicalUrl} />
+    {markdown && <link rel="alternate" type="text/markdown" href={markdown} />}
     {(noindex || Astro.url.search !== "") && <meta name="robots" content="noindex" />}
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f8fb" />
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0f17" />
@@ -111,6 +114,8 @@ const isCurrent = (href: string) => path === href || path.startsWith(href + "/")
               <li><a href="/guides">Guides</a></li>
               <li><a href="/docs/getting-started">Install ot</a></li>
               <li><a href="/docs/cli">CLI reference</a></li>
+              <li><a href="/docs/automation">Scripts and agents</a></li>
+              <li><a href="/llms.txt">llms.txt</a></li>
             </ul>
           </div>
           <div>

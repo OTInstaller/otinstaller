@@ -204,3 +204,50 @@ The GitHub App needs write access to contents, workflows and pull requests to op
 
 ### gitlab_scope_required
 Opening merge requests needs GitLab write access. Sign in again with GitLab from the import page and grant it.
+
+## ot
+
+Codes `ot` itself reports. With `--json` (or `OT_OUTPUT=json`) every error is one line of JSON on stderr with `code`,
+`message`, `hint`, `docs` and `exit_code`; see [Scripts, CI and agents](/docs/automation). Registry errors keep the
+registry's own code.
+
+### usage
+The command line is wrong: an unknown command or flag, a missing argument, or inputs that don't fit the tool. Exit code
+2. The message says what to change; `ot <command> --help` lists the flags.
+
+### input_required
+`ot` needed an answer but there is no terminal to ask in (piped or closed stdin, CI, an agent, or
+`OT_NONINTERACTIVE=1`). `ot` never prompts then. Pass the flag the message names, usually `--yes`. Exit code 2.
+
+### not_installed
+`ot run` was given a tool that isn't installed, with no terminal to ask whether to install it. Run `ot install` first, or
+pass `--yes`. Exit code 2.
+
+### not_signed_in
+The command needs a registry token. Run `ot login`, or set `OTINSTALLER_TOKEN`. Exit code 2.
+
+### manifest_invalid
+The manifest has problems, listed one by one in `problems` (each with its own code from this page). Exit code 2.
+
+### secret_missing
+The tool needs an API key that isn't set. Set it with `ot keys set NAME`, or as an environment variable of the same
+name. Exit code 3.
+
+### trust_refused
+`ot` refused to install or run a package: a removed version, an image not pinned by digest, or a signature that doesn't
+match. Exit code 4. See the [security model](/docs/security).
+
+### runtime_missing
+Docker (or Podman) or pipx isn't available. `ot doctor` says what is missing. Exit code 5.
+
+### registry_unreachable
+No answer came back from the registry (DNS, TLS, a timeout). Retrying later may work. Exit code 1.
+
+### timeout
+The tool ran past its `timeout_seconds`. Its partial output is saved. Exit code 124.
+
+### interrupted
+The run was stopped with Ctrl-C. Its partial output is saved. Exit code 130.
+
+### failed
+Anything else, including a tool that exited with an error (its own exit code is in the envelope). Exit code 1.

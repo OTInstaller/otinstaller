@@ -4,7 +4,9 @@ title: CLI reference
 description: Every ot command and its options.
 ---
 
-Run `ot <command> --help` for all flags. Packages are written `namespace/name`, optionally with `@version`.
+Run `ot <command> --help` for all flags. Packages are written `namespace/name`, optionally with `@version`. Every command
+that prints data takes `--json`, and errors then come as one line of JSON on stderr; see
+[Scripts, CI and agents](/docs/automation).
 
 ## Finding and running tools
 
@@ -15,15 +17,15 @@ Run `ot <command> --help` for all flags. Packages are written `namespace/name`, 
 | `ot install <ns/name[@version]> [--native]` | Install a tool (pull its image, or install its Python package) |
 | `ot run <ns/name> --<input> <value> …` | Run a tool; installs it first if needed (`-y` without asking) |
 | `ot run <ns/name> u:johndoe` | Typed inputs fill the tool's input of that type: `u:` username, `d:` domain, `e:` email, `p:` phone, `ip:` IP, `url:` URL |
-| `ot run … --format json\|table\|csv\|raw -o file` | Output format (JSON result envelope by default) and file |
-| `ot run --all u:johndoe [--parallel 4] [--dry-run]` | Run every installed tool that takes those inputs |
+| `ot run … --format json\|table\|csv\|raw -o file` | Output format (JSON [result envelope](/docs/results) by default) and file; `--max-raw BYTES` leaves `raw` out of large envelopes |
+| `ot run --all u:johndoe [--parallel 4] [--dry-run] [-f table\|json\|jsonl]` | Run every installed tool that takes those inputs; `jsonl` streams one line per tool as it finishes |
 | `ot auto <target> [--type …] [--dry-run]` | Guess the target's type (URL, IP, email, phone, domain, else username) and run every installed tool that takes it |
 | `ot playbook --list` · `ot playbook <name> <type>:<value> [-y]` | Run a named set of tools against the same inputs (bundled: `domain-recon`, `username-investigation`; your own go in `./playbooks` or `<ot home>/playbooks`) |
 | `ot list` | Installed tools |
 | `ot outdated` · `ot update <ns/name …> \| --all` | Check for and install newer versions, with the same signature and trust checks as `ot install` |
 | `ot uninstall <ns/name>` | Remove a tool |
-| `ot keys set\|list\|rm <NAME>` | API keys in the OS keychain |
-| `ot doctor` | Check Docker, pipx, Python and the keychain |
+| `ot keys set\|list\|rm <NAME>` | API keys in the OS keychain (`set --from-env VAR`); an environment variable of the same name always wins |
+| `ot doctor` | Check Docker, pipx, Python, cosign, the keychain and the registry |
 | `ot report <ns/name> [--reason … --details …]` | Report a package to the reviewers (opens the form without `--reason`) |
 | `ot feedback [--kind bug\|idea\|question\|other] [--about …] "message"` | Send feedback to the team with your `ot` version and OS; reads piped text, or opens the form with no message |
 | `ot self-update [--check]` | Update ot itself; the release signature is checked first |
@@ -57,7 +59,7 @@ and `--no-save` skips saving. The result envelope still goes to stdout.
 | `ot init [--kind docker\|pipx\|guide] [--guide]` | Create `otinstaller.yaml`, a README and a release workflow |
 | `ot validate [path] [--tag vX.Y.Z] [--smoke]` | Check the manifest and pages as the registry will; `--smoke` runs the test input |
 | `ot release <version> [path] [--no-push]` | Release a guide: set the version, check, commit, tag and push, without CI |
-| `ot login [--gitlab \| --osintverse]` · `ot logout` · `ot whoami` | Sign in with GitHub, GitLab or OSINTverse (publishing needs GitHub or GitLab) |
+| `ot login [--gitlab \| --osintverse] [--print-token]` · `ot logout` · `ot whoami` | Sign in with GitHub, GitLab or OSINTverse (publishing needs GitHub or GitLab); `--print-token` for machines without a keychain |
 | `ot import <repository URL>` | The import wizard in the terminal |
 | `ot sync <ns/name> [--log]` | Check the source repository now, or show recent sync events |
 | `ot yank <ns/name@version> [--undo]` | Hide a version from search and `@latest` (still installable by exact version) |
@@ -84,6 +86,7 @@ registry's copy and checks the same SHA-256. You see a note when this happens; n
 | 4 | Refused for trust reasons (removed version, signature mismatch) |
 | 5 | Docker or pipx is missing |
 | 124 | The tool timed out |
+| 130 | Interrupted (Ctrl-C) |
 
 ## Settings
 
@@ -93,3 +96,8 @@ registry's copy and checks the same SHA-256. You see a note when this happens; n
 | `OT_SITE_URL` | Where `ot guide open` sends you |
 | `OT_HOME` | Where `ot` keeps its state (default `~/.ot`, `%APPDATA%\ot` on Windows) |
 | `OT_NO_TELEMETRY=1` | Never send the anonymous install count |
+| `OT_OUTPUT=json` | JSON output and JSON errors from every command, as if `--json` were given |
+| `OT_NONINTERACTIVE=1` | Never prompt, even at a terminal (`ot` never prompts without one) |
+| `OT_MAX_RAW` | Default for `ot run --max-raw` |
+| `OT_RESULTS_DIR` | Where runs are saved (default `./results`) |
+| `OTINSTALLER_TOKEN` | The registry token, instead of the keychain |

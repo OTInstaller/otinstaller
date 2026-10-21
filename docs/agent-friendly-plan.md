@@ -266,7 +266,7 @@ These need no consent.
 | Tool | Annotations | Does |
 | --- | --- | --- |
 | `install_tool` | `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: true` | Install `ns/name[@version]`. In agent mode, signature verification is **mandatory**: missing cosign is a refusal, not a warning. Scan `fail`, `broken` health, removed or yanked versions are refused. Scan `warn` and unverified publishers need consent. Returns `{ref, version, digest\|wheel_sha256, signer, from_backup}`. |
-| `run_tool` | `destructiveHint` per tool (§4.5), `openWorldHint: true` | Run one tool. Arguments: `tool`, `inputs` (name→value), **or** `target` + `input_type` (typed-input shorthand), plus `case`, `timeout_seconds` (≤ the manifest's value), `wait_seconds` (default 60, max 300). Returns the envelope metadata, the first N entities, `run_id`, `meta_path`, `raw_truncated`. If still running after `wait_seconds`, it returns `status: running` and a `run_id` to poll with `get_run` (or a task, §4.6). It never installs implicitly: a tool that isn't installed is an error naming `install_tool`. |
+| `run_tool` | `destructiveHint` per tool (§4.5), `openWorldHint: true` | Run one tool. Arguments: `tool`, `inputs` (name→value), **or** `target` + `input_type` (typed-input shorthand), plus `case`, `timeout_seconds` (≤ the manifest's value), `wait_seconds` (default 60, max 300). Returns the envelope metadata, the first N entities, `run_id`, `meta_path`, `raw_omitted`. If still running after `wait_seconds`, it returns `status: running` and a `run_id` to poll with `get_run` (or a task, §4.6). It never installs implicitly: a tool that isn't installed is an error naming `install_tool`. |
 | `run_all` | as `run_tool` | `ot run --all` / `ot auto`. Arguments: `target`, `input_type?` (else detected), `tools?` allow-list, `parallel` (≤ policy max), `case`, `dry_run`. Consent covers the planned set in **one** prompt listing each tool's flags. Rows include entity counts and the top entities. |
 | `run_playbook` | as `run_tool` | `ot playbook <name>` with inputs. `install_missing` is allowed only after its own install consent. |
 | `cancel_run` | `idempotentHint: true` | Stop a running run (container kill). |
@@ -396,7 +396,7 @@ Some fields need more explanation:
   `run_all` and `run_playbook` return a task instead, and `tasks/cancel` maps to `cancel_run`.
 - **Progress.** Progress notifications report the `[n/N]` counter for `run_all`.
 - **Inline output is capped.** It holds at most `max_output_chars` (default 60k), with entities first. When `raw`
-  would exceed the cap, it is replaced by `raw_truncated: true` plus a `resource_link`.
+  would exceed the cap, it is replaced by `raw_omitted: true` plus a `resource_link`.
 - **The file on disk is never capped.** The saved output keeps its SHA-256 provenance.
 
 ### 4.7 Untrusted output
@@ -869,13 +869,21 @@ depend on MCP spec churn, and it carries the least risk.
   - non-interactive rules, including the EOF-yes fix
   - envelope provenance fields, `--max-raw`, `-f jsonl` streaming for `--all`
   - token sent only where needed
-- `spec/schema/envelope-v1.json`, `run-all-v1.json`, `error.json`, served on the site.
+- `spec/schema/envelope-v1.json`, `run-all-v1.json`, `error-v1.json`, served on the site.
 - Site §7.1–7.3 for docs pages (llms.txt, llms-full.txt, docs `.md` twins and `Accept` negotiation), §7.6–7.7, and new
   pages `/docs/automation` and `/docs/results`.
 - Done when:
   - every command passes a new test, "JSON mode emits valid JSON on stdout or a JSON error on stderr, never both and
     never prose on stdout"
   - an agent with only `llms.txt` can run a passive tool correctly in the eval
+- **Status (2026-10-21): built on `claude/agent-friendly-plan-a8afd5`.** Everything above except the agent eval, which
+  needs the Phase 2 eval suite. Differences from this plan:
+  - `output.raw_omitted` instead of `raw_truncated`: `raw` is left out whole, never cut.
+  - `ot login --print-token` for machines without a keychain.
+  - Cobra's own usage errors (an unknown flag) now exit 2.
+  - `search` and `info` 4xx errors now exit 2, as the other commands' already did.
+  - Deferred to Phase 2: `--quiet`, `NO_COLOR` (ot prints no colour yet), `keys set --stdin` (piped stdin already
+    works), and the `consent` field.
 
 ### Phase 2: `ot mcp` local server with consent (≈ 12–15 days)
 
