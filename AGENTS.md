@@ -318,10 +318,9 @@ during a single run exits 1, not 130.
   `runner/backup_test.go`.
 - Containers run with `--rm --read-only --tmpfs /tmp:rw,size=256m --cap-drop ALL --security-opt no-new-privileges
   --pids-limit 256 --memory 1g --cpus 2 --user 65534:65534 -e HOME=/tmp`, plus `-v <out dir>:/out:rw` when there is
-  an output folder and `--entrypoint` from the manifest's `command` (`ContainerArgs` in `runner/runner.go`).
-  `--network none` is added **only when the manifest says `network.egress: false`**; `network` is optional in the
-  schema, so a manifest without it runs with the default network (the scanner's smoke test treats it as offline). This is a known gap (see
-  [Known gaps](#known-gaps-and-tech-debt)); don't describe the sandbox as offline by default.
+  an output folder and `--entrypoint` from the manifest's `command` (`ContainerArgs` in `runner/runner.go`), and
+  `--network none` unless the manifest says `network.egress: true` (no `network` block, or no `egress` in it, means
+  offline, as in the scanner's smoke test).
 - Secrets are passed as `-e NAME` with the value only in the child process environment, so they never appear in argv,
   in `.meta.json` or in logs. Containers get only `HOME` and the declared secrets; `--native` pipx tools inherit ot's
   whole environment.
@@ -833,9 +832,6 @@ change. Keep this list current when you fix one or find another.
 
 **Security and correctness**
 
-- `ot run` keeps the network on when a manifest has no `network` block (`runner.go` adds `--network none` only for an
-  explicit `egress: false`), while the scanner's smoke test treats a missing value as offline and
-  `TestContainerArgsSandbox` only tests explicit values.
 - Takedowns lag in the edge cache: the wheel copy route sends `max-age=86400`, exact-version manifests 3600 s and
   `/removed` 600 s (plus the CLI's own cache), though `scheduleDeletion` says serving stops at once.
 - The mirror hides a single taken-down image only partly: its blobs and `tags/list` are still served (the blob check

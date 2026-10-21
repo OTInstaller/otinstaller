@@ -457,7 +457,7 @@ Step by step:
      --cap-drop ALL --security-opt no-new-privileges
      --pids-limit 256 --memory 1g --cpus 2
      --user 65534:65534 -e HOME=/tmp
-     [--network none]                 only when manifest network.egress is explicitly false (see AGENTS.md known gaps)
+     [--network none]                 unless manifest network.egress is true (missing means offline)
      [-e SECRET_NAME ...]             names only; values come from the child environment
      [-v <out-dir>:/out:rw]           with -o/--out-dir
      --entrypoint <command[0]> <image> <command[1:]...>
