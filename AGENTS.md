@@ -4,6 +4,22 @@ A guide for coding agents (and people) working in this repository. It explains w
 how to build and test each one, and the rules that are easy to break without noticing. [README.md](README.md) and
 [docs/](docs) hold the user-facing and operator-facing detail; this file is about working on the code.
 
+This file is the entry point. The deep reference lives in [docs/dev/](docs/dev/README.md):
+
+| Page | What's in it |
+| --- | --- |
+| [architecture.md](docs/dev/architecture.md) | System diagram and step-by-step flows: publish, scan, guide checks, backup, install/run, sign-in, review, takedown, edge cache, self-update |
+| [api.md](docs/dev/api.md) | Every API route with auth and caching, middleware order, rate limits, queue messages, crons, the mirror's OCI routes, every error code |
+| [database.md](docs/dev/database.md) | Every migration, the final D1 schema by table, status state machines, seed contents |
+| [cli.md](docs/dev/cli.md) | Every `ot` command and flag, exit codes per command, env vars, files under the data dir, packages and tests |
+| [ops-payloads.md](docs/dev/ops-payloads.md) | Scan, backup, drill and health payloads and callbacks; verdict rules; registry-ops workflows; token lifetimes |
+| [config.md](docs/dev/config.md) | Bindings, vars and secrets per Worker, registry-ops and the CLI release; values that must match across them |
+| [local-setup.md](docs/dev/local-setup.md) | From a clean Windows, macOS or Linux machine to running every part locally |
+| [troubleshooting.md](docs/dev/troubleshooting.md) | Recipes: stuck jobs, scans, backups, edge-cache staleness, D1 limits, CSP, CORS, email, GitLab, `ot` failures |
+
+These pages were written from the code in October 2026. When you change behaviour they describe, update them in the
+same commit.
+
 ## What this is
 
 **OTInstaller Registry** is a free, public registry of OSINT tools and guides, plus `ot`, the CLI that installs and runs
@@ -17,7 +33,11 @@ The repository also holds `python/`, the older Python package manager `otinstall
 [python/](#python-package-manager-python)).
 
 The registry is in **closed beta** (beta strip on the site, `ot feedback`, issues on `OTInstaller/feedback`);
-[docs/launch-checklist.md](docs/launch-checklist.md) records what is deployed and what is left before launch.
+[docs/launch-checklist.md](docs/launch-checklist.md) records what is deployed and what is left before launch. As of
+21 Oct 2026 every beta blocker is done: `ot` v0.12.0 is released on `OTInstaller/ot` and served by
+`get.otinstaller.com`, email (Resend) works, feedback goes to the public `OTInstaller/feedback` repo, GitLab publishing
+works, the week 11 backup resources exist and migrations up to 0012 are applied in production. Check the checklist
+for anything newer; don't restate production state here.
 
 Production:
 
@@ -41,21 +61,27 @@ spec/        Manifest JSON Schema, valid/invalid fixtures, release workflow temp
 cli/         The `ot` CLI (Go 1.25+, cobra)
 api/         Registry API and image mirror (TypeScript, Hono on Cloudflare Workers, D1, Queues, R2)
 web/         Website (Astro 7 SSR on Cloudflare, Preact islands, strict CSP)
-ops/         scanner/ (scan.py, backup.py, health.py, Dockerfile), workflows/ copied into registry-ops, get/ Worker
+ops/         scanner/ (scan.py, backup.py, health.py, tests, Dockerfile), workflows/ (scan.yml, health.yml) copied
+             into registry-ops, get/ (worker.js, wrangler.jsonc: the get.otinstaller.com Worker)
 python/      otinstaller, the Python package manager (maintenance only; has its own AGENTS.md)
 seed/        Launch seed: 11 first-party tools, 38 community wrappers, 10 guides, outreach texts
-examples/    Small real packages used by the end-to-end scripts
-scripts/     e2e.sh, e2e-real.sh, e2e-backups.sh, install/, beta/labels.sh, pm-catalog-to-wrappers.py
+examples/    dns-lookup (scripts/e2e.sh), cosign and tldextract (the local/test seed in api/scripts/seed-lib.mjs
+             and scripts/e2e-real.sh)
+scripts/     e2e.sh, e2e-real.sh, e2e-backups.sh, install/ (install.sh, install.ps1, make-test-release.sh),
+             beta/labels.sh, pm-catalog-to-wrappers.py
 docs/        publishing-setup.md (operator runbook), launch-checklist.md, migrating-from-otinstaller.md,
-             typed-inputs-and-results.md (design note), beta/ (invitation, onboarding, survey drafts)
-.github/     workflows/ (see CI below) and ISSUE_TEMPLATE/ (bug with severity, idea)
+             typed-inputs-and-results.md (design note), beta/ (invitation, onboarding, survey drafts),
+             dev/ (developer reference, see the table above)
+.github/     workflows/ (see CI below) and ISSUE_TEMPLATE/ (bug with severity, idea, config.yml contact links);
+             the live issue forms are in the public OTInstaller/feedback repo
 .claude/     launch.json: dev-server definitions (`web` on 4321, `web-preview` on 4322)
 LICENSE      Apache 2.0 for the whole repository; python/ keeps its own LICENSE and NOTICE
 ```
 
 There is no root package manager or monorepo tool. Each of `cli/`, `api/`, `web/` and `python/` is built on its own, but
 they **share files from `spec/`** (see [Spec copies](#spec-is-the-source-of-truth-keep-the-copies-in-sync)), and some
-tests read `seed/`, `examples/` or `python/`, so tests must run inside a full checkout.
+tests read `spec/`, `seed/` or `examples/`, so tests must run inside a full checkout. (`scripts/pm-catalog-to-wrappers.py`
+reads `python/`; no test does.)
 
 ## Requirements
 
@@ -83,7 +109,7 @@ The main development machine is Windows. Use forward slashes in scripts, keep fi
 | Mirror dev server | `cd api && npx wrangler dev -c wrangler.mirror.jsonc` |
 | Regenerate API template copy | `cd api && npm run sync:templates` |
 | Site dev server | `cd web && npm run dev` (port 4321; CSP **not** enforced) |
-| Site production preview | `cd web && npm run build && npm run preview` (port 4322; CSP enforced) |
+| Site production preview | `cd web && npm run build && npm run preview -- --port 4322` (CSP enforced; without `--port` Astro uses 4321) |
 | Site typecheck / tests | `cd web && npm run check` / `npm test` |
 | Social image | `cd web && npm run og` (re-renders `public/og.png`) |
 | Scanner tests | `python -m unittest discover ops/scanner` |
@@ -98,7 +124,47 @@ There is no linter or formatter config for `api/` or `web/`; match the surroundi
 API or site tests (see [CI](#ci-githubworkflows)), so run them yourself before you call a change done.
 
 To point `ot` at a local API: `OT_API_URL=http://127.0.0.1:8787/v1`. To point the site at another API, set
-`PUBLIC_API_URL` (copy `web/.env.example` to `web/.env.development`).
+`PUBLIC_API_URL` (copy `web/.env.example` to `web/.env.development`). Setting up a machine from scratch is in
+[docs/dev/local-setup.md](docs/dev/local-setup.md).
+
+---
+
+## Architecture at a glance
+
+Four Cloudflare Workers, one D1 database, three R2 buckets, one queue, and GitHub Actions in a private repo doing the
+heavy work (pulling, scanning and copying images). Step-by-step flows with file and function names are in
+[docs/dev/architecture.md](docs/dev/architecture.md).
+
+```
+  publisher                      user                                   staff
+  git tag vX.Y.Z                 ot install / ot run / browser          review, takedowns
+      |                              |              |                       |
+      v                              v              v                       v
+ GitHub / GitLab --webhook--> +---------------------------+ <--- otinstaller.com (web/, Astro SSR Worker)
+  (OAuth, commit      |       | api.otinstaller.com/v1    |      SSR reads public API; islands call it with cookie
+   statuses, PR/MR)   |       | otinstaller-registry-api  |
+      ^               |       |  edge cache -> Hono app   |---> Resend (email), Sentry (errors)
+      |               +-poll--|  D1 otinstaller           |
+      |                       |  R2 CONTENT, BACKUPS      |---> GHCR / PyPI (artifact checks)
+      +-------- status -------|  queue otinstaller-publish|
+                              +---------------------------+
+                                 | repository_dispatch      ^ POST /internal/scans, /backups/:run,
+                                 v (otinstaller-scan,       |      /drills/:id, /health
+                     OTInstaller/registry-ops Actions ------+
+                     scan.py, backup.py, health.py  --crane push--> mirror.otinstaller.com (otinstaller-mirror,
+                                                                    OCI registry on R2 MIRROR)
+  ot (cli/) ---- pulls image by digest from GHCR (or the mirror), wheel by hash from PyPI (or BACKUPS via the API)
+  get.otinstaller.com (ops/get) ---- proxies install.sh / install.ps1 from the latest OTInstaller/ot release
+```
+
+| Flow | In one line |
+| --- | --- |
+| Publish | tag → webhook/poll/import → `publish_jobs` row → queue → `processJob` validates, checks the artifact, renders pages → scan dispatch (tools) or content checks (guides) |
+| Scan | registry-ops runs `scan.py` → `POST /internal/scans` → `verdict` → published (active namespace) or `awaiting_review` → backup plan in the answer |
+| Backup | plan with signed upload URLs → `backup.py` copies image/wheel/bundle → `POST /internal/backups/:run` → `completeRun` checks what arrived |
+| Install | `GET /tools/:ns/:name/:version/manifest` → pull by digest + `cosign verify` (or wheel by hash) → mirror or wheel copy only when the original host refuses |
+| Run | `ContainerArgs` builds a locked-down `docker run` → output parsed into the envelope → saved under `results/` |
+| Sign-in | site: OAuth → `ot_session` cookie; CLI: device flow → `ot_` API token in the keychain |
 
 ---
 
@@ -200,7 +266,10 @@ stderr and returns `ExitCodeFor(err)`. `cli/README.md` ships in the release arch
 Packages: `search`, `info`, `install`, `list`, `uninstall`, `outdated`, `update`. Running: `run`, `auto`, `playbook`,
 `extract`, `diff`, `keys set|list|rm`, `doctor`. Guides: `guide search|read|open|get|tools`, `docs`. Publishing:
 `init`, `validate`, `import`, `sync`, `release`, `login` (`--gitlab`, `--osintverse`), `logout`, `whoami`. Trust:
-`report`, `claim`, `transfer`, `yank`, `deprecate`. Other: `feedback`, `self-update`.
+`report`, `claim`, `transfer`, `yank`, `deprecate`. Other: `feedback`, `self-update`. Cobra adds `help`, `completion`
+and `--version`. The root has no persistent flags, but its `PersistentPreRun` refreshes `cache/removed.json` (daily)
+and warns about installed versions that were removed. Every flag of every command, with its exit codes, is in
+[docs/dev/cli.md](docs/dev/cli.md).
 
 Each is an `(a *App) xxxCmd() *cobra.Command` method. Files: `packages.go` (search/info/install/list/uninstall),
 `update.go` (outdated/update), `run_cmd.go` + `run_all.go` (run), `auto.go`, `playbook.go`, `saved.go` (extract/diff),
@@ -234,7 +303,10 @@ Each is an `(a *App) xxxCmd() *cobra.Command` method. Files: `packages.go` (sear
 missing · `124` timeout · `130` interrupted. Typed errors map to them: `runner.UsageError` → 2, `runner.TrustError` → 4,
 `runner.RuntimeMissingError` → 5, `runner.TimeoutError` → 124, `*cli.ExitError` → its `Code` (a nil `Err` exits
 silently). Wrap registry 4xx errors with `a.requestError(err)` so they exit 2 and print problem lists. These codes are
-documented to users; don't repurpose them.
+documented to users; don't repurpose them. Caveats: errors raised by cobra itself (wrong argument count, unknown
+flag) exit 1, not 2; `search`, `info`, `login`, `outdated` and `update` don't wrap registry 4xx errors, so those exit
+1; `doctor` exits 5 when any check fails; `self-update` exits 4 on a failed verification. With `--no-save`, Ctrl-C
+during a single run exits 1, not 130.
 
 ### Security model when installing and running tools (don't weaken it)
 
@@ -244,18 +316,25 @@ documented to users; don't repurpose them.
   the same digest from `mirror_image` and verifies the same signature; when PyPI answers 403/404/410 or lacks the wheel,
   it downloads `wheel_url` and checks the same SHA-256. Network errors never trigger a fallback. Tests are in
   `runner/backup_test.go`.
-- Containers run with `--read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges --pids-limit 256
-  --memory 1g --cpus 2 --user 65534:65534`, and `--network none` unless the manifest says `egress: true`.
+- Containers run with `--rm --read-only --tmpfs /tmp:rw,size=256m --cap-drop ALL --security-opt no-new-privileges
+  --pids-limit 256 --memory 1g --cpus 2 --user 65534:65534 -e HOME=/tmp`, plus `-v <out dir>:/out:rw` when there is
+  an output folder and `--entrypoint` from the manifest's `command` (`ContainerArgs` in `runner/runner.go`), and
+  `--network none` unless the manifest says `network.egress: true` (no `network` block, or no `egress` in it, means
+  offline, as in the scanner's smoke test).
 - Secrets are passed as `-e NAME` with the value only in the child process environment, so they never appear in argv,
-  in `.meta.json` or in logs.
+  in `.meta.json` or in logs. Containers get only `HOME` and the declared secrets; `--native` pipx tools inherit ot's
+  whole environment.
 - Sandboxed pipx tools are built into `ot-local/<ns>-<name>:<version>` on `python:3.12-slim` with `WORKDIR /tmp` (the only
   writable folder); `--native` uses ot's own `PIPX_HOME`/`PIPX_BIN_DIR`.
 - Removed packages (`tool_removed`) are refused with exit 4; `cache/removed.json` drives warnings.
 
 ### Environment variables
 
-`OT_HOME`, `OT_API_URL`, `OT_SITE_URL`, `OT_NO_TELEMETRY` (disables the anonymous install ping), `OT_RESULTS_DIR`
-(legacy `OTINSTALLER_RESULTS_DIR`), `OTINSTALLER_TOKEN` (overrides the keychain token). Install scripts:
+`OT_HOME`, `OT_API_URL`, `OT_SITE_URL` (`guide open`, `report`, `feedback`), `OT_NO_TELEMETRY` (any non-empty value
+disables the install ping; the ping carries the bearer token when signed in), `OT_RESULTS_DIR` (legacy
+`OTINSTALLER_RESULTS_DIR`; results default to `./results`, not the data dir), `OTINSTALLER_TOKEN` (overrides the
+keychain token; like every key, an env var of the same name wins). `config.json` (`api_url`, `site_url`, `telemetry`,
+`format`) is read, never written. Install scripts:
 `OT_VERSION`, `OT_RELEASE_REPO`, `OT_INSTALL_DIR`, `OT_DOWNLOAD_BASE` (serve a release from another URL; checks still
 apply), `OT_NO_MODIFY_PATH=1` (Windows). Build-time only: `OT_RELEASE_PUBLIC_KEY`, `OT_RELEASE_KEY_FILE`,
 `RELEASE_OWNER`, `RELEASE_NAME`, `TAP_GITHUB_TOKEN`.
@@ -306,7 +385,7 @@ and beta work, so `R2_*`, `ISSUES_REPO`/`ISSUES_TOKEN` and `EDGE_CACHE` are only
 
 | Path | Responsibility |
 | --- | --- |
-| `index.ts` | App setup, CORS (credentialed only for `SITE_URL`), auth middleware, write rate limit (30/min/user, staff exempt), public read routes, `onError`/`notFound`, default export `{ fetch, queue, scheduled }` (fetch wrapped in `edgeCached`) |
+| `index.ts` | App setup, CORS (credentialed only when `Origin` equals `SITE_URL` exactly, so not `www.`), auth middleware, write rate limit (30/min per signed-in non-staff user on non-GET requests; registered after `authRoutes`, so auth, token and device routes aren't limited), public read routes, `onError`/`notFound`, default export `{ fetch, queue, scheduled }` (fetch wrapped in `edgeCached`). Exporting anything but the handlers from this file makes workerd refuse to start, and vitest won't catch it |
 | `edge-cache.ts` | Edge cache for anonymous reads (see below) |
 | `env.ts` | `Env`, `PublishMessage`, `User`, `deps.fetch` (all outbound HTTP), `requireSecret` |
 | `catalog.ts` | Shared public-read SQL (`VISIBLE`, `LISTED`, `summary()`, `findTool()` with aliases, `cached()`) |
@@ -359,7 +438,10 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
   drills, `POST /admin/email-test` (checks the Resend key).
 - Internal: `POST /internal/scans` (scanner callback; on a pass it answers with a backup plan),
   `/internal/backups/objects/*` (signed PUT/GET when R2 credentials aren't set), `POST /internal/backups/:run`,
-  `POST /internal/drills/:id`, `/internal/health[/targets]` (`HEALTH_TOKEN`). Each uses its own single-use token.
+  `POST /internal/drills/:id`, `/internal/health[/targets]`. Scans, backup runs and drills each use their own
+  single-use token (scan 1 h, run 3 h or 12 h weekly, drill 6 h); the health endpoints use the static shared
+  `HEALTH_TOKEN`.
+- The full route table (99 routes, with auth and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
 
 ### Publish pipeline
 
@@ -377,12 +459,15 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
 5. Backups: a passing scan's callback answer tells the scanner to back up right away; versions published another way
    (namespace approval, guides) queue `{ backupVersionId }`. See below.
 6. Every 15 minutes: expire stale scans (1 h), poll due sources, alert on jobs stuck > 30 min, expire backup runs and
-   drills, backfill up to 5 versions with no backup. Nightly also: guide link rechecks (> 20% dead → needs update), the
+   drills, backfill up to 5 versions with no backup. `scheduled()` runs this block on **every** trigger, including the
+   nightly, weekly and monthly ones. Nightly also: guide link rechecks (> 20% dead → needs update), the
    reviewer digest, rate-limit purge, backup purge, `installs_30d` recompute.
 
 Queue messages (`PublishMessage` in `env.ts`): `{ jobId }`, `{ importId }`, `{ checkVersionId, attempt? }`,
-`{ linkCheckToolId }`, `{ publishVersionId }`, `{ backupVersionId }`. Transient failures retry with backoff up to 5
-attempts; a `HostError` with `transient=false` fails immediately.
+`{ linkCheckToolId }`, `{ publishVersionId }`, `{ backupVersionId }`; anything else is treated as `{ jobId }`. Transient
+failures retry with a delay of 30 × attempts seconds, 5 deliveries in all (the code acks before wrangler's own
+`max_retries` kicks in); a `HostError` with `transient=false` fails immediately. On the last failure a job becomes
+`error` (`internal_error`) and an import `detection_failed`; other messages are only logged.
 
 ### Backups (`backups.ts`, `routes/backups.ts`, `ops/scanner/backup.py`)
 
@@ -394,8 +479,11 @@ it dispatches `otinstaller-backup` jobs to registry-ops with signed upload URLs 
 
 - Only public repositories and published or yanked versions. Mirrors are public only for OSI-approved licenses
   (`osiApproved()`); others go under `private/`. Owners can opt out of git backups.
-- Limits: bundles 500 MB, images 2 GB, wheels 1 GB (over → `too_large` plus an email).
-- Takedowns hide mirrored images at once and delete backups after 14 days unless a legal hold is set.
+- Limits: bundles 500 MiB, images 2 GiB, wheels 1 GiB (over → `too_large` plus an email). Without the `R2_*`
+  secrets, uploads go through the API instead of straight to R2 and are capped at about 100 MB by the Worker body
+  limit.
+- Takedowns hide mirrored images at once and delete backups after 14 days (`TAKEDOWN_GRACE`) unless a legal hold is
+  set. Git opt-outs are deleted at the next nightly purge.
 - Monthly restore drills (`otinstaller-drill`) restore a random bundle and pull a random mirrored image; failures email
   admins. Admins can run one now (`POST /admin/backups/drill`).
 - `scripts/e2e-backups.sh` is the end-to-end check. The operator setup is section 11 of `docs/publishing-setup.md`.
@@ -407,9 +495,14 @@ installations, tools, versions, tool_io, tool_secrets, sources, sync_events, imp
 pages, tool_guides, stars, install_counts, reports, transfers, aliases, audit_log) and the FTS5 table `tools_fts`. Later
 migrations add publish intake (0002), scans/review and `notifications` (0003), sync (0004, 0006), imports (0005), guides and
 `page_links` (0007, 0008), trust/takedowns/claims/health and `rate_limits` (0009), OSINTverse login plus `device_logins`
-(0010), backups (`backup_runs`, `backups`, `restore_drills`, tool `git_backups`/`legal_hold`, 0011) and `feedback` (0012).
+(0010), backups (`backup_runs`, `backups`, `restore_drills`, tool `git_backups`/`legal_hold`/`legal_hold_reason`, 0011)
+and `feedback` (0012). That is 33 tables plus `tools_fts`; every table, column, CHECK value set and status transition is
+in [docs/dev/database.md](docs/dev/database.md).
 
-- IDs are ULIDs (`ulid()`), timestamps are Unix **milliseconds**, booleans are 0/1, JSON columns end in `_json`.
+- IDs are ULIDs (`ulid()`), timestamps are Unix **milliseconds**, booleans are 0/1, JSON columns end in `_json`
+  (older exceptions: `tools.categories`, `tools.tags`, `installations.repo_ids`, `sources.topics`,
+  `sources.baseline_tags`; `api_tokens.scopes` is comma-separated). `publish_jobs.status` and `sync_events.status`
+  have no CHECK constraint.
 - Add schema changes as a new numbered migration (`00NN_description.sql`); never edit an applied one. Parallel branches
   can collide on a number: renumber yours before merging. Some migrations rebuild a table to change a CHECK constraint;
   follow that pattern if you need one.
@@ -438,17 +531,20 @@ never by email. Use `requireUser` (401), `requireReviewer` / `requireAdmin` (403
   Idempotency via `ON CONFLICT` and guarded status transitions (`UPDATE ... WHERE status = 'x'`, then check
   `meta.changes`).
 - Bodies: `await c.req.json<T>().catch(() => ({}) as T)`, then validate by hand with `apiError(400, "invalid_body", ...)`.
-- Public reads set `cached(c, seconds)` (and so land in the edge cache); per-user responses use `private, no-store`.
+- Public reads set `cached(c, seconds)` (and so land in the edge cache); per-user responses should send
+  `private, no-store` (only a few do today; the rest are safe only because requests with a cookie or `authorization`
+  header bypass the edge cache).
 - camelCase in TS, snake_case in SQL and JSON responses, kebab-case file names. Each file opens with a `//` comment saying
-  what it owns and where related logic lives; exported functions get `/** */` docs; sections use
+  what it owns and where related logic lives (`env.ts`, `index.ts` and `lib/errors.ts` don't yet); exported functions get `/** */` docs; sections use
   `// ---------- name ----------`. Double quotes, semicolons, two-space indent, long lines are normal here.
 
 ### API tests (`api/test/`)
 
 `vitest.config.ts` uses `@cloudflare/vitest-plugin`, so tests run in workerd against the bindings from `wrangler.jsonc`
-with fake secrets and `EDGE_CACHE: "off"`. `test/setup.ts` applies the migrations and seeds from
-`scripts/seed-lib.mjs`. Helpers in `test/helpers.ts`: `fakeHosts(routes)` (keys like `"GET https://api.github.com/..."`,
-longest prefix wins, unmatched requests get status 599), `testEnv()` (fresh App key, fake queue collecting messages into
+with fake secrets and `EDGE_CACHE: "off"`. The config also builds `TEST_SEED` (from `scripts/seed-lib.mjs`),
+`TEST_FIXTURES` and `TEST_TEMPLATES` (from `spec/`); `test/setup.ts` applies the migrations and, when `tools` is empty,
+the seed. Helpers in `test/helpers.ts`: `fakeHosts(routes)` (keys like `"GET https://api.github.com/..."`,
+longest prefix wins, unmatched requests get status 599), `testEnv()` (a generated GitHub App key, cached per file; a fake queue collecting messages into
 `sent`), `call(path, init, env?)`, `webhook(event, payload)`. `test/fixtures.ts` has `ghUser`, `installation`, `tagEvent`,
 `manifestFor`, `fakeRelease`. Signed-in users are usually inserted directly into D1 with an `ot_test_<id>` token. Test
 files are named by plan week (`week4` publish intake, `week5` scans/review, `week6` GitLab/sync, `week7` imports,
@@ -458,9 +554,11 @@ that area. The rate-limit test in `week10` waits for the start of a minute, so a
 
 ### Seed data
 
-`api/scripts/seed-lib.mjs` builds demo SQL (from `spec/fixtures/valid`, `examples/cosign` and some inline packages, with
+`api/scripts/seed-lib.mjs` builds demo SQL (from `spec/fixtures/valid`, `examples/cosign`, `examples/tldextract`, a `cosign-wrong-signer` variant and some
+inline packages, with
 deterministic IDs like `tool_<ns>_<name>`) for `npm run db:seed` and the tests. It is for **local D1 only**. Never seed
-production from it, from `spec/fixtures`, or with SQL: production packages come only through the real pipeline.
+production from it, from `spec/fixtures`, or with SQL: production packages come only through the real pipeline. It
+inserts 5 namespaces, 11 tools, 13 versions, a source, a guide link and an alias, and no users.
 
 ---
 
@@ -479,10 +577,10 @@ Astro 7 with `output: "server"` on `@astrojs/cloudflare`, Preact islands, no CSS
 - `src/layouts/`: `Base.astro` (HTML shell, beta strip, header/footer, the one inline script, global client JS for copy
   buttons, reveal-on-scroll, count-up, staff link), `Docs.astro`, `Policy.astro`.
 - `src/components/*.astro`: server components (ToolCard, ToolHeader, Results, PageReader, Terminal, InstallTabs,
-  BetaNotice, ...).
+  BetaNotice, Badges, CopyCode, CopyCommand, FeatureCard, Logo, PageHead, Pipeline, SideNav, Stat, ThemeToggle).
 - `src/islands/*.tsx`: Preact islands for anything signed-in or interactive (AdminConsole with review, reports,
-  transfers, audit, feedback and beta tabs; Dashboard with Backups; ImportWizard, Accounts, ClaimFlow, TransferView,
-  ReportForm, FeedbackForm, VersionActions, SearchDialog). `shared.tsx` has `useMe`, `SignIn`, `ErrorNote`, `Status`.
+  transfers, audit, feedback and beta tabs; Dashboard; Backups (used by Dashboard); ImportWizard, Accounts, ClaimFlow, TransferView,
+  ReportForm, FeedbackForm, VersionActions, SearchDialog). `shared.tsx` has `useMe`, `SignIn`, `ErrorNote`, `Status`, `Loading`.
 - `src/lib/`: `api.ts` (the only fetch helper: `api<T>()`, `apiOrNull`, `ApiError`, `signInUrl`, response types, and the
   `BETA` / `ISSUES_URL` settings), `page.ts` (`cacheFor`, `searchFrom`, `withParam`), `tool.ts` (`loadTool` handles
   404/410/moved/guide redirects), `theme-boot.ts`, `format.ts` (+ `format.test.ts`, including `hintParts`).
@@ -505,7 +603,7 @@ Environment: `PUBLIC_API_URL` (default production), `PUBLIC_BETA` (`"0"` hides t
   - The CSS minifier drops unprefixed `backdrop-filter` when a `-webkit-` duplicate sits next to it: write only the
     standard property.
   - **`astro dev` does not enforce the CSP.** Check visual or motion changes in the production preview
-    (`npm run build && npm run preview`, the `web-preview` launch config on port 4322).
+    (`npm run build && npm run preview -- --port 4322`, or the `web-preview` launch config).
 - Colours come from tokens in `tokens.css`, defined for light, dark (`prefers-color-scheme`) and `[data-theme]`; keep
   pairs WCAG 2.2 AA in both themes. Honour `prefers-reduced-motion` (CSS zeroes durations; JS checks `matchMedia`).
 - `PUBLIC_API_URL` is read both in `astro.config.mjs` (CSP `connect-src`) and in `src/lib/api.ts`; they must agree.
@@ -513,21 +611,25 @@ Environment: `PUBLIC_API_URL` (default production), `PUBLIC_BETA` (`"0"` hides t
   send `Cache-Control: private, no-store`. Public pages set caching with `cacheFor`.
 - Filter, sort and pagination links get `rel="nofollow"` (see the edge cache above); pages with a query string are
   `noindex` automatically.
-- New docs pages need adding to the hardcoded nav in `Docs.astro` (or `Policy.astro`) and to `DOCS` in `sitemap.xml.ts`.
+- New docs pages need adding to the hardcoded nav in `Docs.astro` and to `DOCS` in `sitemap.xml.ts`. Policy pages go in
+  the nav in `Policy.astro`; the sitemap has no policy pages today.
 - Install instructions appear in both `InstallTabs.astro` and `docs/getting-started.md`; Homebrew, Scoop and Go installs
   are hidden until after the beta.
 - HTML from the registry (READMEs, guide pages) is already sanitized server-side and rendered with `set:html`; don't
   render other untrusted HTML that way.
-- Every component and island file opens with a one-line purpose comment.
+- Every component and island file opens with a one-line purpose comment (`Badges.astro` and `ToolCard.astro` are
+  missing theirs).
 
 ### Local environments
 
-- Production API holds the real seed and sits behind the edge cache; staging (`staging-api.otinstaller.com`) only works
+- Production API holds the published seed (most of `seed/`) plus the beta dry-run packages, and sits behind the edge
+  cache; staging (`staging-api.otinstaller.com`) only works
   while a tunnel to someone's local `wrangler dev` is up, so it's usually down.
 - From a `localhost` origin, browser-side calls to the production API with credentials (`/me`, quick search) fail CORS.
   That is expected, not a site bug.
-- For a full local check: run the API (`npm run dev` in `api/`, seeded, with `--var SITE_URL:http://127.0.0.1:<site port>`)
-  and build the site with `PUBLIC_API_URL=http://127.0.0.1:8787`.
+- For a full local check: run the API (`npx wrangler dev --var SITE_URL:http://127.0.0.1:<site port>` in `api/`, seeded)
+  and build the site with `PUBLIC_API_URL=http://127.0.0.1:8787`. Details in
+  [docs/dev/local-setup.md](docs/dev/local-setup.md).
 
 ---
 
@@ -550,7 +652,12 @@ Environment: `PUBLIC_API_URL` (default production), `PUBLIC_BETA` (`"0"` hides t
   `MIRROR_PUSH_TOKEN`) and `health.yml`: copied into `OTInstaller/registry-ops`, not run from this repo. If you change
   `ops/scanner` or `ops/workflows`, the copies there have to be updated separately.
 - The payload formats are defined by `dispatchOps`/`dispatchScan` in `api/src/scans.ts` and `backups.ts`, and parsed by
-  `parseResults` in `api/src/routes/review.ts` and `routes/backups.ts`; change both sides together.
+  `parseResults` in `api/src/routes/review.ts` (scans) and inline in `routes/backups.ts` (backup reports, at most 10
+  items; drill reports aren't shape-checked); change both sides together. Every field, with JSON examples, is in
+  [docs/dev/ops-payloads.md](docs/dev/ops-payloads.md).
+- `dispatchOps` authenticates with `OPS_DISPATCH_TOKEN`, or else a GitHub App installation token for
+  `OPS_INSTALLATION_ID`. Secrets on the registry-ops side: `MIRROR_PUSH_TOKEN` and `HEALTH_TOKEN` (must match the
+  mirror's and the API's), variables `MIRROR_HOST` and `REGISTRY_API`; see [docs/dev/config.md](docs/dev/config.md).
 - `ops/get/`: the `otinstaller-get` Worker for `get.otinstaller.com`. It maps `/ot`, `/ot.sh`, `/install.sh` and
   `/ot.ps1`, `/install.ps1` to the latest release's scripts on `OTInstaller/ot` (cached 5 minutes), answers upstream
   errors with a script that fails loudly, and redirects other paths to the getting-started docs. Deploy with
@@ -590,7 +697,7 @@ into `ot`; the `ot` alias was removed from this package. Users move with
 
 - **Read [python/AGENTS.md](python/AGENTS.md) before touching anything in `python/`.** Its rules apply there and differ
   from the rest of the repo: the package and command are `otinstaller`; no "OSINT" in package/command names or CLI help;
-  Typer, Rich, PyYAML and the standard library only (ask before adding dependencies); pip or git installs, one venv per
+  Typer (with click), Rich, PyYAML, sentry-sdk and the standard library only (ask before adding dependencies); pip or git installs, one venv per
   tool; never `shell=True`; never log API key values; no emojis; neutral metadata; short lowercase imperative commit
   messages; run `ruff check .`, `ruff format --check .` and `pytest` after every change.
 - Layout: `src/otinstaller/` (`cli.py` thin Typer layer, `registry.py`, `installer/`, `runner.py`, `results.py`,
@@ -623,10 +730,10 @@ into `ot`; the `ot` alias was removed from this package. Users move with
 
 | Workflow | Runs on | What it does |
 | --- | --- | --- |
-| `cli-install.yml` | PRs and pushes to main touching `cli/**` or `scripts/install/**` | GoReleaser snapshot with the real config, archive contents check, then installs with `install.sh` / `install.ps1` on Linux (x64, arm), macOS and Windows and runs `ot --version`, `search`, `info`, `doctor`, and on Linux a real install/run |
+| `cli-install.yml` | PRs and pushes to main touching `cli/**`, `scripts/install/**`, `cli-install.yml` or `release-cli.yml`; `workflow_dispatch` | GoReleaser snapshot with the real config, archive contents check, then installs with `install.sh` / `install.ps1` on Linux (x64, arm), macOS and Windows and runs `ot --version`, `search`, `info`, `doctor`, and on Linux (x64 and arm) a real install/run |
 | `release-cli.yml` | `v*.*.*` tags | Releases `ot` (see above) |
 | `python-ci.yml` | pushes and PRs touching `python/**` | ruff and pytest on Ubuntu × Python 3.10–3.14, Debian, Arch; a Kali `.deb` build and install; a Playwright browser tool check |
-| `python-nightly.yml` | 02:00 UTC daily | python pipeline verify (20 candidates) and the full python test suite |
+| `python-nightly.yml` | 02:00 UTC daily; `workflow_dispatch` | ruff, python pipeline verify (20 candidates), an installed-tool contract test and the full python test suite |
 | `issue-severity.yml` | issues opened/edited | Sets one `sev-N` label from the bug form's Severity field |
 
 Nothing in CI runs `go test`, the API tests, the site checks, the scanner tests or the e2e scripts.
@@ -664,19 +771,22 @@ and verify in the preview build.
 
 ## Git and commits
 
-- `main` is the default branch. Work usually happens on a `claude/<topic>` branch merged into `main` with a no-ff merge
-  titled `Merge claude/<topic>` or `Merge claude/<topic> (short description)`; some land as GitHub pull requests.
-  Fetch first: `origin/main` moves often.
+- `main` is the default branch. Work happens on a `claude/<topic>` branch. Since PR #2 nearly everything lands as a
+  GitHub pull request (`Merge pull request #N from OTInstaller/claude/<topic>`); older work was merged locally with a
+  no-ff `Merge claude/<topic> (short description)`. Fetch first: `origin/main` moves often, and bring it in with a
+  merge (`Merge origin/main`), not a rebase of shared branches.
 - Commit subjects: imperative, sentence case, no trailing period, no conventional-commit prefixes. An area prefix is
-  common: `Seed:`, `Scanner:`, `Web:`, `Site:`, `Backups:`, `ot run:`, `Launch checklist:`. British spelling is used
+  common: `Seed:`, `Scanner:`, `Web:`, `Site:`, `Backups:`, `Edge cache:`, `Admin API:`, `Install scripts:`,
+`Release workflow:`, `ot run:`, `ot feedback:`, `Launch checklist:`, `AGENTS.md:`. British spelling is used
   ("Honour", "organisation"). Backticks for commands are fine. Inside `python/`, follow its own style (short, lowercase,
   imperative).
 - Bodies: a short paragraph on why, then `- ` bullets in plain prose, wrapped at about 115 characters.
 - `Release X.Y.Z` is reserved for release commits made by workflows and `ot release`.
 - Don't add AI or tool attribution (no `Co-Authored-By` trailers, no "Generated with ..." lines) anywhere: commits, PRs,
   code, or docs.
-- Don't commit `.dev.vars`, `.env.development`, `bin/`, `dist/`, `results/`, `.wrangler/`, `__pycache__/` or
-  `examples/dns-lookup/otinstaller.yaml` (all gitignored).
+- Don't commit `.dev.vars`, `.env.development`, `bin/`, `dist/`, `results/`, `.wrangler/` or
+  `examples/dns-lookup/otinstaller.yaml` (all gitignored), nor `__pycache__/` (ignored only inside `python/` and
+  `seed/`; one `.pyc` under `ops/scanner/` is committed by mistake).
 
 ## Things that need explicit permission
 
@@ -687,3 +797,133 @@ outreach issues or PRs, running `scripts/beta/labels.sh`, sending beta emails, t
 production, and changing GitHub App, OAuth, R2 or registry-ops settings. The operator runbook for all of these is
 [docs/publishing-setup.md](docs/publishing-setup.md); current production state is in
 [docs/launch-checklist.md](docs/launch-checklist.md).
+
+---
+
+## Troubleshooting quick reference
+
+Full recipes, with the SQL to run and what the crons already fix on their own, are in
+[docs/dev/troubleshooting.md](docs/dev/troubleshooting.md). Read production with
+`npx wrangler d1 execute otinstaller --remote --file q.sql` (always with `LIMIT`; every read counts against D1's
+allowance) and watch it with `npx wrangler tail otinstaller-registry-api --format pretty`. Any write to production
+needs the owner's go-ahead.
+
+| Symptom | First thing to check | Recipe |
+| --- | --- | --- |
+| A release never appears | `publish_jobs` rows in `queued`/`validating`/`scanning`; the commit status on the tag. There is no requeue endpoint | [Stuck publish jobs](docs/dev/troubleshooting.md#stuck-publish-jobs) |
+| Version stuck "scanning" | `versions.scan_dispatched_at`; dispatch errors in tail (`OPS_REPO`, dispatch token); the registry-ops run | [Scans that never call back](docs/dev/troubleshooting.md#scans-that-never-call-back) |
+| Scan rejected | `scans` rows and the verdict codes; `GET /v1/tools/:ns/:name/:version/scans` | [Failed scans](docs/dev/troubleshooting.md#failed-scans-and-what-the-publisher-sees) |
+| Backup `expired`, `failed` or `too_large` | `backup_runs` / `backups` rows; `R2_*` secrets; `MIRROR_PUSH_TOKEN` on both sides | [Backup runs](docs/dev/troubleshooting.md#backup-runs-that-expire-or-fail-too_large) |
+| Drill failed email | the `restore_drills` row | [Restore drill failures](docs/dev/troubleshooting.md#restore-drill-failures) |
+| Change not visible on the public API | `x-edge-cache: hit` and the endpoint's `max-age`; there is no purge | [Edge-cache staleness](docs/dev/troubleshooting.md#edge-cache-staleness) |
+| Every read answers 500 | D1 daily read allowance (the 21 Oct 2026 crawler outage); filter links must stay `nofollow` | [D1 read limits](docs/dev/troubleshooting.md#d1-read-limit-exhaustion) |
+| Works in `astro dev`, broken in production | CSP violations in the browser console of the preview build | [CSP failures](docs/dev/troubleshooting.md#csp-failures-on-the-site) |
+| CORS errors in the browser | Origin vs the API's `SITE_URL` (exact match) | [CORS from localhost](docs/dev/troubleshooting.md#cors-errors-from-localhost) |
+| No emails | `notifications.status` (`skipped` = no key); `POST /v1/admin/email-test` | [Emails not sending](docs/dev/troubleshooting.md#emails-not-sending) |
+| GitLab tag ignored | the source's webhook token, the OAuth `api` scope, job-token pushes | [GitLab problems](docs/dev/troubleshooting.md#gitlab-webhook-and-token-problems) |
+| `ot install` exits 4 | signer identity in the manifest response vs the image's signature | [cosign failures](docs/dev/troubleshooting.md#cosign-verify-failures-in-ot-exit-4) |
+| Install fails though a mirror copy exists | the original's error type: network errors never fall back | [Mirror fallback](docs/dev/troubleshooting.md#mirror-fallback-not-triggering) |
+| `ot` misbehaves on a user's machine | `ot doctor` (exits 5 when any check fails) | [`ot doctor`](docs/dev/troubleshooting.md#ot-doctor) |
+
+## Known gaps and tech debt
+
+Found while checking this guide against the code in October 2026. None of these is fixed yet; each is worth its own
+change. Keep this list current when you fix one or find another.
+
+**Security and correctness**
+
+- Takedowns lag in the edge cache: the wheel copy route sends `max-age=86400`, exact-version manifests 3600 s and
+  `/removed` 600 s (plus the CLI's own cache), though `scheduleDeletion` says serving stops at once.
+- The mirror hides a single taken-down image only partly: its blobs and `tags/list` are still served (the blob check
+  looks only at a repository-wide marker).
+- The write rate limit skips everything registered by `authRoutes` (`POST /me/tokens`, logout, device login), though
+  its comment says tokens are covered; CORS credentials work only for the exact `SITE_URL`, not `www.`.
+- Jobs that fail after the last retry become `error` and never reach the stuck-job alert, despite `failJob`'s comment.
+- `expireStaleScans` leaves the commit status pending and sends no email.
+- `sendEmail` records `sent` before calling Resend, so a thrown fetch loses the email silently; failed emails are never
+  retried.
+- `/me/publish-jobs` joins `installations`, so GitLab publishers never see their jobs; the commit status "Details"
+  link `/dashboard/publish/<jobId>` has no page in `web/`.
+- Review: request-changes and reject leave the waiting jobs at `awaiting_review`; nothing moves a namespace out of
+  `rejected` or `suspended`; a report can be resolved twice.
+- `tools_fts` triggers fire only on `tools`, so renaming a namespace leaves the old name in search.
+- Redelivering a GitHub webhook is a no-op once the first delivery created a job.
+- `ot install` doesn't warn about deprecated packages (the manifest response doesn't carry deprecation).
+- `ot self-update` and the install scripts ask `api.github.com` for the latest release without a token (60 requests an
+  hour per IP).
+- The same error code has two statuses in places (`tool_removed` 410/409, `manifest_in_repo` 409/400,
+  `unknown_provider` 404/400); `manifest_name_mismatch` exists only in the API.
+
+**Docs debt**
+
+- 72 of the API's 97 error codes have no entry in `web/src/pages/docs/errors.md`, although every error links there
+  (list in [docs/dev/api.md](docs/dev/api.md#every-code)).
+- `web/src/pages/docs/cli.md` lacks exit code 130 and many flags (all of `import`, most of `init`, several on `run`,
+  `auto`, `playbook`); list in [docs/dev/cli.md](docs/dev/cli.md#7-docs-drift-websrcpagesdocsclimd-and-clireadmemd).
+- `api/.dev.vars.example` lacks `OPS_DISPATCH_TOKEN`, `OPS_INSTALLATION_ID`, `RESEND_API_KEY`, `R2_*` and more; the
+  secrets comment in `wrangler.jsonc` lacks `HEALTH_TOKEN`, `SENTRY_DSN` and `ISSUES_TOKEN` ([config.md](docs/dev/config.md)).
+- `docs/launch-checklist.md` contradicts itself (week 11 row still "Not deployed"; 79 vs 81 failed notifications; the
+  intro names a merged branch).
+- Stale comments: "within 30 days" for takedown deletion in `backups.ts` and `trust.ts` (the code uses 14);
+  `web/astro.config.mjs` says Cloudflare Pages (it is a Worker); `release-cli.yml` says `otinstaller/ot`.
+- `python/`: the `ot` leftovers listed above, and `python/pyproject.toml` URLs still point at the old
+  `OSINTVerseHQ/OTinstaller` repository.
+
+**Hygiene**
+
+- CI runs no Go, API, site or scanner tests; there is no `engines` field for Node; `cli/internal/api`, `keys`,
+  `state` and `selfupdate` have no test files of their own.
+- `ops/scanner/__pycache__/scan.cpython-313.pyc` is committed and the root `.gitignore` has no `__pycache__/` rule.
+- `api/src/env.ts`, `index.ts`, `lib/errors.ts`, `web/src/components/Badges.astro` and `ToolCard.astro` miss their
+  opening purpose comment.
+- Schema: `versions.status` allows `received`/`validating`, which nothing writes; `tools.latest_version_id` and
+  `audit_log.actor_id` have no foreign key.
+- The `week10` write-limit test is flaky under load.
+
+## Glossary
+
+| Term | Meaning |
+| --- | --- |
+| Package | Anything in the registry: a tool or a guide, addressed as `<namespace>/<name>` (rows in `tools`) |
+| Tool / guide | `kind: tool` (runnable, Docker or pipx) or `kind: guide` (Markdown pages, no runtime) |
+| Namespace | The publisher's slug (a GitHub user or org, a GitLab group, or `osintverse-community`). `pending_review` until a reviewer approves it, then `active` (or `rejected`, `suspended`); `verified` is a separate badge |
+| Manifest | `otinstaller.yaml`, validated against `spec/schema/v1.json` |
+| Registry-held manifest | A manifest stored in D1 for a repo that doesn't have one (import wizard, community wrappers); `PUT /packages/:ns/:name/manifest` edits it |
+| First-party / community wrapper | Tools written by the project (`seed/first-party`) vs third-party tools packaged under `osintverse-community` (`seed/community`), which their authors can claim |
+| Release workflow | The GitHub Actions or GitLab CI file from `spec/templates/` that builds, signs, bumps the version and tags |
+| Publish job | One attempt to publish one tag (`publish_jobs`); a version is its result (`versions`) |
+| Source | A repository linked to a package (`sources`); polled every 6 h as a webhook backstop |
+| Import | The wizard that turns a repository into a draft manifest and finishes as a PR/MR, a registry-held manifest or a wrapper |
+| Scan / verdict | The registry-ops job (`scan.py`) and its outcome: pass, warn (fixable critical/high vulns) or fail |
+| Smoke test | The scan's sandboxed run of the manifest's `test.input`; the nightly health check runs it again |
+| Possibly broken | Three failed health checks in a row (`tools.health_status = 'broken'`) |
+| Awaiting review | A passing version of a not-yet-approved namespace, or a guide with PII hits |
+| Yank / deprecate / remove | Owner takes a version off `@latest` (an exact `@version` still installs) / owner marks a package as superseded / staff takedown (410, backups deleted after 14 days unless a legal hold) |
+| Claim / transfer | Taking over a community wrapper by proving upstream ownership / moving a package between namespaces |
+| Backup kinds | image (mirror), wheel (R2 copy served by the API), git (bundle in R2) |
+| Mirror | `mirror.otinstaller.com`, the registry's own OCI registry; `private/` for non-OSI licenses |
+| Restore drill | The monthly job that proves a random bundle restores and a random mirrored image pulls |
+| registry-ops | The private repo `OTInstaller/registry-ops` whose Actions run scans, backups, drills and health checks |
+| Edge cache | `caches.default` in front of anonymous API reads (`edge-cache.ts`) |
+| Envelope | The normalised result `ot run` prints (`envelope.Version = 1`) |
+| Typed input | A positional like `d:example.com` that maps to an input by type |
+| Case | A folder under `results/` grouping saved runs (`--case`; playbooks use `playbook-<name>`) |
+| Playbook | A named list of tools run against the same inputs |
+| Data dir | `OT_HOME`, else `%APPDATA%\ot`, else `~/.ot`: `state.json`, `keys.json`, `cache/`, `playbooks/`, `guides/` |
+| Device login | `ot login`'s flow: `/auth/device/start`, then polling `/auth/device/token` for an `ot_` token |
+| OSINTverse | The sister site whose OIDC sign-in the registry accepts (`hosts/osintverse.ts`) |
+
+## User-facing and operator docs
+
+| Where | What |
+| --- | --- |
+| [web/src/pages/docs/](web/src/pages/docs) | The site's docs: getting started, CLI, manifest, publishing, guides, security, errors, FAQ |
+| [web/src/pages/policy/](web/src/pages/policy) | Acceptable use, privacy, takedown, terms, transparency |
+| [docs/publishing-setup.md](docs/publishing-setup.md) | Operator runbook: GitHub App, OAuth apps, registry-ops, secrets, imports, guides, trust, releasing `ot`, backups |
+| [docs/launch-checklist.md](docs/launch-checklist.md) | What is deployed, what was verified, what is left before launch |
+| [docs/typed-inputs-and-results.md](docs/typed-inputs-and-results.md) | Design note for typed inputs, saved results, `--all`, playbooks, auto, extract/diff, outdated/update |
+| [docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md) | `otinstaller` to `ot` command map |
+| [docs/beta/](docs/beta) | Beta invitation, author onboarding, feedback survey |
+| [seed/README.md](seed/README.md) | The launch seed: every package, publish order, health risks |
+| [cli/README.md](cli/README.md) | The README shipped in `ot` release archives |
+| [python/README.md](python/README.md), [python/AGENTS.md](python/AGENTS.md) | The legacy Python package |

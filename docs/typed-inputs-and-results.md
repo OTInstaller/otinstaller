@@ -127,9 +127,9 @@ differences: a listed tool with no input of the given types is shown as skipped 
 saved under the case `playbook-<name>` (or the playbook's `case:`, or `--case`). Tools that are not installed stop the
 run with the `ot install` commands to fix it; `--yes` installs them first.
 
-Two playbooks are bundled: `domain-recon` (`osintverse-community/dnstwist`, `osintverse-community/ctfr`) and
+Two playbooks are bundled: `domain-recon` (`osintverse-community/dnstwist`, `osintverse-community/crtsh-subdomains`) and
 `username-investigation` (`osintverse-community/sherlock`, `osintverse-community/maigret`), the same tools as
-otinstaller's. Your own go in `<ot home>/playbooks/` or `./playbooks/` as `<name>.yaml` (`./playbooks` wins, then the
+otinstaller's except `crtsh-subdomains`, which replaces otinstaller's `ctfr` (both read Certificate Transparency logs). Your own go in `<ot home>/playbooks/` or `./playbooks/` as `<name>.yaml` (`./playbooks` wins, then the
 ot home, then the bundled ones):
 
 ```yaml
@@ -138,7 +138,7 @@ description: "What it is for"
 case: my-case             # optional, defaults to playbook-<name>
 tools:
   - osintverse-community/dnstwist
-  - osintverse-community/ctfr
+  - osintverse-community/crtsh-subdomains
 ```
 
 otinstaller playbooks list bare tool names (`sherlock`); `ot` needs the full package name and says which one to use.

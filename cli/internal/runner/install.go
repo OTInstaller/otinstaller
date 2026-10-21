@@ -97,6 +97,21 @@ func (r *Runner) Install(ctx context.Context, m *manifest.Manifest, rawManifest 
 // registry: <message>", which hides the status code. Network errors (DNS, refused connections, timeouts) do not match.
 var unavailable = regexp.MustCompile(`(?i)\b(denied|forbidden|unauthorized|not found|manifest unknown|name unknown|error from registry|40[134])\b`)
 
+// engineDown matches what docker and podman print when the engine is installed but not running.
+var engineDown = regexp.MustCompile(`(?i)(cannot connect to the docker daemon|failed to connect to the docker api|is the docker daemon running|error during connect|cannot connect to podman)`)
+
+// commandFailed describes a failed docker, podman or pipx command. When the output shows the container engine isn't
+// running it says so (exit code 5), since every install would fail the same way.
+func commandFailed(what string, code int, err error, output string) error {
+	if engineDown.MatchString(output) {
+		return &RuntimeMissingError{"Docker is installed but not running; start Docker Desktop (or Podman) and try again"}
+	}
+	if err != nil {
+		return fmt.Errorf("%s failed (exit %d): %v", what, code, err)
+	}
+	return fmt.Errorf("%s failed (exit %d)", what, code)
+}
+
 // sameDigest reports whether the mirror reference pins the same digest as the original.
 func sameDigest(original, mirror string) bool {
 	_, a, ok1 := strings.Cut(original, "@")
@@ -119,12 +134,13 @@ func (r *Runner) installDocker(ctx context.Context, m *manifest.Manifest, opt In
 	code, err := r.Exec.Run(ctx, r.Engine, []string{"pull", image}, nil, nil, r.Stderr, io.MultiWriter(r.Stderr, &out))
 	if err != nil || code != 0 {
 		if opt.MirrorImage == "" || !sameDigest(image, opt.MirrorImage) || !unavailable.MatchString(out.String()) {
-			return "", false, fmt.Errorf("pulling %s failed (exit %d): %v", image, code, err)
+			return "", false, commandFailed("pulling "+image, code, err, out.String())
 		}
 		fmt.Fprintf(r.Stderr, "note: %s refused the image; pulling the same digest from the OTInstaller mirror\n", strings.SplitN(image, "/", 2)[0])
 		image = opt.MirrorImage
-		if code, err := r.Exec.Run(ctx, r.Engine, []string{"pull", image}, nil, nil, r.Stderr, r.Stderr); err != nil || code != 0 {
-			return "", false, fmt.Errorf("pulling %s from the mirror failed too (exit %d): %v", image, code, err)
+		out.Reset()
+		if code, err := r.Exec.Run(ctx, r.Engine, []string{"pull", image}, nil, nil, r.Stderr, io.MultiWriter(r.Stderr, &out)); err != nil || code != 0 {
+			return "", false, commandFailed("pulling "+image+" from the mirror", code, err, out.String())
 		}
 	}
 	if opt.SignerIdentity == "" {
@@ -178,7 +194,7 @@ func (r *Runner) installPipxNative(ctx context.Context, m *manifest.Manifest, wh
 	}
 	code, err := r.Exec.Run(ctx, pipx, args, pipxEnv(), nil, r.Stderr, r.Stderr)
 	if err != nil || code != 0 {
-		return fmt.Errorf("pipx install failed (exit %d): %v", code, err)
+		return commandFailed("pipx install", code, err, "")
 	}
 	return nil
 }
@@ -200,9 +216,10 @@ func (r *Runner) buildPythonImage(ctx context.Context, m *manifest.Manifest, whe
 		return "", err
 	}
 	tag := LocalImageName(m)
-	code, err := r.Exec.Run(ctx, r.Engine, []string{"build", "--pull", "-t", tag, dir}, nil, nil, r.Stderr, r.Stderr)
+	var out bytes.Buffer
+	code, err := r.Exec.Run(ctx, r.Engine, []string{"build", "--pull", "-t", tag, dir}, nil, nil, r.Stderr, io.MultiWriter(r.Stderr, &out))
 	if err != nil || code != 0 {
-		return "", fmt.Errorf("building the sandbox image failed (exit %d): %v", code, err)
+		return "", commandFailed("building the sandbox image", code, err, out.String())
 	}
 	return tag, nil
 }
