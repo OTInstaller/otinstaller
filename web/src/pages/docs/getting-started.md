@@ -43,10 +43,10 @@ Every tool page on this site shows the same: what it takes, what it finds, wheth
 ## 3. Run it
 
 ```sh
-ot run osintverse-community/holehe --email someone@example.com
+ot run osintverse-community/dns-records d:example.com --format table
 ```
 
-The first run installs the tool after asking once. Docker tools run in a container with no host files, no extra privileges and a memory limit; Python tools run inside the same kind of container when Docker is available.
+`d:` says the value is a domain (`e:` email, `u:` username, `p:` phone, `ip:`, `url:`); `--domain example.com` means the same. The first run installs the tool after asking once. Docker tools run in a container with no host files, no extra privileges and a memory limit; Python tools run inside the same kind of container when Docker is available.
 
 Results come back as a JSON result envelope that other tools and OSINTverse cases can read. Use `--format table` to read them in the terminal, and `-o results.json` to save them.
 

@@ -5,7 +5,7 @@ import type { APIRoute } from "astro";
 import { api, type Facets, type SearchResult, type Types } from "../lib/api";
 import { GENERIC_INPUTS } from "../lib/landing";
 
-const DOCS = ["", "/getting-started", "/cli", "/agents", "/mcp-tools", "/automation", "/results", "/api", "/manifest", "/publishing", "/guides", "/errors", "/security", "/faq"];
+const DOCS = ["", "/quick-start", "/getting-started", "/cli", "/agents", "/mcp-tools", "/automation", "/results", "/api", "/manifest", "/publishing", "/guides", "/errors", "/security", "/faq"];
 const POLICIES = ["/acceptable-use", "/terms", "/privacy", "/takedown", "/transparency"];
 
 async function all(path: string) {
@@ -23,7 +23,7 @@ export const GET: APIRoute = async ({ site }) => {
   const [types, tools, guides, facets] = await Promise.all([api<Types>("/types"), all("/tools?kind=tool"), all("/guides"), api<Facets>("/facets?kind=tool").catch(() => null)]);
   const listed = (counts: Record<string, number> | undefined, v: string) => !counts || (counts[v] ?? 0) > 0;
   const paths = [
-    "/", "/search", "/guides", "/publish",
+    "/", "/search", "/guides", "/publish", "/tour",
     ...types.inputs.filter((t) => !GENERIC_INPUTS.has(t) && listed(facets?.inputs, t)).map((t) => `/input/${t}`),
     ...types.categories.filter((c) => listed(facets?.categories, c)).map((c) => `/category/${c}`),
     ...tools.map((t) => `/${t.namespace}/${t.name}`),

@@ -1,0 +1,65 @@
+---
+// /tour: what you can do with OTInstaller, in the order a newcomer meets it: one tool, a guide, a playbook, auto,
+// agents. Every block has a copy-ready command. Server-rendered and cached; nothing here is personal.
+import Base from "../layouts/Base.astro";
+import { cacheFor } from "../lib/page";
+
+cacheFor(Astro, 3600);
+const blocks = [
+  { eyebrow: "01 · Tools", title: "Run one tool against one value", text: "Paste what you have on the home page, pick a tool, copy its command. The first run installs it after asking once; every run is saved under ./results/ as the same JSON envelope.", cmd: "ot run osintverse-community/holehe e:ada@example.com --format table", href: "/search", link: "All tools" },
+  { eyebrow: "02 · Guides", title: "Follow an investigation playbook", text: "Guides are step-by-step methods written by investigators, versioned like tools, with every tool they use installable in one command. Read them here or in your terminal.", cmd: "ot guide tools osintverse-community/email-investigation", href: "/guides", link: "All guides" },
+  { eyebrow: "03 · Playbooks", title: "Run a set of tools at once", text: "A playbook is a named list of tools run against the same value, a few at a time, with one summary table. Two are bundled; put your own under ./playbooks/.", cmd: "ot playbook domain-recon d:example.com -y", href: "/docs/cli#playbooks", link: "Playbooks in the CLI reference" },
+  { eyebrow: "04 · Auto", title: "Run everything that takes what you have", text: "ot auto guesses the type of a value (email, domain, IP, phone, URL, else username) and runs every installed tool that takes it. ot extract then lists the indicators found across the runs.", cmd: "ot auto example.com", href: "/docs/results", link: "Results and the envelope" },
+  { eyebrow: "05 · Agents", title: "Let an AI agent run the tools, with your consent", text: "ot mcp is a Model Context Protocol server built into ot. Claude, Cursor, VS Code and others can search the registry, install tools and run them; anything that goes online or touches a target asks you first, and every run is in a local audit log.", cmd: "ot mcp install claude", href: "/docs/agents", link: "AI agents and MCP" },
+  { eyebrow: "06 · Publish", title: "List your own tool or guide", text: "Import a repository: the registry drafts the manifest and opens a pull request. Push a tag to release; the registry validates, scans, reviews new publishers once, and backs up every release.", cmd: "ot import https://github.com/you/your-tool", href: "/publish", link: "How publishing works" },
+];
+---
+<Base title="What you can do" description="A tour of OTInstaller: run a tool, follow a guide, run a playbook, let ot auto choose, use it from an AI agent, publish your own." jsonHref="https://api.otinstaller.com/v1/tools?kind=tool&limit=1">
+  <header class="page-head">
+    <p class="eyebrow">Tour</p>
+    <h1>What you can do</h1>
+    <p class="muted">Six things, each one command. Install <code>ot</code> first with the <a href="/docs/quick-start">quick start</a>; Docker Desktop or Podman has to be running.</p>
+  </header>
+  <ol class="blocks">
+    {blocks.map((b) => (
+      <li class="block">
+        <p class="eyebrow">{b.eyebrow}</p>
+        <h2>{b.title}</h2>
+        <p class="muted">{b.text}</p>
+        <div class="cmd" role="group" aria-label={`Command: ${b.title}`}>
+          <code>{b.cmd}</code>
+          <button class="btn copy" type="button" data-copy={b.cmd} aria-label={`Copy: ${b.cmd}`}><span class="label">Copy</span></button>
+        </div>
+        <p class="small"><a href={b.href}>{b.link} →</a></p>
+      </li>
+    ))}
+  </ol>
+  <section class="trust">
+    <h2>What keeps it safe</h2>
+    <ul class="small muted">
+      <li><b>Pinned and signed.</b> Every image is pulled by digest and its signature checked before it runs; a wheel is checked against its hash.</li>
+      <li><b>Scanned and reviewed.</b> Every release is scanned for vulnerabilities, secrets and malware and run once in the sandbox; a person reviews each new publisher's first release.</li>
+      <li><b>Sandboxed.</b> Tools run read-only, as a non-root user, with no host folders, no capabilities, a memory cap, and no network unless the manifest declares it.</li>
+      <li><b>Backed up.</b> The registry keeps a copy of every published image, wheel and repository, so a takedown elsewhere does not break your installs.</li>
+    </ul>
+    <p class="small"><a href="/docs/security">The security model →</a></p>
+  </section>
+</Base>
+
+<style>
+  .page-head { margin-bottom: 24px; }
+  .page-head .eyebrow { margin: 0; }
+  .page-head h1 { margin: 6px 0; }
+  .page-head p { margin: 0; max-width: 72ch; }
+  .blocks { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); }
+  .block { background: var(--bg); padding: 20px; display: grid; gap: 10px; align-content: start; }
+  .block .eyebrow, .block p { margin: 0; }
+  .block h2 { margin: 0; font-size: var(--fs-4); }
+  .block .cmd { font-size: var(--fs-1); }
+  .trust { margin-top: 40px; }
+  .trust h2 { font-size: var(--fs-4); margin: 0 0 10px; }
+  .trust ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+  .trust b { color: var(--text); font-weight: 600; }
+  .trust p { margin: 12px 0 0; }
+  @media (max-width: 820px) { .blocks { grid-template-columns: 1fr; } }
+</style>

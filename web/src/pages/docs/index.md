@@ -8,7 +8,9 @@ The OTInstaller Registry is a free index of OSINT tools and investigation guides
 
 ## Using tools
 
-- [Getting started](/docs/getting-started): install `ot` and run your first tool.
+- [Quick start](/docs/quick-start): three commands from nothing to a result.
+- [What you can do](/tour): tools, guides, playbooks, `ot auto`, agents and publishing, one command each.
+- [Getting started](/docs/getting-started): install `ot` and run your first tool, with more detail.
 - [CLI reference](/docs/cli): every `ot` command.
 - [Scripts, CI and agents](/docs/automation): JSON output, JSON errors and exit codes for scripts and AI agents.
 - [Results and the envelope](/docs/results): the result envelope and saved runs.

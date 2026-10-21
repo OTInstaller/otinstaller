@@ -11,20 +11,22 @@ interface Props {
   headings?: { depth: number; slug: string; text: string }[];
 }
 const { frontmatter, headings = [] } = Astro.props;
+// In the order a newcomer reads them: start, use, understand results, publish, then the deeper references.
 const pages: [string, string][] = [
   ["/docs", "Overview"],
+  ["/docs/quick-start", "Quick start"],
   ["/docs/getting-started", "Getting started"],
   ["/docs/cli", "CLI reference"],
+  ["/docs/results", "Results and the envelope"],
+  ["/docs/security", "Security model"],
+  ["/docs/publishing", "Publishing"],
+  ["/docs/manifest", "Manifest reference"],
+  ["/docs/guides", "Guides and tool docs"],
+  ["/docs/errors", "Error codes"],
   ["/docs/agents", "AI agents and MCP"],
   ["/docs/mcp-tools", "MCP tools"],
   ["/docs/automation", "Scripts, CI and agents"],
-  ["/docs/results", "Results and the envelope"],
   ["/docs/api", "Registry API"],
-  ["/docs/manifest", "Manifest reference"],
-  ["/docs/publishing", "Publishing"],
-  ["/docs/guides", "Guides and tool docs"],
-  ["/docs/errors", "Error codes"],
-  ["/docs/security", "Security model"],
   ["/docs/faq", "FAQ"],
 ];
 const path = Astro.url.pathname.replace(/\/$/, "") || "/docs";

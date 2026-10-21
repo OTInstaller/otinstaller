@@ -9,7 +9,7 @@ import CopyCode from "../../../components/CopyCode.astro";
 import ToolRow from "../../../components/ToolRow.astro";
 import { apiOrNull, type ManifestResponse, type Pivots, type Scans, type SearchResult } from "../../../lib/api";
 import { entityLabel, formatDate, inputLabel } from "../../../lib/format";
-import { evidence, exampleValue, sampleEnvelope } from "../../../lib/evidence";
+import { ethicsLines, evidence, inputExample, prefixFor, sampleEnvelope } from "../../../lib/evidence";
 import { loadTool } from "../../../lib/tool";
 import { cacheFor } from "../../../lib/page";
 import { demoteHeadings } from "../../../lib/html";
@@ -38,10 +38,14 @@ const e = m.ethics;
 const lines = evidence(t, scans, manifest);
 const required = (m.inputs ?? []).filter((i) => i.required);
 const first = required[0];
-// The manifest's own example wins over the generic one for its type.
-const ex = (i: { name: string; type: string; example?: unknown }) => (i.example != null && i.example !== "" ? String(i.example) : exampleValue(i.type, i.name));
-const runArgs = required.map((i) => `--${i.name} ${ex(i)}`).join(" ");
-const runCmd = `ot run ${ref}${runArgs ? ` ${runArgs}` : ""}`;
+// Example values come from the manifest (its example, else the registry's own test input), so the command is one
+// that has run. A single required input with a typed prefix is written as d:example.com, as the docs teach it.
+const ex = (i: { name: string; type: string; example?: unknown }) => inputExample(m, i);
+const quote = (v: string) => (/[\s"']/.test(v) ? JSON.stringify(v) : v);
+const prefix = required.length === 1 ? prefixFor(required[0]!.type) : null;
+const runArgs = prefix ? `${prefix}:${quote(ex(required[0]!))}` : required.map((i) => `--${i.name} ${quote(ex(i))}`).join(" ");
+const runCmd = `ot run ${ref}${runArgs ? ` ${runArgs}` : ""} --format table`;
+const fromTest = required.some((i) => m.test?.input?.[i.name] != null);
 const egress = m.network?.egress === true;
 const runtimeLine = [
   m.runtime?.kind === "docker" ? "Docker image in a read-only container" : "Python wheel, run in a read-only container (Docker optional with --native)",
@@ -119,7 +123,7 @@ const jsonLd = graph(software, breadcrumbs([["Tools", "/search"], [t.namespace, 
       <code>ot install {ref}</code>
       <button class="btn copy" type="button" data-copy={`ot install ${ref}`} aria-label="Copy the install command"><span class="label">Copy</span></button>
     </div>
-    <p class="note small">{runtimeLine}. The first <code>ot run</code> installs the tool after asking once.</p>
+    <p class="note small">{runtimeLine}. The first <code>ot run</code> installs the tool after asking once.{fromTest && <> The example value is the registry's own test input, so this command has run.</>} Drop <code>--format table</code> for JSON.</p>
     <details class="noot">
       <summary class="small">Don't have <code>ot</code>? Install it in one line</summary>
       <InstallBlock name="tool" compact />
@@ -191,9 +195,9 @@ const jsonLd = graph(software, breadcrumbs([["Tools", "/search"], [t.namespace, 
         {m.secrets && m.secrets.length > 0 ? (
           <ul class="list-plain small">
             {m.secrets.map((s) => (
-              <li><code>{s.name}</code> <span class="faint">{s.required ? "required" : "optional"}</span>{s.url && <> · <a href={s.url} rel="nofollow noopener">get one</a></>}{s.description && <div class="muted desc">{s.description}</div>}</li>
+              <li><code>{s.name}</code> <span class="faint">{s.required ? "required" : "optional"}</span>{s.url && <> · <a href={s.url} rel="nofollow noopener">get one</a></>}{s.description && <div class="muted desc">{s.description}</div>}<div class="keycmd"><code>ot keys set {s.name}</code><button class="btn btn-sm copy" type="button" data-copy={`ot keys set ${s.name}`} aria-label={`Copy: ot keys set ${s.name}`}><span class="label">Copy</span></button></div></li>
             ))}
-            <li class="muted"><code>ot keys set NAME</code> stores a key in your OS keychain; this tool is the only container that sees it.</li>
+            <li class="muted">The key goes into your OS keychain and is passed to this tool's container only; it never appears in a command line or a saved result.</li>
           </ul>
         ) : <p class="small muted">None needed.</p>}
       </section>
@@ -201,11 +205,9 @@ const jsonLd = graph(software, breadcrumbs([["Tools", "/search"], [t.namespace, 
         <section>
           <h3>Behaviour</h3>
           <ul class="list-plain small beh">
-            <li class:list={{ yes: e.touches_target }}>{e.touches_target ? "Contacts the target directly" : "Does not contact the target"}</li>
-            <li class:list={{ yes: e.auth_required }}>{e.auth_required ? "Logs in to accounts" : "Does not log in to accounts"}</li>
-            <li class:list={{ yes: e.collects_personal_data }}>{e.collects_personal_data ? "Collects personal data" : "Does not collect personal data"}</li>
+            {ethicsLines(e, egress).map((l) => <li class:list={{ yes: l.yes }}>{l.text}<div class="muted desc">{l.why}</div></li>)}
           </ul>
-          <p class="small muted hint">{egress ? (m.network?.domains?.length ? `Talks to: ${m.network.domains.join(", ")}` : "Network access declared.") : "Runs with no network."}</p>
+          {egress && m.network?.domains?.length ? <p class="small muted hint">Talks to: {m.network.domains.join(", ")}</p> : null}
         </section>
       )}
       <section>
@@ -291,6 +293,7 @@ const jsonLd = graph(software, breadcrumbs([["Tools", "/search"], [t.namespace, 
   .facts h3 { margin: 0 0 8px; font-size: var(--fs-0); text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-faint); font-weight: 600; }
   .facts li + li { margin-top: 8px; }
   .facts .desc { margin-top: 2px; }
+  .keycmd { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
   .facts .hint { margin: 10px 0 0; overflow-wrap: anywhere; }
   .facts dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; }
   .facts dt { color: var(--text-muted); }
