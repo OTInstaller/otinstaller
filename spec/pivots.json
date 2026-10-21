@@ -1,0 +1,25 @@
+{
+  "$comment": "Which tool inputs an entity can feed, by entity type: the canonical pivot map shared by ot (ot pivot, the MCP server's suggest_pivots) and, later, the registry API. Each target is an input type; `attr` takes the value from the entity's attrs instead of its value, and `transform` derives it (host: a URL's host name; email_domain: the part of an email address after @).",
+  "version": 1,
+  "pivots": {
+    "account": [{ "input": "username", "attr": "username" }, { "input": "url", "attr": "url" }],
+    "email": [{ "input": "email" }, { "input": "domain", "transform": "email_domain" }],
+    "username": [{ "input": "username" }],
+    "phone": [{ "input": "phone" }],
+    "domain": [{ "input": "domain" }],
+    "subdomain": [{ "input": "domain" }],
+    "ip": [{ "input": "ip" }],
+    "url": [{ "input": "url" }, { "input": "domain", "transform": "host" }],
+    "person": [{ "input": "name" }],
+    "organization": [{ "input": "company" }],
+    "certificate": [{ "input": "domain", "attr": "domain" }],
+    "dns_record": [{ "input": "ip", "attr": "ip" }, { "input": "domain", "attr": "domain" }],
+    "image": [{ "input": "image" }],
+    "crypto_address": [{ "input": "crypto_address" }],
+    "location": [],
+    "breach": [],
+    "document": [],
+    "transaction": [],
+    "other": []
+  }
+}

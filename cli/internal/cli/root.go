@@ -72,6 +72,8 @@ type App struct {
 	SelfPath string
 	// JSON is the global --json flag; jsonMode also honours OT_OUTPUT=json.
 	JSON bool
+	// AgentMode is set by `ot mcp`: installs need a verified signature, and nothing prompts or opens a browser.
+	AgentMode bool
 }
 
 func NewApp() *App {
@@ -141,6 +143,8 @@ func (a *App) Root() *cobra.Command {
 		a.deprecateCmd(),
 		a.selfUpdateCmd(),
 		a.releaseCmd(),
+		a.mcpCmd(),
+		a.pivotCmd(),
 	)
 	return root
 }

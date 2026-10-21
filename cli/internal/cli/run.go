@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -256,44 +257,7 @@ func (a *App) doctorCmd() *cobra.Command {
 		Short: "Check Docker, pipx, Python, keychain and registry access",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ex := a.Runner.Exec
-			var checks []doctorCheck
-			check := func(name string, status, detail string) {
-				checks = append(checks, doctorCheck{name, status, detail})
-			}
-			okOr := func(good bool, bad string) string {
-				if good {
-					return "ok"
-				}
-				return bad
-			}
-			if a.Runner.Engine != "" {
-				code, _ := ex.Run(cmd.Context(), a.Runner.Engine, []string{"info", "--format", "{{.ServerVersion}}"}, nil, nil, io.Discard, io.Discard)
-				check("containers", okOr(code == 0, "fail"), a.Runner.Engine+map[bool]string{true: " is running", false: " is installed but not running; start Docker Desktop"}[code == 0])
-			} else {
-				check("containers", "fail", "Docker or Podman not found (needed for Docker tools and sandboxed pipx tools)")
-			}
-			_, _, hasPipx := runner.FindPipx(ex)
-			check("pipx", okOr(hasPipx || a.Runner.Engine != "", "fail"), map[bool]string{true: "found", false: "not found (only needed for --native pipx runs)"}[hasPipx])
-			py := "python3"
-			if _, err := ex.LookPath(py); err != nil {
-				py = "python"
-			}
-			_, pyerr := ex.LookPath(py)
-			check("python", okOr(pyerr == nil || a.Runner.Engine != "", "fail"), map[bool]string{true: "found", false: "not found (only needed for --native pipx runs)"}[pyerr == nil])
-			_, cerr := ex.LookPath("cosign")
-			check("cosign", "ok", map[bool]string{true: "found; image signatures are verified", false: "not found; image signatures are skipped locally (optional)"}[cerr == nil])
-			kerr := keys.Set("OT_DOCTOR_CHECK", "ok")
-			if kerr == nil {
-				_ = keys.Delete("OT_DOCTOR_CHECK")
-				check("keychain", "ok", "readable and writable")
-			} else {
-				// CI and containers have no keychain; keys in environment variables work without one.
-				check("keychain", "warn", fmt.Sprintf("%v; pass API keys and OTINSTALLER_TOKEN as environment variables instead", kerr))
-			}
-			_, aerr := a.API.Search(cmd.Context(), api.SearchParams{Limit: 1})
-			check("registry", okOr(aerr == nil, "fail"), a.Config.APIURL+map[bool]string{true: " reachable", false: fmt.Sprintf(" unreachable: %v", aerr)}[aerr == nil])
-
+			checks := a.doctorChecks(cmd.Context())
 			ok := true
 			for _, c := range checks {
 				ok = ok && c.Status != "fail"
@@ -315,4 +279,47 @@ func (a *App) doctorCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// doctorChecks checks what ot needs: a container engine, pipx and Python for native runs, cosign, the keychain
+// and the registry.
+func (a *App) doctorChecks(ctx context.Context) []doctorCheck {
+	ex := a.Runner.Exec
+	var checks []doctorCheck
+	check := func(name string, status, detail string) {
+		checks = append(checks, doctorCheck{name, status, detail})
+	}
+	okOr := func(good bool, bad string) string {
+		if good {
+			return "ok"
+		}
+		return bad
+	}
+	if a.Runner.Engine != "" {
+		code, _ := ex.Run(ctx, a.Runner.Engine, []string{"info", "--format", "{{.ServerVersion}}"}, nil, nil, io.Discard, io.Discard)
+		check("containers", okOr(code == 0, "fail"), a.Runner.Engine+map[bool]string{true: " is running", false: " is installed but not running; start Docker Desktop"}[code == 0])
+	} else {
+		check("containers", "fail", "Docker or Podman not found (needed for Docker tools and sandboxed pipx tools)")
+	}
+	_, _, hasPipx := runner.FindPipx(ex)
+	check("pipx", okOr(hasPipx || a.Runner.Engine != "", "fail"), map[bool]string{true: "found", false: "not found (only needed for --native pipx runs)"}[hasPipx])
+	py := "python3"
+	if _, err := ex.LookPath(py); err != nil {
+		py = "python"
+	}
+	_, pyerr := ex.LookPath(py)
+	check("python", okOr(pyerr == nil || a.Runner.Engine != "", "fail"), map[bool]string{true: "found", false: "not found (only needed for --native pipx runs)"}[pyerr == nil])
+	_, cerr := ex.LookPath("cosign")
+	check("cosign", "ok", map[bool]string{true: "found; image signatures are verified", false: "not found; image signatures are skipped locally (optional)"}[cerr == nil])
+	kerr := keys.Set("OT_DOCTOR_CHECK", "ok")
+	if kerr == nil {
+		_ = keys.Delete("OT_DOCTOR_CHECK")
+		check("keychain", "ok", "readable and writable")
+	} else {
+		// CI and containers have no keychain; keys in environment variables work without one.
+		check("keychain", "warn", fmt.Sprintf("%v; pass API keys and OTINSTALLER_TOKEN as environment variables instead", kerr))
+	}
+	_, aerr := a.API.Search(ctx, api.SearchParams{Limit: 1})
+	check("registry", okOr(aerr == nil, "fail"), a.Config.APIURL+map[bool]string{true: " reachable", false: fmt.Sprintf(" unreachable: %v", aerr)}[aerr == nil])
+	return checks
 }

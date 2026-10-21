@@ -3,6 +3,7 @@ package manifest
 import (
 	"bytes"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -296,3 +297,18 @@ func checkFiles(m *Manifest, dir string) []*Problem {
 	}
 	return ps
 }
+
+// Types lists the input types and the output (entity) types the schema allows, in schema order.
+func Types() (inputs, outputs []string) {
+	var doc struct {
+		Defs struct {
+			InputType  struct{ Enum []string } `json:"inputType"`
+			EntityType struct{ Enum []string } `json:"entityType"`
+		} `json:"$defs"`
+	}
+	_ = json.Unmarshal(schemaJSON, &doc)
+	return doc.Defs.InputType.Enum, doc.Defs.EntityType.Enum
+}
+
+// SchemaJSON is the embedded manifest schema, spec/schema/v1.json.
+func SchemaJSON() []byte { return schemaJSON }

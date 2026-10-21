@@ -36,6 +36,11 @@ type runArgs struct {
 	Case       string
 	// MaxRaw leaves raw out of the printed envelope when the output is larger (0: no limit).
 	MaxRaw int64
+	// Set by the consent check for unattended runs: whether to audit them, and how they were allowed.
+	audit   bool
+	consent string
+	// onStart, when set, gets a run's id (and sidecar path when saved) as soon as it has one, before it ends.
+	onStart func(runID, metaPath string)
 	// DryRun lists what --all, a playbook or auto would run, without running it.
 	DryRun bool
 	// Detect turns bare targets (example.com) into typed inputs, for auto and playbooks.
@@ -221,6 +226,9 @@ func (a *App) runCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := a.cliConsent(ra, []allJob{{inst: inst, values: values}}); err != nil {
+				return err
+			}
 			env, meta, err := a.execute(cmd.Context(), inst, values, secrets, target, ra, a.Runner.Stderr)
 			if meta != nil {
 				fmt.Fprintf(a.Err, "Saved %s\n", meta.OutputPath)
@@ -277,16 +285,29 @@ func firstGiven(m *manifest.Manifest, given map[string]string) string {
 // execute runs an installed tool and, unless --no-save, saves its output and sidecar. The meta
 // is returned whenever something was saved, including for a timeout or an interrupted run.
 func (a *App) execute(ctx context.Context, inst *state.Installed, values, secrets map[string]string, target string, ra *runArgs, stderr io.Writer) (*envelope.Envelope, *results.Meta, error) {
+	env, meta, err := a.executeRun(ctx, inst, values, secrets, target, ra, stderr)
+	a.auditRun(ra, inst, values, env, meta, err)
+	return env, meta, err
+}
+
+func (a *App) executeRun(ctx context.Context, inst *state.Installed, values, secrets map[string]string, target string, ra *runArgs, stderr io.Writer) (*envelope.Envelope, *results.Meta, error) {
 	opt := runner.RunOptions{Values: values, Secrets: secrets, OutDir: ra.OutDir, Stderr: stderr}
 	if ra.NoSave {
+		id := results.NewRunID()
+		if ra.onStart != nil {
+			ra.onStart(id, "")
+		}
 		env, err := a.Runner.Run(ctx, inst, opt)
-		a.stamp(env, results.NewRunID())
+		a.stamp(env, id)
 		return env, nil, err
 	}
 	m := inst.Manifest
 	rec, err := results.Start(results.Dir(ra.ResultsDir), m.Name, target, ra.Case, m.Runtime.OutputFormat)
 	if err != nil {
 		return nil, nil, &ExitError{Code: ExitToolError, Err: err}
+	}
+	if ra.onStart != nil {
+		ra.onStart(rec.ID, rec.MetaPath)
 	}
 	opt.Stdout = rec.Stdout()
 	opt.Stderr = io.MultiWriter(stderr, rec.Stderr())
@@ -308,7 +329,7 @@ func (a *App) execute(ctx context.Context, inst *state.Installed, values, secret
 		ExitCode:    -1,
 		RunID:       rec.ID,
 		OTVersion:   Version,
-		Client:      clientKind(),
+		Client:      a.clientKind(),
 		Artifact:    &envelope.Artifact{Kind: map[bool]string{true: "wheel", false: "image"}[inst.Runtime == "pipx"], Ref: inst.Artifact, Signer: inst.Signer, FromBackup: inst.FromBackup},
 	}
 	if ra.Case != "" {
@@ -347,12 +368,15 @@ func (a *App) stamp(env *envelope.Envelope, runID string) {
 	if env == nil {
 		return
 	}
-	env.RunID, env.OTVersion, env.Client = runID, Version, clientKind()
+	env.RunID, env.OTVersion, env.Client = runID, Version, a.clientKind()
 }
 
-// clientKind says what started a run, for the envelope and the sidecar: ci when the CI variable that
+// clientKind says what started a run, for the envelope and the sidecar: mcp under `ot mcp`, ci when the CI variable that
 // GitHub Actions, GitLab CI and most others set is present, otherwise cli.
-func clientKind() string {
+func (a *App) clientKind() string {
+	if a.AgentMode {
+		return "mcp"
+	}
 	if os.Getenv("CI") != "" {
 		return "ci"
 	}
