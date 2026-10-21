@@ -6,11 +6,15 @@ removes open-source command line tools by name, using one standard command inter
 It is a neutral tool manager, similar in spirit to pdtm, pipx or Kali's tool packages.
 Tool descriptions, docs and messages stay neutral.
 
+It is in maintenance: security fixes only until 2027-06-30 (`deprecation.py`), and new work goes into `ot` (see the
+root AGENTS.md). Read the rules below in that light: fix and test, don't grow features.
+
 ## Fixed decisions (do not change without asking)
 - Package and command name: otinstaller.
 - The word "OSINT" must not appear in the package name, command name or CLI help text.
   It may appear in the README and the PyPI description only.
-- Python 3.10+. Linux only. Tested on Ubuntu 22.04 and 24.04 with Python 3.10, 3.11, 3.12.
+- Python 3.10+. Linux only. CI tests Ubuntu 22.04 and 24.04 with Python 3.10 to 3.14, plus Debian, Arch and a
+  Kali `.deb` build (`.github/workflows/python-ci.yml`).
 - Managed tools are installed with pip or git only. No Go, Rust, Node or Docker.
 - Every managed tool gets its own virtualenv. Never install tools into system Python.
 - Run command shape: `otinstaller run <tool> -- <args>`. Arguments pass straight through.
@@ -24,7 +28,9 @@ Tool descriptions, docs and messages stay neutral.
   automated install test and a smoke test (--help or --version exits cleanly).
 - Resume: job state lives in SQLite. Finished jobs are skipped on resume and partial
   output is always kept.
-- No telemetry. Network access only to GitHub, PyPI and the registry host.
+- No usage telemetry. Network access only to GitHub, PyPI and the registry host, plus opt-in crash reports to
+  Sentry (`crash_reports.py`: only after the user says yes, never with `DO_NOT_TRACK`; tests and the Debian build
+  force `DO_NOT_TRACK=1`).
 
 ## Inclusion policy
 - A tool is listed if it passes install and smoke tests and is not in the denylist.
@@ -37,9 +43,10 @@ Tool descriptions, docs and messages stay neutral.
 - The generated list gets a human review before each release.
 
 ## Code rules
-- Stack: Typer and Rich for the CLI, PyYAML, and the standard library (sqlite3,
-  subprocess, asyncio, pathlib). Keep dependencies minimal. Ask before adding any.
-- Layout: src/otinstaller/, tests/, docs/, registry/, pipeline/.
+- Stack: Typer (with click) and Rich for the CLI, PyYAML, sentry-sdk for opt-in crash
+  reports, and the standard library (sqlite3, subprocess, asyncio, pathlib). Keep
+  dependencies minimal. Ask before adding any.
+- Layout: src/otinstaller/, tests/, docs/, registry/, pipeline/, debian/, scripts/.
 - The CLI layer stays thin. Real logic lives in importable modules so a TUI could
   reuse it later.
 - Type hints on all function signatures. Lint and format with ruff. Test with pytest.
