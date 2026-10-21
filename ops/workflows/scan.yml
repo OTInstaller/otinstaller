@@ -1,34 +1,48 @@
 # Copy to .github/workflows/scan.yml in the registry-ops repository.
-# The registry dispatches one "otinstaller-scan" event per release; this job scans it and posts
-# the results to the registry with the single-use token in the payload.
+# The registry dispatches one "otinstaller-scan" event per release; this job scans it and posts the results to
+# the registry with the single-use token in the payload. When the version is published, the registry answers
+# with a backup job, and the same run copies the image to the mirror (or uploads the wheel) and a git bundle.
+# "otinstaller-backup" events (weekly git backups, approved releases) and the monthly "otinstaller-drill"
+# (restore a bundle into an empty repository, pull a mirrored image by digest) run here too.
+# Needs the secret MIRROR_PUSH_TOKEN (the mirror's push credential) and the variable MIRROR_HOST
+# (mirror.otinstaller.com).
 name: scan
 on:
   repository_dispatch:
-    types: [otinstaller-scan]
+    types: [otinstaller-scan, otinstaller-backup, otinstaller-drill]
 permissions:
   contents: read
 concurrency:
-  group: scan-${{ github.event.client_payload.scan.version_id }}
+  group: ${{ github.event.action }}-${{ github.event.client_payload.scan.version_id || github.event.client_payload.drill.id || github.run_id }}
   cancel-in-progress: false
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
+    env:
+      MIRROR_PUSH_TOKEN: ${{ secrets.MIRROR_PUSH_TOKEN }}
+      MIRROR_HOST: ${{ vars.MIRROR_HOST || 'mirror.otinstaller.com' }}
     steps:
       - uses: actions/checkout@v5
-      - uses: aquasecurity/setup-trivy@v0.3.1
+      - if: github.event.action == 'otinstaller-scan'
+        uses: aquasecurity/setup-trivy@v0.3.1
         with:
           version: v0.76.0
       - uses: sigstore/cosign-installer@v4.1.2
         with:
           cosign-release: v3.1.3
+      - uses: imjasonh/setup-crane@v0.4
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - run: pip install guarddog==3.2.0 cryptography==50.0.2
-      - name: Write the scan request
+      - if: github.event.action == 'otinstaller-scan'
+        run: pip install guarddog==3.2.0 cryptography==50.0.2
+      - name: Log in to the mirror
+        if: env.MIRROR_PUSH_TOKEN != ''
+        run: printf '%s' "$MIRROR_PUSH_TOKEN" | crane auth login "$MIRROR_HOST" -u scanner --password-stdin
+      - name: Write the request
         env:
           PAYLOAD: ${{ toJSON(github.event.client_payload) }}
         run: printf '%s' "$PAYLOAD" > "$RUNNER_TEMP/request.json"
-      - name: Scan and report
+      - name: Scan, back up and report
         run: python3 ops/scanner/scan.py "$RUNNER_TEMP/request.json" --post

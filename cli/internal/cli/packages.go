@@ -284,6 +284,7 @@ func (a *App) install(ctx context.Context, ref pkgRef, native bool) (*state.Inst
 			return nil, err
 		}
 		opt.SignerIdentity, opt.SignerIssuer = resp.SignerIdentity, resp.SignerIssuer
+		opt.MirrorImage, opt.WheelBackupURL = resp.MirrorImage, resp.WheelURL
 		for _, w := range trustWarnings(resp) {
 			fmt.Fprintln(a.Err, "warning:", w)
 		}

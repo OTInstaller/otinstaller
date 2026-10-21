@@ -7,7 +7,8 @@ import * as gitlab from "../hosts/gitlab";
 import { HostError } from "../hosts/github";
 import { gitlabToken, type SourceRow } from "../hosts/repo";
 import { audit, requireUser } from "./auth";
-import { pollSource, RELEASE_TAG, sourceById, SOURCE_COLUMNS } from "../sync";
+import { pollSource, RELEASE_TAG, sourceById, sourceByProject, SOURCE_COLUMNS } from "../sync";
+import { ImportProblem, installUrl, openRepo, parseRepoRef } from "../imports";
 
 const MANUAL_SYNC_PER_HOUR = 10;
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
@@ -99,7 +100,80 @@ export async function sourceForPackage(env: Env, ns: string, name: string) {
   return s;
 }
 
+/**
+ * Moves a package to another repository, for example from GitHub to GitLab after restoring a backup there. The
+ * owner must own the package and be an admin (GitHub) or Maintainer (GitLab) of the new, public repository. The
+ * package keeps its name, versions and installs; new releases come from the new repository (and must be signed
+ * by its CI). Tags already in the new repository are not published again.
+ */
+export async function switchSource(env: Env, userId: string, toolId: string, input: string) {
+  const ref = parseRepoRef(input);
+  if (!ref) apiError(400, "invalid_repo", "send {repo: 'https://gitlab.com/group/name'} or a github.com URL");
+  const current = await env.DB.prepare(`SELECT ${SOURCE_COLUMNS}, s.webhook_id FROM sources s WHERE s.tool_id = ?`).bind(toolId).first<SourceRow & { webhook_id: string | null }>();
+  if (!current) apiError(404, "source_not_found", "this package has no connected source repository");
+  let repo;
+  try {
+    repo = await openRepo(env, userId, ref.provider, ref.path);
+  } catch (e) {
+    if (e instanceof ImportProblem) apiError(e.status, e.code, e.message, e.hint);
+    throw e;
+  }
+  if (repo.provider === current.provider && repo.projectId === current.project_id) apiError(409, "same_source", "that is already the package's source");
+  const taken = await sourceByProject(env, repo.provider, repo.projectId);
+  if (taken?.tool_id) apiError(409, "source_in_use", `${repo.path} is already the source of another package`);
+  if (repo.provider === "github" && !repo.installationId) apiError(409, "app_not_installed", `install the OTInstaller GitHub App on ${repo.path} first`, installUrl(env));
+
+  let hookId: string | null = null;
+  let hookSecretHash: string | null = null;
+  if (repo.provider === "gitlab") {
+    const secret = randomToken(32);
+    try {
+      hookId = await gitlab.createHook(deps.fetch, await gitlabToken(env, userId), Number(repo.projectId), `${env.API_URL}/v1/webhooks/gitlab`, secret, repo.defaultBranch);
+    } catch (e) {
+      if (e instanceof HostError && e.status === 403) {
+        apiError(403, "gitlab_scope_required", "switching to a GitLab project needs permission to create its webhook", `sign in again at ${env.API_URL}/v1/auth/gitlab/login?scope=api`);
+      }
+      throw e;
+    }
+    hookSecretHash = await sha256Hex(secret);
+  }
+  // The old project's webhook goes; it may already be gone with the repository.
+  if (current.provider === "gitlab" && current.webhook_id && current.connected_by) {
+    await gitlab.deleteHook(deps.fetch, await gitlabToken(env, current.connected_by), current.project_id, current.webhook_id).catch(() => {});
+  }
+  const tags = await repo.reader.tags().then((t) => JSON.stringify(t.filter((x) => RELEASE_TAG.test(x)))).catch(() => "[]");
+  const stmts = [];
+  // A connected project that never became a package is replaced by this one.
+  if (taken) stmts.push(env.DB.prepare(`DELETE FROM sources WHERE id = ? AND tool_id IS NULL`).bind(taken.id));
+  stmts.push(
+    env.DB.prepare(
+      `UPDATE sources SET provider = ?, project_id = ?, path = ?, url = ?, default_branch = ?, installation_id = ?, connected_by = ?,
+         webhook_id = ?, webhook_secret_hash = ?, visibility = 'public', archived = 0, etag = NULL, sync_status = 'ok', last_error = NULL,
+         unavailable_since = NULL, baseline_tags = ? WHERE id = ?`,
+    ).bind(repo.provider, repo.projectId, repo.path, repo.url, repo.defaultBranch, repo.installationId, userId, hookId, hookSecretHash, tags, current.id),
+    env.DB.prepare(`UPDATE tools SET repo_url = ?, updated_at = ? WHERE id = ?`).bind(repo.url, Date.now(), toolId),
+    audit(env.DB, userId, "user", "source.switch", "source", current.id, { from: current.url, to: repo.url }),
+  );
+  await env.DB.batch(stmts);
+  return { provider: repo.provider, path: repo.path, url: repo.url };
+}
+
 export function sourceRoutes(app: App) {
+  app.post("/packages/:ns/:name/source", async (c) => {
+    const { ns, name } = c.req.param();
+    const t = await c.env.DB.prepare(
+      `SELECT t.id, t.status, t.namespace_id FROM tools t JOIN namespaces n ON n.id = t.namespace_id WHERE n.name = ? AND t.name = ?`,
+    ).bind(ns, name).first<{ id: string; status: string; namespace_id: string }>();
+    if (!t) apiError(404, "tool_not_found", `${ns}/${name} is not in the registry`);
+    const u = requireUser(c);
+    const role = await c.env.DB.prepare(`SELECT role FROM namespace_members WHERE namespace_id = ? AND user_id = ?`).bind(t.namespace_id, u.id).first<{ role: string }>();
+    if (role?.role !== "owner" && !u.is_admin) apiError(403, "forbidden", "only the package's owners can switch its source");
+    if (t.status === "removed") apiError(409, "tool_removed", `${ns}/${name} was removed`);
+    const { repo } = await c.req.json<{ repo?: string }>().catch(() => ({} as { repo?: string }));
+    if (!repo?.trim()) apiError(400, "invalid_body", "send {repo: 'https://gitlab.com/group/name'}");
+    return c.json({ ref: `${ns}/${name}`, source: await switchSource(c.env, u.id, t.id, repo) });
+  });
+
   app.post("/sources/gitlab", async (c) => {
     const u = requireUser(c);
     const { project } = await c.req.json<{ project?: string }>().catch(() => ({} as { project?: string }));
