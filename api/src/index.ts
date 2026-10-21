@@ -241,9 +241,14 @@ app.get("/tools/:ns/:name", async (c) => {
   const { ns, name } = c.req.param();
   const { row, movedTo } = await findTool(c.env.DB, ns, name);
   if (!row) return notFound(c.env.DB, ns, name);
+  // What the latest version's smoke test produced, when the scanner recorded it: the tool page shows it as real output.
+  const smoke = await c.env.DB.prepare(`SELECT summary_json, ran_at FROM scans WHERE version_id = ? AND kind = 'smoke' AND result = 'pass' ORDER BY ran_at DESC LIMIT 1`)
+    .bind(row.latest_version_id).first<{ summary_json: string | null; ran_at: number }>();
+  const sampleJson = smoke?.summary_json ? JSON.parse(smoke.summary_json)?.sample : undefined;
   cached(c, 60);
   return c.json({
     ...summary(row),
+    sample: sampleJson ? { ...sampleJson, version: row.latest_version, recorded_at: smoke!.ran_at } : undefined,
     deprecated_replacement: row.deprecated_replacement ?? undefined,
     repo_url: row.repo_url,
     homepage: JSON.parse(row.manifest_json).homepage ?? null,
