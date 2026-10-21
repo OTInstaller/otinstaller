@@ -367,7 +367,8 @@ The plugin lives in `integrations/agent-plugin/` and is published as its own pub
 root. Its tests are in `cli/internal/cli/mcp_test.go` (`TestAgentPluginMatchesServer`): every tool and prompt it names
 must exist in `ot mcp`.
 
-1. Once: create the public repository `OTInstaller/agent-plugin` (Apache 2.0), empty.
+1. Once: create the public repository `OTInstaller/agent-plugin` (Apache 2.0), empty. Done 21 Oct 2026; v0.1.0 is
+   published there.
 2. To publish a version: bump `version` in both `.claude-plugin/plugin.json` and `.cursor-plugin/plugin.json`, then
    copy the folder's contents to the repository's root and push:
    ```bash

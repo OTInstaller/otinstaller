@@ -30,6 +30,17 @@ The agent can't run anything that touches a target, goes online or involves a pe
 | Gemini CLI | `ot mcp install gemini` adds it to `~/.gemini/settings.json` |
 | Anything else | run `ot mcp` over stdio: `{"command": "ot", "args": ["mcp"]}` |
 
+**Claude Desktop in one click:** download the `.mcpb` file for your system from the [latest `ot` release](https://github.com/OTInstaller/ot/releases/latest) (`ot_<version>_windows_amd64.mcpb`, `darwin_arm64` for Apple silicon, and so on) and open it. The bundle carries its own `ot`, so you don't need to install it first. Docker (or Podman) still has to be running for tools to run.
+
+**The Claude Code plugin** adds the server plus skills for investigating, packaging tools and writing guides:
+
+```sh
+claude plugin marketplace add OTInstaller/agent-plugin
+claude plugin install otinstaller@otinstaller
+```
+
+It needs `ot` on your PATH. Its source is [OTInstaller/agent-plugin](https://github.com/OTInstaller/agent-plugin).
+
 `ot mcp install <client> --print` shows the configuration without writing it. Other settings in those files are kept.
 
 Runs are saved under `<ot home>/results` (`%APPDATA%\ot\results` on Windows, `~/.ot/results` elsewhere), or `OT_RESULTS_DIR`.

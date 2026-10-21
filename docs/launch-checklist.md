@@ -187,10 +187,11 @@ with "Filename too long"; use a short path or `git config core.longpaths true`.
 
         This keeps D1 reads in check if someone scripts `/mcp` or the search filters. If one rule isn't enough, a
         Workers rate-limiting binding in `/mcp` can follow.
-      - **Next:** create `OTInstaller/agent-plugin` and publish the plugin, publish both MCP Registry
-        entries (the release's `server.json` and `integrations/mcp-registry/server.json`), and add the `.mcpb`
-        download to `/docs/agents` ([publishing-setup.md](publishing-setup.md) sections 10 and 12). Each directory
-        and marketplace submission needs your OK.
+      - **Plugin:** [OTInstaller/agent-plugin](https://github.com/OTInstaller/agent-plugin) is public with v0.1.0
+        (21 Oct), and `/docs/agents` gives its install commands and the one-click `.mcpb` download for Claude Desktop.
+      - **Next:** publish both MCP Registry entries (the release's `server.json` and
+        `integrations/mcp-registry/server.json`; [publishing-setup.md](publishing-setup.md) section 10). Each
+        directory and marketplace submission needs your OK.
       - Try `ot mcp` and the remote server in a real client.
 - [ ] Resubmit the sitemap in Google Search Console (crawlers saw 404s and 500s on 21 Oct).
 - [ ] On-call rota for launch week; launch posts (plan, week 13). Drafts and templates in [launch/](launch/README.md)
