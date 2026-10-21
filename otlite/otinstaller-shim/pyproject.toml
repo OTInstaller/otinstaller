@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# The old name of otlite on PyPI. This release only depends on otlite and keeps an `otinstaller`
+# command, so `pip install -U otinstaller` and existing scripts keep working.
+[project]
+name = "otinstaller"
+version = "0.2.0"
+description = "Renamed to otlite. This package installs otlite and keeps the otinstaller command."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [{name = "otlite contributors"}]
+keywords = ["otlite", "otinstaller"]
+classifiers = [
+    "Development Status :: 7 - Inactive",
+    "Environment :: Console",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+]
+dependencies = ["otlite>=1.0.0,<2"]
+
+[project.urls]
+Homepage = "https://otinstaller.com/docs/otlite"
+Repository = "https://github.com/OTInstaller/otinstaller"
+Changelog = "https://github.com/OTInstaller/otinstaller/blob/main/otlite/CHANGELOG.md"
+
+[project.scripts]
+otinstaller = "otinstaller:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/otinstaller"]
