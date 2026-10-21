@@ -55,8 +55,8 @@ an incident). Contact details: {link to the private contact sheet}.
 - [ ] Signed in to https://otinstaller.com/admin with the right role; GitHub 2FA on.
 - [ ] Engineers: `npx wrangler whoami` shows the OTInstaller Cloudflare account; access to Sentry and Resend; can run
       `gh run list -R OTInstaller/registry-ops`.
-- [ ] Mail to support@, abuse@, privacy@ and security@otinstaller.com reaches someone (on 21 Oct the domain had no MX
-      record; see the launch checklist).
+- [x] Mail to support@, privacy@, abuse@, security@, legal@ and dmca@otinstaller.com forwards to hi@osintverse.com
+      (set up and tested 21 Oct). Whoever reads that inbox during launch week must watch for these.
 - [ ] Email notifications are being delivered (Resend key fixed; check below).
 - [ ] Everyone has read this page and the [takedown policy](https://otinstaller.com/policy/takedown).
 - [ ] A shared chat channel for the rota, and this page pinned in it.
