@@ -15,6 +15,7 @@ import { guideRoutes } from "./routes/guides";
 import { trustRoutes } from "./routes/trust";
 import { transferRoutes } from "./routes/transfers";
 import { opsRoutes } from "./routes/ops";
+import { betaRoutes } from "./routes/beta";
 import { alertStuckJobs, dailyDigest, purgeRateLimits, reportError } from "./ops";
 import { queueNightlyLinkChecks } from "./guides";
 import { ulid } from "./lib/crypto";
@@ -56,6 +57,7 @@ guideRoutes(app);
 trustRoutes(app);
 transferRoutes(app);
 opsRoutes(app);
+betaRoutes(app);
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
