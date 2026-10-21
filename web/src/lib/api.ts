@@ -78,6 +78,10 @@ export interface ToolSummary {
   format?: string | null;
   language?: string;
   needs_update?: boolean;
+  /** The latest version's ethics flags (added with the agent work; older API responses omit them). */
+  ethics?: { touches_target: boolean; auth_required: boolean; collects_personal_data: boolean };
+  /** Whether the latest version's runs have network access. */
+  egress?: boolean;
 }
 
 export interface Manifest {
@@ -95,8 +99,12 @@ export interface Manifest {
   secrets?: { name: string; required: boolean; description?: string; url?: string }[];
   network?: { egress?: boolean; domains?: string[] };
   ethics?: { touches_target: boolean; auth_required: boolean; collects_personal_data: boolean };
-  test?: { input: Record<string, unknown> };
+  readme?: string;
+  test?: { input: Record<string, unknown>; expect_exit_code?: number };
   docs?: { root: string; nav: string[] };
+  /** Guides only: their pages. */
+  content?: { root: string; nav: string[] };
+  kind?: "tool" | "guide";
   title?: string;
   related_tools?: string[];
 }
@@ -167,6 +175,8 @@ export interface Types {
   inputs: string[];
   outputs: string[];
   categories: string[];
+  /** Which input types each entity type can feed (spec/pivots.json); older API responses omit it. */
+  pivots?: Record<string, { input: string; attr?: string; transform?: string }[]>;
 }
 
 export interface SearchResult {

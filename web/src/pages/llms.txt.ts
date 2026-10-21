@@ -1,10 +1,10 @@
 // /llms.txt (llmstxt.org): a map of the docs, schemas, policies and the most-installed tools and guides for agents.
 import type { APIRoute } from "astro";
-import { api, SITE_URL, type SearchResult } from "../lib/api";
+import { api, API_URL, SITE_URL, type SearchResult } from "../lib/api";
 import { cacheControl } from "../lib/page";
 import { DOC_PAGES, POLICY_PAGES, markdownUrl, type MarkdownPage } from "../lib/markdown";
 
-const START = ["getting-started", "agents", "mcp-tools", "cli", "automation", "results", "errors"];
+const START = ["getting-started", "agents", "mcp-tools", "cli", "automation", "results", "errors", "api"];
 
 const link = (page: MarkdownPage) => `- [${page.title}](${markdownUrl(page)})${page.description ? `: ${page.description}` : ""}`;
 
@@ -24,12 +24,14 @@ export const GET: APIRoute = async () => {
   const sections: string[] = [
     "# OTInstaller",
     `> OTInstaller is a free, public registry of OSINT tools and investigation guides. Its command-line tool, \`ot\`, installs digest-pinned, signature-verified tools and runs them on your own machine in a locked-down container. Use it only for lawful investigation; see the [acceptable use policy](${SITE_URL}/policy/acceptable-use.md).`,
-    "Every docs and policy page is also available as Markdown: add `.md` to its URL, or send `Accept: text/markdown`.",
+    "Every docs, policy, tool and guide page is also available as Markdown: add `.md` to its URL (`/<namespace>/<name>.md` for a tool, `/guides/<namespace>/<name>/<page>.md` for a guide page), or send `Accept: text/markdown`.",
     `## Start here\n\n${start.map(link).join("\n")}`,
     `## Docs\n\n${rest.map(link).join("\n")}`,
     [
-      "## Schemas",
+      "## API and schemas",
       "",
+      `- [OpenAPI](${API_URL}/v1/openapi.json): OpenAPI 3.1 description of the registry API`,
+      `- [Types and pivot map](${API_URL}/v1/types): input types, entity types, and which input types each entity type can feed`,
       `- [Manifest](${SITE_URL}/schema/v1.json): JSON Schema for otinstaller.yaml`,
       `- [Result envelope](${SITE_URL}/schema/envelope-v1.json): JSON Schema for the output of \`ot run --format json\``,
       `- [Run-all summary](${SITE_URL}/schema/run-all-v1.json): JSON Schema for the summary of \`ot run --all\`, \`ot playbook\` and \`ot auto\``,
@@ -37,8 +39,8 @@ export const GET: APIRoute = async () => {
     ].join("\n"),
     `## Policies\n\n${POLICY_PAGES.map(link).join("\n")}`,
   ];
-  if (tools?.length) sections.push(`## Popular tools\n\n${tools.map((t) => `- [${t.namespace}/${t.name}](${SITE_URL}/${t.namespace}/${t.name}): ${t.summary}`).join("\n")}`);
-  if (guides?.length) sections.push(`## Guides\n\n${guides.map((g) => `- [${g.namespace}/${g.name}](${SITE_URL}/guides/${g.namespace}/${g.name}): ${g.title ? `${g.title}. ` : ""}${g.summary}`).join("\n")}`);
+  if (tools?.length) sections.push(`## Popular tools\n\n${tools.map((t) => `- [${t.namespace}/${t.name}](${SITE_URL}/${t.namespace}/${t.name}.md): ${t.summary}`).join("\n")}`);
+  if (guides?.length) sections.push(`## Guides\n\n${guides.map((g) => `- [${g.namespace}/${g.name}](${SITE_URL}/guides/${g.namespace}/${g.name}.md): ${g.title ? `${g.title}. ` : ""}${g.summary}`).join("\n")}`);
   sections.push(
     [
       "## Optional",
