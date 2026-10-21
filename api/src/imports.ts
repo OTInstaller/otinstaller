@@ -742,7 +742,7 @@ function changeBody(env: Env, provider: Provider, draft: Record<string, unknown>
   const steps = provider === "github"
     ? ["Merge this pull request.", `Run the **otinstaller release** workflow from the Actions tab with the version to release. ${does}`]
     : ["In Settings > CI/CD > Job token permissions, turn on **Allow Git push requests to the repository**, so the pipeline can push the release commit and tag. (Or set the CI/CD variable `RELEASE_TOKEN` to a token with `write_repository`.)", "Merge this merge request.",
-      `Run a pipeline manually with the variable \`VERSION\` set to the version to release. ${does}`];
+      `To release, set \`version:\` in \`otinstaller.yaml\` and commit, then run a pipeline from **Build > Pipelines > Run pipeline**. ${does}`];
   if (guide) steps.push(`Or push a tag such as \`v${draft.version}\` yourself, matching \`version:\` in otinstaller.yaml.`);
   steps.push("The tag publishes that version to the registry. A new publisher's first release is checked by a reviewer before it goes public.");
   return [
