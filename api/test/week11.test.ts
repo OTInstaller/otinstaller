@@ -4,7 +4,7 @@ import { sha256Hex, toHex, ulid } from "../src/lib/crypto";
 import { presignSigV4 } from "../src/lib/presign";
 import { deleteImage, hideImage, mirrorFetch, type MirrorEnv } from "../src/mirror/registry";
 import {
-  completeRun, expireDrills, KEEP_WEEKLY, osiApproved, purgeBackups, releasePlan, startDrill, TAKEDOWN_GRACE, weeklyBackups, type BackupPlan,
+  backfillBackups, completeRun, expireDrills, KEEP_WEEKLY, osiApproved, purgeBackups, releasePlan, startDrill, TAKEDOWN_GRACE, weeklyBackups, type BackupPlan,
 } from "../src/backups";
 import { publishVersion } from "../src/scans";
 import { handleBatch } from "../src/publish";
@@ -412,6 +412,36 @@ describe("backups after a passing scan", () => {
 });
 
 // ---------- weekly ----------
+
+describe("backfill", () => {
+  it("backs up published versions that have no image or wheel backup, once a day each", async () => {
+    // Clear what other tests left so this run only sees its own packages.
+    await DB().prepare(`UPDATE versions SET status = 'yanked' WHERE status = 'published' AND id NOT IN (SELECT version_id FROM backups WHERE version_id IS NOT NULL)`).run();
+    await DB().prepare(`UPDATE versions SET status = 'removed' WHERE status = 'yanked' AND id NOT IN (SELECT version_id FROM backups WHERE version_id IS NOT NULL)`).run();
+    const owner = await person();
+    const ns = await namespace(owner);
+    const old = await pkg(ns);
+    const wheel = await pkg(ns, { pipx: true });
+    const done = await pkg(ns);
+    await runPlan((await releasePlan(env as any, done.versionId))!, { image: { status: "too_large", size_bytes: 3 * 1024 ** 3 } });
+    dispatches.length = 0;
+
+    expect(await backfillBackups(await testEnv(), Date.now(), 10)).toBe(2);
+    const jobs = dispatches.flatMap((d) => d.client_payload.backup.jobs) as BackupPlan[];
+    expect(jobs.map((j) => j.ref).sort()).toEqual([old.ref, wheel.ref].sort());
+    expect(jobs.find((j) => j.ref === wheel.ref)!.items.map((i) => i.kind).sort()).toEqual(["git", "wheel"]);
+    // Jobs in flight (or failed in the last day) are not sent again.
+    expect(await backfillBackups(await testEnv(), Date.now(), 10)).toBe(0);
+    await DB().prepare(`UPDATE backups SET status = 'failed' WHERE version_id = ?`).bind(old.versionId).run();
+    // A day later a failed backup is retried; one still in progress is not.
+    dispatches.length = 0;
+    await backfillBackups(await testEnv(), Date.now() + 2 * 86_400_000, 50);
+    const retried = dispatches.flatMap((d) => d.client_payload.backup.jobs.map((j: BackupPlan) => j.ref));
+    expect(retried).toContain(old.ref);
+    expect(retried).not.toContain(wheel.ref);
+    expect(retried).not.toContain(done.ref);
+  });
+});
 
 describe("weekly git backups", () => {
   it("dispatches a bundle job for every active public source and keeps the last 4 weekly bundles", async () => {
