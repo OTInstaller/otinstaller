@@ -22,6 +22,7 @@ import { overLimit } from "./trust";
 import { pollDueSources } from "./sync";
 import { expireStaleScans } from "./scans";
 import { handleBatch } from "./publish";
+import { edgeCached } from "./edge-cache";
 
 export type { Env } from "./env";
 
@@ -367,7 +368,7 @@ app.post("/installs", async (c) => {
 });
 
 export default {
-  fetch: app.fetch,
+  fetch: (req: Request, env: Env, ctx: ExecutionContext) => edgeCached(req, env, ctx, async () => app.fetch(req, env, ctx)),
   queue: (batch: MessageBatch<PublishMessage>, env: Env) => handleBatch(batch, env),
   async scheduled(event: ScheduledController, env: Env) {
     // Every 15 minutes: close scans that never reported back, and poll sources that are due.
