@@ -32,11 +32,7 @@ func (a *App) feedbackCmd() *cobra.Command {
 			}
 			if message == "" {
 				u := strings.TrimRight(a.Config.SiteURL, "/") + "/feedback"
-				fmt.Fprintf(a.Out, "Opening %s\n", u)
-				if err := a.OpenURL(u); err != nil {
-					fmt.Fprintf(a.Err, "could not open a browser (%v); open the link yourself, or run ot feedback \"your message\"\n", err)
-				}
-				return nil
+				return a.openLink(u, "open the link yourself, or run ot feedback \"your message\"")
 			}
 			switch kind {
 			case "bug", "idea", "question", "other":
@@ -47,6 +43,9 @@ func (a *App) feedbackCmd() *cobra.Command {
 			r, err := a.API.Feedback(cmd.Context(), kind, message, email, about, client)
 			if err != nil {
 				return a.requestError(err)
+			}
+			if a.jsonMode() {
+				return writeJSON(a.Out, r)
 			}
 			fmt.Fprintf(a.Out, "Feedback %s sent. %s\n", r.ID, r.Note)
 			return nil

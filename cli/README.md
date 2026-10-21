@@ -15,6 +15,9 @@ ot search email
 ot run osintverse-community/holehe e:someone@example.com
 ```
 
+For scripts, CI and AI agents: `--json` (or `OT_OUTPUT=json`) gives JSON output and one-line JSON errors on stderr, and
+`ot` never prompts without a terminal. See https://otinstaller.com/docs/automation.
+
 Docs: https://otinstaller.com/docs/getting-started · CLI reference: https://otinstaller.com/docs/cli ·
 Bugs and ideas: https://github.com/OTInstaller/feedback/issues
 

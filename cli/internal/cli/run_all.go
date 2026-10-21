@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"sync"
 	"text/tabwriter"
 
+	"github.com/otinstaller/otinstaller/cli/internal/envelope"
 	"github.com/otinstaller/otinstaller/cli/internal/results"
 	"github.com/otinstaller/otinstaller/cli/internal/runner"
 	"github.com/otinstaller/otinstaller/cli/internal/state"
@@ -16,14 +18,36 @@ import (
 
 // allResult is one row of the `ot run --all` summary.
 type allResult struct {
-	Tool       string `json:"tool"`
-	Version    string `json:"version"`
-	Status     string `json:"status"` // a results status, "skipped" or "error"
-	ExitCode   *int   `json:"exit_code,omitempty"`
-	Entities   int    `json:"entities"`
-	OutputPath string `json:"output_path,omitempty"`
-	MetaPath   string `json:"meta_path,omitempty"`
-	Reason     string `json:"reason,omitempty"`
+	Tool     string `json:"tool"`
+	Version  string `json:"version"`
+	Status   string `json:"status"` // a results status, "skipped" or "error"
+	ExitCode *int   `json:"exit_code,omitempty"`
+	Entities int    `json:"entities"`
+	// TopEntities are the first entities found, without duplicates; all of them are in the sidecar.
+	TopEntities []envelope.Entity `json:"top_entities,omitempty"`
+	RunID       string            `json:"run_id,omitempty"`
+	OutputPath  string            `json:"output_path,omitempty"`
+	MetaPath    string            `json:"meta_path,omitempty"`
+	Reason      string            `json:"reason,omitempty"`
+}
+
+// topEntities is how many entities each summary row carries.
+const topEntities = 20
+
+func firstDistinct(ents []envelope.Entity, n int) []envelope.Entity {
+	var out []envelope.Entity
+	seen := map[string]bool{}
+	for _, e := range ents {
+		k := e.Type + "\x00" + e.Value
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		if out = append(out, e); len(out) == n {
+			break
+		}
+	}
+	return out
 }
 
 type allJob struct {
@@ -48,9 +72,12 @@ func (a *App) runAll(ctx context.Context, ra *runArgs, what string, selection []
 	if ra.NoSave {
 		return exitErr(ExitUsage, "%s always saves its runs; the summary only points at the saved files", what)
 	}
-	format := orDefault(ra.Format, "table")
-	if format != "table" && format != "json" {
-		return exitErr(ExitUsage, "%s prints a summary as table or json, not %q", what, format)
+	format := ra.Format
+	if format == "" {
+		format = map[bool]string{true: "json", false: "table"}[a.jsonMode()]
+	}
+	if format != "table" && format != "json" && format != "jsonl" {
+		return exitErr(ExitUsage, "%s prints a summary as table, json or jsonl, not %q", what, format)
 	}
 	candidates := selection
 	if selection == nil {
@@ -132,7 +159,21 @@ func (a *App) runAll(ctx context.Context, ra *runArgs, what string, selection []
 		for _, j := range jobs {
 			j.row.Status = "would run"
 		}
+		if format == "jsonl" {
+			for _, r := range rows {
+				a.writeLine(r)
+			}
+			return a.writeSummary(rows, nil)
+		}
 		return a.printAllRows(rows, format)
+	}
+	// jsonl streams: rows that won't run first, then each run as it finishes, then the summary.
+	if format == "jsonl" {
+		for _, r := range rows {
+			if r.Status != "" {
+				a.writeLine(r)
+			}
+		}
 	}
 	if format == "table" {
 		fmt.Fprintf(a.Err, "Running %d tools, %d at a time...\n", len(jobs), ra.Parallel)
@@ -144,6 +185,12 @@ func (a *App) runAll(ctx context.Context, ra *runArgs, what string, selection []
 	var progressMu sync.Mutex
 	done := 0
 	progress := func(row *allResult) {
+		if format == "jsonl" {
+			progressMu.Lock()
+			defer progressMu.Unlock()
+			a.writeLine(row)
+			return
+		}
 		if format != "table" {
 			return
 		}
@@ -171,6 +218,7 @@ func (a *App) runAll(ctx context.Context, ra *runArgs, what string, selection []
 			env, meta, err := a.execute(ctx, j.inst, j.values, j.secrets, j.target, ra, io.Discard)
 			if meta != nil {
 				j.row.Status, j.row.Entities = meta.Status, len(meta.Entities)
+				j.row.TopEntities, j.row.RunID = firstDistinct(meta.Entities, topEntities), meta.RunID
 				j.row.OutputPath = meta.OutputPath
 				j.row.MetaPath = meta.MetaPath
 				if meta.ExitCode >= 0 {
@@ -181,6 +229,7 @@ func (a *App) runAll(ctx context.Context, ra *runArgs, what string, selection []
 				// Saving failed after the run; execute already warned.
 				code := env.ExitCode
 				j.row.Status, j.row.ExitCode, j.row.Entities = results.StatusComplete, &code, len(env.Entities)
+				j.row.TopEntities, j.row.RunID = firstDistinct(env.Entities, topEntities), env.RunID
 				if code != 0 {
 					j.row.Status = results.StatusFailed
 				}
@@ -198,17 +247,49 @@ func (a *App) runAll(ctx context.Context, ra *runArgs, what string, selection []
 	}
 	wg.Wait()
 
-	if err := a.printAllRows(rows, format); err != nil {
+	err := allOutcome(ctx, rows)
+	if format == "jsonl" {
+		if werr := a.writeSummary(rows, err); werr != nil {
+			return werr
+		}
 		return err
 	}
+	if perr := a.printAllRows(rows, format); perr != nil {
+		return perr
+	}
+	return err
+}
+
+// allOutcome is the error (and so the exit code) for a batch: interrupted, or a tool error when any
+// run didn't complete.
+func allOutcome(ctx context.Context, rows []*allResult) error {
 	if ctx.Err() != nil {
 		return &ExitError{Code: ExitInterrupted}
 	}
 	for _, r := range rows {
-		if r.Status != results.StatusComplete && r.Status != "skipped" {
+		if r.Status != results.StatusComplete && r.Status != "skipped" && r.Status != "would run" {
 			return &ExitError{Code: ExitToolError}
 		}
 	}
+	return nil
+}
+
+// writeLine prints one compact JSON line, for -f jsonl.
+func (a *App) writeLine(v any) {
+	b, _ := json.Marshal(v)
+	fmt.Fprintln(a.Out, string(b))
+}
+
+// writeSummary ends a jsonl stream with the counts by status and the exit code ot returns.
+func (a *App) writeSummary(rows []*allResult, outcome error) error {
+	sum := map[string]int{"total": len(rows), "exit_code": ExitOK}
+	for _, r := range rows {
+		sum[r.Status]++
+	}
+	if outcome != nil {
+		sum["exit_code"] = ExitCodeFor(outcome)
+	}
+	a.writeLine(map[string]any{"summary": sum})
 	return nil
 }
 

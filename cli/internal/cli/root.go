@@ -37,6 +37,11 @@ const (
 type ExitError struct {
 	Code int
 	Err  error
+	// Reason is the error code in JSON errors (not_installed, input_required, ...). When empty, one is
+	// picked from Code.
+	Reason string
+	// Problems are listed in JSON errors, for errors about a manifest.
+	Problems []api.Problem
 }
 
 func (e *ExitError) Error() string {
@@ -65,6 +70,8 @@ type App struct {
 	// Updater and SelfPath let tests stand in for GitHub releases and the running binary.
 	Updater  *selfupdate.Updater
 	SelfPath string
+	// JSON is the global --json flag; jsonMode also honours OT_OUTPUT=json.
+	JSON bool
 }
 
 func NewApp() *App {
@@ -99,6 +106,7 @@ func (a *App) Root() *cobra.Command {
 			}
 		},
 	}
+	root.PersistentFlags().BoolVar(&a.JSON, "json", false, "print JSON (errors too, as one line on stderr); OT_OUTPUT=json sets it for every command")
 	root.SetOut(a.Out)
 	root.SetErr(a.Err)
 	root.AddCommand(
@@ -139,21 +147,36 @@ func (a *App) Root() *cobra.Command {
 
 // Main runs ot and returns the process exit code.
 func Main(args []string) int {
-	a := NewApp()
-	root := a.Root()
-	root.SetArgs(args)
 	// Ctrl-C cancels the context, so a running tool's container is stopped and its partial output saved.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+	return NewApp().Execute(ctx, args)
+}
+
+// Execute runs one ot command line, prints its error (as JSON when JSON output is on) and returns the
+// exit code.
+func (a *App) Execute(ctx context.Context, args []string) int {
+	root := a.Root()
+	root.SetArgs(args)
 	err := root.ExecuteContext(ctx)
 	if err == nil {
 		return ExitOK
 	}
+	err = cobraUsage(err)
 	code := ExitCodeFor(err)
 	if msg := err.Error(); msg != "" {
-		fmt.Fprintln(a.Err, "error:", msg)
+		if a.jsonMode() || jsonRequested(args) {
+			writeJSONError(a.Err, err, code)
+		} else {
+			fmt.Fprintln(a.Err, "error:", msg)
+		}
 	}
 	return code
+}
+
+// jsonMode reports whether commands print JSON: --json, or OT_OUTPUT=json for a whole session.
+func (a *App) jsonMode() bool {
+	return a.JSON || os.Getenv("OT_OUTPUT") == "json"
 }
 
 // ExitCodeFor maps errors from any layer to the documented exit codes.

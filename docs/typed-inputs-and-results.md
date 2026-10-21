@@ -92,6 +92,9 @@ Python's fields, with the same names and meaning, plus the envelope's:
 - `status`: `complete` (exit 0), `failed` (non-zero exit), `timeout` or `interrupted`. For the last two `exit_code` is
   `-1` and there are no entities.
 - `sha256` and `bytes` describe the output file.
+- `run_id`, `ot_version`, `client` (`cli`, or `ci` when the `CI` variable is set) and `artifact` (`kind`, `ref` pinned
+  by digest or wheel hash, `signer` when the signature was verified, `from_backup`) are the envelope's provenance
+  fields, so a saved run says exactly what ran. They were added later; older sidecars don't have them.
 
 A `ot run` that is saved prints `Saved <path>` on stderr, so stdout stays the envelope and pipes keep working.
 
@@ -104,8 +107,10 @@ with the reason.
 
 Each run is saved as above (`--no-save` is refused, since the summary is the only other output). Tool stderr goes to
 the `.stderr.txt` file instead of the terminal, where parallel runs would interleave. stdout gets a summary table (tool,
-status, entities, saved file), or with `--format json` the same as a JSON array. The exit code is 0 when every run
-completed and 1 otherwise.
+status, entities, saved file), or with `--format json` the same as a JSON array; each row also carries `run_id` and up
+to 20 `top_entities`. `--format jsonl` streams instead: one row per line, skipped tools first and then each run as it
+finishes, then a `{"summary": {...}}` line with counts by status and the exit code. The exit code is 0 when every run
+completed and 1 otherwise. The shapes are in `spec/schema/run-all-v1.json`.
 
 ## `ot playbook`
 

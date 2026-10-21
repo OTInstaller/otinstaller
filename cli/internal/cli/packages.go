@@ -47,7 +47,6 @@ func parseRef(s string) (pkgRef, error) {
 
 func (a *App) searchCmd() *cobra.Command {
 	var p api.SearchParams
-	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "search [query]",
 		Short: "Search the registry",
@@ -58,9 +57,9 @@ func (a *App) searchCmd() *cobra.Command {
 			}
 			res, err := a.API.Search(cmd.Context(), p)
 			if err != nil {
-				return err
+				return a.requestError(err)
 			}
-			if asJSON {
+			if a.jsonMode() {
 				return writeJSON(a.Out, res)
 			}
 			if len(res.Results) == 0 {
@@ -84,7 +83,6 @@ func (a *App) searchCmd() *cobra.Command {
 	f.StringVar(&p.Kind, "kind", "", "tool or guide")
 	f.BoolVar(&p.NoKeys, "no-keys", false, "only packages that need no API keys")
 	f.IntVar(&p.Limit, "limit", 25, "maximum results")
-	f.BoolVar(&asJSON, "json", false, "print JSON")
 	return cmd
 }
 
@@ -113,7 +111,6 @@ func truncate(s string, n int) string {
 }
 
 func (a *App) infoCmd() *cobra.Command {
-	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "info <namespace/name>",
 		Short: "Show a package's inputs, keys, ethics flags and trust status",
@@ -131,20 +128,19 @@ func (a *App) infoCmd() *cobra.Command {
 				}
 			} else {
 				if t, err = a.API.Tool(cmd.Context(), ref.NS, ref.Name); err != nil {
-					return err
+					return a.requestError(err)
 				}
 				if _, m, err = manifest.ParseJSON(t.Manifest); err != nil {
 					return err
 				}
 			}
-			if asJSON {
+			if a.jsonMode() {
 				return writeJSON(a.Out, map[string]any{"registry": t, "manifest": m})
 			}
 			printInfo(a.Out, m, t)
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&asJSON, "json", false, "print JSON")
 	return cmd
 }
 
@@ -232,8 +228,11 @@ func (a *App) installCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			_, err = a.install(cmd.Context(), ref, native)
-			return err
+			inst, err := a.install(cmd.Context(), ref, native)
+			if err != nil || !a.jsonMode() {
+				return err
+			}
+			return writeJSON(a.Out, recordOf(inst))
 		},
 	}
 	cmd.Flags().BoolVar(&native, "native", false, "install pipx tools on the host instead of in a container")
@@ -344,6 +343,13 @@ func (a *App) listCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if a.jsonMode() {
+				recs := []installRecord{}
+				for _, i := range st.Sorted() {
+					recs = append(recs, recordOf(i))
+				}
+				return writeJSON(a.Out, recs)
+			}
 			if len(st.Installed) == 0 {
 				fmt.Fprintln(a.Out, "Nothing installed yet. Try `ot search`.")
 				return nil
@@ -381,10 +387,29 @@ func (a *App) uninstallCmd() *cobra.Command {
 			if err := st.Save(); err != nil {
 				return err
 			}
+			if a.jsonMode() {
+				return writeJSON(a.Out, map[string]any{"ref": inst.Ref, "version": inst.Version, "uninstalled": true})
+			}
 			fmt.Fprintf(a.Out, "Uninstalled %s.\n", args[0])
 			return nil
 		},
 	}
+}
+
+// installRecord is an installed package in `ot install --json` and `ot list --json`.
+type installRecord struct {
+	Ref         string    `json:"ref"`
+	Version     string    `json:"version"`
+	Runtime     string    `json:"runtime"`
+	Native      bool      `json:"native"`
+	Artifact    string    `json:"artifact"`
+	Signer      string    `json:"signer,omitempty"`
+	FromBackup  bool      `json:"from_backup"`
+	InstalledAt time.Time `json:"installed_at"`
+}
+
+func recordOf(i *state.Installed) installRecord {
+	return installRecord{i.Ref, i.Version, i.Runtime, i.Native, i.Artifact, i.Signer, i.FromBackup, i.InstalledAt}
 }
 
 func writeJSON(w io.Writer, v any) error {
