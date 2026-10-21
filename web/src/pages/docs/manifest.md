@@ -63,7 +63,7 @@ A Python tool replaces `runtime` with `kind: pipx`, `package`, `package_version`
 | `runtime.output_format` | Tools | `json`, `jsonl`, `csv` or `text` |
 | `runtime.timeout_seconds` | No | Default 300, at most 3600 |
 | `secrets` | No | API keys the tool reads from its environment: `name` (`UPPER_CASE`), `required`, `description`, `url` |
-| `network` | No | `egress` and the `domains` it talks to (shown on the tool page) |
+| `network` | No | `egress` and the `domains` it talks to (shown on the tool page). Tools run with no network unless `egress` is `true` |
 | `ethics` | Tools | `touches_target`, `auth_required`, `collects_personal_data`: shown on the tool page |
 | `test.input` | Recommended | Safe example values for the smoke test and nightly health checks |
 | `docs` | No | `root` folder and `nav` list of Markdown pages for the tool's Docs tab |

@@ -93,6 +93,14 @@ func TestContainerArgsSandbox(t *testing.T) {
 	if !strings.Contains(strings.Join(ContainerArgs(m, "ot-x", "img", []string{"x"}, nil, ""), " "), "--network none") {
 		t.Error("egress: false must disable the network")
 	}
+	m.Network = &manifest.Network{}
+	if !strings.Contains(strings.Join(ContainerArgs(m, "ot-x", "img", []string{"x"}, nil, ""), " "), "--network none") {
+		t.Error("a network block without egress must disable the network")
+	}
+	m.Network = nil
+	if !strings.Contains(strings.Join(ContainerArgs(m, "ot-x", "img", []string{"x"}, nil, ""), " "), "--network none") {
+		t.Error("a manifest without a network block must disable the network")
+	}
 }
 
 // fakeExec records calls and prints canned output for `docker run`.

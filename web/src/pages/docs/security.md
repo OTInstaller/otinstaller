@@ -20,6 +20,7 @@ Each tool's **Security** tab shows the results for every version.
 
 - `ot` checks the image signature against the identity recorded at publish and refuses a mismatch.
 - Containers run read-only, with all capabilities dropped, no new privileges, a non-root user, a process limit, 1 GB of memory and 2 CPUs. No host folders are mounted.
+- Containers have no network unless the manifest declares `network.egress: true`.
 - Input values are passed as separate arguments, never through a shell.
 - API keys come from your OS keychain and are passed to that container only.
 - Removed versions are refused with the reason.

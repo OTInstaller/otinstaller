@@ -245,7 +245,8 @@ documented to users; don't repurpose them.
   it downloads `wheel_url` and checks the same SHA-256. Network errors never trigger a fallback. Tests are in
   `runner/backup_test.go`.
 - Containers run with `--read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges --pids-limit 256
-  --memory 1g --cpus 2 --user 65534:65534`, and `--network none` unless the manifest says `egress: true`.
+  --memory 1g --cpus 2 --user 65534:65534`, and `--network none` unless the manifest says `network.egress: true`
+  (no `network` block, or no `egress` in it, means offline, as in the scanner's smoke test).
 - Secrets are passed as `-e NAME` with the value only in the child process environment, so they never appear in argv,
   in `.meta.json` or in logs.
 - Sandboxed pipx tools are built into `ot-local/<ns>-<name>:<version>` on `python:3.12-slim` with `WORKDIR /tmp` (the only
