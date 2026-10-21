@@ -101,10 +101,11 @@ func run(version, dist, out, releaseURL, license string) error {
 	}
 	sort.Slice(packages, func(i, j int) bool { return packages[i]["identifier"].(string) < packages[j]["identifier"].(string) })
 	server := map[string]any{
-		"$schema":     "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-		"name":        "com.otinstaller/ot",
-		"title":       "OTInstaller",
-		"description": "Search, install and run open-source OSINT tools on your machine, in a sandbox, asking you before runs that touch a target.",
+		"$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+		"name":    "com.otinstaller/ot",
+		"title":   "OTInstaller",
+		// The registry refuses descriptions over 100 characters.
+		"description": "Install and run open-source OSINT tools in a local sandbox, asking before runs that touch a target.",
 		"version":     version,
 		"websiteUrl":  "https://otinstaller.com/docs/agents",
 		"repository":  map[string]string{"url": "https://github.com/OTInstaller/otinstaller", "source": "github", "subfolder": "cli"},
