@@ -32,7 +32,13 @@ jobs:
       - name: Put the public key in the install scripts
         env:
           OT_RELEASE_PUBLIC_KEY: ${{ vars.OT_RELEASE_PUBLIC_KEY }}
-        run: sed -i "s|__OT_RELEASE_PUBLIC_KEY__|${OT_RELEASE_PUBLIC_KEY}|" scripts/install/install.sh scripts/install/install.ps1
+        # Written to dist/install (ignored by git): GoReleaser refuses to release from a checkout with modified files.
+        run: |
+          mkdir -p dist/install
+          for s in install.sh install.ps1; do
+            sed "s|__OT_RELEASE_PUBLIC_KEY__|${OT_RELEASE_PUBLIC_KEY}|" "scripts/install/$s" > "dist/install/$s"
+          done
+          grep -q "__OT_RELEASE_PUBLIC_KEY__" dist/install/* && { echo "::error::OT_RELEASE_PUBLIC_KEY is not set"; exit 1; } || true
       - uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
