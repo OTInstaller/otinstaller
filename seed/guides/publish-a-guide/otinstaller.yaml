@@ -3,12 +3,12 @@
 schema: 1
 kind: guide
 name: publish-a-guide
-namespace: osintverse
+namespace: osintverse-community
 version: 1.0.0
 title: "Publish a guide"
 summary: "Write, check and release a Markdown guide on the OTInstaller Registry"
 license: CC-BY-4.0
-homepage: https://github.com/osintverse/publish-a-guide
+homepage: https://github.com/osintverse-community/publish-a-guide
 categories: [utilities]
 level: beginner
 format: reference

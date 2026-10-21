@@ -19,7 +19,7 @@ ot run osintverse-community/cdncheck --target 1.1.1.1
 
 If it is a CDN, WAF or cloud provider, the IP tells you about the provider, not the site behind it. Pivot back to
 the domain instead (historical DNS, certificates); see the
-[domain playbook](https://otinstaller.com/guides/osintverse/domain-investigation).
+[domain playbook](https://otinstaller.com/guides/osintverse-community/domain-investigation).
 
 > [!TIP]
 > Hosting providers that sell small VPSs (DigitalOcean, OVH, Hetzner, Vultr and others) are common for both

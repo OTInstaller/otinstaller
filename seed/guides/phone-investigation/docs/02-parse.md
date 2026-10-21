@@ -4,8 +4,8 @@ Normalise the number first. People write the same number many ways, and every la
 international E.164 form (`+12025550123`).
 
 ```
-ot run osintverse/phone-parse --phone "+1 202-555-0123"
-ot run osintverse/phone-parse --phone "(202) 555-0123" --region US
+ot run osintverse-community/phone-parse --phone "+1 202-555-0123"
+ot run osintverse-community/phone-parse --phone "(202) 555-0123" --region US
 ```
 
 Use `--region` for numbers written without a country code. The tool runs offline on Google's libphonenumber data and

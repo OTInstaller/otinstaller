@@ -38,4 +38,4 @@ version and, if needed, yank the old one with `ot yank your-name/your-tool@0.1.0
 
 > [!TIP]
 > Add a Docs tab to your package with a `docs:` section in the manifest. See
-> [Publish a guide](https://otinstaller.com/guides/osintverse/publish-a-guide), which uses the same Markdown rules.
+> [Publish a guide](https://otinstaller.com/guides/osintverse-community/publish-a-guide), which uses the same Markdown rules.

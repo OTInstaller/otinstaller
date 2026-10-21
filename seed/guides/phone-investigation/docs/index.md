@@ -9,11 +9,11 @@ type, and often the accounts registered with it.
 2. [Parse the number](02-parse.md)
 3. [Accounts and mentions](03-accounts-and-mentions.md)
 
-**Tools used** (`ot guide tools osintverse/phone-investigation`):
+**Tools used** (`ot guide tools osintverse-community/phone-investigation`):
 
 | Tool | Used for |
 | --- | --- |
-| [osintverse/phone-parse](https://otinstaller.com/osintverse/phone-parse) | Validity, formats, region, original carrier, line type, time zones (offline) |
+| [osintverse-community/phone-parse](https://otinstaller.com/osintverse-community/phone-parse) | Validity, formats, region, original carrier, line type, time zones (offline) |
 | [osintverse-community/phoneinfoga](https://otinstaller.com/osintverse-community/phoneinfoga) | Number scan and search links for where it appears |
 | [osintverse-community/ignorant](https://otinstaller.com/osintverse-community/ignorant) | Accounts registered with the number |
 

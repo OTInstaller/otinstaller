@@ -5,7 +5,7 @@ for this purpose.
 
 ```
 ot run osintverse-community/checkdmarc --domain example.com
-ot run osintverse/dns-records --domain example.com --types MX,TXT,NS
+ot run osintverse-community/dns-records --domain example.com --types MX,TXT,NS
 ```
 
 Read the results with these questions:
@@ -17,7 +17,7 @@ Read the results with these questions:
 - **What else does the domain run?** TXT records often hold verification tokens for Google Workspace, Microsoft 365,
   Atlassian, Facebook and others, which tells you which services the organisation uses.
 - **Is it new or a look-alike?** A domain registered last week, or one letter away from a real brand, is a phishing
-  sign. Check with the [domain investigation playbook](https://otinstaller.com/guides/osintverse/domain-investigation),
+  sign. Check with the [domain investigation playbook](https://otinstaller.com/guides/osintverse-community/domain-investigation),
   which covers registration history and look-alikes with `dnstwist`.
 
 Next: [find registered accounts](04-accounts.md).
