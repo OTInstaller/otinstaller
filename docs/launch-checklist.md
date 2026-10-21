@@ -151,6 +151,18 @@ with "Filename too long"; use a short path or `git config core.longpaths true`.
            --remote`.
         2. Deploy the API from `main` (`npx wrangler deploy` in `api/`). Then check `/v1/health`, a search,
            `/v1/openapi.json`, an `ETag` on a read, `POST /mcp` `tools/list`, and that `ot` v0.12.1 still installs a tool.
+      - **Stage 1 done 21 Oct.** Migration 0013 was applied at about 16:20 UTC, and the API was deployed from `main` as
+        version `f3d0d90b` (previous `9a497a34`, for `wrangler rollback`). The checks passed:
+        - `/v1/health`, search, `passive_only` (6 tools, all passive) and `/v1/pivots`
+        - `/v1/openapi.json` (3.1.0, 59 paths)
+        - ETags with `304` on fresh responses
+        - `/mcp` `tools/list` and `get_tool`
+        - a bad token answers 401, not 500
+        - `ot` v0.12.1 `info`, `search` and `install` read the new API (the install stopped only because Docker
+          wasn't running)
+
+        `/v1/types` is still the copy cached before the deploy (`max-age=86400`, no `ETag` and no pivot map) until
+        about 10:00 UTC on 22 Oct.
       - **Stage 2,** once stage 1 has run cleanly for a while: push the `v0.13.0` tag to release `ot`, then deploy the
         site straight after (its docs describe `ot mcp` and `/mcp`, and `ot` links to the site's `.md` pages).
       - **(you) Rate-limit rule, before stage 2.** In the Cloudflare dashboard, open the otinstaller.com zone, then
