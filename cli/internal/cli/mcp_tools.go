@@ -88,6 +88,17 @@ type typesOut struct {
 	Descriptions specfiles.TypeDescriptions `json:"descriptions"`
 }
 
+type keySetupIn struct {
+	Tools []string `json:"tools,omitempty" jsonschema:"the tools, as namespace/name; all installed tools when empty"`
+}
+
+type keySetupOut struct {
+	Keys    []keyGuide `json:"keys"`
+	Missing []string   `json:"missing,omitempty" jsonschema:"keys that are not set yet"`
+	Command string     `json:"command" jsonschema:"what the person runs in their own terminal to set the keys up"`
+	Note    string     `json:"note"`
+}
+
 type pivotsIn struct {
 	RunID    string            `json:"run_id,omitempty" jsonschema:"take the entities from this saved run"`
 	Entities []envelope.Entity `json:"entities,omitempty" jsonschema:"or give entities directly, as {type, value, attrs}"`
@@ -267,6 +278,23 @@ func (s *mcpServer) addReadTools() {
 		func(ctx context.Context, _ struct{}) (*typesOut, error) {
 			in, out := manifest.Types()
 			return &typesOut{InputTypes: in, EntityTypes: out, Pivots: specfiles.Pivots, Descriptions: specfiles.Types}, nil
+		})
+	readTool(s, "key_setup", "Help the person set up API keys",
+		"The API keys the named tools (or all installed tools) declare: what each is, where to get it, what it costs, whether it is set, and the command the person runs in their own terminal to store it. You can't store keys: show the person the command, and never ask them for a key's value.",
+		func(ctx context.Context, in keySetupIn) (*keySetupOut, error) {
+			guides, err := a.keyGuides(ctx, in.Tools)
+			if err != nil {
+				return nil, err
+			}
+			out := &keySetupOut{Keys: guides, Command: "ot keys setup " + strings.Join(in.Tools, " "),
+				Note: "The person runs the command in their own terminal: it explains each key, offers to open its sign-up page, and asks for the value with typing hidden. Don't ask for or repeat a key's value. In CI, set an environment variable of the same name instead."}
+			out.Command = strings.TrimSpace(out.Command)
+			for _, g := range guides {
+				if !g.Set {
+					out.Missing = append(out.Missing, g.Name)
+				}
+			}
+			return out, nil
 		})
 	readTool(s, "suggest_pivots", "Suggest next runs",
 		"Given a saved run (or entities), list what to look at next: each entity worth pivoting on, the input type it fits, and the installed tools (and optionally registry tools) that take it. Runs nothing.",
