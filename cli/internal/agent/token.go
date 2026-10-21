@@ -48,10 +48,13 @@ func sign(s string) string {
 	return hex.EncodeToString(m.Sum(nil))[:32]
 }
 
-// Seal binds a call hash to an expiry and signs it: the format of consent tokens and of pending request state.
+// Seal binds a call hash to an expiry and a random nonce, and signs it: the format of consent tokens and of pending
+// request state. The nonce makes each one unique, so spending one never spends another for the same call.
 func Seal(prefix, callHash string) string {
-	exp := strconv.FormatInt(time.Now().Add(TokenTTL).Unix(), 10)
-	return prefix + exp + "." + sign(prefix+exp+"."+callHash)
+	n := make([]byte, 8)
+	_, _ = rand.Read(n)
+	body := strconv.FormatInt(time.Now().Add(TokenTTL).Unix(), 10) + "." + hex.EncodeToString(n)
+	return prefix + body + "." + sign(prefix+body+"."+callHash)
 }
 
 // Open checks that sealed was made by this process for callHash and has not expired.
@@ -60,15 +63,15 @@ func Open(prefix, sealed, callHash string) bool {
 	if !ok {
 		return false
 	}
-	exp, mac, ok := strings.Cut(rest, ".")
-	if !ok {
+	parts := strings.Split(rest, ".")
+	if len(parts) != 3 {
 		return false
 	}
-	n, err := strconv.ParseInt(exp, 10, 64)
+	n, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil || time.Now().Unix() > n {
 		return false
 	}
-	return hmac.Equal([]byte(mac), []byte(sign(prefix+exp+"."+callHash)))
+	return hmac.Equal([]byte(parts[2]), []byte(sign(prefix+parts[0]+"."+parts[1]+"."+callHash)))
 }
 
 // NewToken is a consent token for one call, for clients that can't ask the person themselves.
@@ -76,14 +79,5 @@ func (s *Session) NewToken(callHash string) string { return Seal("ct_", callHash
 
 // UseToken checks a consent token for callHash and spends it: each token works once.
 func (s *Session) UseToken(token, callHash string) bool {
-	if !Open("ct_", token, callHash) {
-		return false
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.usedToken[token] {
-		return false
-	}
-	s.usedToken[token] = true
-	return true
+	return Open("ct_", token, callHash) && s.SpendOnce(token)
 }

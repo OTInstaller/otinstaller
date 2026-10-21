@@ -66,7 +66,7 @@ Every run is put in a class from the tool's manifest:
 | --- | --- | --- |
 | passive | no network, doesn't touch the target, no personal data | no |
 | networked | goes online, but doesn't touch the target or collect personal data | once per tool per session |
-| target | sends requests to sites or services about the target (`ethics.touches_target`) | once per tool and target |
+| target | sends requests to sites or services about the target (`ethics.touches_target`), or uses your own account or API keys (`ethics.auth_required`, a required key) | once per tool and target |
 | personal | collects personal data, or takes an email address, phone number, name or image | once per tool and target, always |
 
 When a run needs consent, your client shows you a question. It names the exact tool and version, the target, what the tool does, the sites it connects to, the API keys it uses, and the image it runs.
@@ -98,11 +98,12 @@ Installs ask too, unless the policy allows them. An agent can only install publi
 }
 ```
 
-- `enabled: false` is the kill switch: every run, install and uninstall from an agent is refused.
+- `enabled: false` is the kill switch: every run, install and uninstall from an agent is refused. Changes to the file apply from the next call; there is no need to restart the client.
 - `mode: "sandbox"` runs each tool only on its own manifest test input, never the agent's target, so you can try an agent safely.
 - `auto_approve` can be `none`, `passive` or `networked`. Runs that touch a target or a person always ask, whatever it says.
 - The run limits apply per session, and the agent gets `rate_limited` with `retry_after_s` when it hits one.
-- A broken policy file stops the server rather than quietly loosening the rules.
+- A broken policy file stops the server from starting, and if the file breaks while the server runs, every run, install and uninstall is refused until it is fixed. Bad values (such as `consent_ttl_minutes: 0`) count as broken.
+- If the client disconnects, runs still going are stopped, saved as interrupted and audited.
 
 ## Audit log
 

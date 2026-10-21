@@ -271,6 +271,9 @@ A consent answer arrived for a call that changed or is more than 10 minutes old.
 ### agent_disabled
 The person turned agents off (`enabled: false` in the agent policy). Only they can change it. Exit code 4 from `ot run`.
 
+### policy_invalid
+The agent policy file (`<ot home>/agent-policy.json`) is not valid JSON or has a bad value, so agents may do nothing until it is fixed. `ot mcp policy` shows the problem; `ot mcp policy reset` writes the defaults.
+
 ### tool_not_allowed
 The package is in the policy's `deny_tools`, or not in its `allow_tools`. Exit code 4 from `ot run`.
 

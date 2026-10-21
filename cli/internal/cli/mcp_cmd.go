@@ -46,6 +46,9 @@ func (a *App) mcpCmd() *cobra.Command {
 			s := a.serveMCP(cmd.Context(), p, resultsDir)
 			fmt.Fprintf(a.Err, "ot %s: MCP server on stdio (policy: %s)\n", Version, agent.PolicyPath())
 			err = s.srv.Run(cmd.Context(), &mcp.StdioTransport{})
+			// The client went away: stop what is still running, so no container keeps going unwatched, and let the
+			// runs be saved and audited as interrupted.
+			s.shutdown(15 * time.Second)
 			if err != nil && errors.Is(err, context.Canceled) {
 				return nil
 			}
@@ -142,11 +145,13 @@ func (a *App) installMCPClient(client, exe string, print bool) error {
 		args := []string{"mcp", "add", "--scope", "user", "otinstaller", "--", exe, "mcp"}
 		line := "claude " + strings.Join(quoteArgs(args), " ")
 		claude, err := exec.LookPath("claude")
-		if print || err != nil {
-			if !print {
-				fmt.Fprintln(a.Err, "note: claude is not on PATH; run this where Claude Code is installed:")
-			}
+		if print {
 			return a.printMCPConfig(client, "", line)
+		}
+		if err != nil {
+			fmt.Fprintln(a.Err, "Run this where Claude Code is installed:")
+			fmt.Fprintln(a.Err, line)
+			return &ExitError{Code: ExitRuntimeMissing, Reason: "runtime_missing", Err: errors.New("claude (Claude Code) is not on PATH, so nothing was added")}
 		}
 		c := exec.Command(claude, args...)
 		c.Stdout, c.Stderr = a.Err, a.Err
@@ -205,6 +210,9 @@ func (a *App) installMCPClient(client, exe string, print bool) error {
 	if servers == nil {
 		servers = map[string]any{}
 	}
+	if _, had := servers["otinstaller"]; had {
+		fmt.Fprintf(a.Err, "note: replacing the otinstaller server already in %s\n", path)
+	}
 	servers["otinstaller"] = entry
 	doc[key] = servers
 	b, _ := json.MarshalIndent(doc, "", "  ")
@@ -238,16 +246,20 @@ func (a *App) mcpInstalled(client, where string) error {
 	if a.jsonMode() {
 		return writeJSON(a.Out, map[string]any{"client": client, "path": where, "installed": true})
 	}
-	fmt.Fprintf(a.Out, "Added the otinstaller MCP server to %s. Restart %s to load it.\n", where, client)
+	fmt.Fprintf(a.Out, "Added the otinstaller MCP server to %s. Restart %s to load it.\n", where, clientNames[client])
 	fmt.Fprintf(a.Out, "Agents ask you before runs that touch a target; the rules are in %s (`ot mcp policy`).\n", agent.PolicyPath())
 	return nil
 }
 
+// clientNames are how the clients call themselves, for messages.
+var clientNames = map[string]string{"claude": "Claude Code", "claude-desktop": "Claude Desktop", "cursor": "Cursor", "vscode": "VS Code", "codex": "Codex", "gemini": "Gemini CLI"}
+
+// quoteArgs quotes arguments for a POSIX shell (Git Bash on Windows too): single quotes keep backslashes in paths.
 func quoteArgs(args []string) []string {
 	out := make([]string, len(args))
 	for i, s := range args {
-		if strings.ContainsAny(s, " \t\"'") {
-			s = `"` + strings.ReplaceAll(s, `"`, `\"`) + `"`
+		if strings.ContainsAny(s, " \t\"'\\$`") {
+			s = "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 		}
 		out[i] = s
 	}

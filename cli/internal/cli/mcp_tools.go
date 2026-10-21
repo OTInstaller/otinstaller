@@ -5,6 +5,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -268,6 +269,9 @@ func (s *mcpServer) addReadTools() {
 	readTool(s, "detect_type", "Detect a target's type",
 		"What kind of target a string is, as ot auto would guess: url, ip, email, phone, domain, else username.",
 		func(ctx context.Context, in detectIn) (*detectOut, error) {
+			if strings.TrimSpace(in.Target) == "" {
+				return nil, &toolError{Code: "usage", Message: "give a target"}
+			}
 			t := runner.DetectTyped(strings.TrimSpace(in.Target))
 			return &detectOut{InputType: runner.TypedPrefixes[t.Prefix], Prefix: t.Prefix + ":"}, nil
 		})
@@ -330,6 +334,10 @@ func (s *mcpServer) addReadTools() {
 				return nil, &toolError{Code: "no_runs", Message: fmt.Sprintf("need two saved runs to compare, found %d in %s", len(files), dir)}
 			}
 			c, err := results.Diff(files[len(files)-2], files[len(files)-1])
+			// A JSON tool prints one long line, so a line diff says only that something changed: the entities say what.
+			if c != nil && (strings.HasSuffix(files[len(files)-1], ".json") || strings.HasSuffix(files[len(files)-1], ".jsonl")) {
+				c.Added, c.Removed = []string{}, []string{}
+			}
 			if c != nil {
 				for _, l := range [][]string{c.Added, c.Removed, c.AddedEntities, c.RemovedEntities} {
 					for i := range l {
@@ -375,9 +383,13 @@ func (s *mcpServer) addReadTools() {
 			return out, nil
 		})
 	readTool(s, "validate_manifest", "Validate a manifest",
-		"Check an otinstaller.yaml as the registry will, with the same error codes. For publishers packaging a tool or guide.",
+		"Check an otinstaller.yaml as the registry will, with the same error codes. For publishers packaging a tool or guide. Give an absolute path: the server's folder is wherever the client started it.",
 		func(ctx context.Context, in validateIn) (*validateOut, error) {
 			path := orDefault(in.Path, "otinstaller.yaml")
+			if _, err := os.Stat(path); err != nil {
+				abs, _ := filepath.Abs(path)
+				return nil, &toolError{Code: "manifest_file_missing", Message: "no manifest at " + abs, Hint: "give the absolute path of the otinstaller.yaml"}
+			}
 			doc, m, err := manifest.LoadFile(path)
 			if err != nil {
 				return nil, &toolError{Code: "manifest_yaml_invalid", Message: err.Error()}
@@ -400,7 +412,7 @@ func (s *mcpServer) addReadTools() {
 	readTool(s, "get_consent_status", "Check whether a run needs consent",
 		"What would happen if run_tool were called with these arguments: allowed without asking, the person asked, or refused (and why). Asks nobody and runs nothing.",
 		func(ctx context.Context, in runIn) (*consentStatusOut, error) {
-			plan, err := s.planRun(ctx, in)
+			plan, err := s.planRun(ctx, in, false)
 			if err != nil {
 				return nil, err
 			}
@@ -469,6 +481,18 @@ func (s *mcpServer) toolInfo(ctx context.Context, arg string) (*toolInfo, error)
 	default:
 		info.Unavailable = "the registry could not be asked (" + err.Error() + "); this is the installed version"
 	}
+	if ref.Version != "" && m.Version != ref.Version {
+		resp, err := s.a.API.Manifest(ctx, ref.NS, ref.Name, ref.Version)
+		if err != nil {
+			return nil, s.a.requestError(err)
+		}
+		if resp.Manifest == nil || string(resp.Manifest) == "null" {
+			return nil, &toolError{Code: "version_not_found", Message: fmt.Sprintf("%s@%s is %s", ref.Ref(), ref.Version, orDefault(resp.Status, "not available"))}
+		}
+		if _, vm, err := manifest.ParseJSON(resp.Manifest); err == nil {
+			m = vm
+		}
+	}
 	if m.IsGuide() {
 		return nil, &toolError{Code: "usage", Message: m.Ref() + " is a guide; use read_guide"}
 	}
@@ -512,21 +536,26 @@ func keySet(name string) bool {
 
 func (s *mcpServer) suggestPivots(ctx context.Context, in pivotsIn) (*pivotsOut, error) {
 	ents := in.Entities
+	var own []string
 	if in.RunID != "" {
 		r, err := findSavedRun(in.RunID)
 		if err != nil {
 			return nil, err
 		}
 		ents = r.meta.Entities
+		for _, v := range r.meta.Input {
+			own = append(own, v)
+		}
 	}
 	if len(ents) == 0 {
 		return nil, &toolError{Code: "usage", Message: "give a run_id or entities"}
 	}
-	return s.a.pivots(ctx, ents, in.Registry, orInt(in.Limit, 25)), nil
+	return s.a.pivots(ctx, ents, in.Registry, orInt(in.Limit, 25), own...), nil
 }
 
 // pivots lists what entities could feed next: for each, the input type it fits and the tools that take it.
-func (a *App) pivots(ctx context.Context, ents []envelope.Entity, registry bool, limit int) *pivotsOut {
+// exclude are values not worth suggesting, such as the run's own target.
+func (a *App) pivots(ctx context.Context, ents []envelope.Entity, registry bool, limit int, exclude ...string) *pivotsOut {
 	st, _ := state.Load()
 	byInput := map[string][]string{}
 	if st != nil {
@@ -544,11 +573,15 @@ func (a *App) pivots(ctx context.Context, ents []envelope.Entity, registry bool,
 	fromRegistry := map[string][]string{}
 	out := &pivotsOut{Pivots: []pivot{}, Note: "Nothing was run. Check each tool with get_tool before running it."}
 	seen := map[string]bool{}
+	skip := map[string]bool{}
+	for _, v := range exclude {
+		skip[strings.ToLower(strings.TrimSpace(v))] = true
+	}
 	for _, e := range cleanEntities(ents) {
 		for _, t := range specfiles.Pivots[e.Type] {
 			v := pivotValue(e, t)
 			key := t.Input + "\x00" + strings.ToLower(v)
-			if v == "" || seen[key] {
+			if v == "" || seen[key] || skip[strings.ToLower(v)] {
 				continue
 			}
 			seen[key] = true
@@ -645,15 +678,28 @@ func findSavedRun(id string) (*savedRun, error) {
 	if len(id) != 8 {
 		return nil, &toolError{Code: "run_not_found", Message: fmt.Sprintf("%q is not a run id", id)}
 	}
-	files, _ := results.Outputs(results.Dir(""))
-	for i := len(files) - 1; i >= 0; i-- {
-		if idFromPath(files[i]) == id {
-			if m := results.MetaFor(files[i]); m != nil {
-				return &savedRun{files[i], m}, nil
+	dirs := resultDirs()
+	for _, dir := range dirs {
+		files, _ := results.Outputs(dir)
+		for i := len(files) - 1; i >= 0; i-- {
+			if idFromPath(files[i]) == id {
+				if m := results.MetaFor(files[i]); m != nil {
+					return &savedRun{files[i], m}, nil
+				}
 			}
 		}
 	}
-	return nil, &toolError{Code: "run_not_found", Message: "no saved run " + id + " under " + results.Dir(""), Hint: "list_runs lists them"}
+	return nil, &toolError{Code: "run_not_found", Message: "no saved run " + id + " under " + strings.Join(dirs, " or "), Hint: "list_runs lists them"}
+}
+
+// resultDirs are where runs are saved: $OT_RESULTS_DIR (or ./results), and <ot home>/results, where `ot mcp`
+// saves when nothing else is set.
+func resultDirs() []string {
+	dirs := []string{results.Dir("")}
+	if home := state.Path("results"); filepath.Clean(home) != filepath.Clean(dirs[0]) {
+		dirs = append(dirs, home)
+	}
+	return dirs
 }
 
 func (s *mcpServer) listRuns(ctx context.Context, in runsIn) (*runsOut, error) {
@@ -693,7 +739,7 @@ func (s *mcpServer) getRun(ctx context.Context, in getRunIn) (*getRunOut, error)
 	if err != nil {
 		return nil, err
 	}
-	out := &getRunOut{Run: summaryOf(r.output, r.meta), Total: len(r.meta.Entities), Offset: in.Offset, Warnings: r.meta.Warnings,
+	out := &getRunOut{Run: summaryOf(r.output, r.meta), Total: len(r.meta.Entities), Offset: max(in.Offset, 0), Warnings: cleanAll(r.meta.Warnings),
 		Artifact: r.meta.Artifact, OutputHash: r.meta.SHA256, Note: untrustedNote}
 	switch in.View {
 	case "summary":
@@ -710,7 +756,16 @@ func (s *mcpServer) getRun(ctx context.Context, in getRunIn) (*getRunOut, error)
 		}
 		lo := min(max(in.Offset, 0), len(r.meta.Entities))
 		hi := min(lo+limit, len(r.meta.Entities))
-		out.Entities = cleanEntities(r.meta.Entities[lo:hi])
+		// A page stays within max_output_chars, like run_tool's result.
+		budget := s.sess.Policy.MaxOutputChars
+		for _, e := range cleanEntities(r.meta.Entities[lo:hi]) {
+			out.Entities = append(out.Entities, e)
+			if b, _ := json.Marshal(out); len(b) > budget {
+				out.Entities = out.Entities[:len(out.Entities)-1]
+				out.Note = "This page was cut to fit; read on from offset " + fmt.Sprint(lo+len(out.Entities)) + ". " + untrustedNote
+				break
+			}
+		}
 	default:
 		return nil, &toolError{Code: "usage", Message: "view is entities or summary"}
 	}

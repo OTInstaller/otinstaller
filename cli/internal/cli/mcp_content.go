@@ -86,7 +86,7 @@ func (s *mcpServer) addResources() {
 				return s.rawResource(req.Params.URI, r)
 			}
 			m := *r.meta
-			m.Entities = cleanEntities(m.Entities)
+			m.Entities, m.Warnings = cleanEntities(m.Entities), cleanAll(m.Warnings)
 			return jsonResource(req.Params.URI, map[string]any{"note": untrustedNote, "output_path": r.output, "meta": m})
 		})
 	s.srv.AddResourceTemplate(&mcp.ResourceTemplate{URITemplate: "ot://runs/{run_id}/raw", Name: "saved run's raw output", MIMEType: "text/plain",
@@ -145,7 +145,11 @@ func (s *mcpServer) addResources() {
 			if err != nil {
 				return nil, mcp.ResourceNotFoundError(req.Params.URI)
 			}
-			return textResource(req.Params.URI, "text/markdown", "# "+p.Title+"\n\n"+p.Body), nil
+			body := p.Body
+			if !strings.HasPrefix(strings.TrimSpace(body), "# ") {
+				body = "# " + p.Title + "\n\n" + body
+			}
+			return textResource(req.Params.URI, "text/markdown", body), nil
 		})
 }
 
@@ -227,12 +231,12 @@ var prompts = []promptSpec{
 	{"write_playbook", "Write a playbook", "Draft a playbook file from tools you choose.",
 		[]*mcp.PromptArgument{{Name: "purpose", Title: "What it is for", Required: true}},
 		func(args map[string]string) string {
-			return fmt.Sprintf("Help me write an OTInstaller playbook for: %s. Use search_tools and get_tool to pick 2 to 6 tools that take the same input type, then write playbooks/<name>.yaml with name, description, case and tools (namespace/name each). Show it to me before writing the file. The format is in docs/typed-inputs-and-results.md and at https://otinstaller.com/docs/cli.", args["purpose"])
+			return fmt.Sprintf("Help me write an OTInstaller playbook for: %s. Use search_tools and get_tool to pick 2 to 6 tools that take the same input type, then write playbooks/<name>.yaml with name, description, case and tools (namespace/name each). Show it to me before writing the file. The format is described at https://otinstaller.com/docs/cli.", args["purpose"])
 		}},
 	{"publish_tool", "Publish a tool", "Package an OSINT tool for the OTInstaller Registry.",
 		[]*mcp.PromptArgument{{Name: "path", Title: "The tool's repository folder"}},
 		func(args map[string]string) string {
-			return fmt.Sprintf("Help me publish the tool in %s to the OTInstaller Registry. Read https://otinstaller.com/docs/publishing.md and https://otinstaller.com/docs/manifest.md first. Run `ot init` (or `ot import` for an existing repository), write a Dockerfile that runs as a non-root user, fill otinstaller.yaml with typed inputs and outputs and honest ethics flags, and check it with validate_manifest and `ot validate --smoke`. Never push a release tag without my explicit go-ahead.", orDefault(args["path"], "this folder"))
+			return fmt.Sprintf("Help me publish the tool in %s to the OTInstaller Registry. Read https://otinstaller.com/docs/publishing and https://otinstaller.com/docs/manifest first. Run `ot init` (or `ot import` for an existing repository), write a Dockerfile that runs as a non-root user, fill otinstaller.yaml with typed inputs and outputs and honest ethics flags, and check it with validate_manifest and `ot validate --smoke`. Never push a release tag without my explicit go-ahead.", orDefault(args["path"], "this folder"))
 		}},
 }
 

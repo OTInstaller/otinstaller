@@ -59,7 +59,7 @@ func (a *App) cliConsent(ra *runArgs, jobs []allJob) error {
 		what = "these runs need"
 	}
 	return &ExitError{Code: ExitUsage, Reason: "consent_required", Err: fmt.Errorf(
-		"%s the consent of the person you run them for, and there is no terminal to ask in: %s. Ask them, then run again with --yes (OT_CONSENT=off turns this check off)",
+		"%s consent, and there is no terminal to ask in: %s. Ask the person you are working for, then run again with --yes (OT_CONSENT=off turns this check off)",
 		what, strings.Join(ask, ", "))}
 }
 

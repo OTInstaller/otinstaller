@@ -49,7 +49,12 @@ var auditMu sync.Mutex
 
 // HashInputs is a stable hash of a run's inputs, so redacted entries can still be matched up.
 func HashInputs(values map[string]string) string {
-	h := sha256.Sum256([]byte(targetKey(values)))
+	var parts []string
+	for k, v := range values {
+		parts = append(parts, k+"="+strings.ToLower(strings.TrimSpace(v)))
+	}
+	sort.Strings(parts)
+	h := sha256.Sum256([]byte(strings.Join(parts, "&")))
 	return hex.EncodeToString(h[:8])
 }
 

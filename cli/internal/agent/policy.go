@@ -88,11 +88,14 @@ func (p *Policy) check() error {
 	case p.AllowInstall != "ask" && p.AllowInstall != "allow":
 		return bad("allow_install", p.AllowInstall, "ask or allow")
 	}
-	if p.MaxParallel < 1 {
-		p.MaxParallel = 1
-	}
-	if p.MaxOutputChars < 2000 {
-		p.MaxOutputChars = 2000
+	for _, n := range []struct {
+		field  string
+		v, min int
+	}{{"consent_ttl_minutes", p.ConsentTTLMinutes, 1}, {"max_runs_per_hour", p.MaxRunsPerHour, 0}, {"max_runs_per_target_per_hour", p.MaxRunsPerTargetPerHour, 0},
+		{"max_parallel", p.MaxParallel, 1}, {"max_output_chars", p.MaxOutputChars, 2000}} {
+		if n.v < n.min {
+			return fmt.Errorf("%s: %s is %d; it must be at least %d (0 for no limit, for the run limits)", PolicyPath(), n.field, n.v, n.min)
+		}
 	}
 	return nil
 }

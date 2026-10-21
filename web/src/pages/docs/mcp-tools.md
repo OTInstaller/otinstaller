@@ -18,7 +18,7 @@ These change nothing, so clients may allow them without asking.
 | `diff_runs` | What changed between the two most recent saved runs of a tool against a target: entities and output lines added and removed. | `case`, `target` (required), `tool` (required) |
 | `doctor` | Whether Docker (or Podman), cosign, the keychain and the registry are available. | none |
 | `extract_indicators` | Emails, domains, IP addresses, URLs and entities found across a tool's saved runs, or a case's. | `case`, `tool` |
-| `get_batch` | The rows of a run_all or run_playbook batch: each tool's status, entity count, first entities and run_id. | `batch_id` (required) |
+| `get_batch` | The rows of a run_all or run_playbook batch: each tool's status, entity count, first entities and run_id. While it runs, finished rows are filled in and the rest are pending. | `batch_id` (required) |
 | `get_consent_status` | What would happen if run_tool were called with these arguments: allowed without asking, the person asked, or refused (and why). Asks nobody and runs nothing. | `case`, `consent_token`, `input_type`, `inputs`, `target`, `tool` (required), `wait_seconds` |
 | `get_playbook` | One playbook: its tools and which are installed. | `name` (required) |
 | `get_run` | A run's result: its status and provenance, the entities it found (paged), a deduplicated summary of the indicators, or its raw output. Also reports runs still going. | `include_raw`, `limit`, `offset`, `run_id` (required), `view` |
@@ -31,7 +31,7 @@ These change nothing, so clients may allow them without asking.
 | `search_guides` | Search the registry's investigation guides (methods, checklists, references), by words, target type or level. | `input_type`, `level`, `limit`, `query` |
 | `search_tools` | Search the OTInstaller Registry for OSINT tools. Results list each tool's input and output types, whether it needs API keys, its ethics flags and network access, and its trust status (signed, verified publisher, health). | `category`, `cursor`, `input_type`, `limit`, `no_keys`, `output_type`, `passive_only`, `query`, `runtime` |
 | `suggest_pivots` | Given a saved run (or entities), list what to look at next: each entity worth pivoting on, the input type it fits, and the installed tools (and optionally registry tools) that take it. Runs nothing. | `entities`, `limit`, `registry`, `run_id` |
-| `validate_manifest` | Check an otinstaller.yaml as the registry will, with the same error codes. For publishers packaging a tool or guide. | `path` |
+| `validate_manifest` | Check an otinstaller.yaml as the registry will, with the same error codes. For publishers packaging a tool or guide. Give an absolute path: the server's folder is wherever the client started it. | `path` |
 
 ## Tools with side effects
 
@@ -39,11 +39,11 @@ These are marked as changing things (`readOnlyHint: false`), and the server asks
 
 | Tool | What it does | Arguments |
 | --- | --- | --- |
-| `cancel_run` | Stop a run or batch this session started. Partial output is kept. | `id` (required) |
-| `install_tool` | Install a published tool: pull its image by digest and verify its signature (or fetch its Python wheel by hash). Agents may only install signed, current, healthy versions. Asks the person first unless the policy allows installs. | `consent_token`, `tool` (required) |
+| `cancel_run` | Stop a run or batch this session started. Partial output is kept. A run that already ended is left alone and its status returned. | `id` (required) |
+| `install_tool` | Install a published tool: pull its Docker image by digest and verify its cosign signature, or fetch its Python wheel by SHA-256 and build it into a sandbox image. Agents can't install yanked, failed, broken or local packages, or a Docker image whose signature can't be verified. Asks the person first unless the policy allows installs. | `consent_token`, `tool` (required) |
 | `run_all` | Run every installed tool that takes the target (or the ones named), a few at a time, with one consent question for the whole set. Use dry_run first to see what would run. Returns a batch_id for get_batch if it takes longer than wait_seconds. | `case`, `consent_token`, `dry_run`, `input_type`, `parallel`, `target` (required), `tools`, `wait_seconds` |
-| `run_playbook` | Run a playbook (a named set of tools) against a target, like run_all limited to its tools. Its tools must be installed; install_tool installs them. | `case`, `consent_token`, `dry_run`, `input_type`, `name` (required), `parallel`, `target` (required), `wait_seconds` |
-| `run_tool` | Run an installed tool in its sandbox and save the result. Give inputs by name, or one target with its type. Passive tools run straight away; tools that touch a target, go online or involve a person ask the person first (or return consent_required with a token to use only after they say yes). Waits up to wait_seconds, then returns a run_id for get_run. | `case`, `consent_token`, `input_type`, `inputs`, `target`, `tool` (required), `wait_seconds` |
+| `run_playbook` | Run a playbook (a named set of tools) against a target, like run_all limited to its tools. Its tools must be installed; install_tool installs them, and dry_run lists which are missing. | `case`, `consent_token`, `dry_run`, `input_type`, `name` (required), `parallel`, `target` (required), `wait_seconds` |
+| `run_tool` | Run an installed tool in its sandbox and save the result. Give inputs by name, or one target with its type. Passive tools run straight away; tools that touch a target, go online, use the person's keys or involve a person ask the person first (or return consent_required with a token to use only after they say yes). Waits up to wait_seconds, then returns a run_id for get_run. | `case`, `consent_token`, `input_type`, `inputs`, `target`, `tool` (required), `wait_seconds` |
 | `uninstall_tool` | Remove an installed tool. Always asks the person. | `consent_token`, `tool` (required) |
 
 ## Resources

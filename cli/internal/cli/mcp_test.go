@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -24,6 +25,7 @@ func toolVariant(t *testing.T, name, inputType string, egress, touches, personal
 		t.Fatal(err)
 	}
 	s := strings.Replace(string(src), "name: holehe-lite", "name: "+name, 1)
+	s = strings.Replace(s, "ghcr.io/dheeraj/holehe-lite@", "ghcr.io/dheeraj/"+name+"@", 1)
 	s = strings.Replace(s, "  - name: email\n    type: email\n", "  - name: target\n    type: "+inputType+"\n", 1)
 	s = strings.Replace(s, `"{email}"]`, `"{target}"]`, 1)
 	s = strings.Replace(s, `input: { email: "test@example.com" }`, `input: { target: "example.com" }`, 1)
@@ -452,5 +454,107 @@ func TestAgentPluginMatchesServer(t *testing.T) {
 	b2, _ := os.ReadFile(filepath.Join(root, ".cursor-plugin", "plugin.json"))
 	if json.Unmarshal(b1, &claude) != nil || json.Unmarshal(b2, &cursor) != nil || claude.Version == "" || claude.Version != cursor.Version {
 		t.Errorf("the Claude Code and Cursor plugin versions should match: %q, %q", claude.Version, cursor.Version)
+	}
+}
+
+// slowExec is fakeExec, except that `docker run` of an image named "slow" keeps going until it is stopped.
+type slowExec struct{ fakeExec }
+
+func (f *slowExec) Run(ctx context.Context, name string, args, env []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
+	if len(args) > 0 && args[0] == "run" && strings.Contains(strings.Join(args, " "), "/slow@") {
+		f.mu.Lock()
+		f.calls = append(f.calls, append([]string{name}, args...))
+		f.mu.Unlock()
+		io.WriteString(stdout, `{"entities":[`)
+		<-ctx.Done()
+		return 137, nil
+	}
+	return f.fakeExec.Run(ctx, name, args, env, stdin, stdout, stderr)
+}
+
+func TestMCPPolicyChangesNeedNoRestart(t *testing.T) {
+	h := newMCP(t, `{"entities":[]}`, "", nil, toolVariant(t, "dns-local", "domain", false, false, false))
+	args := map[string]any{"tool": "dheeraj/dns-local", "target": "example.com"}
+	if _, e := h.call("run_tool", args); e != nil {
+		t.Fatal(e)
+	}
+	os.WriteFile(agent.PolicyPath(), []byte(`{"enabled": false}`), 0o600)
+	if _, e := h.call("run_tool", args); e == nil || e["code"] != "agent_disabled" {
+		t.Fatalf("the kill switch must stop the next call: %v", e)
+	}
+}
+
+func TestMCPShutdownStopsRunsAndRecordsThem(t *testing.T) {
+	h := newMCP(t, "", "", nil, toolVariant(t, "slow", "domain", false, false, false))
+	h.app.Runner.Exec = &slowExec{}
+	out, e := h.call("run_tool", map[string]any{"tool": "dheeraj/slow", "target": "example.com", "wait_seconds": 1})
+	if e != nil || out["status"] != "running" {
+		t.Fatalf("want running: %v %v", out, e)
+	}
+	// Stopping a run that is still going, then asking again, gives the real status.
+	done := make(chan struct{})
+	go func() { h.server.shutdown(5 * time.Second); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("shutdown didn't stop the run")
+	}
+	got, e := h.call("get_run", map[string]any{"run_id": out["run_id"]})
+	if e != nil || got["run"].(map[string]any)["status"] != "interrupted" {
+		t.Fatalf("saved as interrupted: %v %v", got, e)
+	}
+	entries, _ := agent.ReadAudit(time.Now().Add(-time.Minute))
+	if len(entries) != 1 || entries[0].Outcome != "interrupted" {
+		t.Fatalf("audited: %+v", entries)
+	}
+	c, _ := h.call("cancel_run", map[string]any{"id": out["run_id"]})
+	if c["already_finished"] != true || c["status"] != "interrupted" {
+		t.Fatalf("cancel after the end: %v", c)
+	}
+}
+
+func TestMCPResultsWithoutEntitiesAndInSandbox(t *testing.T) {
+	h := newMCP(t, `{"certificate": {"subject": "example.com"}}`, `{"mode": "sandbox"}`, nil, toolVariant(t, "tls-local", "domain", false, false, false))
+	out, e := h.call("run_tool", map[string]any{"tool": "dheeraj/tls-local", "target": "someone-else.org"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if out["entities_total"].(float64) != 0 || !strings.Contains(out["raw"].(string), `"subject":"example.com"`) {
+		t.Fatalf("a run without entities returns its output: %v", out)
+	}
+	// Sandbox mode ran the test input and says so, and saved it under what ran.
+	if out["sandbox"] != true || out["consent"] != "sandbox" || !strings.Contains(out["note"].(string), "Sandbox mode") {
+		t.Fatalf("sandbox: %v", out)
+	}
+	meta := savedRuns(t)
+	if len(meta) != 1 || meta[0]["target"] != "example.com" {
+		t.Fatalf("saved under the test input: %v", meta)
+	}
+	c, _ := h.call("cancel_run", map[string]any{"id": out["run_id"]})
+	if c["already_finished"] != true || c["status"] != "complete" {
+		t.Fatalf("cancel after the end: %v", c)
+	}
+}
+
+func TestMCPBatchShowsFinishedRows(t *testing.T) {
+	h := newMCP(t, `{"entities":[{"type":"ip","value":"192.0.2.1"}]}`, "", nil,
+		toolVariant(t, "fast", "domain", false, false, false), toolVariant(t, "slow", "domain", false, false, false))
+	h.app.Runner.Exec = &slowExec{fakeExec: fakeExec{stdout: `{"entities":[{"type":"ip","value":"192.0.2.1"}]}`}}
+	out, e := h.call("run_all", map[string]any{"target": "example.com", "wait_seconds": 1})
+	if e != nil || out["status"] != "running" {
+		t.Fatalf("want running: %v %v", out, e)
+	}
+	status := map[string]string{}
+	for _, r := range out["rows"].([]any) {
+		r := r.(map[string]any)
+		status[r["tool"].(string)] = r["status"].(string)
+	}
+	if status["dheeraj/fast"] != "complete" || status["dheeraj/slow"] != "pending" {
+		t.Fatalf("finished rows are filled in while the batch runs: %v", status)
+	}
+	h.server.shutdown(5 * time.Second)
+	b, _ := h.call("get_batch", map[string]any{"batch_id": out["batch_id"]})
+	if b["status"] != "interrupted" {
+		t.Fatalf("after shutdown: %v", b)
 	}
 }
