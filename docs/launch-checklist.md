@@ -195,8 +195,11 @@ with "Filename too long"; use a short path or `git config core.longpaths true`.
         The v0.13.0 entry was published with a shortened description (the registry allows 100 characters); releases
         from now on write a short one. Each future release needs `mcp-publisher publish` with its `server.json`
         ([publishing-setup.md](publishing-setup.md) section 10).
-      - **Next:** the Anthropic directory and Cursor marketplace submissions (each needs your OK), the beta email about
-        `--yes`, and a test in a real client.
+      - **Next:**
+        - the Anthropic directory and Cursor marketplace submissions (each needs your OK; texts in
+          [launch/agent-listings.md](launch/agent-listings.md));
+        - the beta email about v0.13.0 and `--yes` (draft in [beta/v0.13-email.md](beta/v0.13-email.md));
+        - a test in a real client.
 - [ ] Resubmit the sitemap in Google Search Console (crawlers saw 404s and 500s on 21 Oct).
 - [ ] On-call rota for launch week; launch posts (plan, week 13). Drafts and templates in [launch/](launch/README.md)
       (21 Oct): rota and reviewer schedule, posts for each channel, demo video script. Nothing posted; each needs your OK.

@@ -9,6 +9,7 @@ https://github.com/OTInstaller/otinstaller.
 | --- | --- |
 | [on-call-rota.md](on-call-rota.md) | Launch-week on-call rota (22–28 Oct), targets, what to watch, playbooks, hand-over note; the reviewer schedule |
 | [demo-video.md](demo-video.md) | Script and shot list for "From an email to 12 accounts in 3 commands" |
+| [agent-listings.md](agent-listings.md) | Texts for the Anthropic directory, the Cursor marketplace and connector listings of the agent plugin and MCP servers |
 | [posts/osintverse-blog.md](posts/osintverse-blog.md) | Launch post for the OSINTverse blog/Hub (also the basis for the newsletter to OSINTverse users) |
 | [posts/product-hunt.md](posts/product-hunt.md) | Name, tagline, description, gallery and maker's comment |
 | [posts/show-hn.md](posts/show-hn.md) | Title, first comment, prepared answers |
