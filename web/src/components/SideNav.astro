@@ -48,15 +48,15 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
 </script>
 
 <style>
-  .side-nav { position: sticky; top: 84px; max-height: calc(100vh - 100px); overflow-y: auto; scrollbar-width: thin; }
+  .side-nav { position: sticky; top: 76px; max-height: calc(100vh - 100px); overflow-y: auto; scrollbar-width: thin; }
   .side-nav .eyebrow { margin: 0 0 8px; font-size: 0.7rem; }
   .side-nav li + li { margin-top: 2px; }
   .side-nav a { display: block; padding: 6px 10px; border-radius: var(--radius-sm); text-decoration: none; color: var(--text-muted); border-left: 2px solid transparent; transition: color var(--dur-1), background var(--dur-1), border-color var(--dur-1); }
   .side-nav a:hover { color: var(--text); background: var(--bg-subtle); }
-  .side-nav a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .side-nav a[aria-current="page"] { background: var(--accent-soft); color: var(--text); font-weight: 600; }
   .toc-block { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border); }
   .toc a { padding: 4px 10px; border-radius: 0; font-size: 0.86rem; }
-  .toc a[aria-current="location"] { color: var(--accent); border-left-color: var(--accent); background: transparent; }
+  .toc a[aria-current="location"] { color: var(--text); border-left-color: var(--text); background: transparent; }
   .toc .d3 { padding-left: 12px; }
   @media (max-width: 860px) { .side-nav { position: static; max-height: none; } .toc-block { display: none; } }
 </style>

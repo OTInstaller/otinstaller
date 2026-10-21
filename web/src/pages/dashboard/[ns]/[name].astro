@@ -1,0 +1,30 @@
+---
+// One package's management page for its owners. The island loads everything with the session cookie.
+import Base from "../../../layouts/Base.astro";
+import PackageDetail from "../../../islands/PackageDetail";
+
+const { ns, name } = Astro.params as { ns: string; name: string };
+const ref = `${ns}/${name}`;
+Astro.response.headers.set("Cache-Control", "private, no-store");
+---
+<Base title={`Manage ${ref}`} noindex>
+  <header class="page-head">
+    <nav class="small crumbs" aria-label="Breadcrumb"><a href="/dashboard">Dashboard</a> <span aria-hidden="true">/</span> packages</nav>
+    <h1>{ref}</h1>
+    <p class="muted"><a href={`/${ref}`}>Public page</a> · <a href={`/${ref}/versions`}>Versions</a> · <a href={`/${ref}/security`}>Security</a></p>
+  </header>
+  <PackageDetail client:load refName={ref} back={`${Astro.site}dashboard/${ref}`} />
+</Base>
+
+<style is:global>
+  .page-head { margin-bottom: 20px; }
+  .page-head .crumbs { margin: 0 0 8px; color: var(--text-faint); }
+  .page-head h1 { margin: 0 0 6px; }
+  .page-head p { margin: 0; }
+  .pkg .kv, .job .kv { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: var(--fs-2); }
+  .pkg .kv dt, .job .kv dt { color: var(--text-muted); }
+  .pkg .kv dd, .job .kv dd { margin: 0; }
+  .pkg h2, .job h2 { font-size: var(--fs-4); margin: 24px 0 8px; }
+  .pkg section:first-of-type h2 { margin-top: 0; }
+  .confirm { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+</style>

@@ -21,8 +21,6 @@ export default defineConfig({
   // Shiki highlights with inline styles, which the CSP below forbids.
   markdown: { syntaxHighlight: false },
   prefetch: { prefetchAll: true, defaultStrategy: "hover" },
-  // The nav's "Publish" is the import wizard; people type /publish too.
-  redirects: { "/publish": "/import" },
   // One self-hosted font, as on osintverse.com: Geist Mono for everything (the CSP allows fonts from this site only).
   // Latin subset, upright only.
   fonts: [

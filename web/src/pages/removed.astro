@@ -1,5 +1,6 @@
 ---
-// Shown (with status 410) for a package the registry removed.
+// Shown (with status 410) for a package the registry removed: the public reason, what it means for installed
+// copies, and where the removal is recorded.
 import Base from "../layouts/Base.astro";
 
 const why = Astro.url.searchParams.get("why") ?? "This package was removed from the registry.";
@@ -7,11 +8,16 @@ Astro.response.status = 410;
 ---
 <Base title="Removed" noindex>
   <div class="rm">
-    <p class="eyebrow">410</p>
-    <h1>Removed from the registry</h1>
+    <p class="eyebrow">410 · removed from the registry</p>
+    <h1>This package was removed</h1>
     <p class="notice bad">{why}</p>
-    <p class="muted">Removed packages no longer install, and <code>ot</code> warns anyone who still has them. If you installed it, remove it with <code>ot uninstall</code>.</p>
-    <p class="small muted">Every removal is listed on the <a href="/policy/transparency">transparency page</a> with its reason category.</p>
+    <h2>If you installed it</h2>
+    <ul class="small muted">
+      <li>It no longer installs, and <code>ot</code> refuses it with the reason above (exit code 4).</li>
+      <li>Installed copies are not changed, but <code>ot</code> warns every time it starts until you run <code>ot uninstall</code>.</li>
+      <li>Results you saved from it stay where they are; judge them with the reason in mind.</li>
+    </ul>
+    <p class="small muted">Every removal is listed on the <a href="/policy/transparency">transparency page</a> with its reason category. If you publish this package and believe the removal is wrong, write to <a href="mailto:abuse@otinstaller.com">abuse@otinstaller.com</a> with the package name.</p>
   </div>
 </Base>
 
@@ -19,4 +25,6 @@ Astro.response.status = 410;
   .rm { max-width: 640px; margin: 8vh auto; display: grid; gap: 12px; }
   .rm .eyebrow, .rm h1, .rm p { margin: 0; }
   .rm h1 { font-size: var(--fs-5); }
+  .rm h2 { font-size: var(--fs-2); margin: 8px 0 0; }
+  .rm ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 </style>

@@ -5,9 +5,42 @@ import PageHead from "../components/PageHead.astro";
 
 Astro.response.headers.set("Cache-Control", "private, no-store");
 ---
-<Base title="Publish a tool or guide" description="Import a GitHub or GitLab repository into the OTInstaller Registry.">
-  <PageHead eyebrow="Publish" title="Publish a tool or guide">
-  <p class="muted">Pick a repository: the registry detects what it is, drafts <code>otinstaller.yaml</code>, and opens a pull or merge request. Merging it and tagging <code>vX.Y.Z</code> publishes. Prefer the terminal? <code>ot import &lt;repository URL&gt;</code> does the same.</p>
+<Base title="Import a repository" description="Import a GitHub or GitLab repository into the OTInstaller Registry." noindex>
+  <PageHead eyebrow="Publish" title="Import a repository">
+    <p class="muted">Pick a repository: the registry detects what it is, drafts <code>otinstaller.yaml</code>, asks for what it cannot guess, and opens a pull or merge request. <a href="/publish">How publishing works</a>. Prefer the terminal? <code>ot import &lt;repository URL&gt;</code> does the same.</p>
   </PageHead>
   <ImportWizard client:load back={`${Astro.site}import`} />
 </Base>
+
+<style is:global>
+  .wizard .wsteps { list-style: none; margin: 0 0 8px; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); font-size: var(--fs-1); }
+  .wizard .wsteps li { background: var(--bg); padding: 10px 12px; color: var(--text-faint); display: flex; gap: 8px; align-items: center; }
+  .wizard .wsteps li .n { display: inline-grid; place-items: center; width: 20px; height: 20px; border: 1px solid currentColor; font-size: var(--fs-0); }
+  .wizard .wsteps li[aria-current="step"] { color: var(--text); }
+  .wizard .wsteps li[aria-current="step"] .n { background: var(--bg-inverse); color: var(--bg); border-color: var(--bg-inverse); }
+  .wizard .wsteps li.done { color: var(--text-muted); }
+  .wizard .wsteps li.done .n { color: var(--ok); }
+  .wizard .wtitle { margin: 0; font-size: var(--fs-4); }
+  .wizard .kv { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: var(--fs-2); }
+  .wizard .kv dt { color: var(--text-muted); }
+  .wizard .kv dd { margin: 0; }
+  .wizard .kv ul { margin: 0; padding-left: 18px; }
+  .wizard .wsec { border: 1px solid var(--border); padding: 12px 14px; display: grid; gap: 8px; }
+  .wizard .wsec.need { border-color: var(--warn); }
+  .wizard .wsec h3 { margin: 0; font-size: var(--fs-2); display: flex; gap: 10px; align-items: center; }
+  .wizard .wsec p { margin: 0; }
+  .wizard .problems { margin: 0; padding-left: 18px; color: var(--bad); display: grid; gap: 4px; }
+  .wizard .problems code { color: var(--text); }
+  .wizard .frow { gap: 8px; }
+  .wizard .frow input[type="text"], .wizard .frow input[type="url"] { min-width: 160px; }
+  .wizard .chips { gap: 6px; }
+  .wizard .q { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; padding: 6px 0; border-top: 1px solid var(--border); }
+  .wizard textarea { margin-top: 8px; font-size: var(--fs-1); }
+  .wizard .repos .trow { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; }
+  .wizard .finish { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); }
+  .wizard .fcard { background: var(--bg); border: 0; padding: 16px; text-align: left; display: grid; gap: 6px; align-content: start; color: var(--text); cursor: pointer; }
+  .wizard .fcard:hover { background: var(--bg-subtle); }
+  .wizard .fcard[disabled] { opacity: 0.6; cursor: wait; }
+  .wizard .next { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+  @media (max-width: 760px) { .wizard .wsteps { grid-template-columns: 1fr 1fr; } }
+</style>

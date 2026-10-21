@@ -1,8 +1,8 @@
 ---
+// The guide reader: content first. The tools a guide uses sit in the right rail (desktop) or behind a
+// "Tools (N)" disclosure in the sticky bar (phones), with one command that installs them all.
 import Base from "../../../../layouts/Base.astro";
 import PageReader from "../../../../components/PageReader.astro";
-import Badges from "../../../../components/Badges.astro";
-import CopyCommand from "../../../../components/CopyCommand.astro";
 import { api, apiOrNull, type GuideDetail, type Page, type Version } from "../../../../lib/api";
 import { formatDate, guidePageHref, inputLabel } from "../../../../lib/format";
 import { cacheFor } from "../../../../lib/page";
@@ -28,10 +28,12 @@ if (want && !page) return Astro.rewrite("/404");
 const hrefFor = (path: string) => guidePageHref(ref, path, version);
 const first = !want || page?.position === 1;
 const tools = guide.related_tools;
+const available = tools.filter((t) => t.available);
 cacheFor(Astro, version ? 3600 : 600);
 const canonical = page ? hrefFor(page.path).split("?")[0] : base;
 // The Markdown twin of this page (/guides/<ns>/<name>.md is the first page).
 const markdown = `${canonical}.md${version ? `?v=${encodeURIComponent(version)}` : ""}`;
+const jsonHref = `https://api.otinstaller.com/v1/guides/${ref}${version ? `/${encodeURIComponent(version)}` : ""}`;
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "TechArticle",
@@ -44,64 +46,93 @@ const jsonLd = {
   author: { "@type": "Organization", name: guide.namespace },
 };
 ---
-<Base title={page && !first ? `${page.title} · ${guide.title}` : guide.title ?? ref} description={guide.summary} canonical={canonical} jsonLd={jsonLd} markdown={markdown}>
+<Base title={page && !first ? `${page.title} · ${guide.title}` : guide.title ?? ref} description={guide.summary} canonical={canonical} jsonLd={jsonLd} markdown={markdown} jsonHref={jsonHref}>
   <header class="ghead">
     <nav class="small crumbs" aria-label="Breadcrumb"><a href="/guides">Guides</a> <span aria-hidden="true">/</span> <a href={`/${guide.namespace}`}>{guide.namespace}</a></nav>
-    <h1>{guide.title ?? ref}</h1>
+    <div class="title-row">
+      <h1>{guide.title ?? ref}</h1>
+      {guide.verified && <span class="badge ok">Verified publisher</span>}
+      {guide.checks.needs_update && <span class="badge warn">Needs update</span>}
+    </div>
     <p class="lead">{guide.summary}</p>
-    <Badges tool={guide} />
     <div class="row small muted meta">
-      <span class="mono">{ref}</span>
-      <span>License {guide.license}</span>
-      {guide.topics.length > 0 && <span>About: {guide.topics.map(inputLabel).join(", ")}</span>}
-      <form method="get" class="row vswitch">
-        <label for="v">Version</label>
-        <select id="v" name="v">
+      {guide.level && <span>{guide.level}</span>}
+      {guide.format === "reference" && <span>reference</span>}
+      {guide.topics.length > 0 && <span>about {guide.topics.map(inputLabel).join(", ").toLowerCase()}</span>}
+      <span>{available.length} {available.length === 1 ? "tool" : "tools"}</span>
+      <span>licence {guide.license}</span>
+      <form method="get" class="row vswitch" data-vswitch>
+        <label for="v">version</label>
+        <select id="v" name="v" class="small">
           {versions.versions.filter((v) => v.status !== "removed").map((v) => <option value={v.version} selected={v.version === guide.version}>{v.version}{v.version === guide.latest_version ? " (latest)" : ""}</option>)}
         </select>
-        <button class="btn btn-sm" type="submit">Go</button>
+        <button class="btn btn-sm" type="submit" data-vgo>Go</button>
       </form>
     </div>
     {!isLatest && <p class="notice">You are reading version {guide.version}. <a href={guidePageHref(ref, page?.path ?? "")}>Read the latest ({guide.latest_version})</a>.</p>}
     {guide.checks.needs_update && <p class="notice warn">More than 20% of this guide's links no longer work, so parts of it may be out of date.</p>}
   </header>
 
-  {first && tools.length > 0 && (
-    <section class="panel tools reveal" aria-labelledby="tools">
-      <h2 id="tools">Tools used in this guide</h2>
-      <ul class="list-plain">
-        {tools.map((t) => (
-          <li>{t.available
-            ? <><div class="row tool-line"><a class="mono" href={`/${t.ref}`}>{t.ref}</a> <span class="muted small">{t.summary}</span></div><CopyCommand label={`Install ${t.ref}`} command={t.install} /></>
-            : <span class="muted">{t.ref} (no longer in the registry)</span>}</li>
-        ))}
-      </ul>
-      <p class="small muted all">Install them all at once:</p>
-      <CopyCommand label="Install every tool in this guide" command={`ot guide tools ${ref}`} />
-    </section>
-  )}
-
   {page
-    ? <PageReader page={page} nav={guide.nav} hrefFor={hrefFor} label={`${guide.title} pages`} />
+    ? (
+      <PageReader page={page} nav={guide.nav} hrefFor={hrefFor} label={`${guide.title} pages`} railLabel={`Tools (${available.length})`}>
+        {tools.length > 0 && (
+          <div slot="rail" class="tools">
+            <p class="eyebrow">Tools used in this guide</p>
+            <ul class="list-plain">
+              {tools.map((t) => (
+                <li>{t.available
+                  ? <><a href={`/${t.ref}`}>{t.ref.split("/")[1]}</a><span class="muted"> {t.summary}</span><span class="tool-cmd"><code>{t.install}</code><button class="btn btn-sm copy" type="button" data-copy={t.install} aria-label={`Copy: ${t.install}`}><span class="label">Copy</span></button></span></>
+                  : <span class="muted">{t.ref} (no longer in the registry)</span>}</li>
+              ))}
+            </ul>
+            {available.length > 1 && (
+              <div class="all">
+                <p class="muted">Install them all:</p>
+                <div class="cmd" role="group" aria-label="Install every tool in this guide"><code>ot guide tools {ref}</code><button class="btn copy" type="button" data-copy={`ot guide tools ${ref}`} aria-label="Copy the install-all command"><span class="label">Copy</span></button></div>
+              </div>
+            )}
+          </div>
+        )}
+      </PageReader>
+    )
     : <p class="notice">This guide has no pages yet.</p>}
-  <p class="small muted foot">Published {formatDate(guide.published_at)}. Read offline: <code>ot guide get {ref}{version ? `@${version}` : ""}</code>{guide.repo_url && <> · <a href={guide.repo_url} rel="nofollow noopener">Source</a></>}</p>
+  <p class="small muted foot">Published {formatDate(guide.published_at)}. Read it in a terminal: <code>ot guide read {ref}{version ? `@${version}` : ""}</code>; offline: <code>ot guide get {ref}</code>{guide.repo_url && <> · <a href={guide.repo_url} rel="nofollow noopener">Source</a></>} · <a href={markdown}>Markdown</a></p>
 </Base>
 
+<script>
+  // Choosing a version goes there at once; the Go button stays for readers without JavaScript.
+  const form = document.querySelector<HTMLFormElement>("[data-vswitch]");
+  if (form) {
+    form.querySelector<HTMLElement>("[data-vgo]")!.hidden = true;
+    form.querySelector("select")!.addEventListener("change", () => form.submit());
+  }
+</script>
+
 <style>
-  .ghead { margin-bottom: 24px; }
-  .crumbs { margin: 0 0 6px; color: var(--text-faint); display: flex; gap: 8px; }
+  .ghead { margin-bottom: 20px; }
+  .crumbs { margin: 0 0 8px; color: var(--text-faint); display: flex; gap: 8px; }
   .crumbs a { color: var(--text-muted); text-decoration: none; }
-  .crumbs a:hover { color: var(--accent); }
+  .crumbs a:hover { color: var(--text); text-decoration: underline; }
+  .title-row { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
   h1 { margin: 0; }
-  .lead { margin: 8px 0 12px; }
-  .mono { font-family: var(--font-mono); }
-  .meta { margin-top: 12px; gap: 6px 18px; }
+  .lead { margin: 8px 0 10px; }
+  .meta { gap: 6px 16px; }
   .vswitch { gap: 6px; }
-  .vswitch select { padding: 4px 8px; font-size: var(--fs-1); }
-  .tools { margin-bottom: 28px; }
-  .tools li { display: grid; gap: 6px; }
-  .tools li + li { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border); }
-  .tool-line { gap: 10px; }
-  .all { margin: 16px 0 6px; }
+  .vswitch select { padding: 2px 6px; }
+  .notice { margin: 10px 0 0; }
+  .tools .eyebrow { margin: 0 0 8px; }
+  .tools li { display: grid; gap: 2px; }
+  .tools li + li { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .tools li > a { font-weight: 600; text-decoration: none; }
+  .tools li > a:hover { text-decoration: underline; }
+  .tool-cmd { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+  .tool-cmd code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; color: var(--text-muted); font-size: var(--fs-0); }
+  .tool-cmd .copy { opacity: 0; transition: opacity var(--dur-1); }
+  .tools li:hover .copy, .tool-cmd .copy:focus-visible, .tool-cmd .copy[data-state="copied"] { opacity: 1; }
+  .all { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .all p { margin: 0 0 6px; }
+  .all .cmd { font-size: var(--fs-1); }
   .foot { margin-top: 28px; }
+  @media (max-width: 960px) { .tool-cmd .copy { opacity: 1; } }
 </style>

@@ -560,8 +560,37 @@ contrast`; detector tests. Measured in the preview build: LCP of the home `h1` 2
 no hidden-until-JS content; the in-page contrast scan passes in both themes. Not in phase 1: the axe run in
 `npm test` (Playwright would add a browser download to every install; revisit in phase 4 with the screenshot job),
 and the docs' install commands still live in Markdown (phase 2 converts the getting-started page to use
-`InstallBlock`). AGENTS.md's website section still names `InstallTabs`, `Stat`, `FeatureCard` and `Pipeline`, which
+`InstallBlock`). AGENTS.md's website section still names `InstallTabs`, `Stat`, `FeatureCard`, `Pipeline` and `Badges`, which
 no longer exist; it is updated when the plan is merged.
+
+**Phase 2 (21 Oct 2026, later):** the guide index has one filter rail and rows; the reader puts the content first
+with the page list on the left and "Tools used" plus "On this page" on the right, folding into a sticky
+"Contents · Tools (N)" bar on phones; the version select goes on change; docs pages have previous/next links,
+a Markdown-twin link and the two new tables in the security model (what `ot` refuses, what the registry stores);
+every list and guide page links its JSON twin; a test keeps the getting-started doc's install commands equal to
+`lib/install.ts` (the doc stays Markdown so its own twin keeps working).
+
+**Phase 3 (21 Oct 2026, later):** `/publish` is an SSR explainer (three ways in, the four stages after the tag,
+the reviewer checklist) and the nav points at it; the import wizard has four steps with a progress header, a
+blocking GitHub App step with "Check again", small forms for inputs, outputs, behaviour, categories, test input
+and keys that write their block of the draft (`lib/yaml-blocks.ts`, no YAML parser in the browser), validator
+problems next to the section they belong to, the finish modes as cards with consequences, and a "what happens
+next" list; the dashboard lists packages first (state, health, sync, needs you) with a review banner for pending
+namespaces; `/dashboard/{ns}/{name}` manages one package (sync log and sync now, yank, deprecate, move a held
+manifest into the repository, backups); `/dashboard/publish/{jobId}` shows a release as a timeline with every
+problem and its fix; inline confirms replace `window.confirm`. Verified signed out in the preview build; the
+signed-in flows are typechecked and built but were not clicked through (no registry session in the audit
+browser), so the first real import through the wizard should be watched.
+
+**Phase 4 (21 Oct 2026, later):** the transparency page defines the reason categories, links every removal to the
+package's own 410 notice (which now says what to do with an installed copy) and states the response targets and
+the action ladder; the report page explains what happens to a report beside the form; the admin console sits on
+the tokens (square, bordered, monochrome highlights, outlined danger buttons); the home page's empty type row
+links to publishing. Screenshots of the rebuilt pages are in `docs/web-redesign/after/`. Left for the API, not
+this branch: facet counts on `/types`, a health-date sort for "recently verified working", GitLab publishers'
+jobs in `/me/publish-jobs`, and a public `health_checked_at` so the evidence panel can date the nightly check.
+Also left: an axe run in `npm test` (needs Playwright) and converting the getting-started doc to the shared
+install block (it would lose its Markdown twin).
 
 Effort is for one person who knows the codebase, including verification.
 

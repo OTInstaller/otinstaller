@@ -75,7 +75,7 @@ cacheFor(Astro, 300);
               <a class="label" href={`/input/${row.type}`}>{label}</a>
               <span class="list">
                 {row.results.length === 0
-                  ? <span class="muted">No tools yet</span>
+                  ? <span class="muted">None yet. <a href="/publish">Publish one</a>.</span>
                   : row.results.map((t) => <a href={`/${t.namespace}/${t.name}`} title={`${t.namespace}/${t.name}: ${t.summary}`}><span class="ns">{t.namespace}/</span>{t.name}</a>)}
               </span>
               <a class="more" href={`/input/${row.type}`}>{more > 0 ? `${more} more →` : "where it leads →"}</a>

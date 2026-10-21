@@ -1,4 +1,6 @@
 ---
+// /policy/transparency: every removal with its reason category (defined on the page), linked to the package's
+// own 410 notice, and the quarterly report numbers with the response targets the registry works to.
 import Policy from "../../layouts/Policy.astro";
 import { api } from "../../lib/api";
 import { formatDate } from "../../lib/format";
@@ -9,18 +11,34 @@ interface Transparency {
 }
 const data = await api<Transparency>("/removed");
 Astro.response.headers.set("Cache-Control", "public, max-age=60, s-maxage=600");
+const CATEGORIES: Record<string, string> = {
+  malware: "The release contained malware, undisclosed telemetry, a cryptominer or unexplained obfuscation.",
+  policy: "The tool breaks the acceptable-use rules: stalking a private individual, credential stuffing, CAPTCHA or ban evasion, exploits, bundled leaked data.",
+  impersonation: "The package or namespace pretended to be another tool, vendor or person.",
+  license: "A copyright or licence problem, including a takedown notice the registry had to honour.",
+  broken: "The tool did not work or its listing was misleading, and the publisher did not fix it.",
+  other: "A reason outside the categories above, including the registry's own test packages.",
+};
 ---
-<Policy frontmatter={{ title: "Transparency", description: "Removed tools and quarterly report numbers for the OTInstaller Registry." }}>
-  <p>Every removal from the registry, with its reason category, and how many reports we received and acted on each quarter.</p>
+<Policy frontmatter={{ title: "Transparency", description: "Removed packages with their reason category, and quarterly report numbers for the OTInstaller Registry." }}>
+  <p>Every removal from the registry, with its reason category, and how many reports we received and acted on each quarter. Yanks by publishers and deprecations are not removals and are not listed; they are visible on each package's versions page.</p>
+
   <h2>Removed packages</h2>
   {data.removed.length === 0 ? <p>Nothing has been removed.</p> : (
     <div class="table-wrap">
       <table class="data">
         <thead><tr><th scope="col">Package</th><th scope="col">Version</th><th scope="col">Reason</th><th scope="col">Removed</th></tr></thead>
-        <tbody>{data.removed.map((r) => <tr><td>{r.ref}</td><td>{r.version ?? "all versions"}</td><td>{r.category}</td><td>{formatDate(r.removed_at)}</td></tr>)}</tbody>
+        <tbody>{data.removed.map((r) => <tr><td><a href={`/${r.ref}`}>{r.ref}</a></td><td>{r.version ?? "all versions"}</td><td><a href={`#reason-${r.category}`}>{r.category}</a></td><td>{formatDate(r.removed_at)}</td></tr>)}</tbody>
       </table>
     </div>
   )}
+  <p>Each package link answers <code>410 Gone</code> with the public reason, as <code>ot</code> does when someone tries to install it. Removed packages stop installing at once; their backup copies are deleted 14 days later unless a legal hold applies. Installed copies are not touched, but <code>ot</code> warns about them.</p>
+
+  <h3>Reason categories</h3>
+  <dl class="reasons">
+    {Object.entries(CATEGORIES).map(([k, v]) => <><dt id={`reason-${k}`}>{k}</dt><dd>{v}</dd></>)}
+  </dl>
+
   <h2>Reports by quarter</h2>
   {data.quarters.length === 0 ? <p>No reports yet.</p> : (
     <div class="table-wrap">
@@ -30,4 +48,20 @@ Astro.response.headers.set("Cache-Control", "public, max-age=60, s-maxage=600");
       </table>
     </div>
   )}
+  <p>"Acted on" counts reports that led to a request to fix, a yank, a removal, a namespace suspension or a ban; "dismissed" counts reports that needed no action. Removals can exceed reports when the registry finds a problem itself.</p>
+
+  <h3>How fast we answer</h3>
+  <ul>
+    <li>First response to a report within 72 hours; within 24 hours for malware or credible harm.</li>
+    <li>Possible actions, in order: dismiss, ask the publisher to fix, yank the version, remove the package, suspend the namespace, ban the account.</li>
+    <li>Malware: the package is removed, <code>ot</code> warns everyone who installed it, the namespace is suspended, an advisory is posted here, and a post-incident review follows within 7 days.</li>
+  </ul>
+  <p>Report a package from its page, or write to <a href="mailto:abuse@otinstaller.com">abuse@otinstaller.com</a>. The <a href="/policy/takedown">reports and takedowns policy</a> has the full process.</p>
 </Policy>
+
+<style>
+  .reasons { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 0; }
+  .reasons dt { font-weight: 600; }
+  .reasons dd { margin: 0; }
+  @media (max-width: 600px) { .reasons { grid-template-columns: 1fr; gap: 2px 0; } .reasons dd { margin-bottom: 10px; } }
+</style>

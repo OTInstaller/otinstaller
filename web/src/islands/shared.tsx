@@ -95,6 +95,17 @@ export function Status({ value }: { value: string }) {
   return <span class={`badge ${STATUS_CLASS[value] ?? ""}`}>{value.replace(/_/g, " ")}</span>;
 }
 
+/** An inline confirmation in place of window.confirm: a sentence and two buttons. */
+export function Confirm({ text, confirm, onConfirm, onCancel, danger = true }: { text: string; confirm: string; onConfirm: () => void; onCancel: () => void; danger?: boolean }) {
+  return (
+    <span class="confirm" role="group">
+      <span class="small">{text}</span>
+      <button class={`btn btn-sm${danger ? " btn-strong" : " btn-primary"}`} type="button" onClick={onConfirm}>{confirm}</button>
+      <button class="btn btn-sm btn-ghost" type="button" onClick={onCancel}>Cancel</button>
+    </span>
+  );
+}
+
 export function when(ms: number | null | undefined): string {
   return ms ? new Date(ms).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "never";
 }

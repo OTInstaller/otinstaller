@@ -1,0 +1,33 @@
+---
+// One publish job: the "Details" link on the tagged commit's otinstaller/publish status points here.
+import Base from "../../../layouts/Base.astro";
+import JobView from "../../../islands/JobView";
+
+const jobId = Astro.params.jobId!;
+Astro.response.headers.set("Cache-Control", "private, no-store");
+---
+<Base title="Publish job" noindex>
+  <header class="page-head">
+    <nav class="small crumbs" aria-label="Breadcrumb"><a href="/dashboard">Dashboard</a> <span aria-hidden="true">/</span> publish history</nav>
+    <h1>Release</h1>
+  </header>
+  <JobView client:load jobId={jobId} back={`${Astro.site}dashboard/publish/${jobId}`} />
+</Base>
+
+<style is:global>
+  .page-head { margin-bottom: 20px; }
+  .page-head .crumbs { margin: 0 0 8px; color: var(--text-faint); }
+  .page-head h1 { margin: 0; }
+  .job .kv { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: var(--fs-2); }
+  .job .kv dt { color: var(--text-muted); }
+  .job .kv dd { margin: 0; }
+  .jtimeline { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); }
+  .jtimeline li { background: var(--bg); padding: 14px; display: grid; grid-template-columns: 20px 1fr; gap: 10px; color: var(--text-faint); }
+  .jtimeline li.ok, .jtimeline li.now, .jtimeline li.bad { color: var(--text); }
+  .jtimeline .mark { font-weight: 700; }
+  .jtimeline li.ok .mark { color: var(--ok); }
+  .jtimeline li.bad .mark { color: var(--bad); }
+  .jtimeline li.now .mark { color: var(--info); }
+  .jtimeline p { margin: 2px 0 0; }
+  @media (max-width: 760px) { .jtimeline { grid-template-columns: 1fr; } }
+</style>
