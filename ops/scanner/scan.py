@@ -37,6 +37,10 @@ import backup
 
 SCANNER_VERSION = "0.1.0"
 SMOKE_TIMEOUT = 120
+# What the tool page shows as "what you get back": a few real entities from the smoke test, or a slice of its
+# stdout when the output is not an entity list.
+SAMPLE_MAX_ENTITIES = 5
+SAMPLE_MAX_CHARS = 2000
 PARAMETER_TYPES = {"string", "integer", "boolean", "enum"}
 
 # GuardDog rules that look at code behaviour. Its metadata rules (empty description, single
@@ -199,6 +203,45 @@ def smoke_command(runtime: dict, test_input: dict | None) -> list[str] | None:
     return out
 
 
+def sample_from_output(stdout: str, output_format: str) -> dict:
+    """A trimmed record of what the test input produced, for the tool page's sample. json and jsonl outputs keep
+    their first few entities; csv and text keep the start of stdout. Nothing here comes from a user's run: the
+    input is the manifest's own test input and the container had no secrets."""
+    sample: dict = {"output_format": output_format}
+    entities: list = []
+    if output_format == "json":
+        try:
+            doc = json.loads(stdout)
+            if isinstance(doc, dict) and isinstance(doc.get("entities"), list):
+                entities = doc["entities"]
+            elif isinstance(doc, list):
+                entities = doc
+        except ValueError:
+            pass
+    elif output_format == "jsonl":
+        for line in stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                doc = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(doc, dict):
+                entities.append(doc)
+    entities = [e for e in entities if isinstance(e, dict) and "type" in e and "value" in e]
+    if entities:
+        kept = []
+        for e in entities[:SAMPLE_MAX_ENTITIES]:
+            text = json.dumps(e)
+            kept.append(e if len(text) <= 500 else {"type": e["type"], "value": str(e["value"])[:200]})
+        sample["entities"] = kept
+        sample["entity_count"] = len(entities)
+    else:
+        sample["stdout"] = stdout[:SAMPLE_MAX_CHARS]
+    return sample
+
+
 def smoke(image: str, runtime: dict, test_input: dict | None, egress: bool, expect_exit_code: int = 0) -> dict:
     """Runs the test input in the same sandbox ot uses. Tools that declare network egress keep the
     network (the scan runner is disposable and the container gets no secrets); others run offline.
@@ -213,11 +256,14 @@ def smoke(image: str, runtime: dict, test_input: dict | None, egress: bool, expe
             "--user", "65534:65534", "-e", "HOME=/tmp", "--entrypoint", cmd[0], image, *cmd[1:]]
     try:
         r = run(args, timeout=SMOKE_TIMEOUT)
-        code, output = r.returncode, (r.stdout + r.stderr)
+        code, output, stdout = r.returncode, (r.stdout + r.stderr), r.stdout
     except subprocess.TimeoutExpired:
-        code, output = 124, "timed out"
+        code, output, stdout = 124, "timed out", ""
     status = "pass" if code == expect_exit_code else "fail"
-    return {"status": status, "exit_code": code, "network": network, "duration_ms": int((time.time() - started) * 1000), "output_excerpt": output[-1000:]}
+    result = {"status": status, "exit_code": code, "network": network, "duration_ms": int((time.time() - started) * 1000), "output_excerpt": output[-1000:]}
+    if status == "pass" and stdout.strip():
+        result["sample"] = sample_from_output(stdout, runtime.get("output_format") or "json")
+    return result
 
 
 # ---------- per runtime ----------

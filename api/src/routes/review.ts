@@ -3,7 +3,7 @@ import type { Context } from "hono";
 import type { App, AppEnv, Env } from "../env";
 import { apiError } from "../lib/errors";
 import { sha256Hex } from "../lib/crypto";
-import { applyScanResults, commitStatus, loadVersion, publishVersion, type ScanResults } from "../scans";
+import { applyScanResults, commitStatus, loadVersion, publishVersion, type ScanResults, trimSample } from "../scans";
 import { ownerEmails, sendEmail, templates } from "../notify";
 import { releasePlan } from "../backups";
 import { audit, requireUser } from "./auth";
@@ -23,6 +23,7 @@ export function parseResults(body: unknown): ScanResults {
   if (!isCount(r.secrets?.count)) bad("secrets.count must be a count");
   if (!isCount(r.malware?.count)) bad("malware.count must be a count");
   if (!["pass", "fail", "skipped"].includes(r.smoke?.status)) bad("smoke.status must be pass, fail or skipped");
+  if (r.smoke.sample !== undefined) r.smoke.sample = trimSample(r.smoke.sample);
   const v = r.vulnerabilities;
   if (v !== null && (typeof v !== "object" || !["critical", "high", "medium", "low", "fixable_critical", "fixable_high"].every((k) => isCount((v as any)[k])))) {
     bad("vulnerabilities must be null or counts");

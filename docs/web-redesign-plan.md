@@ -638,11 +638,12 @@ visible ones.
 ## 9. Open questions
 
 1. **Brand direction**: decided on 21 Oct 2026: adopt the design of osintverse.com (§4.9), including dark by
-   default. Still open within that: should the light theme be reachable from the header toggle (as today) or
-   only follow the OS?
-2. **Default browse sort**: "Recently verified working" (recommended) or "Most installed" once counts are real?
-3. **Sample output**: should the scanner record a trimmed envelope from the smoke test so every tool page can
-   show real output? A scanner and API change outside this plan.
+   default. Decided on 22 Oct 2026: the light theme stays reachable from the header toggle; the toggle
+   remembers the choice and "system" follows the OS.
+2. **Default browse sort**: decided on 22 Oct 2026: "Recently verified working" (`sort=health`), with
+   "Most installed" as a choice in the sort menu.
+3. **Sample output**: decided on 22 Oct 2026: yes. The scanner records a trimmed envelope from the smoke test,
+   the API stores it with the version, and the tool page shows it in place of the shaped sample.
 4. **Header account state**: a `/me` call on every page for signed-in users (as the staff link does today) or a
    cookie-presence check (no API call, cannot show the login)?
 5. **Guides badge**: hide "Community-packaged" for `kind: guide` on the site?
