@@ -1,7 +1,9 @@
-// The quick search dialog: opened from the header button, "/" or Ctrl+K; searches as you type.
+// The quick search dialog: opened from the header button, "/" or Ctrl+K; searches names as you type, and a pasted
+// value (an email, a domain…) offers its input page, where the run commands are filled with it.
 import { useEffect, useRef, useState } from "preact/hooks";
 import { api, type SearchResult, type ToolSummary } from "../lib/api";
 import { inputLabel } from "../lib/format";
+import { destination, detect } from "../lib/detect";
 
 const SUGGESTIONS = ["email", "username", "phone", "domain", "whois", "breach", "image"];
 
@@ -69,9 +71,10 @@ export default function SearchDialog() {
   }, [q]);
 
   const hrefOf = (t: ToolSummary) => (t.kind === "guide" ? `/guides/${t.namespace}/${t.name}` : `/${t.namespace}/${t.name}`);
+  const kind = detect(q);
   const go = () => {
     const pick = results?.[active];
-    window.location.href = pick ? hrefOf(pick) : `/search?q=${encodeURIComponent(q.trim())}`;
+    window.location.href = pick ? hrefOf(pick) : kind ? destination(q, "auto") : `/search?q=${encodeURIComponent(q.trim())}`;
   };
   const onInputKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") {
@@ -104,7 +107,7 @@ export default function SearchDialog() {
           <input
             ref={input}
             type="search"
-            placeholder="Search tools and guides"
+            placeholder="Search tools and guides, or paste a value"
             value={q}
             onInput={(e) => setQ((e.target as HTMLInputElement).value)}
             onKeyDown={onInputKey}
@@ -114,6 +117,11 @@ export default function SearchDialog() {
           />
           <kbd class="kbd">Esc</kbd>
         </div>
+        {kind && (
+          <p class="sdlg-typed small">
+            Looks like {/^[aeiou]/.test(kind) ? "an" : "a"} <b>{inputLabel(kind).toLowerCase()}</b>. <a href={destination(q, "auto")}>Tools that take it, with the value filled in →</a>
+          </p>
+        )}
         <div id="sdlg-results" class="sdlg-results" role="listbox" aria-busy={busy}>
           {results === null ? (
             <div class="sdlg-empty">
@@ -126,7 +134,7 @@ export default function SearchDialog() {
             </div>
           ) : results.length === 0 ? (
             <p class="sdlg-empty muted">
-              {busy ? "Searching…" : failed ? <>The registry did not answer. <a href={`/search?q=${encodeURIComponent(q)}`}>Search the site instead</a>.</> : <>Nothing matches. <a href={`/search?q=${encodeURIComponent(q)}`}>Search everything</a>.</>}
+              {busy ? "Searching…" : failed ? <>The registry did not answer. <a href={`/search?q=${encodeURIComponent(q)}`}>Search the site instead</a>.</> : kind ? <>No tool is named that; press Enter for the tools that take {/^[aeiou]/.test(kind) ? "an" : "a"} {inputLabel(kind).toLowerCase()}.</> : <>Nothing matches. <a href={`/search?q=${encodeURIComponent(q)}`}>Search everything</a>.</>}
             </p>
           ) : (
             <ul class="list-plain">

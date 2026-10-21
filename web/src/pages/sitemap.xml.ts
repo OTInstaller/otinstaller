@@ -20,7 +20,7 @@ async function all(path: string) {
 export const GET: APIRoute = async ({ site }) => {
   const [types, tools, guides] = await Promise.all([api<Types>("/types"), all("/tools?kind=tool"), all("/guides")]);
   const paths = [
-    "/", "/search", "/guides",
+    "/", "/search", "/guides", "/publish",
     ...types.inputs.map((t) => `/input/${t}`),
     ...types.categories.map((c) => `/category/${c}`),
     ...tools.map((t) => `/${t.namespace}/${t.name}`),

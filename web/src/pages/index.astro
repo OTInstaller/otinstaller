@@ -10,7 +10,10 @@ import { api, type SearchResult } from "../lib/api";
 import { START_INPUTS, inputLabel } from "../lib/format";
 import { cacheFor } from "../lib/page";
 
-const byType = await Promise.all(START_INPUTS.map((t) => api<SearchResult>(`/tools?kind=tool&input=${t}&limit=4`).then((r) => ({ type: t, ...r }))));
+// "Image" tools take a URL, so that row comes from the images-geo category instead of an input type.
+const rowQuery = (t: string) => (t === "image" ? `/tools?kind=tool&category=images-geo&limit=4` : `/tools?kind=tool&input=${t}&limit=4`);
+const rowHref = (t: string) => (t === "image" ? "/category/images-geo" : `/input/${t}`);
+const byType = await Promise.all(START_INPUTS.map((t) => api<SearchResult>(rowQuery(t)).then((r) => ({ type: t, ...r }))));
 const [updated, guides, allTools, allGuides] = await Promise.all([
   api<SearchResult>("/tools?kind=tool&sort=updated&limit=6"),
   api<SearchResult>("/guides?sort=stars&limit=4"),
@@ -27,7 +30,7 @@ cacheFor(Astro, 300);
       <h1>Paste what you have.<br />Run the right tool.</h1>
       <PasteBox id="hero-q" large />
       <p class="starts small muted">or start from:
-        {START_INPUTS.map((t) => <a class="chip" href={`/input/${t}`}>{inputLabel(t)}</a>)}
+        {START_INPUTS.map((t) => <a class="chip" href={rowHref(t)}>{inputLabel(t)}</a>)}
       </p>
       <div class="hero-grid">
         <Terminal />
@@ -72,13 +75,13 @@ cacheFor(Astro, 300);
           const more = (row.total ?? row.results.length) - row.results.length;
           return (
             <div class="type-row">
-              <a class="label" href={`/input/${row.type}`}>{label}</a>
+              <a class="label" href={rowHref(row.type)}>{label}</a>
               <span class="list">
                 {row.results.length === 0
                   ? <span class="muted">None yet. <a href="/publish">Publish one</a>.</span>
                   : row.results.map((t) => <a href={`/${t.namespace}/${t.name}`} title={`${t.namespace}/${t.name}: ${t.summary}`}><span class="ns">{t.namespace}/</span>{t.name}</a>)}
               </span>
-              <a class="more" href={`/input/${row.type}`}>{more > 0 ? `${more} more →` : "where it leads →"}</a>
+              <a class="more" href={rowHref(row.type)}>{more > 0 ? `${more} more →` : "where it leads →"}</a>
             </div>
           );
         })}
