@@ -21,7 +21,7 @@ const activeFilters = facets.filter((f) => current(f.key)).map((f) => ({ key: f.
 const q = current("q") ?? "";
 cacheFor(Astro, 300);
 ---
-<Base title="OSINT investigation guides" description="Step-by-step investigation playbooks and references that use registry tools." jsonHref={`https://api.otinstaller.com/v1/guides${q ? `?q=${encodeURIComponent(q)}` : ""}`}>
+<Base title="OSINT investigation guides and playbooks" description={`${result.total ?? ""} free, versioned OSINT investigation guides: email, username, phone, domain, IP, image and crypto playbooks that name the open-source tools to run at each step, with one command to install them all.`} jsonHref={`https://api.otinstaller.com/v1/guides${q ? `?q=${encodeURIComponent(q)}` : ""}`}>
   <header class="page-head">
     <p class="eyebrow">Playbooks, versioned like tools</p>
     <h1>Guides</h1>

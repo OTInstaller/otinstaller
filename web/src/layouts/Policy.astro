@@ -3,6 +3,7 @@
 import Base from "./Base.astro";
 import SideNav from "../components/SideNav.astro";
 import { markdownPage } from "../lib/markdown";
+import { breadcrumbs, graph, ORGANIZATION } from "../lib/seo";
 
 interface Props {
   frontmatter: { title: string; description?: string; updated?: string };
@@ -21,7 +22,7 @@ const path = Astro.url.pathname.replace(/\/$/, "");
 const twin = markdownPage(path) ? `${path}.md` : undefined;
 Astro.response.headers.set("Cache-Control", "public, max-age=300, s-maxage=3600");
 ---
-<Base title={frontmatter.title} description={frontmatter.description} markdown={twin}>
+<Base title={frontmatter.title} description={frontmatter.description} markdown={twin} ogType="article" jsonLd={graph({ "@type": "WebPage", name: frontmatter.title, description: frontmatter.description, url: `${Astro.site}${path.slice(1)}`, ...(frontmatter.updated ? { dateModified: frontmatter.updated } : {}), publisher: ORGANIZATION }, breadcrumbs([["Policies", "/policy/terms"], [frontmatter.title, path]]))}>
   <div class="policy">
     <SideNav label="Policies" pages={pages} current={path} headings={headings} />
     <article class="prose policy-body">

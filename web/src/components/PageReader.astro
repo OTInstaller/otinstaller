@@ -5,6 +5,7 @@
 // above the content.
 import CopyCode from "./CopyCode.astro";
 import type { NavEntry, Page } from "../lib/api";
+import { demoteHeadings } from "../lib/html";
 
 interface Props {
   page: Page;
@@ -14,8 +15,10 @@ interface Props {
   label: string;
   /** Label for the rail slot's disclosure on phones, e.g. "Tools (6)". */
   railLabel?: string;
+  /** The page's own <h1> text: a body heading that repeats it is dropped, and the rest move down one level. */
+  title?: string;
 }
-const { page, nav, hrefFor, label, railLabel } = Astro.props;
+const { page, nav, hrefFor, label, railLabel, title } = Astro.props;
 const toc = page.toc.filter((t) => t.depth >= 2);
 const pos = nav.findIndex((n) => n.path === page.path);
 const hasRail = Astro.slots.has("rail");
@@ -47,7 +50,7 @@ const hasRail = Astro.slots.has("rail");
     {nav.length > 1 && <p class="faint progress">Page {page.position} of {page.pages}</p>}
   </nav>
   <article>
-    <div class="prose" set:html={page.body} />
+    <div class="prose" set:html={demoteHeadings(page.body, title)} />
     <nav class="pager" aria-label="Pages">
       {page.prev ? <a class="pg prev" href={hrefFor(page.prev.path)} rel="prev"><span class="small muted">← Previous</span><strong>{page.prev.title}</strong></a> : <span />}
       {page.next && <a class="pg next" href={hrefFor(page.next.path)} rel="next"><span class="small muted">Next →</span><strong>{page.next.title}</strong></a>}

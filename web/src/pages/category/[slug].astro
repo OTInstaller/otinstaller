@@ -1,21 +1,43 @@
 ---
+// A category's landing page: what the category covers, the tools in it, and the input types they take.
 import Base from "../../layouts/Base.astro";
 import Results from "../../components/Results.astro";
 import PageHead from "../../components/PageHead.astro";
 import { api, type Types } from "../../lib/api";
-import { categoryLabel } from "../../lib/format";
+import { categoryLabel, inputLabel } from "../../lib/format";
 import { cacheFor, searchFrom } from "../../lib/page";
+import { CATEGORY_LANDING, GENERIC_INPUTS } from "../../lib/landing";
+import { breadcrumbs, graph, itemList } from "../../lib/seo";
 
 const slug = Astro.params.slug!;
 const types = await api<Types>("/types");
 if (!types.categories.includes(slug)) return new Response(null, { status: 404, statusText: "Not found" });
 const { result } = await searchFrom(Astro.url, { kind: "tool", category: slug });
 const label = categoryLabel(slug);
+const total = result.total ?? result.results.length;
+const copy = CATEGORY_LANDING[slug];
+const title = `${label} OSINT tools`;
+const description = copy ? `${copy.description} ${total} ${total === 1 ? "tool" : "tools"} listed today.` : `OSINT tools in the ${label} category.`;
+// The input types these tools take, most common first: the way into the input landing pages.
+const takes = new Map<string, number>();
+for (const t of result.results) for (const i of t.inputs) if (!GENERIC_INPUTS.has(i)) takes.set(i, (takes.get(i) ?? 0) + 1);
+const inputs = [...takes.entries()].sort((a, b) => b[1] - a[1]);
+const jsonLd = graph(
+  { "@type": "CollectionPage", name: title, description, url: `${Astro.site}category/${slug}`, isPartOf: { "@type": "WebSite", url: Astro.site?.toString() } },
+  breadcrumbs([["Tools", "/search"], [label, `/category/${slug}`]]),
+  itemList(title, result.results),
+);
 cacheFor(Astro, 600);
 ---
-<Base title={`${label} OSINT tools`} description={`OSINT tools in the ${label} category.`} jsonHref={`https://api.otinstaller.com/v1/tools?kind=tool&category=${encodeURIComponent(slug)}`}>
-  <PageHead eyebrow="Category" title={label}>
-    <p class="muted">{result.total ?? result.results.length} {result.results.length === 1 ? "tool" : "tools"}.</p>
+<Base title={title} description={description} noindex={total === 0} jsonLd={jsonLd} jsonHref={`https://api.otinstaller.com/v1/tools?kind=tool&category=${encodeURIComponent(slug)}`}>
+  <PageHead eyebrow="Category" title={title}>
+    <p class="muted">{total} {result.results.length === 1 ? "tool" : "tools"}{copy ? `. ${copy.lead}` : "."}</p>
+    {inputs.length > 0 && <p class="row small takes"><span class="muted">Start from what you have:</span>{inputs.map(([i, n]) => <a class="chip" href={`/input/${i}`}>{inputLabel(i)} · {n}</a>)}</p>}
   </PageHead>
   <Results result={result} types={types} fixed={["category"]} />
 </Base>
+
+<style>
+  .takes { margin-top: 10px; }
+  .takes .chip { text-transform: none; letter-spacing: 0; }
+</style>

@@ -12,6 +12,9 @@ import { entityLabel, formatDate, inputLabel } from "../../../lib/format";
 import { evidence, exampleValue, sampleEnvelope } from "../../../lib/evidence";
 import { loadTool } from "../../../lib/tool";
 import { cacheFor } from "../../../lib/page";
+import { demoteHeadings } from "../../../lib/html";
+import { GENERIC_INPUTS } from "../../../lib/landing";
+import { article, breadcrumbs, clip, graph } from "../../../lib/seo";
 
 const loaded = await loadTool(Astro);
 if ("response" in loaded) return loaded.response;
@@ -19,14 +22,18 @@ const { tool: t, hasDocs } = loaded;
 const ref = `${t.namespace}/${t.name}`;
 const m = t.manifest;
 const pivotFrom = (m.outputs ?? []).map((o) => o.type);
-const [readme, guides, scans, manifest, latest, pivots] = await Promise.all([
+const required0 = (m.inputs ?? []).find((i) => i.required && !GENERIC_INPUTS.has(i.type)) ?? (m.inputs ?? []).find((i) => !GENERIC_INPUTS.has(i.type));
+const [readme, guides, scans, manifest, latest, pivots, similar] = await Promise.all([
   apiOrNull<{ html: string }>(`/tools/${ref}/readme`),
   apiOrNull<{ guides: SearchResult["results"] }>(`/tools/${ref}/guides`),
   apiOrNull<Scans>(`/tools/${ref}/${t.latest_version}/scans`),
   apiOrNull<ManifestResponse>(`/tools/${ref}/${t.latest_version}/manifest`),
   apiOrNull<{ published_at: number | null }>(`/tools/${ref}/${t.latest_version}`),
   pivotFrom.length ? apiOrNull<Pivots>(`/pivots?from=${encodeURIComponent(pivotFrom.join(","))}`).catch(() => null) : Promise.resolve(null),
+  // Other tools that take the same thing: the alternatives, and the way to the input landing page.
+  required0 ? apiOrNull<SearchResult>(`/tools?kind=tool&input=${encodeURIComponent(required0.type)}&limit=8`).catch(() => null) : Promise.resolve(null),
 ]);
+const alternatives = (similar?.results ?? []).filter((s) => `${s.namespace}/${s.name}` !== ref).slice(0, 5);
 const e = m.ethics;
 const lines = evidence(t, scans, manifest);
 const required = (m.inputs ?? []).filter((i) => i.required);
@@ -50,10 +57,19 @@ const sample = sampleEnvelope(ref, t.latest_version, m.runtime?.kind ?? "docker"
 const leads = pivotFrom.filter((o) => pivots?.pivots[o]?.length).map((o) => ({ type: o, n: pivots!.pivots[o]!.length }));
 const jsonHref = `https://api.otinstaller.com/v1/tools/${ref}`;
 cacheFor(Astro, 60);
-const jsonLd = {
-  "@context": "https://schema.org",
+// What a search result shows: the tool's name and what it does, then what it takes, finds and needs.
+const takes = (m.inputs ?? []).filter((i) => !GENERIC_INPUTS.has(i.type)).map((i) => inputLabel(i.type).toLowerCase());
+const finds = pivotFrom.map(entityLabel);
+const title = `${t.name}: ${clip(t.summary, 48)}`;
+const description = [
+  `${t.summary}.`,
+  takes.length ? `Takes ${[...new Set(takes)].join(", ")}${finds.length ? `; finds ${finds.slice(0, 4).join(", ")}` : ""}.` : "",
+  `Install and run ${t.name} with one command (ot run ${ref}), sandboxed, signature-checked, ${m.secrets?.some((s) => s.required) ? "with your own API key" : "no API key needed"}.`,
+].filter(Boolean).join(" ");
+const software = {
   "@type": "SoftwareApplication",
-  name: ref,
+  name: t.name,
+  alternateName: ref,
   description: t.summary,
   softwareVersion: t.latest_version,
   applicationCategory: "SecurityApplication",
@@ -67,9 +83,14 @@ const jsonLd = {
   downloadUrl: "https://otinstaller.com/docs/getting-started",
   installUrl: "https://otinstaller.com/docs/getting-started",
   softwareRequirements: "ot, Docker or Podman",
+  ...(latest?.published_at ? { datePublished: new Date(latest.published_at).toISOString() } : {}),
+  ...(t.homepage && t.homepage !== t.repo_url ? { sameAs: t.homepage } : {}),
+  publisher: { "@type": "Organization", name: t.namespace, url: `${Astro.site}${t.namespace}` },
+  keywords: [...new Set([...t.categories, ...takes.map((k) => `${k} OSINT`), "OSINT tool"])].join(", "),
 };
+const jsonLd = graph(software, breadcrumbs([["Tools", "/search"], [t.namespace, `/${t.namespace}`], [t.name, `/${ref}`]]));
 ---
-<Base title={ref} description={t.summary} jsonLd={jsonLd} jsonHref={jsonHref} markdown={`/${ref}.md`}>
+<Base title={title} description={description} jsonLd={jsonLd} jsonHref={jsonHref} markdown={`/${ref}.md`}>
   <ToolHeader tool={t} active="overview" hasDocs={hasDocs} />
   <section class="run" aria-labelledby="run-h" data-run data-input={first?.name} data-type={first?.type}>
     <div class="run-head">
@@ -117,7 +138,7 @@ const jsonLd = {
       </section>
 
       <section class="prose readme" aria-label="README">
-        {readme ? <Fragment set:html={readme.html} /> : <p class="muted">This version has no rendered README yet.</p>}
+        {readme ? <Fragment set:html={demoteHeadings(readme.html)} /> : <p class="muted">This version has no rendered README yet.</p>}
       </section>
 
       {guides && guides.guides.length > 0 && (
@@ -132,6 +153,14 @@ const jsonLd = {
           <div class="section-head"><h2 id="next">What next</h2></div>
           <p class="small muted">{t.name} finds {pivotFrom.map(entityLabel).join(", ")}. Tools that take those:</p>
           <p class="row pivots">{leads.map((l) => <a class="chip" href={`/input/${l.type}`}>{entityLabel(l.type)} → {l.n} {l.n === 1 ? "tool" : "tools"}</a>)}<a class="chip" href="/docs/results">ot auto, with a saved result</a></p>
+        </section>
+      )}
+
+      {required0 && alternatives.length > 0 && (
+        <section aria-labelledby="alt">
+          <div class="section-head"><h2 id="alt">Other {inputLabel(required0.type).toLowerCase()} tools</h2><a href={`/input/${required0.type}`}>All {inputLabel(required0.type).toLowerCase()} tools →</a></div>
+          <p class="small muted">Alternatives to {t.name} that also take {article(inputLabel(required0.type))} {inputLabel(required0.type).toLowerCase()}; <code>ot auto</code> runs every installed one on the same value.</p>
+          <div class="rows">{alternatives.map((s) => <ToolRow tool={s} />)}</div>
         </section>
       )}
     </div>
