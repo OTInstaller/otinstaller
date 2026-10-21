@@ -28,6 +28,7 @@ cacheFor(Astro, 300);
     <div class="wrap">
       <p class="eyebrow">Free public registry of OSINT tools</p>
       <h1>Paste what you have.<br />Run the right tool.</h1>
+      <p class="who">A free registry of OSINT tools for investigators, journalists and security teams. One command installs <code>ot</code>; one more runs any tool here in a sandbox on your own machine. <a href="/docs/quick-start">Quick start</a> · <a href="/tour">What you can do</a></p>
       <PasteBox id="hero-q" large />
       <p class="starts small muted">or start from:
         {START_INPUTS.map((t) => <a class="chip" href={rowHref(t)}>{inputLabel(t)}</a>)}
@@ -59,8 +60,8 @@ cacheFor(Astro, 300);
     <div class="wrap install-grid">
       <div>
         <p class="eyebrow">Install ot</p>
-        <h2 id="install-h">One file. Windows, macOS, Linux.</h2>
-        <p class="small muted">Then <code>ot doctor</code> tells you whether Docker or Podman and your keychain are ready. Archives, deb and rpm packages are on <a href="https://github.com/OTInstaller/ot/releases" rel="noopener">GitHub Releases</a>; <code>ot self-update</code> keeps it current.</p>
+        <h2 id="install-h">Three commands to a result.</h2>
+        <p class="small muted">You need Docker Desktop or Podman running; tools run in containers. Then <code>ot doctor</code> confirms your machine is ready. Archives, deb and rpm packages are on <a href="https://github.com/OTInstaller/ot/releases" rel="noopener">GitHub Releases</a>; <code>ot self-update</code> keeps it current.</p>
       </div>
       <InstallBlock />
     </div>
@@ -124,7 +125,8 @@ cacheFor(Astro, 300);
 <style>
   .hero { padding: 48px 0 40px; }
   .hero .eyebrow { margin: 0; }
-  .hero h1 { font-size: var(--fs-7); line-height: 1.1; margin: 12px 0 24px; max-width: 22ch; }
+  .hero h1 { font-size: var(--fs-7); line-height: 1.1; margin: 12px 0 12px; max-width: 22ch; }
+  .who { margin: 0 0 20px; max-width: 72ch; color: var(--text-muted); font-size: var(--fs-3); }
   .starts { display: flex; gap: 8px 6px; flex-wrap: wrap; align-items: center; margin: 12px 0 0; }
   .hero-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 32px; align-items: start; margin-top: 40px; }
   .trust { font-size: var(--fs-3); color: var(--text-muted); line-height: 1.6; }

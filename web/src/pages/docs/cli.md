@@ -13,7 +13,7 @@ that prints data takes `--json`, and errors then come as one line of JSON on std
 | Command | What it does |
 | --- | --- |
 | `ot search [query] [--input email] [--category x] [--runtime docker\|pipx] [--no-keys] [--kind tool\|guide]` | Search the registry; `--json` for scripts |
-| `ot info <ns/name>` | Summary, inputs, outputs, keys, ethics flags and trust status |
+| `ot info <ns/name>` | Summary, inputs, outputs, keys (with the `ot keys set` command), ethics flags, trust status, and a copy-ready run command using the registry's test input |
 | `ot install <ns/name[@version]> [--native]` | Install a tool (pull its image, or install its Python package) |
 | `ot run <ns/name> --<input> <value> …` | Run a tool; installs it first if needed (`-y` without asking) |
 | `ot run <ns/name> u:johndoe` | Typed inputs fill the tool's input of that type: `u:` username, `d:` domain, `e:` email, `p:` phone, `ip:` IP, `url:` URL |
@@ -25,7 +25,7 @@ that prints data takes `--json`, and errors then come as one line of JSON on std
 | `ot outdated` · `ot update <ns/name …> \| --all` | Check for and install newer versions, with the same signature and trust checks as `ot install` |
 | `ot uninstall <ns/name>` | Remove a tool |
 | `ot keys set\|list\|rm <NAME>` | API keys in the OS keychain (`set --from-env VAR`); an environment variable of the same name always wins |
-| `ot doctor` | Check Docker, pipx, Python, cosign, the keychain and the registry |
+| `ot doctor` | Check Docker, pipx, Python, cosign, the keychain and the registry; says how to install or start Docker when it is missing |
 | `ot pivot <run-id \| saved file> [--registry]` | Suggest the next runs from what a saved run found, with the `ot run` command for each; runs nothing |
 | `ot mcp` | Serve [MCP](/docs/agents) over stdio for AI agents; `ot mcp install claude\|claude-desktop\|cursor\|vscode\|codex\|gemini` adds it to a client |
 | `ot mcp policy` · `ot mcp audit [--since 24h]` · `ot mcp tools` | The rules agents run under, what they did, and what the server offers |

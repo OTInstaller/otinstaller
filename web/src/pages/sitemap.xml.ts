@@ -3,7 +3,7 @@
 import type { APIRoute } from "astro";
 import { api, type SearchResult, type Types } from "../lib/api";
 
-const DOCS = ["", "/getting-started", "/cli", "/agents", "/mcp-tools", "/automation", "/results", "/api", "/manifest", "/publishing", "/guides", "/errors", "/security", "/faq"];
+const DOCS = ["", "/quick-start", "/getting-started", "/cli", "/agents", "/mcp-tools", "/automation", "/results", "/api", "/manifest", "/publishing", "/guides", "/errors", "/security", "/faq"];
 const POLICIES = ["/acceptable-use", "/terms", "/privacy", "/takedown", "/transparency"];
 
 async function all(path: string) {
@@ -20,7 +20,7 @@ async function all(path: string) {
 export const GET: APIRoute = async ({ site }) => {
   const [types, tools, guides] = await Promise.all([api<Types>("/types"), all("/tools?kind=tool"), all("/guides")]);
   const paths = [
-    "/", "/search", "/guides", "/publish",
+    "/", "/search", "/guides", "/publish", "/tour",
     ...types.inputs.map((t) => `/input/${t}`),
     ...types.categories.map((c) => `/category/${c}`),
     ...tools.map((t) => `/${t.namespace}/${t.name}`),

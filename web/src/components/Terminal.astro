@@ -1,21 +1,23 @@
 ---
-// The hero demo: a terminal that types an `ot run` once and shows its result. The server renders the finished
-// frame, so bots, readers without JavaScript and people who prefer reduced motion see the full output at once.
+// The hero demo: a terminal that types an `ot run` once and shows its result, a real first run of dns-records on
+// 21 Oct 2026 (digest and output verbatim, the install lines as ot v0.13.1 prints them). The server renders the
+// finished frame, so bots, readers without JavaScript and people who prefer reduced motion see the full output.
 ---
 <figure class="term" data-term aria-label="Example: running an OSINT tool with ot">
   <figcaption class="term-bar">
     <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
     <span class="title">ot — zsh</span>
   </figcaption>
-  <pre class="term-body" aria-live="off"><code><span class="line prompt"><span class="ps">$</span> <span class="typed" data-typed>ot run osintverse-community/holehe e:ada@example.com</span></span>
-<span class="line ok" data-step><b>✓</b> signed by  github.com/osintverse-community/holehe <span class="dim">· verified</span></span>
-<span class="line ok" data-step><b>✓</b> scans      pass <span class="dim">· 0 critical · smoke test ok</span></span>
-<span class="line dim" data-step>→ read-only container · no host files · no shell</span>
-<span class="line hit" data-step>  github.com        <span class="tag">found</span></span>
-<span class="line hit" data-step>  gitlab.com        <span class="tag">found</span></span>
-<span class="line hit" data-step>  spotify.com       <span class="tag">found</span></span>
-<span class="line miss" data-step>  twitter.com       <span class="tag">not found</span></span>
-<span class="line ok" data-step><b>✓</b> 3 of 121 sites <span class="dim">· results saved</span></span></code></pre>
+  <pre class="term-body" aria-live="off"><code><span class="line prompt"><span class="ps">$</span> <span class="typed" data-typed>ot run osintverse-community/dns-records d:example.com --format table</span></span>
+<span class="line dim" data-step>Installing osintverse-community/dns-records 0.1.0 (docker tool)…</span>
+<span class="line dim" data-step>pulled ghcr.io/osintverse-community/dns-records@sha256:bdd911ffbc78…</span>
+<span class="line ok" data-step>signature verified: signed by github.com/osintverse-community/dns-records</span>
+<span class="line dim" data-step>Saved results/dns-records/example.com/20261021-175915_dns-records_example.com.json</span>
+<span class="line hit" data-step>TYPE        VALUE                        SOURCE  CONFIDENCE</span>
+<span class="line hit" data-step>dns_record  A 172.66.147.243             dns     high</span>
+<span class="line hit" data-step>dns_record  MX 0 .                       dns     high</span>
+<span class="line hit" data-step>dns_record  NS hera.ns.cloudflare.com.   dns     high</span>
+<span class="line hit" data-step>dns_record  TXT "v=spf1 -all"            dns     high</span></code></pre>
 </figure>
 
 <script>

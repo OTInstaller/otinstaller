@@ -13,7 +13,7 @@ interface Props {
   /** The run command to show in the first-run strip. */
   example?: string;
 }
-const { name = "os", compact = false, example = "ot run osintverse-community/holehe --email ada@example.com" } = Astro.props;
+const { name = "os", compact = false, example = "ot run osintverse-community/dns-records d:example.com --format table" } = Astro.props;
 ---
 <div class:list={["install", { compact }]} data-install>
   <div class="tabs" role="radiogroup" aria-label="Operating system">
@@ -40,8 +40,8 @@ const { name = "os", compact = false, example = "ot run osintverse-community/hol
   {!compact && (
     <ol class="steps small">
       <li><code>ot doctor</code> <span class="muted">checks Docker or Podman and your keychain</span></li>
-      <li><code>{example}</code> <span class="muted">installs the tool after asking once, then runs it</span></li>
-      <li><code>ot auto ada@example.com</code> <span class="muted">runs everything you have installed that takes that value</span></li>
+      <li><span class="cmdline"><code>{example}</code><button class="btn btn-sm copy" type="button" data-copy={example} aria-label={`Copy: ${example}`}><span class="label">Copy</span></button></span> <span class="muted">installs the tool after asking once, then runs it and prints a table</span></li>
+      <li><code>ot auto example.com</code> <span class="muted">runs everything you have installed that takes that value</span></li>
     </ol>
   )}
 </div>
@@ -68,6 +68,7 @@ const { name = "os", compact = false, example = "ot run osintverse-community/hol
   .what ol { margin: 8px 0 0; padding-left: 20px; color: var(--text-muted); display: grid; gap: 4px; }
   .steps { margin: 4px 0 0; padding-left: 20px; display: grid; gap: 4px; }
   .steps code { color: var(--text); }
+  .cmdline { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .install:has(#os-unix:checked) [data-pane="unix"], .install:has(#os-windows:checked) [data-pane="windows"],
   .install:has(#cta-unix:checked) [data-pane="unix"], .install:has(#cta-windows:checked) [data-pane="windows"],
   .install:has(#tool-unix:checked) [data-pane="unix"], .install:has(#tool-windows:checked) [data-pane="windows"] { display: block; }

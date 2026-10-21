@@ -46,6 +46,14 @@ func (a *App) ensureInstalled(cmd *cobra.Command, ref pkgRef, ra *runArgs) (*sta
 		}
 		return inst, nil
 	}
+	// A missing API key is found before the pull, not after it: the registry's manifest says which keys the tool needs.
+	if resp, err := a.API.Manifest(cmd.Context(), ref.NS, ref.Name, ref.Version); err == nil && resp.Manifest != nil {
+		if _, m, err := manifest.ParseJSON(resp.Manifest); err == nil {
+			if _, err := loadSecrets(m); err != nil {
+				return nil, err
+			}
+		}
+	}
 	if !ra.Yes {
 		// Without a terminal, no answer must not mean yes: installing pulls and trusts new code.
 		if !a.interactive() {
@@ -297,9 +305,9 @@ func (a *App) doctorChecks(ctx context.Context) []doctorCheck {
 	}
 	if a.Runner.Engine != "" {
 		code, _ := ex.Run(ctx, a.Runner.Engine, []string{"info", "--format", "{{.ServerVersion}}"}, nil, nil, io.Discard, io.Discard)
-		check("containers", okOr(code == 0, "fail"), a.Runner.Engine+map[bool]string{true: " is running", false: " is installed but not running; start Docker Desktop"}[code == 0])
+		check("containers", okOr(code == 0, "fail"), a.Runner.Engine+map[bool]string{true: " is running", false: " is installed but not running; start Docker Desktop (or `sudo systemctl start docker` on a Linux server)"}[code == 0])
 	} else {
-		check("containers", "fail", "Docker or Podman not found (needed for Docker tools and sandboxed pipx tools)")
+		check("containers", "fail", "Docker or Podman not found; tools run in containers, so install Docker Desktop (https://docs.docker.com/desktop/) or Docker Engine (https://docs.docker.com/engine/install/), then run `ot doctor` again")
 	}
 	_, _, hasPipx := runner.FindPipx(ex)
 	check("pipx", okOr(hasPipx || a.Runner.Engine != "", "fail"), map[bool]string{true: "found", false: "not found (only needed for --native pipx runs)"}[hasPipx])

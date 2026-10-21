@@ -32,7 +32,7 @@ func ResolveInputs(m *manifest.Manifest, given map[string]string) (map[string]st
 			if in.Default != nil {
 				out[in.Name] = fmt.Sprint(in.Default)
 			} else if in.Required {
-				return nil, &UsageError{fmt.Sprintf("missing required input --%s (%s)", in.Name, in.Type)}
+				return nil, &UsageError{fmt.Sprintf("missing required input --%s (%s); for example: %s", in.Name, in.Type, ExampleCommand(m))}
 			}
 			continue
 		}
@@ -42,6 +42,70 @@ func ResolveInputs(m *manifest.Manifest, given map[string]string) (map[string]st
 		out[in.Name] = v
 	}
 	return out, nil
+}
+
+// exampleValues are realistic values per input type for example commands, used when the manifest has no
+// test input to borrow from. They are public, harmless addresses.
+var exampleValues = map[string]string{
+	"email": "ada@example.com", "username": "jane_doe", "phone": "+14155550100", "domain": "example.com", "ip": "192.0.2.1",
+	"url": "https://example.com/page", "name": "Jane Doe", "image": "https://example.com/photo.jpg",
+	"crypto_address": "1BoatSLRHtKNngkdXEeobR76b53LETtpyT", "hash": "d41d8cd98f00b204e9800998ecf8427e", "company": "Example Ltd",
+	"integer": "10", "boolean": "true",
+}
+
+// ExampleValue is a value to show for an input: the manifest's test input when it has one, else a realistic
+// value of the input's type.
+func ExampleValue(m *manifest.Manifest, in manifest.Input) string {
+	if m.Test != nil {
+		if v, ok := m.Test.Input[in.Name]; ok {
+			return fmt.Sprint(v)
+		}
+	}
+	if in.Example != nil {
+		return fmt.Sprint(in.Example)
+	}
+	if v, ok := exampleValues[in.Type]; ok {
+		return v
+	}
+	return "<" + in.Type + ">"
+}
+
+// ExampleCommand is a copy-ready `ot run` for the manifest: a typed input (d:example.com) when the only
+// required input has a prefix, else --name value for each required input.
+func ExampleCommand(m *manifest.Manifest) string {
+	var required []manifest.Input
+	for _, in := range m.Inputs {
+		if in.Required {
+			required = append(required, in)
+		}
+	}
+	parts := []string{"ot run", m.Ref()}
+	if len(required) == 1 {
+		if p := PrefixFor(required[0].Type); p != "" {
+			return strings.Join(append(parts, p+":"+quoteArg(ExampleValue(m, required[0]))), " ")
+		}
+	}
+	for _, in := range required {
+		parts = append(parts, "--"+in.Name, quoteArg(ExampleValue(m, in)))
+	}
+	return strings.Join(parts, " ")
+}
+
+// PrefixFor is the typed-input prefix for an input type (d: for domain), or "" when there is none.
+func PrefixFor(typ string) string {
+	for p, t := range TypedPrefixes {
+		if t == typ {
+			return p
+		}
+	}
+	return ""
+}
+
+func quoteArg(v string) string {
+	if strings.ContainsAny(v, " \t\"'") {
+		return strconv.Quote(v)
+	}
+	return v
 }
 
 func inputList(m *manifest.Manifest) string {

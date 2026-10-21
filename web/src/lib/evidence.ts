@@ -115,6 +115,30 @@ export function evidence(t: ToolDetail, scans: Scans | null, manifest: ManifestR
   return out;
 }
 
+/** The example value for an input: the manifest's own example, else its test input, else a realistic value of the type. */
+export function inputExample(m: { test?: { input: Record<string, unknown> } }, i: { name: string; type: string; example?: unknown }): string {
+  if (i.example != null && i.example !== "") return String(i.example);
+  const t = m.test?.input?.[i.name];
+  if (t != null && t !== "") return String(t);
+  return exampleValue(i.type, i.name);
+}
+
+/** The typed-input prefix for a type (d: for domain), or null. */
+export function prefixFor(type: string): string | null {
+  return ({ email: "e", username: "u", domain: "d", phone: "p", ip: "ip", url: "url" } as Record<string, string>)[type] ?? null;
+}
+
+/** What each ethics flag means for this tool, in one sentence. */
+export function ethicsLines(e: { touches_target: boolean; auth_required: boolean; collects_personal_data: boolean; notifies_target?: boolean }, egress: boolean): { yes: boolean; text: string; why: string }[] {
+  return [
+    { yes: e.touches_target, text: e.touches_target ? "Contacts the target directly" : "Does not contact the target", why: e.touches_target ? "it sends requests to the target's own servers or accounts, which can be logged or noticed" : "it reads public sources or third parties only; the target sees nothing" },
+    { yes: !!e.notifies_target, text: e.notifies_target ? "The target may notice a run" : "The target cannot tell it ran", why: e.notifies_target ? "a password-reset email, a login alert or similar can reach them" : "no alert, email or visible request reaches the target" },
+    { yes: e.auth_required, text: e.auth_required ? "Logs in to accounts" : "Does not log in to accounts", why: e.auth_required ? "it uses credentials or session cookies on third-party sites, which those sites may notice" : "no credentials or sessions are used" },
+    { yes: e.collects_personal_data, text: e.collects_personal_data ? "Returns personal data" : "Returns no personal data", why: e.collects_personal_data ? "results can include names, accounts or other details about a person: handle them under your legal basis" : "results are about infrastructure or content, not people" },
+    { yes: egress, text: egress ? "Goes online" : "Runs offline", why: egress ? "it needs the network; ot asks before an unattended run" : "the container has no network at all" },
+  ];
+}
+
 /** A realistic example value per input type, for run commands that copy and work. */
 export function exampleValue(type: string, name: string): string {
   switch (type) {
