@@ -198,6 +198,16 @@ record.
         The v0.13.0 entry was published with a shortened description (the registry allows 100 characters); releases
         from now on write a short one. Each future release needs `mcp-publisher publish` with its `server.json`
         ([publishing-setup.md](publishing-setup.md) section 10).
+      - **v0.13.1 (22 Oct):** `ot keys setup` and the `key_setup` MCP tool (agents help with keys, only the person stores
+        them), entities from text and CSV output, type descriptions, and the clearer consent-token error.
+        - Tagged on `154adbe` and released with its bundles. `ot self-update` from v0.13.0 worked.
+        - Published to the MCP Registry as `com.otinstaller/ot` 0.13.1, now the latest there.
+        - API deployed as `121009a6` (previous `05642714`): `/v1/types` has descriptions, but the plain URL serves a
+          copy cached before the deploy until about 16:00 UTC on 22 Oct.
+        - Site deployed as `414cfa50` (previous `d417effa`), including other sessions' merged work. Every page answers
+          200, the new docs are live, and there are no CSP errors.
+        - The seed tools' `notifies_target` changes need new releases from their own repositories
+          ([../seed/README.md](../seed/README.md)).
       - **Next:**
         - the Anthropic directory and Cursor marketplace submissions (each needs your OK; texts in
           [launch/agent-listings.md](launch/agent-listings.md));
