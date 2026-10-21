@@ -6,7 +6,7 @@ description: The result envelope, saved runs, the .meta.json sidecar and how too
 
 Every `ot run` produces a **result envelope**: one JSON object that says what ran, with which inputs, what it found and
 exactly what it printed. `ot run` prints it on stdout, and saves the tool's raw output with a `.meta.json` sidecar.
-OSINTverse cases read the same envelope. The schema is [`/schema/envelope-v1.json`](/schema/envelope-v1.json).
+The schema is [`/schema/envelope-v1.json`](/schema/envelope-v1.json).
 
 ## The envelope
 
