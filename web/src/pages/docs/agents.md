@@ -34,6 +34,18 @@ The agent can't run anything that touches a target, goes online or involves a pe
 
 Runs are saved under `<ot home>/results` (`%APPDATA%\ot\results` on Windows, `~/.ot/results` elsewhere), or `OT_RESULTS_DIR`.
 
+## Remote server
+
+To let an agent search the registry without installing anything, add the read-only remote server instead, or as well:
+
+```
+https://api.otinstaller.com/mcp
+```
+
+It speaks Streamable HTTP, needs no account and keeps no session. It has six tools: `search_tools`, `get_tool`, `list_types`, `suggest_pivots`, `search_guides` and `read_guide`. `get_tool` gives the consent class `ot mcp` would put a run in.
+
+It can't install or run anything. For that the agent needs `ot mcp` on your machine, which asks you first as below. In Claude, add it as a custom connector; in Claude Code, `claude mcp add --transport http otinstaller-registry https://api.otinstaller.com/mcp`.
+
 ## What the agent can do
 
 `ot mcp tools` lists everything the server offers; [MCP tools](/docs/mcp-tools) describes each.

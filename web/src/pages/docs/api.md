@@ -18,12 +18,16 @@ Search, package pages, manifests, scans, guides, docs, `/types` and `/pivots` ar
 | --- | --- |
 | `GET /tools?q=whois&input=domain&passive_only=1` | Search. Filters: `input`, `output`, `category`, `runtime`, `kind`, `no_keys`, `passive_only` (tools that run offline, touch no target and collect no personal data), `sort`, `limit`, `cursor` |
 | `GET /tools/{ns}/{name}` | A package, its trust status and its manifest |
-| `GET /tools/{ns}/{name}/{version}/manifest` | What `ot install` uses: the manifest, signer, scan status and backup locations |
+| `GET /tools/{ns}/{name}/{version}/manifest` | What `ot install` uses: the manifest, signer, scan status and backup locations. `manifest` leaves out optional fields added after `ot` v0.12; when it does, `manifest_full` has them |
 | `GET /types` | Input types, entity types, categories and the pivot map |
 | `GET /pivots?from=email,subdomain` | For each entity type, the input types it can feed and the best tools taking them; types that feed nothing are listed in `unmapped` |
 
 Search results and package pages include each tool's `ethics` (`touches_target`, `auth_required`,
-`collects_personal_data`) and `egress`. Those decide whether an agent must ask before running it.
+`collects_personal_data`, and `notifies_target` when the publisher sets it) and `egress`. Those decide whether an agent
+must ask before running it.
+
+Agents that speak MCP can use the same reads through the [remote MCP server](/docs/agents#remote-server) at
+`https://api.otinstaller.com/mcp`.
 
 Don't send a token on public reads: anonymous reads are served from the edge cache.
 

@@ -111,3 +111,42 @@ func TestOutdatedAndUpdate(t *testing.T) {
 		}
 	}
 }
+
+// The registry serves a manifest every released ot accepts plus the full one; ot uses the full one only when its own
+// schema accepts it.
+func TestRegistryManifestPrefersTheFullOne(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(fixtures, "valid", "docker-tool.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	full, _, err := manifest.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fullJSON, _ := json.Marshal(full)
+	compat := strings.Replace(string(fullJSON), `,"typical_seconds":40`, "", 1)
+	if compat == string(fullJSON) {
+		t.Fatal("the fixture has no typical_seconds to leave out")
+	}
+	future := strings.Replace(string(fullJSON), `"notifies_target":false`, `"notifies_target":false,"from_the_future":true`, 1)
+	for _, c := range []struct {
+		name, full string
+		typical    int
+	}{
+		{"full accepted", string(fullJSON), 40},
+		{"full has fields this ot doesn't know", future, 0},
+		{"no full", "", 0},
+	} {
+		resp := &api.ManifestResponse{Manifest: json.RawMessage(compat)}
+		if c.full != "" {
+			resp.ManifestFull = json.RawMessage(c.full)
+		}
+		_, m, _, err := registryManifest(resp)
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if m.Runtime.TypicalSeconds != c.typical {
+			t.Errorf("%s: typical_seconds = %d, want %d", c.name, m.Runtime.TypicalSeconds, c.typical)
+		}
+	}
+}

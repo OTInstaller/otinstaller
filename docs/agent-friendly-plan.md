@@ -989,6 +989,24 @@ depend on MCP spec churn, and it carries the least risk.
 - §4.8: the `mcp.otinstaller.com` Worker (read-only), its MCP Registry `remotes` entry and server card, and the
   claude.ai / ChatGPT connector submissions.
 
+- **Status (2026-10-21): built on `claude/agent-friendly-plan-a8afd5`, not deployed.** Differences from this plan:
+  - **Fields:** `inputs[].example`, `outputs[].description` and `attrs`, `runtime.typical_seconds`,
+    `secrets[].pricing`, `ethics.notifies_target` and `ethics.notes`, with one new code, `manifest_example_invalid`,
+    in both validators.
+    - `ot mcp` uses them: effects say whether a run may notify the target, consent questions carry the notes and
+      key pricing, `get_tool` returns them, and `run_tool` waits longer for slow tools.
+    - The site's Markdown twins show them, and search results carry `notifies_target` when it is set.
+  - **Older `ot`:** v0.12 validates the manifest it installs against its own schema, which rejects unknown fields.
+    So the install endpoint serves `manifest` without the new fields and `manifest_full` with them. New `ot` uses
+    `manifest_full` when its own schema accepts it. Each future optional field goes in `compatManifest()`.
+  - **Remote server:** it is `/mcp` on the API Worker (`api/src/mcp.ts`), not a separate `mcp.otinstaller.com`
+    Worker. It is hand-written JSON-RPC rather than the TypeScript SDK, so it adds no dependency, and it has no cache
+    hints. Its MCP Registry entry is `integrations/mcp-registry/server.json` (`com.otinstaller/registry`).
+  - **Not done:**
+    - the seed review pass for `notifies_target`;
+    - publishing the registry entry, and the claude.ai and ChatGPT connector submissions (owner steps);
+    - a per-IP limit on `/mcp`, which is left to the same Cloudflare rule as anonymous reads.
+
 ### Phase 6: OSINTverse case bridge (≈ 6–8 days here, plus OSINTverse-side work)
 
 - §11.3: `ot case push` and `push_case_to_osintverse`, and OSINTverse `suggest_pivots` listing OTInstaller tools.

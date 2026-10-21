@@ -79,7 +79,7 @@ export interface ToolSummary {
   language?: string;
   needs_update?: boolean;
   /** The latest version's ethics flags (added with the agent work; older API responses omit them). */
-  ethics?: { touches_target: boolean; auth_required: boolean; collects_personal_data: boolean };
+  ethics?: { touches_target: boolean; auth_required: boolean; collects_personal_data: boolean; notifies_target?: boolean };
   /** Whether the latest version's runs have network access. */
   egress?: boolean;
 }
@@ -93,12 +93,12 @@ export interface Manifest {
   homepage?: string;
   categories: string[];
   tags?: string[];
-  inputs?: { name: string; type: string; required: boolean; description?: string; values?: string[]; default?: unknown }[];
-  outputs?: { type: string }[];
-  runtime?: { kind: string; command: string[]; image?: string; package?: string; output_format: string };
-  secrets?: { name: string; required: boolean; description?: string; url?: string }[];
+  inputs?: { name: string; type: string; required: boolean; description?: string; values?: string[]; default?: unknown; example?: unknown }[];
+  outputs?: { type: string; description?: string; attrs?: { name: string; type: string; description?: string }[] }[];
+  runtime?: { kind: string; command: string[]; image?: string; package?: string; output_format: string; typical_seconds?: number };
+  secrets?: { name: string; required: boolean; description?: string; url?: string; pricing?: "free" | "free_tier" | "paid" }[];
   network?: { egress?: boolean; domains?: string[] };
-  ethics?: { touches_target: boolean; auth_required: boolean; collects_personal_data: boolean };
+  ethics?: { touches_target: boolean; auth_required: boolean; collects_personal_data: boolean; notifies_target?: boolean; notes?: string };
   readme?: string;
   test?: { input: Record<string, unknown>; expect_exit_code?: number };
   docs?: { root: string; nav: string[] };

@@ -24,8 +24,8 @@ export interface Manifest {
   license: string;
   categories: string[];
   tags?: string[];
-  inputs?: { name: string; type: string; required: boolean; default?: unknown }[];
-  outputs?: { type: string }[];
+  inputs?: { name: string; type: string; required: boolean; default?: unknown; values?: string[]; example?: unknown; description?: string }[];
+  outputs?: { type: string; description?: string; attrs?: { name: string; type: string; description?: string }[] }[];
   runtime?: {
     kind: "docker" | "pipx";
     command: string[];
@@ -35,8 +35,11 @@ export interface Manifest {
     package_version?: string;
     wheel_sha256?: string;
     output_format: string;
+    timeout_seconds?: number;
+    typical_seconds?: number;
   };
-  secrets?: { name: string; required: boolean }[];
+  secrets?: { name: string; required: boolean; description?: string; url?: string; pricing?: "free" | "free_tier" | "paid" }[];
+  ethics?: { touches_target: boolean; auth_required: boolean; collects_personal_data: boolean; notifies_target?: boolean; notes?: string };
   test?: { input: Record<string, unknown> };
   docs?: { root: string; nav: string[] };
   content?: { root: string; nav: string[] };
@@ -121,6 +124,10 @@ export function semanticProblems(m: Manifest): Problem[] {
   (m.inputs ?? []).forEach((inp, i) => {
     if (inputs.has(inp.name)) ps.push({ code: "manifest_input_duplicate", path: `/inputs/${i}/name`, message: `input "${inp.name}" is declared more than once` });
     inputs.add(inp.name);
+    if (inp.example !== undefined) {
+      const why = exampleProblem(inp);
+      if (why) ps.push({ code: "manifest_example_invalid", path: `/inputs/${i}/example`, message: `the example for "${inp.name}" ${why}`, hint: "give a value of the input's type, as a user would type it" });
+    }
   });
   const secrets = new Set<string>();
   (m.secrets ?? []).forEach((s, i) => {
@@ -145,6 +152,47 @@ export function semanticProblems(m: Manifest): Problem[] {
     }
   }
   return ps;
+}
+
+/** "a" or "an" before an input type, as `article` in the CLI. */
+const article = (t: string) => (/^[aeio]/.test(t) ? `an ${t}` : `a ${t}`);
+
+/** What is wrong with an input's example, or "" when it suits the input's type (as `exampleProblem` in the CLI). */
+function exampleProblem(inp: { type: string; values?: string[]; example?: unknown }): string {
+  const v = inp.example;
+  if (typeof v === "boolean") return inp.type === "boolean" ? "" : `is true or false, but the input is ${article(inp.type)}`;
+  if (typeof v === "number") {
+    if (inp.type !== "integer") return `is a number, but the input is ${article(inp.type)}; quote it if it is text`;
+    return Number.isInteger(v) ? "" : "is not a whole number";
+  }
+  if (typeof v === "string") {
+    if (v.trim() === "") return "is empty";
+    if (inp.type === "integer" || inp.type === "boolean") return `is text, but the input is ${article(inp.type)}`;
+    if (inp.type === "enum" && !(inp.values ?? []).includes(v)) return `is "${v}", which is not one of its values`;
+    if (inp.type === "email" && (!v.includes("@") || /[ \t]/.test(v))) return `"${v}" is not an email address`;
+    return "";
+  }
+  return "must be a single value, not a list or a map";
+}
+
+/**
+ * The manifest without the optional fields added after ot v0.12 (input examples, output descriptions and attributes,
+ * typical_seconds, secret pricing, notifies_target and notes). ot v0.12 validates the manifest it installs against
+ * its own schema, which rejects fields it doesn't know, so the install endpoint serves this as `manifest` and the
+ * whole one as `manifest_full`. Add every new optional field here. Returns null when nothing had to be left out.
+ */
+export function compatManifest(m: Record<string, any>): Record<string, any> | null {
+  const c = structuredClone(m);
+  let changed = false;
+  const drop = (o: Record<string, any> | undefined, ...keys: string[]) => {
+    for (const k of keys) if (o && k in o) { delete o[k]; changed = true; }
+  };
+  for (const i of c.inputs ?? []) drop(i, "example");
+  for (const o of c.outputs ?? []) drop(o, "description", "attrs");
+  drop(c.runtime, "typical_seconds");
+  for (const s of c.secrets ?? []) drop(s, "pricing");
+  drop(c.ethics, "notifies_target", "notes");
+  return changed ? c : null;
 }
 
 /** Files the manifest refers to, relative to the repository root. */

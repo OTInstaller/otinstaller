@@ -193,3 +193,31 @@ func TestSealedStatesAreUnique(t *testing.T) {
 		t.Fatal("each sealed answer is spent once, independently")
 	}
 }
+
+func TestDescribeNotifiesTarget(t *testing.T) {
+	quiet, loud := false, true
+	for _, c := range []struct {
+		name   string
+		m      *manifest.Manifest
+		want   string
+		absent bool
+	}{
+		{"unset on a tool that touches the target", tool(true, false, true, "domain"), "the publisher doesn't say", false},
+		{"unset on a passive tool", tool(false, false, false, "domain"), "may notify", true},
+		{"says it can't", func() *manifest.Manifest {
+			m := tool(true, false, true, "domain")
+			m.Ethics.NotifiesTarget = &quiet
+			return m
+		}(), "may notify", true},
+		{"says it may", func() *manifest.Manifest {
+			m := tool(true, false, true, "domain")
+			m.Ethics.NotifiesTarget = &loud
+			return m
+		}(), "a login alert", false},
+	} {
+		got := strings.Join(Describe(c.m), "; ")
+		if strings.Contains(got, c.want) == c.absent {
+			t.Errorf("%s: Describe = %q", c.name, got)
+		}
+	}
+}

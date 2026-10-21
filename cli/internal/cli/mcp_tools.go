@@ -46,6 +46,7 @@ type secretInfo struct {
 	Required    bool   `json:"required"`
 	Description string `json:"description,omitempty"`
 	URL         string `json:"url,omitempty"`
+	Pricing     string `json:"pricing,omitempty" jsonschema:"free, free_tier or paid"`
 	// Set says whether the key is available here (environment or keychain). The value is never shown.
 	Set bool `json:"set"`
 }
@@ -58,10 +59,12 @@ type toolInfo struct {
 	Homepage    string             `json:"homepage,omitempty"`
 	Inputs      []manifest.Input   `json:"inputs"`
 	Outputs     []string           `json:"outputs"`
+	OutputsInfo []manifest.Output  `json:"outputs_detail,omitempty" jsonschema:"what the tool's entities carry: descriptions and attributes, when the publisher gives them"`
 	Ethics      *manifest.Ethics   `json:"ethics,omitempty"`
 	Network     *manifest.Network  `json:"network,omitempty"`
 	Secrets     []secretInfo       `json:"secrets"`
 	Timeout     int                `json:"timeout_seconds"`
+	Typical     int                `json:"typical_seconds,omitempty" jsonschema:"how long a run usually takes"`
 	Consent     agent.Class        `json:"consent_class" jsonschema:"passive runs need no consent; networked, target and personal runs ask the person"`
 	Effects     []string           `json:"effects" jsonschema:"what a run does, in plain words"`
 	Trust       *api.ToolSummary   `json:"registry,omitempty" jsonschema:"the registry's listing: signed, verified publisher, health, installs"`
@@ -489,7 +492,7 @@ func (s *mcpServer) toolInfo(ctx context.Context, arg string) (*toolInfo, error)
 		if resp.Manifest == nil || string(resp.Manifest) == "null" {
 			return nil, &toolError{Code: "version_not_found", Message: fmt.Sprintf("%s@%s is %s", ref.Ref(), ref.Version, orDefault(resp.Status, "not available"))}
 		}
-		if _, vm, err := manifest.ParseJSON(resp.Manifest); err == nil {
+		if _, vm, _, err := registryManifest(resp); err == nil {
 			m = vm
 		}
 	}
@@ -501,10 +504,16 @@ func (s *mcpServer) toolInfo(ctx context.Context, arg string) (*toolInfo, error)
 	info.Inputs, info.Ethics, info.Network, info.Timeout = m.Inputs, m.Ethics, m.Network, m.Timeout()
 	for _, o := range m.Outputs {
 		info.Outputs = append(info.Outputs, o.Type)
+		if o.Description != "" || len(o.Attrs) > 0 {
+			info.OutputsInfo = m.Outputs
+		}
+	}
+	if m.Runtime != nil {
+		info.Typical = m.Runtime.TypicalSeconds
 	}
 	info.Secrets = []secretInfo{}
 	for _, sec := range m.Secrets {
-		info.Secrets = append(info.Secrets, secretInfo{Name: sec.Name, Required: sec.Required, Description: sec.Description, URL: sec.URL, Set: keySet(sec.Name)})
+		info.Secrets = append(info.Secrets, secretInfo{Name: sec.Name, Required: sec.Required, Description: sec.Description, URL: sec.URL, Pricing: sec.Pricing, Set: keySet(sec.Name)})
 	}
 	example := map[string]string{}
 	for _, in := range m.Inputs {

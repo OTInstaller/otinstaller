@@ -28,6 +28,8 @@ import { pollDueSources } from "./sync";
 import { expireStaleScans } from "./scans";
 import { handleBatch } from "./publish";
 import { edgeCached } from "./edge-cache";
+import { compatManifest } from "./lib/manifest";
+import { mcpEndpoint } from "./mcp";
 
 export type { Env } from "./env";
 
@@ -262,6 +264,12 @@ app.get("/tools/:ns/:name/versions", async (c) => {
   return c.json({ versions: versions.results.map((v: any) => ({ ...v, signed: v.signed === 1 && row.manifest_mode !== "registry" })) });
 });
 
+// What the install endpoint serves: a manifest every released ot accepts, and the whole one when that leaves fields out.
+function installManifest(m: Record<string, any>) {
+  const compat = compatManifest(m);
+  return compat ? { manifest: compat, manifest_full: m } : { manifest: m };
+}
+
 app.get("/tools/:ns/:name/:version/manifest", async (c) => {
   const { ns, name, version } = c.req.param();
   const { row, movedTo } = await findTool(c.env.DB, ns, name);
@@ -283,7 +291,7 @@ app.get("/tools/:ns/:name/:version/manifest", async (c) => {
     verified_publisher: row.verified === 1,
     source_unavailable: row.source_status === "unavailable",
     moved_to: movedTo,
-    manifest: removed ? null : JSON.parse(v.manifest_json),
+    ...(removed ? { manifest: null } : installManifest(JSON.parse(v.manifest_json))),
     // Where ot retries when the original registry refuses (403, 404, denied): the same digest on the mirror,
     // and the registry's copy of the wheel. Only for OSI-approved licenses.
     ...(removed ? {} : await installFallbacks(c.env, v.id, row.namespace, row.name, v.version)),
@@ -420,8 +428,28 @@ app.post("/installs", async (c) => {
   return c.body(null, 204);
 });
 
+// The remote MCP server (src/mcp.ts). Its tools read the public API as an anonymous visitor would, through the
+// edge cache, with none of the caller's headers.
+async function remoteMcp(req: Request, url: URL, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const get = (path: string) => {
+    const inner = new Request(new URL(path, url.origin));
+    return edgeCached(inner, env, ctx, async () => app.fetch(inner, env, ctx));
+  };
+  try {
+    return await mcpEndpoint(req, get);
+  } catch (err) {
+    const requestId = req.headers.get("cf-ray") ?? ulid();
+    ctx.waitUntil(reportError(env, err, { requestId, method: req.method, path: url.pathname }));
+    return Response.json({ jsonrpc: "2.0", id: null, error: { code: -32603, message: `internal error (request ${requestId})` } }, { status: 500 });
+  }
+}
+
 export default {
-  fetch: (req: Request, env: Env, ctx: ExecutionContext) => edgeCached(req, env, ctx, async () => app.fetch(req, env, ctx)),
+  fetch: (req: Request, env: Env, ctx: ExecutionContext) => {
+    const url = new URL(req.url);
+    if (url.pathname === "/mcp") return remoteMcp(req, url, env, ctx);
+    return edgeCached(req, env, ctx, async () => app.fetch(req, env, ctx));
+  },
   queue: (batch: MessageBatch<PublishMessage>, env: Env) => handleBatch(batch, env),
   async scheduled(event: ScheduledController, env: Env) {
     // Every 15 minutes: close scans that never reported back, and poll sources that are due.

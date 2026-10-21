@@ -21,6 +21,7 @@ const CONSENT_DOCS = `${SITE_URL}/docs/agents#consent`;
 
 /** A plausible value for an input: the manifest's test input, its default, its first enum value, else by type. */
 function example(m: Manifest, input: Input): string {
+  if (input.example !== undefined && input.example !== null && input.example !== "") return String(input.example);
   const test = m.test?.input?.[input.name];
   if (test !== undefined && test !== null && test !== "") return String(test);
   if (input.default !== undefined && input.default !== null) return String(input.default);
@@ -92,6 +93,11 @@ export function behaviour(m: Manifest): string[] {
     e?.collects_personal_data ? "Collects personal data." : "Does not collect personal data.",
     e?.auth_required ? "Needs an account (it logs in, or uses an account or API key of yours)." : "Does not need an account.",
   ];
+  if (e?.notifies_target === true) out.push("May notify the target (a sign-up or reset email, a login alert).");
+  else if (e?.notifies_target === false) out.push("Does not notify the target.");
+  else if (!e || e.touches_target) out.push("May notify the target (the publisher doesn't say).");
+  if (m.runtime?.typical_seconds) out.push(`Usually takes about ${m.runtime.typical_seconds} seconds.`);
+  if (e?.notes) out.push(`Publisher's note: ${e.notes}`);
   if (m.network?.egress) out.push(m.network.domains?.length ? `Connects to ${m.network.domains.join(", ")}.` : "Connects to the internet.");
   else out.push("Runs offline (no network access).");
   return out;
@@ -128,13 +134,18 @@ export function toolMarkdown(t: ToolDetail): string {
   }
   const outputs = m.outputs ?? [];
   parts.push("## Outputs", outputs.length ? `Finds: ${outputs.map((o) => o.type).join(", ")}.` : "No entity types declared.");
+  const detail = outputs.filter((o) => o.description || o.attrs?.length).map((o) => {
+    const attrs = (o.attrs ?? []).map((a) => `\n  - \`${a.name}\` (${a.type})${a.description ? `: ${a.description}` : ""}`).join("");
+    return `- \`${o.type}\`${o.description ? `: ${o.description}` : ""}${attrs}`;
+  });
+  if (detail.length) parts.push(detail.join("\n"));
 
   const c = consent(m);
   parts.push("## What a run does", [...behaviour(m).map((s) => `- ${s}`)].join("\n"), c.text);
 
   const secrets = m.secrets ?? [];
   if (secrets.length) {
-    const lines = secrets.map((s) => `- \`${s.name}\` (${s.required ? "required" : "optional"})${s.description ? `: ${s.description}` : ""}${s.url ? ` Get one at ${s.url}` : ""}`);
+    const lines = secrets.map((s) => `- \`${s.name}\` (${s.required ? "required" : "optional"}${s.pricing ? `, ${s.pricing.replace("_", " ")}` : ""})${s.description ? `: ${s.description}` : ""}${s.url ? ` Get one at ${s.url}` : ""}`);
     parts.push("## API keys", [...lines, "", "Store a key with `ot keys set NAME`; it stays in the OS keychain."].join("\n"));
   }
 

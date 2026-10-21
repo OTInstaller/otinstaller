@@ -41,6 +41,9 @@ A field is missing or has the wrong type or value. The message names the field. 
 ### manifest_input_duplicate
 Two inputs have the same name.
 
+### manifest_example_invalid
+An input's `example` doesn't suit its type: text for an `integer` or `boolean` input, a number for a text input, a value that isn't one of an `enum`'s `values`, or an email address without `@`. Give a value as a user would type it.
+
 ### manifest_secret_duplicate
 Two secrets have the same name.
 
