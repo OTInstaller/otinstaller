@@ -173,7 +173,9 @@ func ContainerArgs(m *manifest.Manifest, name, image string, cmd []string, secre
 		"--pids-limit", "256", "--memory", "1g", "--cpus", "2",
 		"--user", "65534:65534", "-e", "HOME=/tmp",
 	}
-	if m.Network != nil && m.Network.Egress != nil && !*m.Network.Egress {
+	// Offline unless the manifest asks for the network, as in the registry's smoke test: a missing
+	// network block or egress value means no network.
+	if m.Network == nil || m.Network.Egress == nil || !*m.Network.Egress {
 		args = append(args, "--network", "none")
 	}
 	// "-e NAME" without a value copies it from ot's environment, so secrets never appear in argv.
