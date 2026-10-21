@@ -123,11 +123,22 @@ with "Filename too long"; use a short path or `git config core.longpaths true`.
       advice, prepared 21 Oct) with the draft policy fixes. Both are on the local branch `claude/legal-drafts` only,
       kept out of this repository because it is public; open points are marked `[[…]]`. Before or alongside: confirm
       OSINTverse's exact legal name and form, register a DMCA agent, name a grievance officer.
-- [ ] **(you)** Receive mail at otinstaller.com: the domain has **no MX record**, so support@, privacy@, abuse@ and
-      security@ (all named in the policies) bounce. Cloudflare → Email → Email Routing, forward them to a mailbox.
+- [x] Receive mail at otinstaller.com (21 Oct). Cloudflare Email Routing is on (MX records `route1–3.mx.cloudflare.net`),
+      and support@, privacy@, abuse@, security@, legal@ and dmca@otinstaller.com forward to hi@osintverse.com
+      (verified destination). Other addresses at the domain are dropped (catch-all off). Tested: a message from an
+      ordinary mailbox to support@ arrived at hi@osintverse.com. Cloudflare only forwards mail that passes SPF or
+      DKIM, so a message sent straight from a script is refused with `550 5.7.26`; normal mail services pass. To add
+      an address: `npx wrangler email routing rules create otinstaller.com --match-type literal --match-field to
+      --match-value <name>@otinstaller.com --action-type forward --action-value hi@osintverse.com`.
 - [ ] **(you)** Code signing ([code-signing.md](code-signing.md)): wired into the release workflow and off until set
       up. Windows: Azure Trusted Signing (about $9.99/month; check eligibility) or an OV certificate on a cloud HSM.
       macOS: Apple Developer Program ($99/year) for Developer ID signing and notarization.
+- [x] Source public: `OTInstaller/otinstaller` made public 21 Oct (history scanned with gitleaks first: no secrets).
+- [x] Site deployed without the beta strip (21 Oct, `a8ff315`); `ot` v0.12.1 released.
+- [ ] Dummy repositories out of public view: `dheerajydv19/ot-test-tool` and `dheerajydv19/ot-test-guide` are private
+      and archived (21 Oct). **(you)** GitLab `osintversehq/ot-test-tool` is still public: Settings → General →
+      Visibility → Private → Save, or Settings → General → Advanced → Delete. To delete the GitHub ones for good:
+      `gh repo delete dheerajydv19/ot-test-tool` and `gh repo delete dheerajydv19/ot-test-guide`.
 - [ ] **Agents** ([agent-friendly-plan.md](agent-friendly-plan.md), branch `claude/agent-friendly-plan-a8afd5`, not
       merged): decide whether `ot run` without a terminal should need `--yes` for non-passive tools from launch day
       (it breaks CI scripts that relied on the old behaviour; `OT_CONSENT=off` restores it). Try `ot mcp` on a real

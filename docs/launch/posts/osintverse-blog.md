@@ -24,14 +24,13 @@ investigation guides, and **`ot`**, a small command-line program that installs a
 
 ```
 ot guide tools osintverse-community/email-investigation
-ot auto you@example.com --case demo
-ot extract --case demo
+ot run osintverse-community/holehe e:you@example.com
+ot auto johndoe
 ```
 
-The first command installs every tool the email investigation guide uses. The second guesses that the target is an
-email address and runs every installed tool that takes one. The third pulls the accounts, domains and other entities
-out of the results. The same three verbs work for usernames, domains, phone numbers, IP addresses, images and
-cryptocurrency addresses.
+The first command installs every tool the email investigation guide uses. The second checks which of 121 sites an
+address is registered on. The third guesses that `johndoe` is a username and runs every installed tool that takes
+one. The same verbs work for domains, phone numbers, IP addresses, images and cryptocurrency addresses.
 
 Behind those commands, every tool on the registry has a manifest: what it takes as input (an email, a username, a
 domain…), what it finds, how to run it, and whether it needs an API key. `ot` reads it, so you never need to know
