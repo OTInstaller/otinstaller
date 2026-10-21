@@ -11,12 +11,19 @@ artifact backups (week 11: the image mirror at mirror.otinstaller.com, wheel and
 fallback to them, Restore from backup, and a monthly restore drill).
 To connect real GitHub and GitLab apps, follow [docs/publishing-setup.md](docs/publishing-setup.md).
 
+It also holds `otinstaller`, the older Python package manager (from OSINTVerseHQ/OTinstaller, imported with its
+history into `python/`). `ot` is the one CLI going forward; `otinstaller` is in maintenance, and its tool catalog has
+been converted into registry packages (see [otinstaller (python/)](#otinstaller-python)). Moving from `otinstaller`
+to `ot`: [docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md).
+
 | Folder | What it is |
 | --- | --- |
 | `spec/` | Manifest JSON Schema (`schema/v1.json`), example manifests (3 valid, 24 invalid with expected error codes) and the release workflow templates (`templates/`) that `ot init` and the import wizard both use |
-| `cli/` | The `ot` CLI (Go): `init`, `validate`, `search`, `info`, `install`, `run`, `list`, `uninstall`, `keys`, `doctor`, `login`, `logout`, `whoami`, `import`, `sync` |
+| `cli/` | The `ot` CLI (Go): `init`, `validate`, `search`, `info`, `install`, `run`, `playbook`, `auto`, `extract`, `diff`, `list`, `outdated`, `update`, `uninstall`, `keys`, `doctor`, `login`, `logout`, `whoami`, `import`, `sync` |
 | `api/` | Registry API (Cloudflare Workers + Hono + D1 + Queues + R2): search and read endpoints, GitHub/GitLab sign-in and device flow, API tokens, GitHub App webhooks, publish validation, the import wizard, backups; and the image mirror Worker (`src/mirror/`, `wrangler.mirror.jsonc`) |
 | `web/` | The website (Astro on Cloudflare, Preact islands): home, search, tool and guide pages, docs, policies, the import wizard, dashboard and admin console. `npm run dev` for a dev server, `npm run og` to re-render the social preview image |
+| `python/` | `otinstaller`, the older package manager (Python, Linux): installs tools from pip or git into per-tool virtualenvs, typed inputs, saved results, Debian packaging. In maintenance; see below |
+| `seed/` | The launch seed: first-party tools, community wrappers (including those converted from `otinstaller`'s catalog), guides |
 | `ops/` | The scanner (`scanner/scan.py`, backups and restore drills in `scanner/backup.py`, its Docker image) and the GitHub Actions workflows for the registry-ops repo |
 | `examples/dns-lookup/` | A tiny real tool used by the end-to-end test |
 | `examples/tldextract/`, `examples/cosign/` | Real packages (a PyPI wheel and Sigstore's signed image) used by `scripts/e2e-real.sh` |
@@ -112,6 +119,47 @@ hold; owners can opt out of git backups. Setup (R2 buckets, the mirror Worker, D
 ```bash
 bash scripts/e2e-backups.sh   # needs Docker, cosign, crane, git, Go, Node and Python
 ```
+
+## otinstaller (python/)
+
+`python/` is the OTinstaller package manager, imported with `git subtree` so its full history is kept (`git log
+python/` shows the import; `git log 3c3bfb5` the original commits). It keeps its own conventions in
+[python/AGENTS.md](python/AGENTS.md), its changelog and its Debian packaging (`python/debian/`, built from
+`python/`).
+
+How it fits with the registry:
+
+- **One CLI.** New work goes into `ot`. `otinstaller` gets security fixes only until its end of life on 30 June
+  2027, still ships on PyPI and as a Debian package for existing users, and no longer installs an `ot` command, since
+  that name belongs to the registry CLI. [docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md)
+  maps every `otinstaller` command to `ot` and explains the date.
+- **Catalog.** `otinstaller`'s tested catalog (`python/src/otinstaller/data/registry.yaml`) is converted into
+  `osintverse-community` wrappers in `seed/community/` by `python scripts/pm-catalog-to-wrappers.py`: a pinned pip
+  release with a pure-Python wheel on PyPI becomes a pipx package pinned by the wheel's SHA-256; git installs, extra
+  packages, Playwright browsers and releases without a wheel become Docker wrappers built at the same pinned
+  version. Typed inputs (`u:`, `e:`, `d:`, `url:`, `p:`) become manifest inputs, and the flags they map to become
+  the command template. Existing seed folders are never overwritten. Tools that need a login or a terminal, take no
+  typed input, or whose license doesn't allow a wrapper are listed and skipped; see [seed/README.md](seed/README.md).
+- **Install paths.** apt (Debian/Kali) and pip/pipx installs of `otinstaller` stay as they are. Through the
+  registry, the same tools install with `ot` as Docker images or sandboxed pipx wheels; the bare per-tool
+  virtualenvs and unpinned git checkouts don't carry over.
+
+Tests (Linux only, so on Windows run them in a container):
+
+```bash
+cd python
+pip install -e ".[dev,pipeline]"
+ruff check . && ruff format --check . && pytest
+```
+
+CI for it is `.github/workflows/python-ci.yml` and `python-nightly.yml`, scoped to `python/**`.
+
+## Licenses
+
+The whole repository is under the Apache License 2.0 ([LICENSE](LICENSE)). `python/` keeps its own copy of the same
+[LICENSE](python/LICENSE) and its [NOTICE](python/NOTICE), which must be kept with any redistribution or derived work
+of it ("OTinstaller by OSINTverse"). Tools installed by either CLI, and the upstream projects the community wrappers in
+`seed/` package, keep their own licenses.
 
 ## Notes on the plan
 

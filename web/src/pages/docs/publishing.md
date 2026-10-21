@@ -18,7 +18,15 @@ To do it by hand:
 
 ## 2. Release
 
-Run the **otinstaller release** workflow with the version you want to publish. For a Docker tool it builds the image for amd64 and arm64, signs it with your repository's identity, writes the image digest into `otinstaller.yaml` and pushes the tag `vX.Y.Z`. For a Python tool it publishes to PyPI with trusted publishing and pins the wheel hash. For a guide it sets the version and tags.
+**Tools:** run the **otinstaller release** workflow with the version you want to publish. For a Docker tool it builds the image for amd64 and arm64, signs it with your repository's identity, writes the image digest into `otinstaller.yaml` and pushes the tag `vX.Y.Z`. For a Python tool it publishes to PyPI with trusted publishing and pins the wheel hash.
+
+**Guides:** nothing needs building, so release from your own computer:
+
+```
+ot release 1.2.0
+```
+
+It sets `version`, checks the guide as the registry will, commits, and pushes the commit and the tag `v1.2.0` together, in a few seconds and without a CI run. The workflow `ot init --guide` writes does the same from the Actions tab if you prefer; you can also delete it.
 
 ## 3. What the registry does with the tag
 

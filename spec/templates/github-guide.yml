@@ -1,4 +1,5 @@
-# Sets the version in otinstaller.yaml and tags the release; the registry renders and checks the guide.
+# Optional. `ot release 1.2.0` does the same from your computer in a few seconds, without CI.
+# Sets the version in otinstaller.yaml and pushes the tag vX.Y.Z; the registry then renders and checks the guide.
 # Run it from the Actions tab with the version to release.
 name: otinstaller release
 on:
@@ -9,18 +10,35 @@ on:
         required: true
 permissions:
   contents: write
+concurrency:
+  group: otinstaller-release
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      VERSION: ${{ inputs.version }}
     steps:
-      - uses: actions/checkout@v5
-      - name: Set version and tag
+      # Fail before cloning anything if the version is malformed or already released.
+      - name: Check the version
         env:
-          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${VERSION#v}"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "::error::'$VERSION' is not a version like 1.2.0"; exit 1; }
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v${VERSION}" --silent 2>/dev/null; then echo "::error::v${VERSION} is already released"; exit 1; fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+      # Only the manifest is needed: a one-file, one-commit checkout.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          sparse-checkout: otinstaller.yaml
+          sparse-checkout-cone-mode: false
+      - name: Set version and tag
         run: |
           sed -i -E "s|^version: .*|version: ${VERSION}|" otinstaller.yaml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "Release ${VERSION}"
+          git diff --quiet || git commit -qam "Release ${VERSION}"
           git tag "v${VERSION}"
-          git push origin HEAD "v${VERSION}"
+          git push --atomic origin HEAD "v${VERSION}"

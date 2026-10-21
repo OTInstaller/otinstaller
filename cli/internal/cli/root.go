@@ -108,7 +108,13 @@ func (a *App) Root() *cobra.Command {
 		a.infoCmd(),
 		a.installCmd(),
 		a.runCmd(),
+		a.playbookCmd(),
+		a.autoCmd(),
+		a.extractCmd(),
+		a.diffCmd(),
 		a.listCmd(),
+		a.outdatedCmd(),
+		a.updateCmd(),
 		a.uninstallCmd(),
 		a.keysCmd(),
 		a.doctorCmd(),
@@ -125,6 +131,7 @@ func (a *App) Root() *cobra.Command {
 		a.yankCmd(),
 		a.deprecateCmd(),
 		a.selfUpdateCmd(),
+		a.releaseCmd(),
 	)
 	return root
 }

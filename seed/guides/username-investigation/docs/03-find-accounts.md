@@ -40,7 +40,7 @@ People often use their handle as the local part of an email address:
 ot run osintverse-community/mailcat --username janedoe
 ```
 
-Treat these as candidates too: check them with the [email playbook](https://otinstaller.com/guides/osintverse/email-investigation).
+Treat these as candidates too: check them with the [email playbook](https://otinstaller.com/guides/osintverse-community/email-investigation).
 
 > [!NOTE]
 > Record for each hit: the URL, the tool that found it, and the date. Results change as sites change.

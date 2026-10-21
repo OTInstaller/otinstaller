@@ -3,7 +3,7 @@
 Reads the headers of a suspicious email and pulls out who it claims to be from, the reply and bounce addresses, the servers it passed through with their public IPs and times, and the SPF, DKIM and DMARC verdicts. Runs offline.
 
 ```
-ot run osintverse/email-header-parser --headers "$(cat headers.txt)"
+ot run osintverse-community/email-header-parser --headers "$(cat headers.txt)"
 ```
 
 ## Inputs

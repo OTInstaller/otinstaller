@@ -13,7 +13,7 @@ area.
 Once you have coordinates (from GPS, a landmark, or a guess), get every view of the place:
 
 ```
-ot run osintverse/geo-links --coordinates "48.8584,2.2945"
+ot run osintverse-community/geo-links --coordinates "48.8584,2.2945"
 ```
 
 You get links to OpenStreetMap, Google Maps, Earth and Street View, Bing aerial, Apple Maps, Mapillary street

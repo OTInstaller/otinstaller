@@ -35,33 +35,44 @@ type allJob struct {
 }
 
 // runAll runs every installed tool that has an input of one of the given types, in parallel.
-func (a *App) runAll(ctx context.Context, ra *runArgs) error {
+// With a selection (a playbook's tools, which must be installed) only those run, and the ones
+// with no input of the given types are listed as skipped instead of left out. what names the
+// command in messages: "--all" or "a playbook".
+func (a *App) runAll(ctx context.Context, ra *runArgs, what string, selection []*state.Installed) error {
 	if len(ra.Typed) == 0 {
-		return exitErr(ExitUsage, "--all needs at least one typed input, such as u:johndoe or d:example.com")
+		return exitErr(ExitUsage, "%s needs at least one typed input, such as u:johndoe or d:example.com", what)
 	}
 	if len(ra.Inputs) > 0 || ra.Output != "" || ra.OutDir != "" {
-		return exitErr(ExitUsage, "--all takes only typed inputs (u:, d:, e:, p:, url:), not --<input>, -o or --out-dir")
+		return exitErr(ExitUsage, "%s takes only typed inputs (u:, d:, e:, p:, ip:, url:), not --<input>, -o or --out-dir", what)
 	}
 	if ra.NoSave {
-		return exitErr(ExitUsage, "--all always saves its runs; the summary only points at the saved files")
+		return exitErr(ExitUsage, "%s always saves its runs; the summary only points at the saved files", what)
 	}
 	format := orDefault(ra.Format, "table")
 	if format != "table" && format != "json" {
-		return exitErr(ExitUsage, "--all prints a summary as table or json, not %q", format)
+		return exitErr(ExitUsage, "%s prints a summary as table or json, not %q", what, format)
 	}
-	st, err := state.Load()
-	if err != nil {
-		return err
+	candidates := selection
+	if selection == nil {
+		st, err := state.Load()
+		if err != nil {
+			return err
+		}
+		candidates = st.Sorted()
 	}
 
 	var rows []*allResult
 	var jobs []allJob
-	for _, inst := range st.Sorted() {
+	for _, inst := range candidates {
 		m := inst.Manifest
+		row := &allResult{Tool: inst.Ref, Version: inst.Version}
 		if m == nil || m.IsGuide() || m.Runtime == nil {
+			if selection != nil {
+				row.Status, row.Reason = "skipped", "not a tool"
+				rows = append(rows, row)
+			}
 			continue
 		}
-		row := &allResult{Tool: m.Ref(), Version: inst.Version}
 		// Only the typed inputs this tool has an input for apply; a tool with none is not listed.
 		var typed []runner.TypedInput
 		var ambiguous error
@@ -75,6 +86,10 @@ func (a *App) runAll(ctx context.Context, ra *runArgs) error {
 			}
 		}
 		if len(typed) == 0 && ambiguous == nil {
+			if selection != nil {
+				row.Status, row.Reason = "skipped", "has no "+typedTypes(ra.Typed)+" input"
+				rows = append(rows, row)
+			}
 			continue
 		}
 		skip := func(err error) {
@@ -104,24 +119,50 @@ func (a *App) runAll(ctx context.Context, ra *runArgs) error {
 		jobs = append(jobs, allJob{inst, values, secrets, target, row})
 	}
 	if len(rows) == 0 {
-		var types []string
-		for _, t := range ra.Typed {
-			types = append(types, runner.TypedPrefixes[t.Prefix])
+		return exitErr(ExitUsage, "no installed tool has a %s input; find some with `ot search`", typedTypes(ra.Typed))
+	}
+	if len(jobs) == 0 && selection != nil {
+		for _, r := range rows {
+			fmt.Fprintf(a.Err, "%s: %s\n", r.Tool, r.Reason)
 		}
-		return exitErr(ExitUsage, "no installed tool has a %s input; find some with `ot search`", strings.Join(types, " or "))
+		return exitErr(ExitUsage, "none of the playbook's tools can run with a %s input", typedTypes(ra.Typed))
 	}
 
+	if ra.DryRun {
+		for _, j := range jobs {
+			j.row.Status = "would run"
+		}
+		return a.printAllRows(rows, format)
+	}
 	if format == "table" {
 		fmt.Fprintf(a.Err, "Running %d tools, %d at a time...\n", len(jobs), ra.Parallel)
 	}
 	sem := make(chan struct{}, ra.Parallel)
 	var wg sync.WaitGroup
+	// Progress on stderr as each tool finishes, so a long batch shows it is moving (otinstaller's
+	// --live table). Only with the table summary; JSON callers read the summary.
+	var progressMu sync.Mutex
+	done := 0
+	progress := func(row *allResult) {
+		if format != "table" {
+			return
+		}
+		progressMu.Lock()
+		defer progressMu.Unlock()
+		done++
+		status := row.Status
+		if row.ExitCode != nil && *row.ExitCode != 0 {
+			status = fmt.Sprintf("%s (exit %d)", status, *row.ExitCode)
+		}
+		fmt.Fprintf(a.Err, "[%d/%d] %s %s\n", done, len(jobs), row.Tool, status)
+	}
 	for _, j := range jobs {
 		wg.Add(1)
 		go func(j allJob) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
+			defer progress(j.row)
 			if ctx.Err() != nil {
 				j.row.Status, j.row.Reason = results.StatusInterrupted, "not started"
 				return
@@ -157,25 +198,8 @@ func (a *App) runAll(ctx context.Context, ra *runArgs) error {
 	}
 	wg.Wait()
 
-	if format == "json" {
-		if err := newJSONEncoder(a.Out).Encode(rows); err != nil {
-			return err
-		}
-	} else {
-		tw := tabwriter.NewWriter(a.Out, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(tw, "TOOL\tSTATUS\tENTITIES\tSAVED")
-		for _, r := range rows {
-			saved := r.OutputPath
-			if r.Reason != "" {
-				saved = r.Reason
-			}
-			status := r.Status
-			if r.ExitCode != nil && *r.ExitCode != 0 {
-				status = fmt.Sprintf("%s (exit %d)", status, *r.ExitCode)
-			}
-			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\n", r.Tool, status, r.Entities, saved)
-		}
-		tw.Flush()
+	if err := a.printAllRows(rows, format); err != nil {
+		return err
 	}
 	if ctx.Err() != nil {
 		return &ExitError{Code: ExitInterrupted}
@@ -186,4 +210,34 @@ func (a *App) runAll(ctx context.Context, ra *runArgs) error {
 		}
 	}
 	return nil
+}
+
+// printAllRows prints the summary of --all, a playbook or auto.
+func (a *App) printAllRows(rows []*allResult, format string) error {
+	if format == "json" {
+		return newJSONEncoder(a.Out).Encode(rows)
+	}
+	tw := tabwriter.NewWriter(a.Out, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "TOOL\tSTATUS\tENTITIES\tSAVED")
+	for _, r := range rows {
+		saved := r.OutputPath
+		if r.Reason != "" {
+			saved = r.Reason
+		}
+		status := r.Status
+		if r.ExitCode != nil && *r.ExitCode != 0 {
+			status = fmt.Sprintf("%s (exit %d)", status, *r.ExitCode)
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%d\t%s\n", r.Tool, status, r.Entities, saved)
+	}
+	return tw.Flush()
+}
+
+// typedTypes names the input types of typed inputs: "username or email".
+func typedTypes(typed []runner.TypedInput) string {
+	var types []string
+	for _, t := range typed {
+		types = append(types, runner.TypedPrefixes[t.Prefix])
+	}
+	return strings.Join(types, " or ")
 }

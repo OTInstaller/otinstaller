@@ -10,7 +10,7 @@ exposes, and what else runs next to it. This playbook stays passive: nothing her
 3. [What it exposes](03-exposure.md)
 4. [Ranges and neighbours](04-ranges.md)
 
-**Tools used** (`ot guide tools osintverse/ip-investigation`):
+**Tools used** (`ot guide tools osintverse-community/ip-investigation`):
 
 | Tool | Used for |
 | --- | --- |

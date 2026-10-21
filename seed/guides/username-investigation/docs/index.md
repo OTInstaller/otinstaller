@@ -11,11 +11,11 @@ list of accounts, without contacting the person.
 3. [Find accounts](03-find-accounts.md) with three complementary tools.
 4. [Verify each hit and pivot](04-verify-and-pivot.md) to the next identifier.
 
-**Tools used** (install them all with `ot guide tools osintverse/username-investigation`):
+**Tools used** (install them all with `ot guide tools osintverse-community/username-investigation`):
 
 | Tool | Used for |
 | --- | --- |
-| [osintverse/username-permutations](https://otinstaller.com/osintverse/username-permutations) | Turning a name into likely handles |
+| [osintverse-community/username-permutations](https://otinstaller.com/osintverse-community/username-permutations) | Turning a name into likely handles |
 | [osintverse-community/sherlock](https://otinstaller.com/osintverse-community/sherlock) | Fast check of 400+ sites |
 | [osintverse-community/maigret](https://otinstaller.com/osintverse-community/maigret) | Deeper check of 3,000+ sites, with profile details |
 | [osintverse-community/socialscan](https://otinstaller.com/osintverse-community/socialscan) | Accurate checks on the big platforms |
