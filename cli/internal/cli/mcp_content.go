@@ -180,7 +180,7 @@ func (s *mcpServer) acceptableUse(ctx context.Context) string {
 		}
 	}
 	return "# Acceptable use\n\nOTInstaller is for lawful investigation (due diligence, threat intelligence, journalism, security research) using publicly available or licensed data. " +
-		"Never use it to stalk or track a private individual, take over or log in to accounts, evade bot detection or platform bans, or gain unauthorised access.\n\nThe full policy: " + u
+		"Never use it to stalk or track a private individual, take over or log in to accounts, evade bot detection or platform bans, or gain unauthorised access.\n\nThe full policy: " + strings.TrimSuffix(u, ".md")
 }
 
 // ---------- prompts ----------
