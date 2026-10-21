@@ -1,7 +1,7 @@
 // Connecting GitLab projects, and the sync controls owners see on the dashboard.
 import type { Context } from "hono";
 import { deps, type App, type AppEnv, type Env } from "../env";
-import { apiError } from "../lib/errors";
+import { apiError, rateLimited } from "../lib/errors";
 import { randomToken, sha256Hex, ulid } from "../lib/crypto";
 import * as gitlab from "../hosts/gitlab";
 import { HostError } from "../hosts/github";
@@ -218,7 +218,9 @@ export function sourceRoutes(app: App) {
     await requireMember(c, s.namespace_id);
     const recent = await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM sync_events WHERE source_id = ? AND kind = 'manual' AND received_at > ?`)
       .bind(s.id, Date.now() - 3600_000).first<{ n: number }>();
-    if ((recent?.n ?? 0) >= MANUAL_SYNC_PER_HOUR) apiError(429, "sync_rate_limited", `at most ${MANUAL_SYNC_PER_HOUR} manual syncs per hour`);
+    if ((recent?.n ?? 0) >= MANUAL_SYNC_PER_HOUR) {
+      rateLimited("sync_rate_limited", `at most ${MANUAL_SYNC_PER_HOUR} manual syncs per hour`, "the registry also checks the source every 6 hours", 600, MANUAL_SYNC_PER_HOUR, 3600);
+    }
     return c.json(await pollSource(c.env, s, "manual"));
   });
 

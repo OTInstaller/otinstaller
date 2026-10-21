@@ -321,7 +321,7 @@ func (a *App) install(ctx context.Context, ref pkgRef, native bool) (*state.Inst
 	}
 	if ref.LocalPath == "" && a.Config.TelemetryEnabled() {
 		pctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-		_ = a.API.InstallPing(pctx, inst.Ref, inst.Version)
+		_ = a.API.InstallPing(pctx, inst.Ref, inst.Version, a.clientKind())
 		cancel()
 	}
 	fmt.Fprintf(a.Err, "Installed %s %s.\n", inst.Ref, inst.Version)

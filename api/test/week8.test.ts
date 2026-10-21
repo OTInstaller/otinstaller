@@ -375,7 +375,15 @@ describe("stuck releases", () => {
     const broken = { ...(await testEnv()), CONTENT: undefined as unknown as R2Bucket };
     const res = await call("/tools/dheeraj/whois-lite/readme", { headers: { "cf-ray": "8f0a1b2c3d4e5f60-LHR" } }, broken);
     expect(res.status).toBe(500);
-    expect(await res.json()).toEqual({ error: { code: "internal_error", message: "Something went wrong on our side.", request_id: "8f0a1b2c3d4e5f60-LHR" } });
+    expect(await res.json()).toEqual({
+      error: {
+        code: "internal_error",
+        message: "Something went wrong on our side.",
+        hint: "try again; if it keeps happening, report it with request ID 8f0a1b2c3d4e5f60-LHR",
+        docs: "https://otinstaller.com/docs/errors#internal_error",
+        request_id: "8f0a1b2c3d4e5f60-LHR",
+      },
+    });
     deps.fetch = fetch;
   });
 });

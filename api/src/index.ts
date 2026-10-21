@@ -2,10 +2,12 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import schema from "../../spec/schema/v1.json";
+import pivotMap from "../../spec/pivots.json";
+import openapi from "../../spec/openapi/v1.json";
 import { rank } from "./ranking";
 import { cached, findTool, findVersion, notFound, LISTED, rankInput, summary, SUMMARY_COLUMNS, VISIBLE, type SummaryRow } from "./catalog";
 import type { AppEnv, Env, PublishMessage } from "./env";
-import { apiError } from "./lib/errors";
+import { apiError, errorDocs, rateLimited, windowRetry } from "./lib/errors";
 import { authRoutes } from "./routes/auth";
 import { webhookRoutes } from "./routes/webhooks";
 import { reviewRoutes } from "./routes/review";
@@ -46,7 +48,7 @@ app.use("*", async (c, next) => {
   const u = c.get("user");
   if (u && !u.is_reviewer && !u.is_admin && !["GET", "HEAD", "OPTIONS"].includes(c.req.method)
     && (await overLimit(c.env, "write", u.id, 30, 60_000))) {
-    apiError(429, "too_many_requests", "at most 30 changes a minute", "wait a minute and try again");
+    rateLimited("too_many_requests", "at most 30 changes a minute", "wait a minute and try again", windowRetry(60_000), 30, 60);
   }
   await next();
 });
@@ -68,10 +70,19 @@ app.onError((err, c) => {
   const requestId = c.req.header("cf-ray") ?? ulid();
   c.executionCtx.waitUntil(reportError(c.env, err, { requestId, method: c.req.method, path: new URL(c.req.url).pathname }));
   console.error(`request ${requestId}:`, err);
-  return c.json({ error: { code: "internal_error", message: "Something went wrong on our side.", request_id: requestId } }, 500);
+  return c.json({
+    error: {
+      code: "internal_error",
+      message: "Something went wrong on our side.",
+      hint: `try again; if it keeps happening, report it with request ID ${requestId}`,
+      docs: errorDocs("internal_error"),
+      request_id: requestId,
+    },
+  }, 500);
 });
 
-app.notFound((c) => c.json({ error: { code: "not_found", message: "No such endpoint." } }, 404));
+app.notFound((c) =>
+  c.json({ error: { code: "not_found", message: "No such endpoint.", hint: "the API reference is at /v1/openapi.json", docs: errorDocs("not_found") } }, 404));
 
 // Turns free text into a safe FTS5 query: each word becomes a quoted prefix term.
 export function ftsQuery(q: string): string | null {
@@ -87,10 +98,12 @@ export function ftsQuery(q: string): string | null {
 const INPUT_TYPES: string[] = schema.$defs.inputType.enum;
 const ENTITY_TYPES: string[] = schema.$defs.entityType.enum;
 const CATEGORIES: string[] = schema.$defs.category.enum;
+// Which input types each entity type can feed (spec/pivots.json, shared with ot).
+const PIVOTS = pivotMap.pivots as Record<string, { input: string; attr?: string; transform?: string }[]>;
 
 function oneOf(value: string | undefined, allowed: string[], param: string): string | undefined {
   if (value === undefined || value === "") return undefined;
-  if (!allowed.includes(value)) apiError(400, "invalid_parameter", `${param} must be one of: ${allowed.join(", ")}`);
+  if (!allowed.includes(value)) apiError(400, "invalid_parameter", `${param} must be one of: ${allowed.join(", ")}`, undefined, { parameter: param, allowed });
   return value;
 }
 
@@ -98,9 +111,15 @@ function oneOf(value: string | undefined, allowed: string[], param: string): str
 
 app.get("/health", (c) => c.json({ ok: true }));
 
+// The API reference (spec/openapi/v1.json); a test checks it lists every public and owner route.
+app.get("/openapi.json", (c) => {
+  cached(c, 3600);
+  return c.json(openapi);
+});
+
 app.get("/types", (c) => {
   cached(c, 86400);
-  return c.json({ inputs: INPUT_TYPES, outputs: ENTITY_TYPES, categories: CATEGORIES });
+  return c.json({ inputs: INPUT_TYPES, outputs: ENTITY_TYPES, categories: CATEGORIES, pivots: PIVOTS });
 });
 
 app.get("/tools", async (c) => {
@@ -117,6 +136,8 @@ app.get("/tools", async (c) => {
   if (lang && !/^[a-z]{2}(-[A-Z]{2})?$/.test(lang)) apiError(400, "invalid_parameter", "lang must be a language code such as en or pt-BR");
   const sort = oneOf(c.req.query("sort"), ["relevance", "installs", "stars", "updated"], "sort") ?? "relevance";
   const noKeys = c.req.query("no_keys") === "1" || c.req.query("no_keys") === "true";
+  // Tools that run offline, touch no target and collect no personal data: what agents may run without asking.
+  const passiveOnly = c.req.query("passive_only") === "1" || c.req.query("passive_only") === "true";
   const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 25) || 25, 1), 100);
   const offset = Math.max(Number(c.req.query("cursor") ?? 0) || 0, 0);
 
@@ -153,6 +174,11 @@ app.get("/tools", async (c) => {
     params.push(lang);
   }
   if (noKeys) where.push(`NOT EXISTS (SELECT 1 FROM tool_secrets WHERE tool_id = t.id AND required = 1)`);
+  if (passiveOnly) {
+    where.push(`t.kind = 'tool' AND COALESCE(json_extract(v.manifest_json, '$.ethics.touches_target'), 1) = 0
+      AND COALESCE(json_extract(v.manifest_json, '$.ethics.collects_personal_data'), 1) = 0
+      AND COALESCE(json_extract(v.manifest_json, '$.network.egress'), 0) = 0`);
+  }
 
   const match = ftsQuery(q);
   let rows: (SummaryRow & { bm25?: number })[];
@@ -189,6 +215,8 @@ app.get("/tools", async (c) => {
   return c.json({
     results: page.map((s) => summary(s.r)),
     total: scored.length,
+    // Search looks at the best 200 matches (1000 without q); total stops there.
+    total_capped: rows.length === (match ? 200 : 1000) || undefined,
     next_cursor: offset + limit < scored.length ? String(offset + limit) : undefined,
   });
 });
@@ -222,7 +250,7 @@ app.get("/tools/:ns/:name", async (c) => {
 app.get("/tools/:ns/:name/versions", async (c) => {
   const { ns, name } = c.req.param();
   const { row } = await findTool(c.env.DB, ns, name);
-  if (!row) apiError(404, "tool_not_found", `${ns}/${name} is not in the registry`);
+  if (!row) return notFound(c.env.DB, ns, name);
   const versions = await c.env.DB.prepare(
     `SELECT version, status, scan_status, published_at, yanked_at, signer_identity IS NOT NULL AS signed
      FROM versions WHERE tool_id = ? AND status IN ('published', 'yanked', 'removed')
@@ -267,7 +295,7 @@ app.get("/tools/:ns/:name/:version/manifest", async (c) => {
 app.get("/tools/:ns/:name/:version/scans", async (c) => {
   const { ns, name, version } = c.req.param();
   const { row } = await findTool(c.env.DB, ns, name);
-  if (!row) apiError(404, "tool_not_found", `${ns}/${name} is not in the registry`);
+  if (!row) return notFound(c.env.DB, ns, name);
   const v = await findVersion(c.env.DB, row.id, version);
   if (!v || v.status === "removed") apiError(404, "version_not_found", `${ns}/${name} has no version ${version}`);
   const scans = await c.env.DB.prepare(`SELECT kind, result, summary_json, ran_at FROM scans WHERE version_id = ? ORDER BY ran_at, kind`)
@@ -290,7 +318,7 @@ app.get("/tools/:ns/:name/:version/scans", async (c) => {
 app.get("/tools/:ns/:name/:version", async (c) => {
   const { ns, name, version } = c.req.param();
   const { row } = await findTool(c.env.DB, ns, name);
-  if (!row) apiError(404, "tool_not_found", `${ns}/${name} is not in the registry`);
+  if (!row) return notFound(c.env.DB, ns, name);
   const v = await findVersion(c.env.DB, row.id, version);
   if (!v || v.status === "removed") apiError(404, "version_not_found", `${ns}/${name} has no version ${version}`);
   cached(c, 3600);
@@ -331,18 +359,27 @@ app.get("/pivots", async (c) => {
     .filter(Boolean);
   if (from.length === 0) apiError(400, "invalid_parameter", "from must list one or more entity types");
   for (const t of from) oneOf(t, ENTITY_TYPES, "from");
-  // Entity types that are also input types (email, username, domain, ...) can feed another tool.
-  const usable = from.filter((t) => INPUT_TYPES.includes(t));
+  // Each entity type feeds the input types the pivot map gives it (a subdomain feeds domain inputs, an account
+  // username and url inputs); types it gives none are listed as unmapped.
   const pivots: Record<string, ReturnType<typeof summary>[]> = {};
-  for (const type of usable) {
+  const inputs: Record<string, string[]> = {};
+  const unmapped: string[] = [];
+  for (const type of from) {
+    const targets = [...new Set((PIVOTS[type] ?? []).map((p) => p.input))];
+    if (targets.length === 0) {
+      unmapped.push(type);
+      continue;
+    }
+    inputs[type] = targets;
     const rows = await c.env.DB.prepare(
       `SELECT ${SUMMARY_COLUMNS} FROM tools t JOIN namespaces n ON n.id = t.namespace_id
        JOIN versions v ON v.id = t.latest_version_id
        WHERE ${VISIBLE} AND ${LISTED} AND t.kind = 'tool' AND t.health_status != 'broken'
-       AND EXISTS (SELECT 1 FROM tool_io WHERE tool_id = t.id AND direction = 'in' AND type = ?)`,
+       AND EXISTS (SELECT 1 FROM tool_io WHERE tool_id = t.id AND direction = 'in' AND type IN (${targets.map(() => "?").join(", ")}))`,
     )
-      .bind(type)
+      .bind(...targets)
       .all<SummaryRow>();
+    if (rows.results.length === 0) continue;
     pivots[type] = rows.results
       .map((r) => ({ r, s: rank(rankInput(r)) }))
       .sort((a, b) => b.s - a.s)
@@ -350,12 +387,12 @@ app.get("/pivots", async (c) => {
       .map((x) => summary(x.r));
   }
   cached(c, 600);
-  return c.json({ pivots });
+  return c.json({ pivots, inputs, unmapped });
 });
 
 // Anonymous install counts: no IP, user or token is stored, only a per-day counter.
 app.post("/installs", async (c) => {
-  const body = await c.req.json<{ tool?: string; version?: string }>().catch(() => ({}) as { tool?: string; version?: string });
+  const body = await c.req.json<{ tool?: string; version?: string; client?: string }>().catch(() => ({}) as { tool?: string; version?: string; client?: string });
   const [ns, name] = (body.tool ?? "").split("/");
   if (!ns || !name || !body.version) apiError(400, "invalid_body", "send {tool: 'namespace/name', version}");
   const v = await c.env.DB.prepare(
@@ -365,13 +402,21 @@ app.post("/installs", async (c) => {
     .bind(ns, name, body.version)
     .first<{ tool_id: string; version_id: string }>();
   if (!v) return c.body(null, 204);
+  // One count per address, package version and day, so a looping script or agent can't inflate ranking. The
+  // address is only hashed into the rate-limit key and never stored.
+  const ip = c.req.header("cf-connecting-ip");
+  if (ip && (await overLimit(c.env, "install", `${ip}|${v.version_id}`, 1, 86_400_000))) return c.body(null, 204);
   const day = new Date().toISOString().slice(0, 10);
-  await c.env.DB.prepare(
-    `INSERT INTO install_counts (tool_id, version_id, day, count) VALUES (?, ?, ?, 1)
-     ON CONFLICT (tool_id, version_id, day) DO UPDATE SET count = count + 1`,
-  )
-    .bind(v.tool_id, v.version_id, day)
-    .run();
+  const client = ["cli", "mcp", "ci"].includes(body.client ?? "") ? body.client! : "other";
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      `INSERT INTO install_counts (tool_id, version_id, day, count) VALUES (?, ?, ?, 1)
+       ON CONFLICT (tool_id, version_id, day) DO UPDATE SET count = count + 1`,
+    ).bind(v.tool_id, v.version_id, day),
+    c.env.DB.prepare(
+      `INSERT INTO install_clients (day, client, count) VALUES (?, ?, 1) ON CONFLICT (day, client) DO UPDATE SET count = count + 1`,
+    ).bind(day, client),
+  ]);
   return c.body(null, 204);
 });
 

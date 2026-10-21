@@ -143,16 +143,30 @@ describe("namespaces, pivots, types, installs", () => {
     expect((await get("/namespaces/newbie")).status).toBe(404);
   });
 
-  it("suggests pivots for entity types that other tools accept", async () => {
-    const { body } = await get("/pivots?from=email,account");
-    expect(Object.keys(body.pivots)).toEqual(["email"]);
+  it("suggests pivots for entity types that other tools accept, through the pivot map", async () => {
+    const { body } = await get("/pivots?from=email,account,breach");
     expect(body.pivots.email.map((t: any) => t.name)).toContain("holehe-lite");
+    // An account feeds username and url inputs; a breach feeds nothing.
+    expect(body.inputs.account).toEqual(["username", "url"]);
+    expect(body.unmapped).toEqual(["breach"]);
+    expect(body.pivots.breach).toBeUndefined();
+  });
+
+  it("shows ethics and network access in search, and filters to passive tools", async () => {
+    const { body } = await get("/tools?q=holehe");
+    const t = body.results.find((r: any) => r.name === "holehe-lite");
+    expect(t.ethics).toEqual({ touches_target: false, auth_required: false, collects_personal_data: true });
+    expect(t.egress).toBe(true);
+    const passive = await get("/tools?passive_only=1&limit=100");
+    expect(passive.body.results.map((r: any) => r.name)).not.toContain("holehe-lite");
+    for (const r of passive.body.results) expect(r.ethics.collects_personal_data || r.ethics.touches_target || r.egress).toBe(false);
   });
 
   it("serves the vocabulary from the schema", async () => {
     const { body } = await get("/types");
     expect(body.inputs).toContain("crypto_address");
     expect(body.categories).toContain("domain-dns");
+    expect(body.pivots.subdomain).toEqual([{ input: "domain" }]);
   });
 
   it("counts installs anonymously and ignores unknown packages", async () => {
@@ -164,6 +178,23 @@ describe("namespaces, pivots, types, installs", () => {
     const { env } = await import("cloudflare:test");
     const row = await env.DB.prepare("SELECT SUM(count) AS n FROM install_counts").first<{ n: number }>();
     expect(row?.n).toBe(2);
+  });
+
+  it("counts an address once per version and day, and records the kind of client", async () => {
+    const { env } = await import("cloudflare:test");
+    const before = (await env.DB.prepare("SELECT COALESCE(SUM(count), 0) AS n FROM install_counts").first<{ n: number }>())!.n;
+    const send = (ip: string, client: string) =>
+      SELF.fetch("https://api.otinstaller.com/v1/installs", {
+        method: "POST", headers: { "cf-connecting-ip": ip }, body: JSON.stringify({ tool: "dheeraj/holehe-lite", version: "1.2.0", client }),
+      });
+    await send("203.0.113.7", "mcp");
+    await send("203.0.113.7", "mcp");
+    await send("203.0.113.8", "agent-of-chaos");
+    const after = (await env.DB.prepare("SELECT SUM(count) AS n FROM install_counts").first<{ n: number }>())!.n;
+    expect(after - before).toBe(2);
+    const clients = await env.DB.prepare("SELECT client, SUM(count) AS n FROM install_clients GROUP BY client ORDER BY client").all();
+    expect(clients.results).toContainEqual({ client: "mcp", n: 1 });
+    expect(clients.results).toContainEqual({ client: "other", n: expect.any(Number) });
   });
 });
 
@@ -180,5 +211,25 @@ describe("helpers", () => {
     expect(rank({ ...baseline, broken: true })).toBeCloseTo(-0.8);
     expect(rank({ ...baseline, manifestHeld: true })).toBeCloseTo(-0.15);
     expect(rank({ ...baseline, installs30d: Math.E - 1 })).toBeCloseTo(0.35);
+  });
+});
+
+describe("OpenAPI", () => {
+  it("lists exactly the public, account, publishing and owner routes", async () => {
+    const { app } = await import("../src/index");
+    const spec = (await (await SELF.fetch("https://api.otinstaller.com/v1/openapi.json")).json()) as any;
+    expect(spec.openapi).toBe("3.1.0");
+    // Staff, scanner callbacks, webhooks and the OSINTverse device pages (HTML for a browser) are left out.
+    const hidden = /^\/(admin|internal|webhooks)\/|^\/auth\/osintverse\/device/;
+    const routes = new Set(
+      app.routes
+        .filter((r) => r.method !== "ALL")
+        .map((r) => `${r.method.toLowerCase()} ${r.path.replace(/^\/v1/, "").replace(/:(\w+)(\{[^}]*\})?/g, "{$1}")}`)
+        .filter((r) => !hidden.test(r.split(" ")[1]!)),
+    );
+    const documented = new Set(Object.entries(spec.paths).flatMap(([p, ops]: [string, any]) => Object.keys(ops).map((m) => `${m} ${p}`)));
+    expect([...routes].filter((r) => !documented.has(r)).sort()).toEqual([]);
+    expect([...documented].filter((r) => !routes.has(r)).sort()).toEqual([]);
+    for (const ops of Object.values(spec.paths) as any[]) for (const op of Object.values(ops) as any[]) expect(op.operationId).toMatch(/^[a-z_]+$/);
   });
 });

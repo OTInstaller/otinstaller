@@ -8,6 +8,7 @@ import * as github from "../hosts/github";
 import * as gitlab from "../hosts/gitlab";
 import * as osintverse from "../hosts/osintverse";
 import { authorizeDevice, devicePage, deviceRoutes, pollOsintverseDevice, startOsintverseDevice } from "./device";
+import { ALL_SCOPES, enforceScopes, parseScopes, USER_SCOPES } from "../scopes";
 
 export type Provider = "github" | "gitlab" | "osintverse";
 const SESSION_COOKIE = "ot_session";
@@ -48,17 +49,22 @@ function safeRedirect(env: Env, target: string | undefined): string {
 /** Reads the session cookie or a bearer API token and sets c.var.user. Never rejects by itself. */
 export async function authenticate(c: Context<AppEnv>, next: Next) {
   c.set("user", null);
+  c.set("token", null);
   const header = c.req.header("authorization");
   const bearer = header?.startsWith("Bearer ") ? header.slice(7).trim() : null;
   const now = Date.now();
   let user: User | null = null;
   if (bearer?.startsWith(TOKEN_PREFIX)) {
     const hash = await sha256Hex(bearer);
-    user = await c.env.DB.prepare(
-      `SELECT u.id, u.login, u.is_admin, u.is_reviewer FROM api_tokens t JOIN users u ON u.id = t.user_id
+    const row = await c.env.DB.prepare(
+      `SELECT u.id, u.login, u.is_admin, u.is_reviewer, t.id AS token_id, t.scopes, t.scoped FROM api_tokens t JOIN users u ON u.id = t.user_id
        WHERE t.token_hash = ? AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at > ?) AND u.banned_at IS NULL`,
-    ).bind(hash, now).first<User>();
-    if (user) c.executionCtx.waitUntil(c.env.DB.prepare(`UPDATE api_tokens SET last_used_at = ? WHERE token_hash = ?`).bind(now, hash).run());
+    ).bind(hash, now).first<User & { token_id: string; scopes: string; scoped: number }>();
+    if (row) {
+      user = { id: row.id, login: row.login, is_admin: row.is_admin, is_reviewer: row.is_reviewer };
+      c.set("token", { id: row.token_id, scopes: new Set(row.scopes.split(",")), scoped: row.scoped === 1 });
+      c.executionCtx.waitUntil(c.env.DB.prepare(`UPDATE api_tokens SET last_used_at = ? WHERE token_hash = ?`).bind(now, hash).run());
+    }
   } else {
     const cookie = getCookie(c, SESSION_COOKIE);
     if (cookie) {
@@ -131,12 +137,39 @@ export function audit(db: D1Database, actorId: string | null, actorKind: string,
   ).bind(ulid(), actorId, actorKind, action, targetKind, targetId, meta === undefined ? null : JSON.stringify(meta), Date.now());
 }
 
-export async function mintApiToken(db: D1Database, userId: string, name: string) {
+/** Mints a scoped API token; it is returned once and only its hash is kept. */
+export async function mintApiToken(db: D1Database, userId: string, name: string, scopes: readonly string[] = USER_SCOPES, expiresAt: number | null = null) {
   const token = TOKEN_PREFIX + randomToken(30);
   const id = ulid();
-  await db.prepare(`INSERT INTO api_tokens (id, user_id, name, token_hash, scopes, created_at) VALUES (?, ?, ?, ?, 'read,publish', ?)`)
-    .bind(id, userId, name, await sha256Hex(token), Date.now()).run();
-  return { id, token };
+  await db.batch([
+    db.prepare(`INSERT INTO api_tokens (id, user_id, name, token_hash, scopes, scoped, expires_at, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)`)
+      .bind(id, userId, name, await sha256Hex(token), scopes.join(","), expiresAt, Date.now()),
+    audit(db, userId, "user", "token.create", "token", id, { name, scopes, expires_at: expiresAt }),
+  ]);
+  return { id, token, scopes, expires_at: expiresAt };
+}
+
+const DAY = 24 * 3600 * 1000;
+
+/** Reads scopes and expires_in_days from a token request. A token can't mint one with more than it has itself. */
+function tokenRequest(c: Context<AppEnv>, body: { scopes?: unknown; expires_in_days?: unknown }, defaultDays: number | null) {
+  const scopes = parseScopes(body.scopes);
+  const u = c.get("user");
+  const t = c.get("token");
+  if (scopes.includes("staff") && (!u || (!u.is_admin && !u.is_reviewer) || t)) {
+    apiError(403, "insufficient_scope", "only a signed-in reviewer or admin can create a staff token, on the website");
+  }
+  if (t?.scoped) {
+    const extra = scopes.filter((s) => !t.scopes.has(s));
+    if (extra.length) apiError(403, "insufficient_scope", `this token can't create a token with ${extra.join(", ")}`, "create it on the website instead");
+  }
+  let days: number | null = defaultDays;
+  if (body.expires_in_days !== undefined && body.expires_in_days !== null) {
+    const n = Number(body.expires_in_days);
+    if (!Number.isInteger(n) || n < 1 || n > 365) apiError(400, "invalid_body", "expires_in_days is a whole number from 1 to 365");
+    days = n;
+  }
+  return { scopes, expiresAt: days === null ? null : Date.now() + days * DAY };
 }
 
 /** Starts a session for a signed-in user (the cookie the site sends to the API). */
@@ -191,6 +224,7 @@ async function osintverseCallback(c: Context<AppEnv>, state: string | undefined,
 
 export function authRoutes(app: App) {
   app.use("*", authenticate);
+  app.use("*", enforceScopes);
   deviceRoutes(app);
 
   // ---------- web OAuth ----------
@@ -245,7 +279,7 @@ export function authRoutes(app: App) {
   });
 
   app.post("/auth/device/token", async (c) => {
-    const body = await c.req.json<{ provider?: Provider; device_code?: string; token_name?: string }>().catch(() => ({}) as any);
+    const body = await c.req.json<{ provider?: Provider; device_code?: string; token_name?: string; scopes?: unknown; expires_in_days?: unknown }>().catch(() => ({}) as any);
     const p = body.provider ?? "github";
     if (p === "osintverse" && body.device_code) return c.json(await pollOsintverseDevice(c, body.device_code, body.token_name));
     if ((p !== "github" && p !== "gitlab") || !body.device_code) apiError(400, "invalid_body", "send {provider, device_code}");
@@ -254,8 +288,10 @@ export function authRoutes(app: App) {
     if (r.status !== "ok") return c.json({ status: r.status });
     const who = p === "github" ? await github.fetchUser(deps.fetch, r.accessToken) : await gitlab.fetchUser(deps.fetch, r.accessToken);
     const userId = await signIn(c.env, p, who, r, null);
-    const { token } = await mintApiToken(c.env.DB, userId, (body.token_name ?? "ot CLI").slice(0, 60));
-    return c.json({ status: "ok", token, login: who.login, provider: p });
+    // `ot login` tokens don't expire unless asked to; they can do what the user can, except staff actions.
+    const { scopes, expiresAt } = tokenRequest(c, body, null);
+    const { token } = await mintApiToken(c.env.DB, userId, (body.token_name ?? "ot CLI").slice(0, 60), scopes, expiresAt);
+    return c.json({ status: "ok", token, login: who.login, provider: p, scopes, expires_at: expiresAt });
   });
 
   // ---------- me ----------
@@ -273,23 +309,38 @@ export function authRoutes(app: App) {
   app.get("/me/tokens", async (c) => {
     const u = requireUser(c);
     const rows = await c.env.DB.prepare(
-      `SELECT id, name, scopes, last_used_at, created_at FROM api_tokens WHERE user_id = ? AND revoked_at IS NULL ORDER BY created_at DESC`,
-    ).bind(u.id).all();
-    return c.json({ tokens: rows.results });
+      `SELECT id, name, scopes, scoped, expires_at, last_used_at, created_at FROM api_tokens
+       WHERE user_id = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?) ORDER BY created_at DESC`,
+    ).bind(u.id, Date.now()).all<{ id: string; scopes: string; scoped: number }>();
+    c.header("Cache-Control", "private, no-store");
+    return c.json({
+      tokens: rows.results.map((t) => ({
+        ...t,
+        // Tokens from before scopes can do everything their user can.
+        scopes: t.scoped === 1 ? t.scopes.split(",") : [...ALL_SCOPES],
+        scoped: t.scoped === 1,
+        current: c.get("token")?.id === t.id,
+      })),
+    });
   });
 
   app.post("/me/tokens", async (c) => {
     const u = requireUser(c);
-    const { name } = await c.req.json<{ name?: string }>().catch(() => ({} as { name?: string }));
-    if (!name?.trim()) apiError(400, "invalid_body", "send {name}");
-    const t = await mintApiToken(c.env.DB, u.id, name.trim().slice(0, 60));
-    return c.json({ id: t.id, token: t.token, note: "This token is shown once." }, 201);
+    const body = await c.req.json<{ name?: string; scopes?: unknown; expires_in_days?: unknown }>().catch(() => ({}) as { name?: string; scopes?: unknown; expires_in_days?: unknown });
+    const name = body.name;
+    if (!name?.trim()) apiError(400, "invalid_body", "send {name, scopes?, expires_in_days?}");
+    // Tokens made here expire in 90 days unless asked otherwise (at most 365).
+    const { scopes, expiresAt } = tokenRequest(c, body, 90);
+    const t = await mintApiToken(c.env.DB, u.id, name.trim().slice(0, 60), scopes, expiresAt);
+    return c.json({ id: t.id, token: t.token, scopes: t.scopes, expires_at: t.expires_at, note: "This token is shown once." }, 201);
   });
 
   app.delete("/me/tokens/:id", async (c) => {
     const u = requireUser(c);
-    const r = await c.env.DB.prepare(`UPDATE api_tokens SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL`).bind(Date.now(), c.req.param("id"), u.id).run();
+    const id = c.req.param("id");
+    const r = await c.env.DB.prepare(`UPDATE api_tokens SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL`).bind(Date.now(), id, u.id).run();
     if (!r.meta.changes) apiError(404, "token_not_found", "no such token");
+    await audit(c.env.DB, u.id, "user", "token.revoke", "token", id, { by_token: c.get("token")?.id ?? null }).run();
     return c.body(null, 204);
   });
 

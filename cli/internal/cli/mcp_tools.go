@@ -25,14 +25,15 @@ import (
 )
 
 type searchIn struct {
-	Query      string `json:"query,omitempty" jsonschema:"words to search for in names, summaries and tags"`
-	InputType  string `json:"input_type,omitempty" jsonschema:"only tools that take this input type (email, username, domain, ip, url, phone, ...); list_types lists them"`
-	OutputType string `json:"output_type,omitempty" jsonschema:"only tools that find this entity type"`
-	Category   string `json:"category,omitempty" jsonschema:"only this category, such as domain-dns or social-media"`
-	Runtime    string `json:"runtime,omitempty" jsonschema:"docker or pipx"`
-	NoKeys     bool   `json:"no_keys,omitempty" jsonschema:"only tools that need no API key"`
-	Limit      int    `json:"limit,omitempty" jsonschema:"results per page, 1 to 100 (default 20)"`
-	Cursor     string `json:"cursor,omitempty" jsonschema:"next_cursor from the previous page"`
+	Query       string `json:"query,omitempty" jsonschema:"words to search for in names, summaries and tags"`
+	InputType   string `json:"input_type,omitempty" jsonschema:"only tools that take this input type (email, username, domain, ip, url, phone, ...); list_types lists them"`
+	OutputType  string `json:"output_type,omitempty" jsonschema:"only tools that find this entity type"`
+	Category    string `json:"category,omitempty" jsonschema:"only this category, such as domain-dns or social-media"`
+	Runtime     string `json:"runtime,omitempty" jsonschema:"docker or pipx"`
+	NoKeys      bool   `json:"no_keys,omitempty" jsonschema:"only tools that need no API key"`
+	PassiveOnly bool   `json:"passive_only,omitempty" jsonschema:"only tools that run offline, touch no target and collect no personal data: the ones that run without asking"`
+	Limit       int    `json:"limit,omitempty" jsonschema:"results per page, 1 to 100 (default 20)"`
+	Cursor      string `json:"cursor,omitempty" jsonschema:"next_cursor from the previous page"`
 }
 
 type toolIn struct {
@@ -235,10 +236,10 @@ type consentStatusOut struct {
 func (s *mcpServer) addReadTools() {
 	a := s.a
 	readTool(s, "search_tools", "Search tools",
-		"Search the OTInstaller Registry for OSINT tools. Results list each tool's input and output types, whether it needs API keys, and its trust status (signed, verified publisher, health).",
+		"Search the OTInstaller Registry for OSINT tools. Results list each tool's input and output types, whether it needs API keys, its ethics flags and network access, and its trust status (signed, verified publisher, health).",
 		func(ctx context.Context, in searchIn) (*api.SearchResult, error) {
 			return a.API.Search(ctx, api.SearchParams{Query: in.Query, Input: in.InputType, Output: in.OutputType, Category: in.Category,
-				Runtime: in.Runtime, Kind: "tool", NoKeys: in.NoKeys, Limit: orInt(in.Limit, 20), Cursor: in.Cursor})
+				Runtime: in.Runtime, Kind: "tool", NoKeys: in.NoKeys, PassiveOnly: in.PassiveOnly, Limit: orInt(in.Limit, 20), Cursor: in.Cursor})
 		})
 	readTool(s, "get_tool", "Get a tool",
 		"Everything needed to run a tool: its inputs (names, types, defaults), what it finds, the API keys it needs and whether they are set, its ethics flags and network access, and whether a run will need the person's consent. Works for installed and registry tools.",
