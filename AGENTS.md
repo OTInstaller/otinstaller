@@ -29,8 +29,8 @@ publishes it, and backs it up. Users then run `ot install <ns>/<name>` and `ot r
 digest-pinned, cosign-verified Docker image (or a hash-pinned PyPI wheel) and run it in a locked-down container. If the
 original host later refuses the artifact, `ot` falls back to the registry's own mirror or wheel copy.
 
-The repository also holds `python/`, the older Python package manager `otinstaller`, now in maintenance (see
-[python/](#python-package-manager-python)).
+The repository also holds `otlite/`, the no-Docker edition `otlite` (the Python package manager formerly called
+`otinstaller`; see [otlite/](#otlite-the-no-docker-edition-otlite)).
 
 The registry is in **closed beta** (beta strip on the site, `ot feedback`, issues on `OTInstaller/feedback`);
 [docs/launch-checklist.md](docs/launch-checklist.md) records what is deployed and what is left before launch. As of
@@ -63,7 +63,7 @@ api/         Registry API and image mirror (TypeScript, Hono on Cloudflare Worke
 web/         Website (Astro 7 SSR on Cloudflare, Preact islands, strict CSP)
 ops/         scanner/ (scan.py, backup.py, health.py, tests, Dockerfile), workflows/ (scan.yml, health.yml) copied
              into registry-ops, get/ (worker.js, wrangler.jsonc: the get.otinstaller.com Worker)
-python/      otinstaller, the Python package manager (maintenance only; has its own AGENTS.md)
+otlite/      otlite, the no-Docker edition (Python; formerly otinstaller; has its own AGENTS.md)
 seed/        Launch seed: 11 first-party tools, 38 community wrappers, 10 guides, outreach texts
 examples/    dns-lookup (scripts/e2e.sh), cosign and tldextract (the local/test seed in api/scripts/seed-lib.mjs
              and scripts/e2e-real.sh)
@@ -75,24 +75,24 @@ docs/        publishing-setup.md (operator runbook), launch-checklist.md, migrat
 .github/     workflows/ (see CI below) and ISSUE_TEMPLATE/ (bug with severity, idea, config.yml contact links);
              the live issue forms are in the public OTInstaller/feedback repo
 .claude/     launch.json: dev-server definitions (`web` on 4321, `web-preview` on 4322)
-LICENSE      Apache 2.0 for the whole repository; python/ keeps its own LICENSE and NOTICE
+LICENSE      Apache 2.0 for the whole repository; otlite/ keeps its own LICENSE and NOTICE
 ```
 
-There is no root package manager or monorepo tool. Each of `cli/`, `api/`, `web/` and `python/` is built on its own, but
+There is no root package manager or monorepo tool. Each of `cli/`, `api/`, `web/` and `otlite/` is built on its own, but
 they **share files from `spec/`** (see [Spec copies](#spec-is-the-source-of-truth-keep-the-copies-in-sync)), and some
 tests read `spec/`, `seed/` or `examples/`, so tests must run inside a full checkout. (`scripts/pm-catalog-to-wrappers.py`
-reads `python/`; no test does.)
+reads `otlite/`; no test does.)
 
 ## Requirements
 
 - Go 1.25+ (CLI)
 - Node.js 22+ (API and site); dependencies are pinned in each `package-lock.json`, install with `npm install`
 - Docker Desktop or Podman (running Docker tools, sandboxed pipx tools, the e2e scripts, the scanner image)
-- Python 3.12 (scanner, seed tool unit tests, the converter); Python 3.10+ on Linux for `python/`
+- Python 3.12 (scanner, seed tool unit tests, the converter); Python 3.10+ on Linux for `otlite/`
 - `cosign`, `crane` and `git` for some e2e scripts and the `ot release` tests
 
 The main development machine is Windows. Use forward slashes in scripts, keep files LF (`.gitattributes` sets
-`* text=auto eol=lf`), and don't assume `bash`-only tools exist outside Git Bash. `python/` is Linux-only.
+`* text=auto eol=lf`), and don't assume `bash`-only tools exist outside Git Bash. `otlite/` is Linux-only.
 
 ## Quick command reference
 
@@ -114,7 +114,7 @@ The main development machine is Windows. Use forward slashes in scripts, keep fi
 | Social image | `cd web && npm run og` (re-renders `public/og.png`) |
 | Scanner tests | `python -m unittest discover ops/scanner` |
 | Seed tool tests | `python -m unittest` inside a `seed/first-party/<tool>/` folder |
-| python/ checks | `cd python && pip install -e ".[dev,pipeline]" && ruff check . && ruff format --check . && pytest` |
+| otlite/ checks | `cd otlite && pip install -e ".[dev,pipeline]" && ruff check . && ruff format --check . && pytest` |
 | End-to-end (Docker) | `bash scripts/e2e.sh` |
 | End-to-end, real artifacts | `bash scripts/e2e-real.sh` (needs Docker, cosign and the local API running) |
 | End-to-end, backups | `bash scripts/e2e-backups.sh` (Docker, cosign, crane, git, Go, Node, Python; ports 8787–8789, 5001) |
@@ -686,7 +686,7 @@ table, publish order (namespace → tools → guides), what was not converted an
   build amd64+arm64; pipx wrappers are just a manifest pinning the wheel by `wheel_sha256` plus a README crediting
   upstream. The upstream license must be in the API's `REDISTRIBUTABLE` list (`api/src/imports.ts`), which includes the
   AGPL; GHunt (needs a Google login) and blackbird (no license) are outreach only. 11 wrappers were converted from the
-  `python/` catalog by `scripts/pm-catalog-to-wrappers.py` (`--dry-run`, `--offline`; it never overwrites a folder);
+  `otlite/` catalog by `scripts/pm-catalog-to-wrappers.py` (`--dry-run`, `--offline`; it never overwrites a folder);
   git-pinned ones use versions like `0.0.0-git.<commit>`.
 - `guides/<guide>/` (10): `otinstaller.yaml` (`kind: guide`, CC-BY-4.0), `docs/index.md` + numbered pages, README,
   LICENSE.md. Guides have no release workflow: release them with `ot release X.Y.Z` (or a plain `git tag vX.Y.Z && git
@@ -696,28 +696,27 @@ table, publish order (namespace → tools → guides), what was not converted an
   validate (`TestSeedManifests`).
 - Updating a pipx wrapper: change `version`, `package_version` and `wheel_sha256` (from `https://pypi.org/pypi/<pkg>/json`).
 
-## Python package manager (`python/`)
+## otlite, the no-Docker edition (`otlite/`)
 
-`otinstaller` (PyPI, version 0.1.1) is the earlier, Linux-only package manager: it installs tools by name into per-tool
-virtualenvs from the catalog in `python/src/otinstaller/data/registry.yaml`. It is in **maintenance: security fixes only
-until 2027-06-30**, and prints an end-of-life notice (`OTINSTALLER_NO_DEPRECATION_WARNING=1` hides it). New work goes
-into `ot`; the `ot` alias was removed from this package. Users move with
-[docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md).
+`otlite` (PyPI, version 1.0.0; called `otinstaller` until then) is the Linux-only, Docker-free edition: it installs
+tools by name into per-tool virtualenvs from the catalog in `otlite/src/otlite/data/registry.yaml`. It is supported
+alongside `ot`; the `ot` alias it once had was removed. The `OTINSTALLER_*` environment variables are still read and
+the first run copies settings from `~/.otinstaller`. Releases: tag `otlite-vX.Y.Z`, `release-otlite.yml` publishes to
+PyPI (trusted publishing); `otlite/otinstaller-shim/` is the old PyPI name, depending on `otlite`. Users of both
+editions use [docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md).
 
-- **Read [python/AGENTS.md](python/AGENTS.md) before touching anything in `python/`.** Its rules apply there and differ
-  from the rest of the repo: the package and command are `otinstaller`; no "OSINT" in package/command names or CLI help;
+- **Read [otlite/AGENTS.md](otlite/AGENTS.md) before touching anything in `otlite/`.** Its rules apply there and differ
+  from the rest of the repo: the package and command are `otlite`; no "OSINT" in package/command names or CLI help;
   Typer (with click), Rich, PyYAML, sentry-sdk and the standard library only (ask before adding dependencies); pip or git installs, one venv per
   tool; never `shell=True`; never log API key values; no emojis; neutral metadata; short lowercase imperative commit
   messages; run `ruff check .`, `ruff format --check .` and `pytest` after every change.
-- Layout: `src/otinstaller/` (`cli.py` thin Typer layer, `registry.py`, `installer/`, `runner.py`, `results.py`,
-  `keys.py`, `crash_reports.py`, `deprecation.py`, `data/`), `tests/` (run from `python/`; network tests need
+- Layout: `src/otlite/` (`cli.py` thin Typer layer, `registry.py`, `installer/`, `runner.py`, `results.py`,
+  `keys.py`, `crash_reports.py`, `data/`), `tests/` (run from `otlite/`; network tests need
   `RUN_NETWORK_TESTS=1`), `pipeline/` (discover and verify candidate tools; a human merges approved entries),
   `registry/` (denylist and pipeline output), `debian/` (Debian/Kali packaging), `docs/`, `scripts/readme_tools.py`
   (regenerates the README tool list; a test fails when it's stale).
 - Crash reports are opt-in Sentry with scrubbing; tests and the Debian build force `DO_NOT_TRACK=1`. Keep it that way.
-- `python/LICENSE` is Apache 2.0 with a `NOTICE` that redistributions must keep.
-- Known leftovers from the alias removal: `python/llms.txt`, the README quick start, `debian/tests/control` and
-  `debian/otinstaller.1` still mention `ot`.
+- `otlite/LICENSE` is Apache 2.0 with a `NOTICE` that redistributions must keep.
 - If you change the catalog's shape, check `scripts/pm-catalog-to-wrappers.py`, which reads it.
 
 ## End-to-end scripts
@@ -741,8 +740,9 @@ into `ot`; the `ot` alias was removed from this package. Users move with
 | --- | --- | --- |
 | `cli-install.yml` | PRs and pushes to main touching `cli/**`, `scripts/install/**`, `cli-install.yml` or `release-cli.yml`; `workflow_dispatch` | GoReleaser snapshot with the real config, archive contents check, then installs with `install.sh` / `install.ps1` on Linux (x64, arm), macOS and Windows and runs `ot --version`, `search`, `info`, `doctor`, and on Linux (x64 and arm) a real install/run |
 | `release-cli.yml` | `v*.*.*` tags | Releases `ot` (see above) |
-| `python-ci.yml` | pushes and PRs touching `python/**` | ruff and pytest on Ubuntu × Python 3.10–3.14, Debian, Arch; a Kali `.deb` build and install; a Playwright browser tool check |
-| `python-nightly.yml` | 02:00 UTC daily; `workflow_dispatch` | ruff, python pipeline verify (20 candidates), an installed-tool contract test and the full python test suite |
+| `otlite-ci.yml` | pushes and PRs touching `otlite/**` | ruff and pytest on Ubuntu × Python 3.10–3.14, Debian, Arch; a Kali `.deb` build and install; wheel build, pipx install and the `otinstaller` shim; a Playwright browser tool check |
+| `otlite-nightly.yml` | 02:00 UTC daily; `workflow_dispatch` | ruff, otlite pipeline verify (20 candidates), an installed-tool contract test and the full otlite test suite |
+| `release-otlite.yml` | `otlite-v*.*.*` tags; `workflow_dispatch` (`testpypi` or `pypi`) | Tests, builds otlite and the shim, publishes with PyPI trusted publishing, creates a GitHub release |
 | `issue-severity.yml` | issues opened/edited | Sets one `sev-N` label from the bug form's Severity field |
 
 Nothing in CI runs `go test`, the API tests, the site checks, the scanner tests or the e2e scripts.
@@ -787,21 +787,21 @@ and verify in the preview build.
 - Commit subjects: imperative, sentence case, no trailing period, no conventional-commit prefixes. An area prefix is
   common: `Seed:`, `Scanner:`, `Web:`, `Site:`, `Backups:`, `Edge cache:`, `Admin API:`, `Install scripts:`,
 `Release workflow:`, `ot run:`, `ot feedback:`, `Launch checklist:`, `AGENTS.md:`. British spelling is used
-  ("Honour", "organisation"). Backticks for commands are fine. Inside `python/`, follow its own style (short, lowercase,
+  ("Honour", "organisation"). Backticks for commands are fine. Inside `otlite/`, follow its own style (short, lowercase,
   imperative).
 - Bodies: a short paragraph on why, then `- ` bullets in plain prose, wrapped at about 115 characters.
 - `Release X.Y.Z` is reserved for release commits made by workflows and `ot release`.
 - Don't add AI or tool attribution (no `Co-Authored-By` trailers, no "Generated with ..." lines) anywhere: commits, PRs,
   code, or docs.
 - Don't commit `.dev.vars`, `.env.development`, `bin/`, `dist/`, `results/`, `.wrangler/` or
-  `examples/dns-lookup/otinstaller.yaml` (all gitignored), nor `__pycache__/` (ignored only inside `python/` and
+  `examples/dns-lookup/otinstaller.yaml` (all gitignored), nor `__pycache__/` (ignored only inside `otlite/` and
   `seed/`; one `.pyc` under `ops/scanner/` is committed by mistake).
 
 ## Things that need explicit permission
 
 These affect production or other people, so do them only when asked: `npm run deploy` / `wrangler deploy` (api, mirror,
 web or `ops/get`), `wrangler d1 ... --remote`, `wrangler secret put`, pushing `v*` tags on this repo (releases `ot`),
-pushing tags or running workflows on seed repositories (publishes packages), publishing `python/` to PyPI, posting
+pushing tags or running workflows on seed repositories (publishes packages), publishing `otlite/` to PyPI (pushing `otlite-v*` tags or running `release-otlite.yml`), posting
 outreach issues or PRs, running `scripts/beta/labels.sh`, sending beta emails, triggering backups or drills on
 production, and changing GitHub App, OAuth, R2 or registry-ops settings. The operator runbook for all of these is
 [docs/publishing-setup.md](docs/publishing-setup.md); current production state is in
@@ -871,8 +871,6 @@ change. Keep this list current when you fix one or find another.
   intro names a merged branch).
 - Stale comments: "within 30 days" for takedown deletion in `backups.ts` and `trust.ts` (the code uses 14);
   `web/astro.config.mjs` says Cloudflare Pages (it is a Worker); `release-cli.yml` says `otinstaller/ot`.
-- `python/`: the `ot` leftovers listed above, and `python/pyproject.toml` URLs still point at the old
-  `OSINTVerseHQ/OTinstaller` repository.
 
 **Hygiene**
 
@@ -930,4 +928,4 @@ change. Keep this list current when you fix one or find another.
 | [docs/beta/](docs/beta) | Beta invitation, author onboarding, feedback survey |
 | [seed/README.md](seed/README.md) | The launch seed: every package, publish order, health risks |
 | [cli/README.md](cli/README.md) | The README shipped in `ot` release archives |
-| [python/README.md](python/README.md), [python/AGENTS.md](python/AGENTS.md) | The legacy Python package |
+| [otlite/README.md](otlite/README.md), [otlite/AGENTS.md](otlite/AGENTS.md) | otlite, the no-Docker edition |
