@@ -28,6 +28,8 @@ describe("edge cache", () => {
     expect(first.headers.get("x-edge-cache")).toBeNull();
     const second = await call(path, {}, e);
     expect(second.headers.get("x-edge-cache")).toBe("hit");
+    expect(second.headers.get("cache-control")).toBe(first.headers.get("cache-control"));
+    expect(second.headers.get("x-ot-cache-control")).toBeNull();
     expect(await second.json()).toEqual(await first.json());
     // The same filters in another order are the same page.
     const [base, query] = path.split("?");
