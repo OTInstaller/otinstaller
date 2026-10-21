@@ -2,6 +2,7 @@
 // Layout for the Markdown pages under /docs.
 import Base from "./Base.astro";
 import SideNav from "../components/SideNav.astro";
+import { markdownPage } from "../lib/markdown";
 import CopyCode from "../components/CopyCode.astro";
 
 interface Props {
@@ -13,6 +14,11 @@ const pages: [string, string][] = [
   ["/docs", "Overview"],
   ["/docs/getting-started", "Getting started"],
   ["/docs/cli", "CLI reference"],
+  ["/docs/agents", "AI agents and MCP"],
+  ["/docs/mcp-tools", "MCP tools"],
+  ["/docs/automation", "Scripts, CI and agents"],
+  ["/docs/results", "Results and the envelope"],
+  ["/docs/api", "Registry API"],
   ["/docs/manifest", "Manifest reference"],
   ["/docs/publishing", "Publishing"],
   ["/docs/guides", "Guides and tool docs"],
@@ -21,9 +27,10 @@ const pages: [string, string][] = [
   ["/docs/faq", "FAQ"],
 ];
 const path = Astro.url.pathname.replace(/\/$/, "") || "/docs";
+const twin = markdownPage(path) ? `${path}.md` : undefined;
 Astro.response.headers.set("Cache-Control", "public, max-age=300, s-maxage=3600");
 ---
-<Base title={frontmatter.title} description={frontmatter.description}>
+<Base title={frontmatter.title} description={frontmatter.description} markdown={twin}>
   <div class="docs">
     <SideNav label="Documentation" pages={pages} current={path} headings={headings} />
     <article class="prose doc-body">

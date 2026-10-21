@@ -20,7 +20,7 @@ type Removed struct {
 
 func (c *Client) Removed(ctx context.Context) (*Removed, error) {
 	var out Removed
-	return &out, c.do(ctx, http.MethodGet, "/removed", nil, &out)
+	return &out, c.anon().do(ctx, http.MethodGet, "/removed", nil, &out)
 }
 
 type ReportResult struct {

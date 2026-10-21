@@ -40,6 +40,11 @@ call; the `for` loop in `routes/trust.ts` registers two (`yank`, `unyank`). The 
 section 6 and are not in this count. There is no route for stars, although the rate-limit comment in `index.ts`
 mentions stars.
 
+Outside `/v1` and the Hono app, the Worker's `fetch` also answers `/mcp`: the read-only remote MCP server
+(`src/mcp.ts`, sessionless Streamable HTTP; POST JSON-RPC, GET 405, `Access-Control-Allow-Origin: *`, `no-store`). Its
+six tools (`search_tools`, `get_tool`, `list_types`, `suggest_pivots`, `search_guides`, `read_guide`) make anonymous GETs
+to the public routes below through `edgeCached`, with none of the caller's headers. It has no rate limit of its own.
+
 ### 1.1 Public catalog (12)
 
 | Method | Path | Auth | Caching | Defined in | Notes |
@@ -50,7 +55,7 @@ mentions stars.
 | GET | `/guides` | none | 60 (inherited) | index.ts | Re-dispatches internally to `/v1/tools?kind=guide` with `app.fetch`, so the `/tools` response (and its `max-age=60`) is returned |
 | GET | `/tools/:ns/:name` | none | `cached(c, 60)` | index.ts | Follows aliases (`moved_to`); not found goes through `notFound()`: 410 `tool_removed` or 404 `tool_not_found` |
 | GET | `/tools/:ns/:name/versions` | none | `cached(c, 60)` | index.ts | Published, yanked and removed versions, semver-sorted |
-| GET | `/tools/:ns/:name/:version/manifest` | none | `cached(c, version === "latest" ? 60 : 3600)` | index.ts | Removed versions return status and `removed_reason` with `manifest: null`; otherwise adds `installFallbacks()` (`mirror_image` / `wheel_url`) |
+| GET | `/tools/:ns/:name/:version/manifest` | none | `cached(c, version === "latest" ? 60 : 3600)` | index.ts | Removed versions return status and `removed_reason` with `manifest: null`; otherwise adds `installFallbacks()` (`mirror_image` / `wheel_url`). `manifest` is `compatManifest()` (`lib/manifest.ts`): without the optional fields added after ot v0.12, whose install-time validation rejects them; `manifest_full` carries them when anything was left out |
 | GET | `/tools/:ns/:name/:version/scans` | none | `cached(c, 300)` | index.ts | PII scan summaries reduced to `{hits: <count>}` |
 | GET | `/tools/:ns/:name/:version` | none | `cached(c, 3600)` | index.ts | Also 3600 for `latest` (unlike `/manifest`, which uses 60 for `latest`) |
 | GET | `/namespaces/:ns` | none | `cached(c, 300)` | index.ts | Active namespaces only; visible tools ordered by `installs_30d` |

@@ -78,6 +78,10 @@ export interface ToolSummary {
   format?: string | null;
   language?: string;
   needs_update?: boolean;
+  /** The latest version's ethics flags (added with the agent work; older API responses omit them). */
+  ethics?: { touches_target: boolean; auth_required: boolean; collects_personal_data: boolean; notifies_target?: boolean };
+  /** Whether the latest version's runs have network access. */
+  egress?: boolean;
 }
 
 export interface Manifest {
@@ -89,14 +93,18 @@ export interface Manifest {
   homepage?: string;
   categories: string[];
   tags?: string[];
-  inputs?: { name: string; type: string; required: boolean; description?: string; values?: string[]; default?: unknown }[];
-  outputs?: { type: string }[];
-  runtime?: { kind: string; command: string[]; image?: string; package?: string; package_version?: string; wheel_sha256?: string; output_format: string; timeout_seconds?: number };
-  secrets?: { name: string; required: boolean; description?: string; url?: string }[];
+  inputs?: { name: string; type: string; required: boolean; description?: string; values?: string[]; default?: unknown; example?: unknown }[];
+  outputs?: { type: string; description?: string; attrs?: { name: string; type: string; description?: string }[] }[];
+  runtime?: { kind: string; command: string[]; image?: string; package?: string; package_version?: string; wheel_sha256?: string; output_format: string; timeout_seconds?: number; typical_seconds?: number };
+  secrets?: { name: string; required: boolean; description?: string; url?: string; pricing?: "free" | "free_tier" | "paid" }[];
   network?: { egress?: boolean; domains?: string[] };
-  ethics?: { touches_target: boolean; auth_required: boolean; collects_personal_data: boolean };
-  test?: { input: Record<string, unknown> };
+  ethics?: { touches_target: boolean; auth_required: boolean; collects_personal_data: boolean; notifies_target?: boolean; notes?: string };
+  readme?: string;
+  test?: { input: Record<string, unknown>; expect_exit_code?: number };
   docs?: { root: string; nav: string[] };
+  /** Guides only: their pages. */
+  content?: { root: string; nav: string[] };
+  kind?: "tool" | "guide";
   title?: string;
   related_tools?: string[];
 }
@@ -186,6 +194,8 @@ export interface Types {
   inputs: string[];
   outputs: string[];
   categories: string[];
+  /** Which input types each entity type can feed (spec/pivots.json); older API responses omit it. */
+  pivots?: Record<string, { input: string; attr?: string; transform?: string }[]>;
 }
 
 export interface SearchResult {

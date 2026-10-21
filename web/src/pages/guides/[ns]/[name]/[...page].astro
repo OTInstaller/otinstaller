@@ -29,6 +29,9 @@ const hrefFor = (path: string) => guidePageHref(ref, path, version);
 const first = !want || page?.position === 1;
 const tools = guide.related_tools;
 cacheFor(Astro, version ? 3600 : 600);
+const canonical = page ? hrefFor(page.path).split("?")[0] : base;
+// The Markdown twin of this page (/guides/<ns>/<name>.md is the first page).
+const markdown = `${canonical}.md${version ? `?v=${encodeURIComponent(version)}` : ""}`;
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "TechArticle",
@@ -41,7 +44,7 @@ const jsonLd = {
   author: { "@type": "Organization", name: guide.namespace },
 };
 ---
-<Base title={page && !first ? `${page.title} · ${guide.title}` : guide.title ?? ref} description={guide.summary} canonical={page ? hrefFor(page.path).split("?")[0] : base} jsonLd={jsonLd}>
+<Base title={page && !first ? `${page.title} · ${guide.title}` : guide.title ?? ref} description={guide.summary} canonical={canonical} jsonLd={jsonLd} markdown={markdown}>
   <header class="ghead">
     <nav class="small crumbs" aria-label="Breadcrumb"><a href="/guides">Guides</a> <span aria-hidden="true">/</span> <a href={`/${guide.namespace}`}>{guide.namespace}</a></nav>
     <h1>{guide.title ?? ref}</h1>

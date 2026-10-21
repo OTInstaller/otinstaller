@@ -3,7 +3,8 @@
 import type { APIRoute } from "astro";
 import { api, type SearchResult, type Types } from "../lib/api";
 
-const DOCS = ["", "/getting-started", "/cli", "/manifest", "/publishing", "/guides", "/errors", "/security", "/faq"];
+const DOCS = ["", "/getting-started", "/cli", "/agents", "/mcp-tools", "/automation", "/results", "/api", "/manifest", "/publishing", "/guides", "/errors", "/security", "/faq"];
+const POLICIES = ["/acceptable-use", "/terms", "/privacy", "/takedown", "/transparency"];
 
 async function all(path: string) {
   const out: SearchResult["results"] = [];
@@ -26,6 +27,7 @@ export const GET: APIRoute = async ({ site }) => {
     ...guides.map((g) => `/guides/${g.namespace}/${g.name}`),
     ...[...new Set([...tools, ...guides].map((t) => t.namespace))].map((n) => `/${n}`),
     ...DOCS.map((d) => `/docs${d}`),
+    ...POLICIES.map((p) => `/policy${p}`),
   ];
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${paths
     .map((p) => `  <url><loc>${new URL(p, site).toString().replace(/&/g, "&amp;")}</loc></url>`)

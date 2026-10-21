@@ -97,15 +97,14 @@ func (a *App) reportCmd() *cobra.Command {
 				if version != "" {
 					u += "?v=" + version
 				}
-				fmt.Fprintf(a.Out, "Opening %s\n", u)
-				if err := a.OpenURL(u); err != nil {
-					fmt.Fprintf(a.Err, "could not open a browser (%v); open the link yourself, or use --reason and --details\n", err)
-				}
-				return nil
+				return a.openLink(u, "open the link yourself, or use --reason and --details")
 			}
 			r, err := a.API.Report(cmd.Context(), ref.NS, ref.Name, version, reason, details)
 			if err != nil {
 				return a.requestError(err)
+			}
+			if a.jsonMode() {
+				return writeJSON(a.Out, r)
 			}
 			fmt.Fprintf(a.Out, "Report %s filed. %s\n", r.ID, r.Note)
 			return nil
@@ -120,6 +119,10 @@ func (a *App) reportCmd() *cobra.Command {
 // ---------- claims and transfers ----------
 
 func printTransfer(a *App, t *api.Transfer) {
+	if a.jsonMode() {
+		_ = writeJSON(a.Out, t)
+		return
+	}
 	kind := "Transfer"
 	if t.Kind == "claim" {
 		kind = "Claim"
@@ -153,7 +156,7 @@ func (a *App) claimCmd() *cobra.Command {
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if a.API.Token == "" {
-				return exitErr(ExitUsage, "sign in first with `ot login`")
+				return errNotSignedIn("sign in first with `ot login`")
 			}
 			var t *api.Transfer
 			var err error
@@ -190,7 +193,7 @@ func (a *App) transferCmd() *cobra.Command {
 		Args:  cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if a.API.Token == "" {
-				return exitErr(ExitUsage, "sign in first with `ot login`")
+				return errNotSignedIn("sign in first with `ot login`")
 			}
 			var t *api.Transfer
 			var err error
@@ -200,6 +203,9 @@ func (a *App) transferCmd() *cobra.Command {
 			case decline != "":
 				if _, err := a.API.TransferAction(cmd.Context(), decline, "decline"); err != nil {
 					return a.requestError(err)
+				}
+				if a.jsonMode() {
+					return writeJSON(a.Out, map[string]string{"id": decline, "status": "declined"})
 				}
 				fmt.Fprintf(a.Out, "Declined %s.\n", decline)
 				return nil
@@ -241,6 +247,9 @@ func (a *App) yankCmd() *cobra.Command {
 			if err := a.API.Yank(cmd.Context(), ref.NS, ref.Name, ref.Version, undo); err != nil {
 				return a.requestError(err)
 			}
+			if a.jsonMode() {
+				return writeJSON(a.Out, map[string]any{"ref": ref.Ref(), "version": ref.Version, "yanked": !undo})
+			}
 			if undo {
 				fmt.Fprintf(a.Out, "%s@%s is back in search and @latest.\n", ref.Ref(), ref.Version)
 			} else {
@@ -274,6 +283,9 @@ func (a *App) deprecateCmd() *cobra.Command {
 			}
 			if err != nil {
 				return a.requestError(err)
+			}
+			if a.jsonMode() {
+				return writeJSON(a.Out, map[string]any{"ref": ref.Ref(), "deprecated": !undo})
 			}
 			fmt.Fprintf(a.Out, "%s is %s.\n", ref.Ref(), map[bool]string{true: "no longer deprecated", false: "deprecated"}[undo])
 			return nil

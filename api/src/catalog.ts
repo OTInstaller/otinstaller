@@ -23,7 +23,12 @@ export const SUMMARY_COLUMNS = `
   (SELECT s.sync_status FROM sources s WHERE s.tool_id = t.id) AS source_status,
   (SELECT group_concat(type) FROM tool_io WHERE tool_id = t.id AND direction = 'in') AS inputs,
   (SELECT group_concat(type) FROM tool_io WHERE tool_id = t.id AND direction = 'out') AS outputs,
-  EXISTS (SELECT 1 FROM tool_secrets WHERE tool_id = t.id AND required = 1) AS needs_keys`;
+  EXISTS (SELECT 1 FROM tool_secrets WHERE tool_id = t.id AND required = 1) AS needs_keys,
+  json_extract(v.manifest_json, '$.ethics.touches_target') AS touches_target,
+  json_extract(v.manifest_json, '$.ethics.auth_required') AS auth_required,
+  json_extract(v.manifest_json, '$.ethics.collects_personal_data') AS collects_personal_data,
+  json_extract(v.manifest_json, '$.ethics.notifies_target') AS notifies_target,
+  json_extract(v.manifest_json, '$.network.egress') AS egress`;
 
 export type SummaryRow = {
   id: string;
@@ -52,6 +57,11 @@ export type SummaryRow = {
   inputs: string | null;
   outputs: string | null;
   needs_keys: number;
+  touches_target: number | null;
+  auth_required: number | null;
+  collects_personal_data: number | null;
+  notifies_target: number | null;
+  egress: number | null;
 };
 
 export function summary(r: SummaryRow) {
@@ -79,6 +89,11 @@ export function summary(r: SummaryRow) {
     status: r.status,
     // Guides only: what the site shows on a guide card.
     ...(guide ? { title: r.title, level: r.level, format: r.format, language: r.language ?? "en", needs_update: r.needs_update === 1 } : {}),
+    // Tools only: what a run does, so agents and scripts can tell which runs need consent without the manifest.
+    ...(guide ? {} : {
+      ethics: { touches_target: r.touches_target === 1, auth_required: r.auth_required === 1, collects_personal_data: r.collects_personal_data === 1, ...(r.notifies_target === null || r.notifies_target === undefined ? {} : { notifies_target: r.notifies_target === 1 }) },
+      egress: r.egress === 1,
+    }),
   };
 }
 

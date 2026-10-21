@@ -10,7 +10,7 @@ import (
 // syncCmd checks a package's source repository now, instead of waiting for the next webhook or the
 // 6-hourly poll. The registry allows 10 manual syncs per package per hour.
 func (a *App) syncCmd() *cobra.Command {
-	var showLog, asJSON bool
+	var showLog bool
 	cmd := &cobra.Command{
 		Use:   "sync <namespace/name>",
 		Short: "Check a package's GitHub or GitLab repository for new tags and changes now",
@@ -26,7 +26,7 @@ func (a *App) syncCmd() *cobra.Command {
 				return exitErr(ExitUsage, "give a package as namespace/name")
 			}
 			if a.API.Token == "" {
-				return exitErr(ExitUsage, "sign in first with `ot login`")
+				return errNotSignedIn("sign in first with `ot login`")
 			}
 			ctx := cmd.Context()
 			if showLog {
@@ -34,7 +34,7 @@ func (a *App) syncCmd() *cobra.Command {
 				if err != nil {
 					return a.requestError(err)
 				}
-				if asJSON {
+				if a.jsonMode() {
 					return writeJSON(a.Out, log)
 				}
 				s := log.Source
@@ -62,7 +62,7 @@ func (a *App) syncCmd() *cobra.Command {
 			if err != nil {
 				return a.requestError(err)
 			}
-			if asJSON {
+			if a.jsonMode() {
 				return writeJSON(a.Out, res)
 			}
 			switch res.Status {
@@ -86,7 +86,6 @@ func (a *App) syncCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&showLog, "log", false, "show the sync status and recent events instead of syncing")
-	cmd.Flags().BoolVar(&asJSON, "json", false, "print JSON")
 	return cmd
 }
 

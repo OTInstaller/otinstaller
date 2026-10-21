@@ -1,0 +1,5 @@
+# Static-asset headers (Cloudflare Workers assets). Prerendered routes lose the headers their endpoints set, so the
+# JSON Schemas get their media type and open CORS here. The adapter appends its own /_astro/* rule at build time.
+/schema/*
+  Content-Type: application/schema+json
+  Access-Control-Allow-Origin: *

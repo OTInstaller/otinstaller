@@ -28,6 +28,30 @@ type Envelope struct {
 	Entities   []Entity          `json:"entities"`
 	Raw        any               `json:"raw"`
 	Warnings   []string          `json:"warnings"`
+	// Provenance, added within version 1 (readers ignore keys they don't know).
+	EndedAt   time.Time `json:"ended_at"`
+	RunID     string    `json:"run_id,omitempty"`
+	OTVersion string    `json:"ot_version,omitempty"`
+	Client    string    `json:"client,omitempty"` // cli, ci or mcp
+	Artifact  *Artifact `json:"artifact,omitempty"`
+	Output    *Output   `json:"output,omitempty"`
+}
+
+// Artifact is what exactly ran.
+type Artifact struct {
+	Kind       string `json:"kind"` // image or wheel
+	Ref        string `json:"ref"`  // the image pinned by digest, or the wheel's sha256
+	Signer     string `json:"signer,omitempty"`
+	FromBackup bool   `json:"from_backup,omitempty"`
+}
+
+// Output describes the tool's stdout as produced, before parsing.
+type Output struct {
+	SHA256     string `json:"sha256"`
+	Bytes      int64  `json:"bytes"`
+	Path       string `json:"path,omitempty"`
+	MetaPath   string `json:"meta_path,omitempty"`
+	RawOmitted bool   `json:"raw_omitted,omitempty"`
 }
 
 type Entity struct {

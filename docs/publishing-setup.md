@@ -247,6 +247,24 @@ send server errors to Sentry with their request ID; request headers and bodies a
 `ot self-update` and the install scripts refuse a release whose checksums are not signed by the key built into them.
 winget, macOS notarization and Windows code signing need accounts of their own and are not set up yet.
 
+### MCP bundles and the MCP Registry
+
+Each release also gets one MCP Bundle per platform (`ot_<version>_<os>_<arch>.mcpb`, a one-click install for Claude
+Desktop) and `server.json` for the [official MCP Registry](https://registry.modelcontextprotocol.io). The release
+workflow's last step builds them with `cli/cmd/mcpb` from the binaries GoReleaser built and signed, and uploads them to
+the release. `cli-install.yml` builds them from the snapshot on every PR and runs `mcpb validate`. The bundles are not
+signed with `mcpb sign` yet.
+
+Listing a release in the registry is a manual step:
+
+1. Once: install [`mcp-publisher`](https://github.com/modelcontextprotocol/registry), then prove you own
+   `otinstaller.com` so the server can be named `com.otinstaller/ot`. Follow the registry's DNS authentication
+   instructions: `mcp-publisher login dns --domain otinstaller.com` with a TXT record on the domain (Cloudflare → DNS).
+2. For each release: download its `server.json`, check it with `mcp-publisher validate server.json` (or
+   `mcp-publisher publish --dry-run`), then run `mcp-publisher publish server.json`.
+
+The registry is in preview and may change its format; `cli/cmd/mcpb` writes the 2025-12-11 schema.
+
 ## 11. Backups: the image mirror, R2 buckets and restore drills
 
 Every published package keeps a registry-held copy, so a mistaken ban or takedown on GitHub or GitLab never breaks
@@ -341,3 +359,30 @@ local registry as the seeded `sigstore/cosign` image's original registry, and a 
 the scanner's backup jobs, blocks the original registry (403 DENIED) and removes `tldextract` from "PyPI", installs both
 with `ot` (from the mirror with the signature verified, and from the wheel copy), and restores the bundle into an empty
 repository standing in for the other host. It needs Docker, cosign, crane, git, Go, Node and Python.
+
+## 12. The agent plugin (Claude Code and Cursor)
+
+The plugin lives in `integrations/agent-plugin/` and is published as its own public repository,
+`OTInstaller/agent-plugin`, so `claude plugin marketplace add OTInstaller/agent-plugin` finds `marketplace.json` at its
+root. Its tests are in `cli/internal/cli/mcp_test.go` (`TestAgentPluginMatchesServer`): every tool and prompt it names
+must exist in `ot mcp`.
+
+1. Once: create the public repository `OTInstaller/agent-plugin` (Apache 2.0), empty.
+2. To publish a version: bump `version` in both `.claude-plugin/plugin.json` and `.cursor-plugin/plugin.json`, then
+   copy the folder's contents to the repository's root and push:
+   ```bash
+   git clone https://github.com/OTInstaller/agent-plugin /tmp/agent-plugin
+   rsync -a --delete --exclude .git integrations/agent-plugin/ /tmp/agent-plugin/
+   cd /tmp/agent-plugin && git add -A && git commit -m "Release 0.1.0" && git tag v0.1.0 && git push --follow-tags
+   ```
+3. Check it on a machine with Claude Code: `claude plugin validate --strict /tmp/agent-plugin`, then
+   `claude plugin marketplace add OTInstaller/agent-plugin` and `claude plugin install otinstaller@otinstaller`.
+4. Listings, when the plugin and `ot mcp` have been tried on real clients:
+   - Anthropic's directory: submit at https://claude.ai/directory/manage (needs a paid plan). It reads the icon and
+     the documentation, support, privacy and terms links from `plugin.json`.
+   - The Cursor marketplace: submit the same repository (Cursor reads `.cursor-plugin/plugin.json`, `rules/`,
+     `skills/` and `mcp.json`). Its review is manual.
+   - The MCP Registry: as above.
+
+Lead each submission with the consent model, the local audit log, the sandbox and the signed artifacts
+(https://otinstaller.com/docs/agents). OSINT tools get extra scrutiny.

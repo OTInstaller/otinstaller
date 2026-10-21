@@ -31,7 +31,9 @@ const e = m.ethics;
 const lines = evidence(t, scans, manifest);
 const required = (m.inputs ?? []).filter((i) => i.required);
 const first = required[0];
-const runArgs = required.map((i) => `--${i.name} ${exampleValue(i.type, i.name)}`).join(" ");
+// The manifest's own example wins over the generic one for its type.
+const ex = (i: { name: string; type: string; example?: unknown }) => (i.example != null && i.example !== "" ? String(i.example) : exampleValue(i.type, i.name));
+const runArgs = required.map((i) => `--${i.name} ${ex(i)}`).join(" ");
 const runCmd = `ot run ${ref}${runArgs ? ` ${runArgs}` : ""}`;
 const egress = m.network?.egress === true;
 const runtimeLine = [
@@ -40,7 +42,7 @@ const runtimeLine = [
   m.secrets?.some((s) => s.required) ? `needs ${m.secrets.filter((s) => s.required).map((s) => s.name).join(", ")}` : "no key",
   m.runtime?.timeout_seconds ? `up to ${Math.round(m.runtime.timeout_seconds / 60)} min` : null,
 ].filter(Boolean).join(" · ");
-const sample = sampleEnvelope(ref, t.latest_version, m.runtime?.kind ?? "docker", pivotFrom, Object.fromEntries(required.map((i) => [i.name, exampleValue(i.type, i.name).replace(/^"|"$/g, "")])));
+const sample = sampleEnvelope(ref, t.latest_version, m.runtime?.kind ?? "docker", pivotFrom, Object.fromEntries(required.map((i) => [i.name, ex(i).replace(/^"|"$/g, "")])));
 const leads = pivotFrom.filter((o) => pivots?.pivots[o]?.length).map((o) => ({ type: o, n: pivots!.pivots[o]!.length }));
 const jsonHref = `https://api.otinstaller.com/v1/tools/${ref}`;
 cacheFor(Astro, 60);
@@ -56,9 +58,14 @@ const jsonLd = {
   url: `${Astro.site}${ref}`,
   ...(t.repo_url ? { codeRepository: t.repo_url } : {}),
   offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+  isAccessibleForFree: true,
+  featureList: [...(m.inputs ?? []).map((i) => `Input: ${i.type}`), ...(m.outputs ?? []).map((o) => `Finds: ${o.type}`)],
+  downloadUrl: "https://otinstaller.com/docs/getting-started",
+  installUrl: "https://otinstaller.com/docs/getting-started",
+  softwareRequirements: "ot, Docker or Podman",
 };
 ---
-<Base title={ref} description={t.summary} jsonLd={jsonLd} jsonHref={jsonHref}>
+<Base title={ref} description={t.summary} jsonLd={jsonLd} jsonHref={jsonHref} markdown={`/${ref}.md`}>
   <ToolHeader tool={t} active="overview" hasDocs={hasDocs} />
   <section class="run" aria-labelledby="run-h" data-run data-input={first?.name} data-type={first?.type}>
     <p class="eyebrow" id="run-h">Run</p>
@@ -82,7 +89,7 @@ const jsonLd = {
       <Evidence lines={lines} securityHref={`/${ref}/security`} />
 
       <section class="panel sample-panel" aria-labelledby="out-h">
-        <div class="ph"><h2 id="out-h">What you get back</h2><a href="/docs/cli#saved-results">Result envelope →</a></div>
+        <div class="ph"><h2 id="out-h">What you get back</h2><a href="/docs/results">Result envelope →</a></div>
         <pre class="sample"><code>{sample}</code></pre>
         <p class="small muted pad">Every tool returns this shape, shaped here from what this tool declares it finds. <code>--format table</code> to read it; <code>ot extract</code> and <code>ot auto</code> to continue.</p>
       </section>
@@ -102,7 +109,7 @@ const jsonLd = {
         <section aria-labelledby="next">
           <div class="section-head"><h2 id="next">What next</h2></div>
           <p class="small muted">{t.name} finds {pivotFrom.map(entityLabel).join(", ")}. Tools that take those:</p>
-          <p class="row pivots">{leads.map((l) => <a class="chip" href={`/input/${l.type}`}>{entityLabel(l.type)} → {l.n} {l.n === 1 ? "tool" : "tools"}</a>)}<a class="chip" href="/docs/cli#saved-results">ot auto, with a saved result</a></p>
+          <p class="row pivots">{leads.map((l) => <a class="chip" href={`/input/${l.type}`}>{entityLabel(l.type)} → {l.n} {l.n === 1 ? "tool" : "tools"}</a>)}<a class="chip" href="/docs/results">ot auto, with a saved result</a></p>
         </section>
       )}
     </div>
@@ -163,7 +170,7 @@ const jsonLd = {
         </dl>
       </section>
       <section class="links small">
-        <a href={jsonHref}>View as JSON</a> · <a href={`https://api.otinstaller.com/v1/tools/${ref}/${t.latest_version}/manifest`}>Manifest</a> · <a href={`/${ref}/report`}>Report this tool</a>
+        <a href={jsonHref}>View as JSON</a> · <a href={`/${ref}.md`}>Markdown</a> · <a href={`https://api.otinstaller.com/v1/tools/${ref}/${t.latest_version}/manifest`}>Manifest</a> · <a href={`/${ref}/report`}>Report this tool</a>
       </section>
     </aside>
   </div>

@@ -2,6 +2,7 @@
 // Layout for /policy pages.
 import Base from "./Base.astro";
 import SideNav from "../components/SideNav.astro";
+import { markdownPage } from "../lib/markdown";
 
 interface Props {
   frontmatter: { title: string; description?: string; updated?: string };
@@ -16,9 +17,11 @@ const pages: [string, string][] = [
   ["/policy/transparency", "Transparency"],
 ];
 const path = Astro.url.pathname.replace(/\/$/, "");
+// Transparency is a live page with no Markdown twin.
+const twin = markdownPage(path) ? `${path}.md` : undefined;
 Astro.response.headers.set("Cache-Control", "public, max-age=300, s-maxage=3600");
 ---
-<Base title={frontmatter.title} description={frontmatter.description}>
+<Base title={frontmatter.title} description={frontmatter.description} markdown={twin}>
   <div class="policy">
     <SideNav label="Policies" pages={pages} current={path} headings={headings} />
     <article class="prose policy-body">

@@ -52,6 +52,13 @@ jobs:
           ls cli/dist/*.deb cli/dist/*.rpm cli/dist/checksums.txt
       - name: ot self-update looks at OTInstaller/ot
         run: grep -aq "OTInstaller/ot" cli/dist/ot_linux_amd64_v1/ot
+      - name: MCP bundles build from the snapshot and validate
+        working-directory: cli
+        run: |
+          go run ./cmd/mcpb -version 0.0.0 -dist dist -out dist/mcpb -release-url https://github.com/OTInstaller/ot/releases/download/v0.0.0
+          ls dist/mcpb/*.mcpb dist/mcpb/server.json
+          mkdir -p "$RUNNER_TEMP/mcpb" && unzip -o -q dist/mcpb/ot_0.0.0_linux_amd64.mcpb -d "$RUNNER_TEMP/mcpb"
+          npx -y @anthropic-ai/mcpb@2.1.2 validate "$RUNNER_TEMP/mcpb/manifest.json"
 
   release:
     runs-on: ubuntu-latest
@@ -135,7 +142,8 @@ jobs:
         if: matrix.run_tool
         run: |
           ot install osintverse-community/checkdmarc
-          ot run osintverse-community/checkdmarc d:example.com --no-save | tee "$RUNNER_TEMP/out.json"
+          # Without a terminal, a tool that goes online needs --yes (the consent check for unattended runs).
+          ot run osintverse-community/checkdmarc d:example.com --no-save --yes | tee "$RUNNER_TEMP/out.json"
           grep -Eq '"exit_code": *0' "$RUNNER_TEMP/out.json"
           ot list
           ot uninstall osintverse-community/checkdmarc

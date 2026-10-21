@@ -2,10 +2,13 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -44,6 +47,10 @@ func (a *App) ensureInstalled(cmd *cobra.Command, ref pkgRef, ra *runArgs) (*sta
 		return inst, nil
 	}
 	if !ra.Yes {
+		// Without a terminal, no answer must not mean yes: installing pulls and trusts new code.
+		if !a.interactive() {
+			return nil, &ExitError{Code: ExitUsage, Reason: "not_installed", Err: fmt.Errorf("%s is not installed; run `ot install %s` first, or pass --yes to install it", ref.Ref(), ref.Ref())}
+		}
 		fmt.Fprintf(a.Err, "%s is not installed. Install it now? [Y/n] ", ref.Ref())
 		line, _ := bufio.NewReader(a.In).ReadString('\n')
 		if ans := strings.ToLower(strings.TrimSpace(line)); ans != "" && ans != "y" && ans != "yes" {
@@ -114,31 +121,53 @@ func (a *App) smokeTest(cmd *cobra.Command, m *manifest.Manifest, path string) e
 
 func (a *App) keysCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "keys", Short: "Manage API keys stored in your OS keychain"}
-	cmd.AddCommand(
-		&cobra.Command{
-			Use:   "set <NAME>",
-			Short: "Store a key (reads the value from stdin)",
-			Args:  cobra.ExactArgs(1),
-			RunE: func(cmd *cobra.Command, args []string) error {
-				fmt.Fprintf(a.Err, "Value for %s: ", args[0])
-				line, err := bufio.NewReader(a.In).ReadString('\n')
-				val := strings.TrimSpace(line)
+	var fromEnv string
+	set := &cobra.Command{
+		Use:   "set <NAME>",
+		Short: "Store a key (reads the value from stdin, or --from-env)",
+		Long: "Stores a key in the OS keychain. The value is read from stdin (typed, or piped), or copied from an environment\n" +
+			"variable with --from-env. On machines without a keychain (CI, containers), skip this: set an environment variable of\n" +
+			"the same name and ot uses it.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var val string
+			if fromEnv != "" {
+				val = os.Getenv(fromEnv)
 				if val == "" {
+					return exitErr(ExitUsage, "%s is not set in the environment", fromEnv)
+				}
+			} else {
+				if a.interactive() {
+					fmt.Fprintf(a.Err, "Value for %s: ", args[0])
+				}
+				line, err := bufio.NewReader(a.In).ReadString('\n')
+				if val = strings.TrimSpace(line); val == "" {
 					return exitErr(ExitUsage, "no value given: %v", err)
 				}
-				if err := keys.Set(args[0], val); err != nil {
-					return err
-				}
-				fmt.Fprintf(a.Out, "Saved %s to the keychain.\n", args[0])
-				return nil
-			},
+			}
+			if err := keys.Set(args[0], val); err != nil {
+				return fmt.Errorf("saving %s to the keychain failed: %w; without a keychain, set %s in the environment instead", args[0], err, args[0])
+			}
+			if a.jsonMode() {
+				return writeJSON(a.Out, map[string]any{"name": args[0], "saved": true})
+			}
+			fmt.Fprintf(a.Out, "Saved %s to the keychain.\n", args[0])
+			return nil
 		},
+	}
+	set.Flags().StringVar(&fromEnv, "from-env", "", "copy the value from this environment variable")
+	cmd.AddCommand(
+		set,
 		&cobra.Command{
 			Use:   "list",
 			Short: "List stored key names (never values)",
+			Long:  "Lists the keys in the keychain. With --json it also lists the keys installed tools declare, and where each is set.",
 			Args:  cobra.NoArgs,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				names := keys.List()
+				if a.jsonMode() {
+					return writeJSON(a.Out, a.keyStatus(names))
+				}
 				if len(names) == 0 {
 					fmt.Fprintln(a.Out, "No keys stored.")
 				}
@@ -156,6 +185,9 @@ func (a *App) keysCmd() *cobra.Command {
 				if err := keys.Delete(args[0]); err != nil {
 					return err
 				}
+				if a.jsonMode() {
+					return writeJSON(a.Out, map[string]any{"name": args[0], "deleted": true})
+				}
 				fmt.Fprintf(a.Out, "Deleted %s.\n", args[0])
 				return nil
 			},
@@ -164,50 +196,130 @@ func (a *App) keysCmd() *cobra.Command {
 	return cmd
 }
 
+// keyInfo is one key in `ot keys list --json`. Values are never read out.
+type keyInfo struct {
+	Name     string   `json:"name"`
+	Set      bool     `json:"set"`
+	Source   string   `json:"source,omitempty"` // env or keychain; env wins when both are set
+	Required []string `json:"required_by,omitempty"`
+	Optional []string `json:"optional_for,omitempty"`
+}
+
+// keyStatus merges the stored key names with the keys installed tools declare.
+func (a *App) keyStatus(stored []string) []keyInfo {
+	byName := map[string]*keyInfo{}
+	get := func(n string) *keyInfo {
+		if byName[n] == nil {
+			byName[n] = &keyInfo{Name: n}
+		}
+		return byName[n]
+	}
+	for _, n := range stored {
+		get(n).Source = "keychain"
+	}
+	if st, err := state.Load(); err == nil {
+		for _, inst := range st.Sorted() {
+			if inst.Manifest == nil {
+				continue
+			}
+			for _, s := range inst.Manifest.Secrets {
+				k := get(s.Name)
+				if s.Required {
+					k.Required = append(k.Required, inst.Ref)
+				} else {
+					k.Optional = append(k.Optional, inst.Ref)
+				}
+			}
+		}
+	}
+	out := []keyInfo{}
+	for _, k := range byName {
+		if os.Getenv(k.Name) != "" {
+			k.Source = "env"
+		}
+		k.Set = k.Source != ""
+		out = append(out, *k)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// doctorCheck is one line of `ot doctor`. A warn doesn't make doctor fail.
+type doctorCheck struct {
+	Name   string `json:"name"`
+	Status string `json:"status"` // ok, warn or fail
+	Detail string `json:"detail"`
+}
+
 func (a *App) doctorCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",
 		Short: "Check Docker, pipx, Python, keychain and registry access",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ex := a.Runner.Exec
+			checks := a.doctorChecks(cmd.Context())
 			ok := true
-			check := func(label string, good bool, detail string) {
-				mark := "ok  "
-				if !good {
-					mark = "FAIL"
-					ok = false
+			for _, c := range checks {
+				ok = ok && c.Status != "fail"
+			}
+			if a.jsonMode() {
+				if err := writeJSON(a.Out, map[string]any{"ok": ok, "checks": checks, "data_dir": state.Home(), "version": Version}); err != nil {
+					return err
 				}
-				fmt.Fprintf(a.Out, "[%s] %-12s %s\n", mark, label, detail)
-			}
-			if a.Runner.Engine != "" {
-				code, _ := ex.Run(cmd.Context(), a.Runner.Engine, []string{"info", "--format", "{{.ServerVersion}}"}, nil, nil, io.Discard, io.Discard)
-				check("containers", code == 0, a.Runner.Engine+map[bool]string{true: " is running", false: " is installed but not running; start Docker Desktop"}[code == 0])
 			} else {
-				check("containers", false, "Docker or Podman not found (needed for Docker tools and sandboxed pipx tools)")
+				for _, c := range checks {
+					mark := map[string]string{"ok": "ok  ", "warn": "warn", "fail": "FAIL"}[c.Status]
+					fmt.Fprintf(a.Out, "[%s] %-12s %s\n", mark, c.Name, c.Detail)
+				}
+				fmt.Fprintf(a.Out, "\nData directory: %s\n", state.Home())
 			}
-			_, _, hasPipx := runner.FindPipx(ex)
-			check("pipx", hasPipx || a.Runner.Engine != "", map[bool]string{true: "found", false: "not found (only needed for --native pipx runs)"}[hasPipx])
-			py := "python3"
-			if _, err := ex.LookPath(py); err != nil {
-				py = "python"
-			}
-			_, pyerr := ex.LookPath(py)
-			check("python", pyerr == nil || a.Runner.Engine != "", map[bool]string{true: "found", false: "not found (only needed for --native pipx runs)"}[pyerr == nil])
-			_, cerr := ex.LookPath("cosign")
-			check("cosign", true, map[bool]string{true: "found; image signatures are verified", false: "not found; image signatures are skipped locally (optional)"}[cerr == nil])
-			kerr := keys.Set("OT_DOCTOR_CHECK", "ok")
-			if kerr == nil {
-				_ = keys.Delete("OT_DOCTOR_CHECK")
-			}
-			check("keychain", kerr == nil, map[bool]string{true: "readable and writable", false: fmt.Sprint(kerr)}[kerr == nil])
-			_, aerr := a.API.Search(cmd.Context(), api.SearchParams{Limit: 1})
-			check("registry", aerr == nil, a.Config.APIURL+map[bool]string{true: " reachable", false: fmt.Sprintf(" unreachable: %v", aerr)}[aerr == nil])
-			fmt.Fprintf(a.Out, "\nData directory: %s\n", state.Home())
 			if !ok {
 				return &ExitError{Code: ExitRuntimeMissing}
 			}
 			return nil
 		},
 	}
+}
+
+// doctorChecks checks what ot needs: a container engine, pipx and Python for native runs, cosign, the keychain
+// and the registry.
+func (a *App) doctorChecks(ctx context.Context) []doctorCheck {
+	ex := a.Runner.Exec
+	var checks []doctorCheck
+	check := func(name string, status, detail string) {
+		checks = append(checks, doctorCheck{name, status, detail})
+	}
+	okOr := func(good bool, bad string) string {
+		if good {
+			return "ok"
+		}
+		return bad
+	}
+	if a.Runner.Engine != "" {
+		code, _ := ex.Run(ctx, a.Runner.Engine, []string{"info", "--format", "{{.ServerVersion}}"}, nil, nil, io.Discard, io.Discard)
+		check("containers", okOr(code == 0, "fail"), a.Runner.Engine+map[bool]string{true: " is running", false: " is installed but not running; start Docker Desktop"}[code == 0])
+	} else {
+		check("containers", "fail", "Docker or Podman not found (needed for Docker tools and sandboxed pipx tools)")
+	}
+	_, _, hasPipx := runner.FindPipx(ex)
+	check("pipx", okOr(hasPipx || a.Runner.Engine != "", "fail"), map[bool]string{true: "found", false: "not found (only needed for --native pipx runs)"}[hasPipx])
+	py := "python3"
+	if _, err := ex.LookPath(py); err != nil {
+		py = "python"
+	}
+	_, pyerr := ex.LookPath(py)
+	check("python", okOr(pyerr == nil || a.Runner.Engine != "", "fail"), map[bool]string{true: "found", false: "not found (only needed for --native pipx runs)"}[pyerr == nil])
+	_, cerr := ex.LookPath("cosign")
+	check("cosign", "ok", map[bool]string{true: "found; image signatures are verified", false: "not found; image signatures are skipped locally (optional)"}[cerr == nil])
+	kerr := keys.Set("OT_DOCTOR_CHECK", "ok")
+	if kerr == nil {
+		_ = keys.Delete("OT_DOCTOR_CHECK")
+		check("keychain", "ok", "readable and writable")
+	} else {
+		// CI and containers have no keychain; keys in environment variables work without one.
+		check("keychain", "warn", fmt.Sprintf("%v; pass API keys and OTINSTALLER_TOKEN as environment variables instead", kerr))
+	}
+	_, aerr := a.API.Search(ctx, api.SearchParams{Limit: 1})
+	check("registry", okOr(aerr == nil, "fail"), a.Config.APIURL+map[bool]string{true: " reachable", false: fmt.Sprintf(" unreachable: %v", aerr)}[aerr == nil])
+	return checks
 }

@@ -22,8 +22,10 @@ interface Props {
   bleed?: boolean;
   /** The API route that holds this page's data, linked as its JSON twin. */
   jsonHref?: string;
+  /** URL of the page's Markdown twin, announced as a rel="alternate" link for agents. */
+  markdown?: string;
 }
-const { title, description = "Find, install and run OSINT tools and investigation guides with one command.", canonical, jsonLd, noindex, bleed = false, jsonHref } = Astro.props;
+const { title, description = "Find, install and run OSINT tools and investigation guides with one command.", canonical, jsonLd, noindex, bleed = false, jsonHref, markdown } = Astro.props;
 const fullTitle = title === "OTInstaller Registry" ? "OTInstaller — the OSINT tool registry" : `${title} · OTInstaller`;
 const canonicalUrl = `${SITE_URL}${canonical ?? Astro.url.pathname}`;
 const path = Astro.url.pathname;
@@ -45,6 +47,7 @@ const isCurrent = (href: string) =>
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonicalUrl} />
+    {markdown && <link rel="alternate" type="text/markdown" href={markdown} />}
     {(noindex || Astro.url.search !== "") && <meta name="robots" content="noindex" />}
     <meta name="theme-color" content="#0a0a0a" />
     <meta property="og:site_name" content="OTInstaller" />
@@ -121,7 +124,8 @@ const isCurrent = (href: string) =>
               <li><a href="/guides">Guides</a></li>
               <li><a href="/docs/getting-started">Install ot</a></li>
               <li><a href="/docs/cli">CLI reference</a></li>
-              {jsonHref ? <li><a href={jsonHref}>This page as JSON</a></li> : <li><a href="https://api.otinstaller.com/v1/tools" rel="noopener">API</a></li>}
+              <li><a href="/docs/automation">Scripts and agents</a></li>
+              {jsonHref ? <li><a href={jsonHref}>This page as JSON</a>{markdown && <> · <a href={markdown}>Markdown</a></>}</li> : <li><a href="/llms.txt">llms.txt</a></li>}
             </ul>
           </div>
           <div>

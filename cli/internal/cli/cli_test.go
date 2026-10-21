@@ -41,6 +41,9 @@ func newTestApp(t *testing.T, fx *fakeExec, stdin string) (*App, *bytes.Buffer, 
 	t.Helper()
 	t.Setenv("OT_HOME", t.TempDir())
 	t.Setenv("OT_NO_TELEMETRY", "1")
+	t.Setenv("OT_OUTPUT", "")
+	t.Setenv("OT_NONINTERACTIVE", "")
+	t.Setenv("OT_MAX_RAW", "")
 	t.Setenv("OT_RESULTS_DIR", filepath.Join(t.TempDir(), "results"))
 	var out, errb bytes.Buffer
 	cfg := state.LoadConfig()
@@ -53,15 +56,7 @@ func newTestApp(t *testing.T, fx *fakeExec, stdin string) (*App, *bytes.Buffer, 
 }
 
 func run(a *App, args ...string) int {
-	root := a.Root()
-	root.SetArgs(args)
-	if err := root.Execute(); err != nil {
-		if msg := err.Error(); msg != "" {
-			io.WriteString(a.Err, "error: "+msg+"\n")
-		}
-		return ExitCodeFor(err)
-	}
-	return 0
+	return a.Execute(context.Background(), args)
 }
 
 func TestValidateCommand(t *testing.T) {

@@ -22,7 +22,6 @@ func toolDir(tool string) string {
 
 func (a *App) extractCmd() *cobra.Command {
 	var caseName, resultsDir string
-	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "extract <tool | path>",
 		Short: "Pull emails, domains, IPs, URLs and entities out of saved results",
@@ -57,7 +56,7 @@ func (a *App) extractCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if asJSON {
+			if a.jsonMode() {
 				return writeJSON(a.Out, ind)
 			}
 			found := false
@@ -92,13 +91,11 @@ func (a *App) extractCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&caseName, "case", "", "scan the runs saved under this case")
 	cmd.Flags().StringVar(&resultsDir, "results-dir", "", "where runs are saved (default $OT_RESULTS_DIR, else ./results)")
-	cmd.Flags().BoolVar(&asJSON, "json", false, "print JSON")
 	return cmd
 }
 
 func (a *App) diffCmd() *cobra.Command {
 	var caseName, resultsDir string
-	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "diff <tool> <target>",
 		Short: "Compare the two most recent saved runs of a tool against a target",
@@ -120,7 +117,7 @@ func (a *App) diffCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if asJSON {
+			if a.jsonMode() {
 				return writeJSON(a.Out, c)
 			}
 			fmt.Fprintf(a.Out, "Comparing %s (%s) with %s (%s)\n", filepath.Base(c.Older), orDefault(c.OlderDate, "?"), filepath.Base(c.Newer), orDefault(c.NewerDate, "?"))
@@ -145,6 +142,5 @@ func (a *App) diffCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&caseName, "case", "", "compare runs saved under this case")
 	cmd.Flags().StringVar(&resultsDir, "results-dir", "", "where runs are saved (default $OT_RESULTS_DIR, else ./results)")
-	cmd.Flags().BoolVar(&asJSON, "json", false, "print JSON")
 	return cmd
 }
