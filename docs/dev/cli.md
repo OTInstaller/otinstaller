@@ -692,57 +692,8 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 
 ## 7. Docs drift: `web/src/pages/docs/cli.md` and `cli/README.md`
 
-`cli/README.md` is a short intro (doctor, search, a `holehe` example, links, self-update). Its examples match the code
-and the seed (`osintverse-community/holehe` has an `email` input); it documents no flags, so nothing in it is wrong.
-Everything below is about `web/src/pages/docs/cli.md`.
-
-Missing commands:
-
-- `ot completion` and `ot help` (cobra built-ins), and `ot --version`.
-- `ot logout`/`ot whoami` are present; `ot keys` subcommands present. No ot-registered command is missing.
-
-Missing or wrong flags, per command:
-
-- `search`: `--output`, `--limit` missing (`--json` only mentioned in passing).
-- `info`: `--json` missing; local manifest paths accepted.
-- `install`: local manifest paths accepted (not mentioned).
-- `run`: `--out-dir`, `--native`, `--live` (no-op) missing; `-f` / `-o` long forms `--format` / `--output` shown only
-  partly; `--results-dir`, `--case`, `--no-save` appear only in the Saved results prose; the config.json `format`
-  default is not documented.
-- `auto`: `--format`, `--parallel`, `--results-dir`, `--case` missing.
-- `playbook`: `-l` short form, `--dry-run`, `--format`, `--native`, `--parallel`, `--results-dir`, `--case` missing;
-  the default case `playbook-<name>` is not mentioned.
-- `outdated`, `update`: `--json` missing.
-- `doctor`: described as "Docker, pipx, Python and the keychain"; it also checks cosign and registry access, and exits
-  5 when any check fails.
-- `report`: `--version` missing; the reason values are not listed.
-- `feedback`: `--email` missing.
-- `extract`: `--results-dir` missing. `diff`: `--case` and `--results-dir` missing.
-- `guide search`: `--category`, `--limit`, `--json` missing.
-- `guide open`: shown as `<ns/name>`; `@version` is supported (adds `?v=`).
-- `guide tools`: shown as `<ns/name>`; `@version` and `--native` missing; the long form `--yes` missing.
-- `docs`: `--plain` missing.
-- `init`: `--name`, `--namespace`, `--summary`, `--license`, `--category`, `--input`, `--package`, `-y/--yes`,
-  `--force` missing.
-- `validate`: `--json` missing.
-- `release`: `--remote` missing.
-- `import`: every flag missing (`--id`, `--file`, `--save`, `--registry`, `--community`, `--wrapper`, `--draft`,
-  `-y/--yes`, `--list`, `--json`) and bulk import with several URLs.
-- `sync`: `--json` missing.
-
-Other inaccuracies:
-
-- Exit codes table has no **130** (interrupted).
-- Exit code 2 is described as "Wrong usage", but cobra-level usage errors (wrong number of arguments, unknown flag,
-  unknown command) exit 1; and `search`, `info`, `login`, `outdated`/`update` registry refusals exit 1, not 2.
-- Exit code 4 is "removed version, signature mismatch"; it also covers wheel hash mismatches, invalid registry
-  manifests and refused self-updates. Exit 5 also covers failed `doctor` checks.
-- Settings table lacks `OT_RESULTS_DIR` (only in prose), `OTINSTALLER_RESULTS_DIR`, `OTINSTALLER_TOKEN`, the rule that
-  any key can come from an environment variable of the same name, and `config.json` (`api_url`, `site_url`,
-  `telemetry`, `format`).
-- `OT_SITE_URL` is described as "Where `ot guide open` sends you"; it is also used by `ot report` and `ot feedback`
-  when they open the website.
-- `OT_NO_TELEMETRY=1`: any non-empty value disables it (including `0`); the ping is described as anonymous but carries
-  the bearer token when signed in.
-- `OT_HOME` default omits the Windows fallback to `~/.ot` when `APPDATA` is unset (edge case).
-- The help text of `ot guide get` says `~/.ot/guides`; with `OT_HOME` the copy goes to `$OT_HOME/guides`.
+`cli/README.md` is a short intro (doctor, search, a `holehe` example, links, self-update). It documents no flags, so
+nothing in it is wrong. `web/src/pages/docs/cli.md` was brought level with `ot <command> --help` on 22 October 2026:
+every command and flag above appears there, with exit code 130, the cobra exit-1 caveat, the wider meanings of exit
+codes 4 and 5, `OTINSTALLER_RESULTS_DIR`, keys from environment variables and `config.json`. When a flag is added or
+renamed, update that page in the same commit; there is no test that compares them.
