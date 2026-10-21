@@ -16,7 +16,8 @@ Search, package pages, manifests, scans, guides, docs, `/types` and `/pivots` ar
 
 | Call | What it gives |
 | --- | --- |
-| `GET /tools?q=whois&input=domain&passive_only=1` | Search. Filters: `input`, `output`, `category`, `runtime`, `kind`, `no_keys`, `passive_only` (tools that run offline, touch no target and collect no personal data), `sort`, `limit`, `cursor` |
+| `GET /tools?q=whois&input=domain&passive_only=1` | Search. Filters: `input`, `output`, `category`, `runtime`, `kind`, `no_keys`, `passive_only` (tools that run offline, touch no target and collect no personal data), `sort` (`relevance`, `installs`, `stars`, `updated`, `health`), `limit`, `cursor` |
+| `GET /facets?kind=tool` | How many visible packages match each input, output, category and runtime, and how many need no key |
 | `GET /tools/{ns}/{name}` | A package, its trust status and its manifest |
 | `GET /tools/{ns}/{name}/{version}/manifest` | What `ot install` uses: the manifest, signer, scan status and backup locations. `manifest` leaves out optional fields added after `ot` v0.12; when it does, `manifest_full` has them |
 | `GET /types` | Input types, entity types, categories and the pivot map |

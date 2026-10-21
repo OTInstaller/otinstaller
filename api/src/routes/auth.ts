@@ -345,12 +345,15 @@ export function authRoutes(app: App) {
   });
 
   // ---------- publish history ----------
+  // Jobs for every namespace the user belongs to: GitHub jobs through the installation, GitLab jobs through the source.
   app.get("/me/publish-jobs", async (c) => {
     const u = requireUser(c);
     const rows = await c.env.DB.prepare(
-      `SELECT j.id, j.repo, j.tag, j.status, j.error_code, j.problems_json, j.created_at, j.updated_at
-       FROM publish_jobs j JOIN installations i ON i.github_installation_id = j.installation_id
-       JOIN namespace_members m ON m.namespace_id = i.namespace_id
+      `SELECT j.id, j.provider, j.repo, j.tag, j.status, j.error_code, j.problems_json, j.created_at, j.updated_at
+       FROM publish_jobs j
+       LEFT JOIN installations i ON i.github_installation_id = j.installation_id
+       LEFT JOIN sources s ON s.id = j.source_id
+       JOIN namespace_members m ON m.namespace_id = COALESCE(i.namespace_id, s.namespace_id)
        WHERE m.user_id = ? ORDER BY j.created_at DESC LIMIT 50`,
     ).bind(u.id).all<any>();
     return c.json({ jobs: rows.results.map((j) => ({ ...j, problems: j.problems_json ? JSON.parse(j.problems_json) : [], problems_json: undefined })) });

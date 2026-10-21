@@ -2,7 +2,7 @@
 // One result row: name, summary, what it takes and finds, key and runtime, then the two or three words that
 // change a decision (health, verified publisher, deprecated). Everything else is on the tool page.
 import type { ToolSummary } from "../lib/api";
-import { entityLabel, inputLabel } from "../lib/format";
+import { ago, entityLabel, inputLabel } from "../lib/format";
 
 interface Props {
   tool: ToolSummary;
@@ -14,7 +14,7 @@ const Heading = level === 2 ? "h2" : "h3";
 const ref = `${t.namespace}/${t.name}`;
 const guide = t.kind === "guide";
 const href = guide ? `/guides/${ref}` : `/${ref}`;
-const health = t.health === "healthy" ? { cls: "ok", text: "Health check passing" } : t.health === "broken" ? { cls: "warn", text: "Possibly broken" } : { cls: "none", text: "Not health-checked" };
+const health = t.health === "healthy" ? { cls: "ok", text: t.health_checked_at ? `Worked ${ago(t.health_checked_at)}` : "Health check passing" } : t.health === "broken" ? { cls: "warn", text: t.health_checked_at ? `Possibly broken since ${ago(t.health_checked_at).replace(/^on /, "")}` : "Possibly broken" } : { cls: "none", text: "Not health-checked" };
 ---
 <article class="trow">
   <div>

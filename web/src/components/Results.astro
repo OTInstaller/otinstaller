@@ -5,7 +5,7 @@
 // tool page can fill its run command; the value never reaches the API.
 import ToolRow from "./ToolRow.astro";
 import PasteBox from "./PasteBox.astro";
-import type { SearchResult, Types } from "../lib/api";
+import { api, type Facets, type SearchResult, type Types } from "../lib/api";
 import { categoryLabel, entityLabel, inputLabel } from "../lib/format";
 import { withParam } from "../lib/page";
 
@@ -18,13 +18,24 @@ interface Props {
 const { result, types, fixed = [] } = Astro.props;
 const url = Astro.url;
 const current = (k: string) => url.searchParams.get(k);
+// Counts per facet value, when the API offers them; values with no packages are left out of the rail.
+const facetCounts = await api<Facets>("/facets?kind=tool").catch(() => null);
+const countFor = (key: string, v: string): number | null => {
+  if (!facetCounts) return null;
+  const m = key === "input" ? facetCounts.inputs : key === "output" ? facetCounts.outputs : key === "category" ? facetCounts.categories : facetCounts.runtimes;
+  return m[v] ?? 0;
+};
+const browsing = !current("q");
 const facets = [
   { key: "input", label: "Takes", values: types.inputs, name: inputLabel },
   { key: "output", label: "Finds", values: types.outputs, name: entityLabel },
   { key: "category", label: "Category", values: types.categories, name: categoryLabel },
   { key: "runtime", label: "Runtime", values: ["docker", "pipx"], name: (v: string) => (v === "docker" ? "Docker" : "Python wheel") },
 ].filter((f) => !fixed.includes(f.key));
-const sorts = [["relevance", "Best match"], ["updated", "Recently updated"], ["installs", "Most installed"], ["stars", "Most starred"]];
+const sorts = browsing
+  ? [["health", "Recently verified working"], ["updated", "Recently updated"], ["installs", "Most installed"], ["stars", "Most starred"]]
+  : [["relevance", "Best match"], ["health", "Recently verified working"], ["updated", "Recently updated"], ["installs", "Most installed"]];
+const activeSort = current("sort") ?? (browsing ? "health" : "relevance");
 const next = result.next_cursor ? `${url.pathname}?${new URLSearchParams({ ...Object.fromEntries(url.searchParams), cursor: result.next_cursor })}` : null;
 const activeFilters = facets.filter((f) => current(f.key)).map((f) => ({ key: f.key, label: f.name(current(f.key)!) }));
 if (current("no_keys")) activeFilters.push({ key: "no_keys", label: "No key needed" });
@@ -38,15 +49,15 @@ const clearAll = `${url.pathname}${current("q") ? `?q=${encodeURIComponent(curre
         <p class="fl">Key</p>
         <ul class="list-plain">
           <li><a href={withParam(url, "no_keys", null)} rel="nofollow" aria-current={!current("no_keys") ? "page" : undefined}>Any</a></li>
-          <li><a href={withParam(url, "no_keys", "1")} rel="nofollow" aria-current={current("no_keys") ? "page" : undefined}>No key needed</a></li>
+          <li><a href={withParam(url, "no_keys", "1")} rel="nofollow" aria-current={current("no_keys") ? "page" : undefined}>No key needed{facetCounts && <span class="cnt">{facetCounts.no_keys}</span>}</a></li>
         </ul>
       </div>
       {facets.map((f) => (
         <details class="facet" open={!!current(f.key) || f.key === "input"}>
           <summary class="fl">{f.label}{current(f.key) && <span class="n">1</span>}</summary>
           <ul class="list-plain">
-            {f.values.map((v) => (
-              <li><a href={withParam(url, f.key, current(f.key) === v ? null : v)} rel="nofollow" aria-current={current(f.key) === v ? "page" : undefined}>{f.name(v)}</a></li>
+            {f.values.filter((v) => countFor(f.key, v) !== 0 || current(f.key) === v).map((v) => (
+              <li><a href={withParam(url, f.key, current(f.key) === v ? null : v)} rel="nofollow" aria-current={current(f.key) === v ? "page" : undefined}>{f.name(v)}{countFor(f.key, v) !== null && <span class="cnt">{countFor(f.key, v)}</span>}</a></li>
             ))}
           </ul>
         </details>
@@ -56,7 +67,7 @@ const clearAll = `${url.pathname}${current("q") ? `?q=${encodeURIComponent(curre
   <div class="list">
     <div class="toolbar">
       <div class="segmented" aria-label="Sort">
-        {sorts.map(([k, label]) => <a href={withParam(url, "sort", k)} rel="nofollow" aria-current={(current("sort") ?? "relevance") === k ? "page" : undefined}>{label}</a>)}
+        {sorts.map(([k, label]) => <a href={withParam(url, "sort", k)} rel="nofollow" aria-current={activeSort === k ? "page" : undefined}>{label}</a>)}
       </div>
       {activeFilters.length > 0 && (
         <div class="row active small">
@@ -106,6 +117,7 @@ const clearAll = `${url.pathname}${current("q") ? `?q=${encodeURIComponent(curre
   .facet li + li { margin-top: 0; }
   .facet a { display: flex; justify-content: space-between; padding: 5px 6px; text-decoration: none; color: var(--text-muted); }
   .facet a:hover { color: var(--text); background: var(--bg-subtle); }
+  .cnt { color: var(--text-faint); font-size: var(--fs-0); }
   .facet a[aria-current="page"] { color: var(--text); background: var(--accent-soft); }
   .toolbar { display: grid; gap: 10px; margin-bottom: 12px; }
   .empty { padding: 32px 0; display: grid; gap: 10px; border-top: 1px solid var(--border); }

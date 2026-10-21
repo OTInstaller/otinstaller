@@ -2,7 +2,7 @@
 // backed up, reviewed. Built from the tool, its latest scans and the manifest endpoint (which carries the
 // registry's fallback copies). Unmet lines are kept, in neutral, with the reason.
 import type { ManifestResponse, Scans, ToolDetail } from "./api";
-import { formatDate } from "./format";
+import { ago, formatDate } from "./format";
 
 export interface EvidenceLine {
   key: "pinned" | "signed" | "scanned" | "works" | "backup" | "reviewed";
@@ -88,7 +88,8 @@ export function evidence(t: ToolDetail, scans: Scans | null, manifest: ManifestR
 
   // Works.
   const smoke = latest.get("smoke");
-  const health = t.health === "healthy" ? "the nightly health check is passing" : t.health === "broken" ? "three nightly health checks in a row failed, so it is marked possibly broken" : t.health === "not_checked" ? "no nightly health check: the manifest declares no test input" : "the nightly health check has not run yet";
+  const checked = t.health_checked_at ? ` (${ago(t.health_checked_at)})` : "";
+  const health = t.health === "healthy" ? `the nightly health check passed${checked}` : t.health === "broken" ? `three nightly health checks in a row failed${checked}, so it is marked possibly broken` : t.health === "not_checked" ? "no nightly health check: the manifest declares no test input" : "the nightly health check has not run yet";
   if (smoke && smoke.summary?.status !== "skipped") {
     const s = smoke.summary;
     out.push({ key: "works", label: t.health === "broken" ? "Possibly broken" : "Works", met: smoke.result === "pass" && t.health !== "broken", href: `/${ref}/security`, parts: [`smoke test ${smoke.result === "pass" ? "passed" : "failed"} on `, { strong: formatDate(smoke.ran_at) }, ` (exit ${s?.exit_code ?? "?"}${s?.duration_ms ? ` in ${(s.duration_ms / 1000).toFixed(1)} s` : ""}, offline sandbox); ${health}.`] });

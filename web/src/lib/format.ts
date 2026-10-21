@@ -64,3 +64,13 @@ export function hintParts(text: string, apiUrl: string, here?: string): HintPart
   });
   return out;
 }
+
+/** "last night", "3 days ago", or a date, for health checks and similar timestamps. */
+export function ago(ms: number | null | undefined, now = Date.now()): string {
+  if (!ms) return "never";
+  const days = Math.floor((now - ms) / 86_400_000);
+  if (days <= 0) return "today";
+  if (days === 1) return "last night";
+  if (days < 14) return `${days} days ago`;
+  return `on ${formatDate(ms)}`;
+}
