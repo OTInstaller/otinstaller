@@ -32,5 +32,7 @@ ethics:
   touches_target: true
   auth_required: false
   collects_personal_data: false
+  notifies_target: false
+  notes: "It opens TLS connections to the host, which its logs can record with your IP address."
 test:
   input: { host: "example.com" }

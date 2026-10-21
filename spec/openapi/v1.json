@@ -4161,6 +4161,15 @@
               "type": "string"
             }
           },
+          "descriptions": {
+            "type": "object",
+            "description": "spec/types.json: what each input type, output (entity) type and category means",
+            "properties": {
+              "inputs": { "type": "object", "additionalProperties": { "type": "string" } },
+              "outputs": { "type": "object", "additionalProperties": { "type": "string" } },
+              "categories": { "type": "object", "additionalProperties": { "type": "string" } }
+            }
+          },
           "pivots": {
             "type": "object",
             "description": "spec/pivots.json: entity type to the inputs it can feed",

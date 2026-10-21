@@ -33,5 +33,7 @@ ethics:
   touches_target: true
   auth_required: false
   collects_personal_data: false
+  notifies_target: false
+  notes: "It sends requests to the host, so the web server's logs see your IP address."
 test:
   input: { target: "https://example.com" }

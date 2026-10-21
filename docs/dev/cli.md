@@ -252,11 +252,18 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   ignored; prints `+ entity`, `- entity`, `+ line`, `- line`, or "No changes between these two runs."
 - No API. Exit: 0 (also when there are differences); 2 when fewer than two runs are found; 1 on read errors.
 
-#### `ot keys` (`keys set|list|rm`)
-- File: `cli/run.go` (`keysCmd`); storage `keys/keys.go`. `ot keys` alone prints help (exit 0).
-- `ot keys set <NAME>`: `ExactArgs(1)`. Prompts `Value for NAME:` on stderr and reads **one line from stdin**
-  (echoed, not masked). Empty value → exit 2. Stores in the keychain (service `osintverse-ot`) and adds the name to
-  `keys.json`. Keychain failure → exit 1. The name is not validated.
+#### `ot keys` (`keys set|setup|list|rm`)
+- File: `cli/run.go` (`keysCmd`), `cli/keysetup.go` (`keysSetupCmd`, `keyGuides`, `readSecret`); storage
+  `keys/keys.go`. `ot keys` alone prints help (exit 0).
+- `ot keys set <NAME>`: `ExactArgs(1)`. At a terminal, prompts `Value for NAME (typing is hidden):` on stderr and
+  reads the value with echo off (`term.ReadPassword`); otherwise reads one line from stdin (pipes, CI). `--from-env
+  VAR` copies an environment variable. Empty value → exit 2. Stores in the keychain (service `osintverse-ot`) and adds
+  the name to `keys.json`. Keychain failure → exit 1. The name is not validated.
+- `ot keys setup [tool...]`: refuses without a terminal (exit 2, code `needs_terminal`), so agents and scripts can't
+  use it. Collects the keys the named tools declare (installed manifest, else the registry's latest), or every installed
+  tool's; required keys first. For each: description, cost (`pricing`), sign-up URL with an offer to open it, then a
+  hidden prompt (Enter skips). Keys already set (env or keychain) are skipped unless `--all`. `ot mcp`'s `key_setup`
+  returns the same facts plus this command, never values.
 - `ot keys list`: `NoArgs`. Prints names from `keys.json` (never values; includes `OTINSTALLER_TOKEN` after `ot
   login`), or "No keys stored."; env-only keys are not listed.
 - `ot keys rm <NAME>`: `ExactArgs(1)`. Deletes from the keychain (not-found is fine) and the index. Exit 1 on keychain

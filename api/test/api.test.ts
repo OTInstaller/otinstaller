@@ -167,6 +167,10 @@ describe("namespaces, pivots, types, installs", () => {
     expect(body.inputs).toContain("crypto_address");
     expect(body.categories).toContain("domain-dns");
     expect(body.pivots.subdomain).toEqual([{ input: "domain" }]);
+    // Every value has a plain description.
+    for (const [list, key] of [["inputs", "inputs"], ["outputs", "outputs"], ["categories", "categories"]] as const) {
+      for (const v of body[list]) expect(body.descriptions[key][v], `${key} ${v}`).toBeTruthy();
+    }
   });
 
   it("counts installs anonymously and ignores unknown packages", async () => {
