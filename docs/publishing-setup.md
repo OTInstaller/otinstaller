@@ -262,8 +262,8 @@ Listing a release in the registry is a manual step:
    `otinstaller.com` (so the servers can be named `com.otinstaller/*`) by reading the public key the site serves at
    `/.well-known/mcp-registry-auth` (`web/public/.well-known/`). The matching private key is in the owner's
    `~/.mcp-registry/otinstaller.com.ed25519.hex`, outside the repository. Sign in with
-   `mcp-publisher login http --domain otinstaller.com --private-key <that key>`. A sign-in lasts a short while, so
-   sign in again before each publish. If the key is lost, make a new pair, replace the site file, and deploy the site.
+   `mcp-publisher login http --domain otinstaller.com --private-key <that key>`, and again if a publish says the
+   sign-in has expired. If the key is lost, make a new pair, replace the site file, and deploy the site.
 2. For each release: download its `server.json`, check it with `mcp-publisher validate server.json` (or
    `mcp-publisher publish --dry-run`), then run `mcp-publisher publish server.json`.
 
