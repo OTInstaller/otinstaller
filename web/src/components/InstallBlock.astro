@@ -3,7 +3,7 @@
 // the visitor's platform), what the script does before anything runs, and the three first-run steps. Used on the
 // home page and tool pages; the commands come from lib/install.ts so the docs say the same.
 import CopyCommand from "./CopyCommand.astro";
-import { INSTALLS, INSTALL_SCRIPT_URL, RELEASES_URL } from "../lib/install";
+import { INSTALLS, INSTALL_SCRIPT_URL, NO_DOCKER, RELEASES_URL } from "../lib/install";
 
 interface Props {
   /** Prefix for the radio group, so two blocks on one page do not collide. */
@@ -44,6 +44,9 @@ const { name = "os", compact = false, example = "ot run osintverse-community/dns
       <li><code>ot auto example.com</code> <span class="muted">runs everything you have installed that takes that value</span></li>
     </ol>
   )}
+  {!compact && (
+    <p class="alt small muted"><a href={NO_DOCKER.docs}>{NO_DOCKER.label}</a>: <code>{NO_DOCKER.command}</code> installs the same tools into per-tool virtualenvs, no container runtime needed.</p>
+  )}
 </div>
 
 <script>
@@ -69,6 +72,8 @@ const { name = "os", compact = false, example = "ot run osintverse-community/dns
   .steps { margin: 4px 0 0; padding-left: 20px; display: grid; gap: 4px; }
   .steps code { color: var(--text); }
   .cmdline { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .alt { margin: 4px 0 0; }
+  .alt code { color: var(--text); }
   .install:has(#os-unix:checked) [data-pane="unix"], .install:has(#os-windows:checked) [data-pane="windows"],
   .install:has(#cta-unix:checked) [data-pane="unix"], .install:has(#cta-windows:checked) [data-pane="windows"],
   .install:has(#tool-unix:checked) [data-pane="unix"], .install:has(#tool-windows:checked) [data-pane="windows"] { display: block; }

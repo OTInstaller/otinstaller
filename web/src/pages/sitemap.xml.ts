@@ -5,7 +5,7 @@ import type { APIRoute } from "astro";
 import { api, type Facets, type SearchResult, type Types } from "../lib/api";
 import { GENERIC_INPUTS } from "../lib/landing";
 
-const DOCS = ["", "/quick-start", "/getting-started", "/cli", "/agents", "/mcp-tools", "/automation", "/results", "/api", "/manifest", "/publishing", "/guides", "/errors", "/security", "/faq"];
+const DOCS = ["", "/quick-start", "/getting-started", "/otlite", "/cli", "/agents", "/mcp-tools", "/automation", "/results", "/api", "/manifest", "/publishing", "/guides", "/errors", "/security", "/faq"];
 const POLICIES = ["/acceptable-use", "/terms", "/privacy", "/takedown", "/transparency"];
 
 async function all(path: string) {

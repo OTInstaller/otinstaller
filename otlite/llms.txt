@@ -1,0 +1,164 @@
+# otlite - LLM Usage Guide
+
+This file describes how to use otlite programmatically or via CLI for AI agents. otlite is the no-Docker edition of OTInstaller (https://otinstaller.com); it runs on Linux only.
+
+## Overview
+
+otlite is a CLI tool manager that installs, runs, updates, and removes open-source command line tools by name. Each tool runs in its own virtualenv. Results are saved automatically.
+
+## Installation
+
+`ash
+# System-wide (recommended for agents)
+pipx install otlite
+
+# Or from source
+pip install -e .
+`
+
+The command is `otlite`. (`otinstaller` is the old name and still runs it; `ot` is the containerised OTInstaller CLI, a different program.)
+
+## Key Concepts
+
+- Tools: Managed CLI programs, each in its own virtualenv
+- Typed inputs: Standardized prefixes for tool arguments
+- Results: Saved to ./results/<tool>/<target>/ with metadata
+- API keys: Stored in ~/.otlite/.env (600 permissions)
+
+## Typed Input Prefixes
+
+Use these instead of tool-specific flags:
+
+| Prefix | Type | Example |
+|--------|------|---------|
+| u: | username | u:johndoe |
+| e: | email | e:john@example.com |
+| p: | phone | p:+15551234567 |
+| d: | domain | d:example.com |
+| url: | URL | url:https://example.com |
+| q: | query | q:search terms |
+| geo: | coordinates | geo:32.22,-110.97 |
+| tg: | Telegram channel | tg:channelname |
+
+## Common Commands
+
+### Initialize
+`ash
+otlite init --yes
+`
+
+### Install tools
+`ash
+otlite install sherlock maigret --yes
+`
+
+### Run tools with typed inputs
+`ash
+otlite run sherlock -- u:johndoe
+otlite run ghunt -- e:john@example.com
+`
+
+### Run all matching tools (--all / -a)
+`ash
+otlite run -a u:johndoe
+otlite run --all u:johndoe e:john@example.com
+otlite run --all u:johndoe --include-credentialed
+`
+
+### Check for updates
+`ash
+otlite check-updates
+otlite check-updates --tools sherlock,maigret --json
+`
+
+### Update tools
+`ash
+otlite update --all --yes
+otlite update sherlock maigret --yes
+otlite update --tools sherlock,maigret --yes
+`
+
+### List and search tools
+`ash
+otlite list --json
+otlite list --installed --json
+otlite search username --json
+`
+
+### Get tool info
+`ash
+otlite info sherlock --json
+otlite sherlock --json  # bare name also works
+`
+
+### Run with auto-detection
+`ash
+otlite auto johndoe@example.com --yes
+`
+
+### Check API keys
+`ash
+otlite keys check --json
+`
+
+## Agent-Friendly Features
+
+- All commands support --json: Machine-readable output
+- Stable exit codes: 0=success, 1=error, 2=invalid input, 130=interrupted
+- No prompts in CI: Commands detect non-interactive stdin and fail with clear error unless --yes is used
+- No prompts with --yes: Use -y or --yes to skip all confirmations
+- Bare tool names: otlite sherlock == otlite info sherlock
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | General error |
+| 2 | Invalid input / unsupported input type |
+| 130 | Interrupted (SIGINT/Ctrl+C) |
+
+## JSON Output Format
+
+Most commands support --json. Examples:
+
+`json
+// otlite list --json
+[{name: sherlock, display_name: Sherlock, description: ..., tier: community, capabilities: [username-search]}]
+
+// otlite info sherlock --json
+{name: sherlock, display_name: Sherlock, description: ..., tier: community, install: {method: pip, package: sherlock-project, version: 0.16.2}, entrypoint: {command: sherlock}, capabilities: [username-search, social-media], topics: [username, social-media], api_keys: {required: [], optional: []}, needs_config: false, verified: {date: 2026-09-24, version: 0.16.2, os: Ubuntu 26.04 LTS, python: 3.12.14}, accepts: [username], input_types: {u: --username}}
+
+// otlite check-updates --json
+{results: [{tool: sherlock, current: 0.16.2, latest: 0.17.0, outdated: true}], updates_available: 1, pinned: 0, failed: 0}
+`
+
+## Responsible Use
+
+otlite installs third-party tools. You are solely responsible for compliance with laws and terms of service. Tools marked dual-use require explicit acceptance of the responsible use notice.
+
+## Directory Structure
+
+~/.otlite/
+├── .env              # API keys (600 perms)
+├── accepted.json     # Notice acceptance
+├── tools/            # Per-tool virtualenvs
+├── logs/             # Install logs
+├── jobs/             # Job markers for resume
+└── state.db          # SQLite state
+
+Working directory:
+./results/
+├── <tool>/
+│   └── <target>/
+│       ├── <timestamp>_<tool>_<target>_<runid>.txt
+│       └── <timestamp>_<tool>_<target>_<runid>.meta.json
+
+## Available Tools (48)
+
+Run otlite list --json for the complete list. Key tools include:
+- sherlock, maigret, ghunt, theharvester, spiderfoot
+- blackbird, telegram-phone-number-checker, auto-archiver
+- edgar-tool, instagram-location-search, telepathy
+- holehe, bbot, dnstwist, h8mail, user-scanner
+- And many more...
