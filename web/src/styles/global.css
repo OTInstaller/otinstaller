@@ -232,3 +232,10 @@ table.data tbody tr:hover { background: var(--bg-subtle); }
 .sdlg-empty { padding: 14px; }
 .sdlg-empty p { margin: 0 0 8px; }
 .sdlg-foot { display: flex; gap: 16px; padding: 8px 14px; border-top: 1px solid var(--border); background: var(--bg-subtle); }
+
+/* ---------- Dashboard and wizard shared bits ---------- */
+.confirm { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.dash .acct-row p { margin: 0; }
+.dash h2 { font-size: var(--fs-4); margin: 24px 0 8px; }
+.dash .section-head h2 { margin: 0; }
+.dash .section-head { margin: 24px 0 8px; }

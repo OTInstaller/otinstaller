@@ -2,7 +2,7 @@
 // the steps to push it to a new repository), Switch source, and the git backup opt-out.
 import { useEffect, useState } from "preact/hooks";
 import { api } from "../lib/api";
-import { ErrorNote, Loading, Status, when } from "./shared";
+import { Confirm, ErrorNote, Loading, Status, when } from "./shared";
 
 interface Pkg {
   ref: string;
@@ -32,6 +32,7 @@ function Row({ p, reload }: { p: Pkg; reload: () => void }) {
   const [busy, setBusy] = useState(false);
   const [newRepo, setNewRepo] = useState("");
   const [switched, setSwitched] = useState<string | null>(null);
+  const [askOff, setAskOff] = useState(false);
   const owner = p.role === "owner";
 
   async function getRestore() {
@@ -45,9 +46,8 @@ function Row({ p, reload }: { p: Pkg; reload: () => void }) {
     setBusy(false);
   }
   async function toggleGit() {
-    const off = p.git_backups;
-    if (off && !window.confirm(`Stop git backups of ${p.ref}? Existing bundles are deleted tonight. Images and wheels stay mirrored so installs keep working.`)) return;
-    await api(`/packages/${p.ref}/backups`, { method: "PATCH", body: JSON.stringify({ git_backups: !off }) }).then(reload, setError);
+    setAskOff(false);
+    await api(`/packages/${p.ref}/backups`, { method: "PATCH", body: JSON.stringify({ git_backups: !p.git_backups }) }).then(reload, setError);
   }
   async function switchSource(e: Event) {
     e.preventDefault();
@@ -64,7 +64,7 @@ function Row({ p, reload }: { p: Pkg; reload: () => void }) {
 
   const steps = restore?.steps.map((s) => s.replace("<url>", restore.url)) ?? [];
   return (
-    <li class="card stack">
+    <li class="panel stack">
       <div class="row">
         <a href={`/${p.ref}`}><strong>{p.ref}</strong></a>
         {p.source && <span class="small muted">{p.source.url}</span>}
@@ -80,7 +80,9 @@ function Row({ p, reload }: { p: Pkg; reload: () => void }) {
       {owner && (
         <div class="row">
           <button class="btn btn-primary" type="button" disabled={busy || !p.latest_bundle} onClick={getRestore}>Restore from backup</button>
-          <button class="btn" type="button" onClick={toggleGit}>{p.git_backups ? "Turn off git backups" : "Turn on git backups"}</button>
+          {askOff
+            ? <Confirm text="Existing bundles are deleted tonight; images and wheels stay mirrored." confirm="Turn off" onConfirm={toggleGit} onCancel={() => setAskOff(false)} />
+            : <button class="btn" type="button" onClick={() => (p.git_backups ? setAskOff(true) : toggleGit())}>{p.git_backups ? "Turn off git backups" : "Turn on git backups"}</button>}
         </div>
       )}
       {restore && (
@@ -104,10 +106,10 @@ function Row({ p, reload }: { p: Pkg; reload: () => void }) {
   );
 }
 
-export default function Backups() {
+export default function Backups({ only }: { only?: string } = {}) {
   const [pkgs, setPkgs] = useState<Pkg[] | null>(null);
   const [error, setError] = useState<unknown>(null);
-  const load = () => api<{ packages: Pkg[] }>("/me/backups").then((r) => setPkgs(r.packages), setError);
+  const load = () => api<{ packages: Pkg[] }>("/me/backups").then((r) => setPkgs(only ? r.packages.filter((p) => p.ref === only) : r.packages), setError);
   useEffect(() => void load(), []);
   return (
     <section aria-labelledby="backups">

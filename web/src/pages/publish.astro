@@ -1,0 +1,95 @@
+---
+// /publish: what publishing is, before anyone signs in. Three ways in, what happens after the tag, and what the
+// reviewer checks. The wizard itself is /import.
+import Base from "../layouts/Base.astro";
+import { cacheFor } from "../lib/page";
+
+cacheFor(Astro, 3600);
+const steps = [
+  { t: "Validate", d: "Within a minute of the tag: the manifest, the files it names, and that the image or wheel exists. The tagged commit gets an otinstaller/publish status." },
+  { t: "Scan", d: "Tools: signature, vulnerabilities, secrets, malware heuristics, an SBOM and a smoke test with your test input, offline. Guides: links and personal-data checks." },
+  { t: "Review", d: "A new publisher's first release only: a person checks it against the acceptable-use rules, usually within 3 business days. Later releases skip this." },
+  { t: "Publish", d: "The status turns green, you get an email, and ot install works. The registry copies the artifact and a bundle of the repository as a backup." },
+];
+const checklist = [
+  "The tool fits the acceptable-use rules (lawful investigation, due diligence, threat intelligence, journalism, research).",
+  "The README says what data the tool touches and the ethics answers match it (contacts the target, logs in, collects personal data).",
+  "The licence allows redistribution and upstream work is credited.",
+  "The namespace does not impersonate a person or project, and the account is not obviously throwaway.",
+];
+---
+<Base title="Publish a tool or guide" description="Publish an OSINT tool or guide from the repository you already have: import it, add a manifest, or write a guide; push a tag to release." jsonHref="https://api.otinstaller.com/v1/tools?kind=tool&limit=1">
+  <header class="page-head">
+    <p class="eyebrow">Publish</p>
+    <h1>From the repository you already have</h1>
+    <p class="muted">You publish by pushing a <code>vX.Y.Z</code> tag. There is no upload: the registry reads your GitHub or GitLab repository, checks the release, and lists it. Pick the way in that fits.</p>
+  </header>
+
+  <div class="ways">
+    <section class="way">
+      <p class="eyebrow">Have a repository</p>
+      <h2>Import it</h2>
+      <p class="muted">The wizard detects a Docker tool, a Python package or a guide, drafts <code>otinstaller.yaml</code>, asks you only for what it cannot guess, and opens a pull or merge request. Merge, run the release workflow, done.</p>
+      <p><a class="btn btn-strong" href="/import">Start the import wizard →</a></p>
+      <p class="small muted">Or from the terminal: <code>ot import https://github.com/you/tool</code></p>
+    </section>
+    <section class="way">
+      <p class="eyebrow">Prefer to write it</p>
+      <h2>Add a manifest yourself</h2>
+      <p class="muted"><code>ot init</code> writes the manifest, a README if you have none, and the release workflow. Fill in inputs, outputs, the command and the three ethics answers; <code>ot validate</code> checks it as the registry will.</p>
+      <p><a class="btn" href="/docs/publishing">How publishing works →</a> <a class="btn btn-ghost" href="/docs/manifest">Manifest reference</a></p>
+    </section>
+    <section class="way">
+      <p class="eyebrow">Teach a method</p>
+      <h2>Write a guide</h2>
+      <p class="muted">A guide is Markdown pages, versioned like a tool, with the tools it uses linked and installable in one command. <code>ot init --guide</code> scaffolds it; <code>ot release 1.0.0</code> publishes it without CI.</p>
+      <p><a class="btn" href="/docs/guides">Writing guides →</a></p>
+    </section>
+  </div>
+
+  <section class="after" aria-labelledby="after-h">
+    <div class="section-head"><h2 id="after-h">What happens after the tag</h2><a href="/docs/security">Security model →</a></div>
+    <ol class="timeline">
+      {steps.map((s, i) => <li><span class="n">0{i + 1}</span><div><h3>{s.t}</h3><p class="small muted">{s.d}</p></div></li>)}
+    </ol>
+  </section>
+
+  <div class="two">
+    <section aria-labelledby="rev-h">
+      <h2 id="rev-h">What the reviewer checks</h2>
+      <ul class="checks small">{checklist.map((c) => <li>{c}</li>)}</ul>
+      <p class="small muted">Outcomes: approved, changes requested with what to fix, or rejected with one appeal by email. The same rules apply to every later release automatically.</p>
+    </section>
+    <section aria-labelledby="keep-h">
+      <h2 id="keep-h">Keeping it healthy</h2>
+      <ul class="checks small">
+        <li>Every night the registry runs your test input again; three failures in a row mark the tool possibly broken until one passes.</li>
+        <li>New tags are picked up by webhook, and by a poll every six hours as a backstop. Your dashboard shows each release and why any failed.</li>
+        <li>Yank a version to take it off <code>@latest</code>; deprecate a package to point people at a replacement; transfer it to another namespace when it changes hands.</li>
+      </ul>
+      <p class="small muted">A manifest can also be held by the registry when a repository cannot carry one; it is labelled and unsigned, and a one-click pull request moves it into the repository later.</p>
+    </section>
+  </div>
+</Base>
+
+<style>
+  .page-head { margin-bottom: 24px; }
+  .page-head .eyebrow { margin: 0; }
+  .page-head h1 { margin: 6px 0; }
+  .page-head p { margin: 0; max-width: 72ch; }
+  .ways { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); }
+  .way { background: var(--bg); padding: 20px; display: grid; gap: 8px; align-content: start; }
+  .way .eyebrow, .way p { margin: 0; }
+  .way h2 { margin: 0; font-size: var(--fs-4); }
+  .after { margin-top: 40px; }
+  .timeline { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); }
+  .timeline li { background: var(--bg); padding: 16px; display: grid; gap: 8px; align-content: start; }
+  .timeline .n { font-size: var(--fs-0); color: var(--text-faint); letter-spacing: 0.12em; }
+  .timeline h3 { margin: 0; font-size: var(--fs-3); }
+  .timeline p { margin: 2px 0 0; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 40px; }
+  .two h2 { font-size: var(--fs-4); margin: 0 0 10px; }
+  .checks { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+  .two p { margin: 12px 0 0; }
+  @media (max-width: 860px) { .ways, .timeline { grid-template-columns: 1fr; } .two { grid-template-columns: 1fr; gap: 24px; } }
+</style>

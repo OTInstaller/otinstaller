@@ -570,6 +570,18 @@ a Markdown-twin link and the two new tables in the security model (what `ot` ref
 every list and guide page links its JSON twin; a test keeps the getting-started doc's install commands equal to
 `lib/install.ts` (the doc stays Markdown so its own twin keeps working).
 
+**Phase 3 (21 Oct 2026, later):** `/publish` is an SSR explainer (three ways in, the four stages after the tag,
+the reviewer checklist) and the nav points at it; the import wizard has four steps with a progress header, a
+blocking GitHub App step with "Check again", small forms for inputs, outputs, behaviour, categories, test input
+and keys that write their block of the draft (`lib/yaml-blocks.ts`, no YAML parser in the browser), validator
+problems next to the section they belong to, the finish modes as cards with consequences, and a "what happens
+next" list; the dashboard lists packages first (state, health, sync, needs you) with a review banner for pending
+namespaces; `/dashboard/{ns}/{name}` manages one package (sync log and sync now, yank, deprecate, move a held
+manifest into the repository, backups); `/dashboard/publish/{jobId}` shows a release as a timeline with every
+problem and its fix; inline confirms replace `window.confirm`. Verified signed out in the preview build; the
+signed-in flows are typechecked and built but were not clicked through (no registry session in the audit
+browser), so the first real import through the wizard should be watched.
+
 Effort is for one person who knows the codebase, including verification.
 
 | Phase | Scope | Effort | Exit criteria |
