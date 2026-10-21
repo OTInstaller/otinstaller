@@ -199,6 +199,30 @@ export async function backupVersion(env: Env, versionId: string) {
   if (plan) await dispatchBackups(env, [plan]);
 }
 
+export const BACKFILL_PER_RUN = 5;
+export const BACKFILL_RETRY = 86_400_000;
+
+/**
+ * Every 15 minutes: published versions whose image or wheel is not backed up yet (published before backups
+ * existed, or whose backup failed) get a backup job, a few at a time and at most once a day each.
+ */
+export async function backfillBackups(env: Env, now = Date.now(), limit = BACKFILL_PER_RUN): Promise<number> {
+  const rows = (await env.DB.prepare(
+    `SELECT v.id FROM versions v JOIN tools t ON t.id = v.tool_id JOIN namespaces n ON n.id = t.namespace_id
+     WHERE v.status IN ('published', 'yanked') AND v.runtime_kind IN ('docker', 'pipx') AND t.status != 'removed' AND n.status = 'active'
+       AND NOT EXISTS (SELECT 1 FROM backups b WHERE b.version_id = v.id AND b.kind IN ('image', 'wheel') AND b.status IN ('stored', 'pending', 'too_large'))
+       AND NOT EXISTS (SELECT 1 FROM backup_runs r WHERE r.version_id = v.id AND r.created_at > ?)
+     ORDER BY v.published_at DESC LIMIT ?`,
+  ).bind(now - BACKFILL_RETRY, limit).all<{ id: string }>()).results;
+  const plans: BackupPlan[] = [];
+  for (const r of rows) {
+    const plan = await releasePlan(env, r.id, "manual", now);
+    if (plan) plans.push(plan);
+  }
+  if (plans.length) await dispatchBackups(env, plans).catch((e) => console.error("backfill dispatch failed", e));
+  return plans.length;
+}
+
 /** Weekly: a git backup of every active source, so code pushed between releases is covered. */
 export async function weeklyBackups(env: Env, now = Date.now()): Promise<number> {
   const rows = (await env.DB.prepare(

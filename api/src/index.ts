@@ -17,7 +17,7 @@ import { transferRoutes } from "./routes/transfers";
 import { opsRoutes } from "./routes/ops";
 import { betaRoutes } from "./routes/beta";
 import { backupRoutes } from "./routes/backups";
-import { expireDrills, expireRuns, installFallbacks, purgeBackups, RESTORE_DRILL_CRON, startDrill, WEEKLY_BACKUP_CRON, weeklyBackups } from "./backups";
+import { backfillBackups, expireDrills, expireRuns, installFallbacks, purgeBackups, RESTORE_DRILL_CRON, startDrill, WEEKLY_BACKUP_CRON, weeklyBackups } from "./backups";
 import { alertStuckJobs, dailyDigest, purgeRateLimits, reportError } from "./ops";
 import { queueNightlyLinkChecks } from "./guides";
 import { ulid } from "./lib/crypto";
@@ -385,6 +385,8 @@ export default {
     await alertStuckJobs(env);
     await expireRuns(env);
     await expireDrills(env);
+    // Published versions without an image or wheel backup (older than backups, or failed) get one.
+    await backfillBackups(env);
     // Weekly (Mondays): a git backup of every active source, for code pushed between releases.
     if (event.cron === WEEKLY_BACKUP_CRON) await weeklyBackups(env);
     // Monthly: restore a random bundle into an empty repository and pull a mirrored image by digest.
