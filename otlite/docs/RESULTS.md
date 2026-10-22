@@ -59,6 +59,13 @@ The sidecar file contains:
 - `sha256`: streaming SHA-256 of the output file, for integrity verification.
 - Environment variable values are never written; only variable names appear.
 
+## Listing saved runs
+
+`otlite results` reads every `.meta.json` under the results folder, including cases, and prints the runs newest
+first. `--tool`, `--target`, `--case`, `--status` and `--since` (an age such as `7d` or a date) filter them;
+`--sort time|tool|target|duration|size` and `--reverse` order them; `--limit` (default 50, `0` for all) caps the list;
+`--json` prints the sidecars with a `meta_path` field. Sidecars that can't be read are skipped.
+
 ## Worked example
 
 ```bash

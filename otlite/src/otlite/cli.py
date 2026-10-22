@@ -1929,6 +1929,109 @@ def diff(
         typer.echo(f"- {line}")
 
 
+@app.command(name="results")
+def results_cmd(
+    tool: Annotated[str | None, typer.Option("--tool", help="Only runs of this tool")] = None,
+    target: Annotated[
+        str | None, typer.Option("--target", help="Only runs against this target")
+    ] = None,
+    case: Annotated[
+        str | None, typer.Option("--case", help="Only runs saved under this case")
+    ] = None,
+    status: Annotated[
+        str | None, typer.Option("--status", help="complete, failed or interrupted")
+    ] = None,
+    since: Annotated[
+        str | None,
+        typer.Option(
+            "--since", help="Only runs newer than an age (30m, 12h, 7d, 2w) or a date (2026-10-01)"
+        ),
+    ] = None,
+    sort: Annotated[
+        str, typer.Option("--sort", help="time (newest first), tool, target, duration or size")
+    ] = "time",
+    reverse: Annotated[bool, typer.Option("--reverse", help="Reverse the order")] = False,
+    limit: Annotated[
+        int, typer.Option("--limit", help="Show at most this many runs; 0 shows all")
+    ] = 50,
+    json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
+):
+    """List saved runs, filtered and sorted."""
+    import sys
+
+    from otlite.results import RUN_STATUSES, SORT_KEYS, list_runs, parse_since, sort_runs
+
+    if sys.platform != "linux":
+        typer.echo("error: otlite currently supports Linux only", err=True)
+        raise typer.Exit(code=1)
+    if status and status not in RUN_STATUSES:
+        typer.echo(f"error: --status must be one of: {', '.join(RUN_STATUSES)}", err=True)
+        raise typer.Exit(code=2)
+    if sort not in SORT_KEYS:
+        typer.echo(f"error: --sort must be one of: {', '.join(SORT_KEYS)}", err=True)
+        raise typer.Exit(code=2)
+    if limit < 0:
+        typer.echo("error: --limit can't be negative", err=True)
+        raise typer.Exit(code=2)
+    since_at = None
+    if since:
+        try:
+            since_at = parse_since(since)
+        except ValueError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=2) from None
+
+    base = get_results_dir()
+    runs = sort_runs(
+        list_runs(base, tool=tool, target=target, case=case, status=status, since=since_at),
+        sort,
+        reverse,
+    )
+    total = len(runs)
+    shown = runs[:limit] if limit else runs
+
+    if json_output:
+        typer.echo(json.dumps(shown, indent=2))
+        return
+    if not shown:
+        filtered = any([tool, target, case, status, since])
+        typer.echo(f"no saved runs{' match' if filtered else ''} in {base}")
+        return
+
+    def _when(run: dict) -> str:
+        from datetime import datetime
+
+        try:
+            return datetime.fromisoformat(str(run["started_at"])).strftime("%Y-%m-%d %H:%M")
+        except ValueError:
+            return str(run.get("started_at", ""))
+
+    def _size(n: object) -> str:
+        size = float(n or 0)
+        for unit in ("B", "KB", "MB"):
+            if size < 1024:
+                return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+            size /= 1024
+        return f"{size:.1f} GB"
+
+    table = Table(show_header=True, header_style="bold")
+    for column in ("When (UTC)", "Tool", "Target", "Status", "Duration", "Size", "File"):
+        table.add_column(column)
+    for run in shown:
+        table.add_row(
+            _when(run),
+            str(run.get("tool", "")),
+            str(run.get("target", "")),
+            str(run.get("status", "")),
+            f"{float(run.get('duration_seconds') or 0):.1f}s",
+            _size(run.get("bytes")),
+            str(run.get("output_path", "")),
+        )
+    _make_console(False).print(table)
+    more = f" of {total}; --limit 0 shows all" if total > len(shown) else ""
+    typer.echo(f"{len(shown)} run{'s' if len(shown) != 1 else ''}{more}")
+
+
 @app.command(name="auto")
 def auto(
     target: Annotated[
