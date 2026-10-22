@@ -842,8 +842,9 @@ table, publish order (namespace → tools → guides), what was not converted an
   git-pinned ones use versions like `0.0.0-git.<commit>`. 65 more (October 2026) cover every open-source OSINT tool
   over 100 stars that could be wrapped; `seed/candidates.md` lists every candidate with why it was wrapped or dropped.
   All 65 were published on 22 Oct 2026.
-- Nine seed folders gained `ethics.notifies_target`/`notes` or a key's `pricing` after their last release; they need
-  new releases from their own repositories (seed/README.md, "Not yet released"), which is the owner's call.
+- Seven published seed packages gained `ethics.notifies_target`/`notes` or a key's `pricing` and were re-released on
+  22 Oct 2026 with a patch bump (seed/README.md, "notifies_target and key pricing"). A wrapper that already pins the
+  latest upstream gets a patch version upstream never shipped, because a prerelease never becomes `@latest`.
 - `guides/<guide>/` (10): `otinstaller.yaml` (`kind: guide`, CC-BY-4.0), `docs/index.md` + numbered pages, README,
   LICENSE.md. Guides have no release workflow: release them with `ot release X.Y.Z` (or a plain `git tag vX.Y.Z && git
   push`), never through GitHub Actions.
