@@ -1,12 +1,14 @@
 # Releases otlite (otlite/) to PyPI with trusted publishing. Push a tag `otlite-vX.Y.Z` whose version matches
 # otlite/pyproject.toml; run the workflow by hand with `repository: testpypi` for a dry run first.
-# The `otinstaller` shim (otlite/otinstaller-shim) is built alongside and published after otlite by its own step;
+# The `otinstaller` shim (otlite/otinstaller-shim) is built alongside and published after otlite by its own job;
 # a version PyPI already has is skipped, so bump its version only when it changes. To retry a failed release, run the
 # workflow by hand with `repository: pypi`: it uploads what is missing and creates the GitHub release for an
 # existing `otlite-vX.Y.Z` tag.
 #
 # Setup on PyPI (once, per project): Publishing → add a GitHub publisher with owner OTInstaller, repository
-# otinstaller, workflow release-otlite.yml and environment pypi (or testpypi on test.pypi.org).
+# otinstaller and workflow release-otlite.yml. The environment differs per project:
+#   pypi.org      otlite: pypi                 otinstaller: pypi-otinstaller
+#   test.pypi.org otlite: testpypi             otinstaller: testpypi-otinstaller
 name: Release otlite
 
 on:
@@ -62,8 +64,10 @@ jobs:
           name: dist
           path: otlite/dist/
 
-  # Each package is uploaded by its own step, otlite first. A trusted-publishing token only covers the projects
-  # whose publisher matches this run, so a problem with the otinstaller shim's publisher must never block otlite.
+  # otlite and the otinstaller shim are uploaded by separate jobs with separate environments, otlite first. PyPI
+  # mints a token from one publisher per exchange and prefers the one whose environment matches exactly, so two
+  # projects sharing the environment `pypi` got a token that covered only otlite. A distinct environment per
+  # project gives each its own publisher, and a shim problem can never block otlite.
   publish-testpypi:
     needs: build
     if: github.event_name == 'workflow_dispatch' && inputs.repository == 'testpypi'
@@ -91,6 +95,25 @@ jobs:
           packages-dir: dist-otlite/
           skip-existing: true
           print-hash: true
+
+  publish-testpypi-shim:
+    needs: publish-testpypi
+    runs-on: ubuntu-24.04
+    environment:
+      name: testpypi-otinstaller
+      url: https://test.pypi.org/project/otinstaller/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Keep only the shim
+        run: |
+          mkdir dist-shim
+          mv dist/otinstaller-* dist-shim/
+          ls -l dist-shim
       - name: Publish the otinstaller shim
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
@@ -140,6 +163,25 @@ jobs:
             gh release create "$tag" dist-otlite/* dist-shim/* --repo "${GITHUB_REPOSITORY}" --verify-tag \
               --title "$tag" --notes "otlite ${version}. Changes: https://github.com/${GITHUB_REPOSITORY}/blob/main/otlite/CHANGELOG.md"
           fi
+
+  publish-pypi-shim:
+    needs: publish-pypi
+    runs-on: ubuntu-24.04
+    environment:
+      name: pypi-otinstaller
+      url: https://pypi.org/project/otinstaller/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Keep only the shim
+        run: |
+          mkdir dist-shim
+          mv dist/otinstaller-* dist-shim/
+          ls -l dist-shim
       - name: Publish the otinstaller shim
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
