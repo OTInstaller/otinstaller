@@ -1,0 +1,995 @@
+{
+  "otlite": "1.2.0",
+  "tools": [
+    {
+      "name": "aliens-eye",
+      "display_name": "Aliens Eye",
+      "description": "Hunt down 840+ social media accounts using AI.",
+      "repo": "arxhr007/Aliens_eye",
+      "license": "MIT",
+      "accepts": [
+        "username"
+      ],
+      "input_types": [
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run aliens-eye -- u:johndoe"
+    },
+    {
+      "name": "auto-archiver",
+      "display_name": "Auto Archiver",
+      "description": "Automatically archive web content from various sources. Requires Python <3.13 (no wheels for 3.13+; dependency pdqhash needs C++ compiler).",
+      "repo": "bellingcat/auto-archiver",
+      "license": "MIT",
+      "accepts": [
+        "url"
+      ],
+      "input_types": [
+        "url"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": [
+          "GOOGLE_API_KEY",
+          "GOOGLE_CREDENTIALS",
+          "AWS_ACCESS_KEY_ID",
+          "AWS_SECRET_ACCESS_KEY"
+        ]
+      },
+      "dual_use": true,
+      "interactive": false,
+      "example": "otlite run auto-archiver -- url:https://example.com"
+    },
+    {
+      "name": "bbot",
+      "display_name": "Bbot",
+      "description": "The recursive internet scanner for hackers.",
+      "repo": "blacklanternsecurity/bbot",
+      "license": "AGPL-3.0",
+      "accepts": [
+        "domain",
+        "ip"
+      ],
+      "input_types": [
+        "d",
+        "ip"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run bbot -- d:example.com"
+    },
+    {
+      "name": "blackbird",
+      "display_name": "Blackbird",
+      "description": "OSINT tool to search for accounts by username and email across social networks.",
+      "repo": "antoniaci/blackbird",
+      "license": "NOASSERTION",
+      "accepts": [
+        "username",
+        "email"
+      ],
+      "input_types": [
+        "e",
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run blackbird -- u:johndoe"
+    },
+    {
+      "name": "crosslinked",
+      "display_name": "Crosslinked",
+      "description": "LinkedIn enumeration tool to extract valid employee names from an organization through search engine scraping.",
+      "repo": "m8sec/CrossLinked",
+      "license": "GPL-3.0",
+      "accepts": [
+        "username",
+        "email",
+        "name"
+      ],
+      "input_types": [],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run crosslinked -- --help"
+    },
+    {
+      "name": "ctfr",
+      "display_name": "Ctfr",
+      "description": "Abusing Certificate Transparency logs for getting HTTPS websites subdomains.",
+      "repo": "UnaPibaGeek/ctfr",
+      "license": "GPL-3.0",
+      "accepts": [
+        "domain"
+      ],
+      "input_types": [
+        "d"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run ctfr -- d:example.com"
+    },
+    {
+      "name": "dnsgen",
+      "display_name": "Dnsgen",
+      "description": "DNSGen is a powerful and flexible DNS name permutation tool designed for security researchers and penetration testers.",
+      "repo": "AlephNullSK/dnsgen",
+      "license": "MIT",
+      "accepts": [
+        "domain"
+      ],
+      "input_types": [],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run dnsgen -- --help"
+    },
+    {
+      "name": "dnstwist",
+      "display_name": "Dnstwist",
+      "description": "Domain name permutation engine for detecting homograph phishing attacks, typo squatting, and brand impersonation.",
+      "repo": "elceef/dnstwist",
+      "license": "Apache-2.0",
+      "accepts": [
+        "domain",
+        "ip"
+      ],
+      "input_types": [
+        "d"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run dnstwist -- d:example.com"
+    },
+    {
+      "name": "edgar-tool",
+      "display_name": "EDGAR Tool",
+      "description": "Command line interface to search and retrieve corporate and financial data from the SEC EDGAR database.",
+      "repo": "bellingcat/edgar",
+      "license": "MIT",
+      "accepts": [
+        "name"
+      ],
+      "input_types": [
+        "q"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run edgar-tool -- q:example"
+    },
+    {
+      "name": "fierce",
+      "display_name": "Fierce",
+      "description": "A DNS reconnaissance tool for locating non-contiguous IP space.",
+      "repo": "mschwager/fierce",
+      "license": "GPL-3.0",
+      "accepts": [
+        "domain",
+        "ip"
+      ],
+      "input_types": [
+        "d"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run fierce -- d:example.com"
+    },
+    {
+      "name": "finalrecon",
+      "display_name": "Finalrecon",
+      "description": "All In One Web Recon.",
+      "repo": "thewhiteh4t/FinalRecon",
+      "license": "MIT",
+      "accepts": [
+        "domain",
+        "ip",
+        "url"
+      ],
+      "input_types": [
+        "url"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run finalrecon -- url:https://example.com"
+    },
+    {
+      "name": "fsociety",
+      "display_name": "Fsociety",
+      "description": "A Modular Penetration Testing Framework.",
+      "repo": "fsociety-team/fsociety",
+      "license": "MIT",
+      "accepts": [
+        "domain",
+        "username",
+        "email"
+      ],
+      "input_types": [],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": true,
+      "interactive": true,
+      "example": "otlite run fsociety -- --help"
+    },
+    {
+      "name": "ghunt",
+      "display_name": "Ghunt",
+      "description": "Offensive Google framework.",
+      "repo": "mxrch/GHunt",
+      "license": "NOASSERTION",
+      "accepts": [
+        "email"
+      ],
+      "input_types": [
+        "e"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": true,
+      "example": "otlite run ghunt -- e:ada@example.com"
+    },
+    {
+      "name": "h8mail",
+      "display_name": "H8Mail",
+      "description": "Email OSINT & Password breach hunting tool, locally or using premium services.",
+      "repo": "khast3x/h8mail",
+      "license": "NOASSERTION",
+      "accepts": [
+        "email"
+      ],
+      "input_types": [
+        "e"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": true,
+      "interactive": false,
+      "example": "otlite run h8mail -- e:ada@example.com"
+    },
+    {
+      "name": "holehe",
+      "display_name": "Holehe",
+      "description": "holehe allows you to check if the mail is used on different sites like twitter, instagram and will retrieve information on sites with the forgotten password function.",
+      "repo": "megadose/holehe",
+      "license": "GPL-3.0",
+      "accepts": [
+        "email"
+      ],
+      "input_types": [
+        "e"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run holehe -- e:ada@example.com"
+    },
+    {
+      "name": "ignorant",
+      "display_name": "Ignorant",
+      "description": "ignorant allows you to check if a phone number is used on different sites like snapchat, instagram.",
+      "repo": "megadose/ignorant",
+      "license": "GPL-3.0",
+      "accepts": [
+        "phone"
+      ],
+      "input_types": [],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": true,
+      "interactive": false,
+      "example": "otlite run ignorant -- --help"
+    },
+    {
+      "name": "instagram-location-search",
+      "display_name": "Instagram Location Search",
+      "description": "Find Instagram location IDs near specified coordinates.",
+      "repo": "bellingcat/instagram-location-search",
+      "license": "MIT",
+      "accepts": [
+        "url"
+      ],
+      "input_types": [
+        "lat",
+        "lng"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": [
+          "INSTAGRAM_SESSION_ID"
+        ]
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run instagram-location-search -- lat:51.5074 lng:-0.1278"
+    },
+    {
+      "name": "instagram-monitor",
+      "display_name": "Instagram Monitor",
+      "description": "Track Instagram users' activities, profile changes and capture content with beautiful dashboards and instant notifications.",
+      "repo": "misiektoja/instagram_monitor",
+      "license": "GPL-3.0",
+      "accepts": [
+        "username"
+      ],
+      "input_types": [
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": true,
+      "interactive": true,
+      "example": "otlite run instagram-monitor -- u:johndoe"
+    },
+    {
+      "name": "instaloader",
+      "display_name": "Instaloader",
+      "description": "Download pictures (or videos) along with their captions and other metadata from Instagram.",
+      "repo": "instaloader/instaloader",
+      "license": "MIT",
+      "accepts": [
+        "username",
+        "url"
+      ],
+      "input_types": [
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run instaloader -- u:johndoe"
+    },
+    {
+      "name": "ivre",
+      "display_name": "Ivre",
+      "description": "Network recon framework.",
+      "repo": "ivre/ivre",
+      "license": "GPL-3.0",
+      "accepts": [
+        "domain",
+        "ip"
+      ],
+      "input_types": [],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run ivre -- --help"
+    },
+    {
+      "name": "linkook",
+      "display_name": "Linkook",
+      "description": "An OSINT tool for discovering linked social accounts and associated emails across multiple platforms using a single username.",
+      "repo": "JackJuly/linkook",
+      "license": "MIT",
+      "accepts": [
+        "username",
+        "email"
+      ],
+      "input_types": [
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run linkook -- u:johndoe"
+    },
+    {
+      "name": "maigret",
+      "display_name": "Maigret",
+      "description": "Collect a dossier on a person by username from 6K websites.",
+      "repo": "soxoj/maigret",
+      "license": "MIT",
+      "accepts": [
+        "username"
+      ],
+      "input_types": [
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run maigret -- u:johndoe"
+    },
+    {
+      "name": "mailaccess",
+      "display_name": "Mailaccess",
+      "description": "Investigates an email address across 5,300+ platforms and breach sources, and harvests the email addresses of a domain",
+      "repo": "KatrielMoses/MailAccess",
+      "license": "MIT",
+      "accepts": [
+        "email",
+        "domain"
+      ],
+      "input_types": [
+        "d",
+        "e"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": true,
+      "interactive": false,
+      "example": "otlite run mailaccess -- e:ada@example.com"
+    },
+    {
+      "name": "neutrosint",
+      "display_name": "NeutrOSINT",
+      "description": "Check if an email address or username exists on ProtonMail.",
+      "repo": "Kr0wZ/NeutrOSINT",
+      "license": "MIT",
+      "accepts": [
+        "email",
+        "username"
+      ],
+      "input_types": [
+        "e"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run neutrosint -- e:ada@example.com"
+    },
+    {
+      "name": "nexfil",
+      "display_name": "Nexfil",
+      "description": "OSINT tool for finding profiles by username.",
+      "repo": "thewhiteh4t/nexfil",
+      "license": "MIT",
+      "accepts": [
+        "username"
+      ],
+      "input_types": [
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run nexfil -- u:johndoe"
+    },
+    {
+      "name": "onionsearch",
+      "display_name": "Onionsearch",
+      "description": "OnionSearch is a script that scrapes urls on different.",
+      "repo": "megadose/OnionSearch",
+      "license": "GPL-3.0",
+      "accepts": [
+        "url"
+      ],
+      "input_types": [
+        "q"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run onionsearch -- q:example"
+    },
+    {
+      "name": "openosint",
+      "display_name": "Openosint",
+      "description": "AI-powered OSINT agent with interactive REPL, MCP server, and direct CLI modes. Direct email/username scans work without ANTHROPIC_API_KEY. AI-REPL and MCP modes require ANTHROPIC_API_KEY (or --api-key). Other features need additional keys: SHODAN_API_KEY (shodan), VIRUSTOTAL_API_KEY (virustotal), CENSYS_API_ID + CENSYS_SECRET (censys), ABUSEIPDB_API_KEY (abuseipdb), IP2LOCATION_API_KEY (ip2location), BRIGHTDATA_API_KEY + BRIGHTDATA_SERP_ZONE/BRIGHTDATA_UNLOCKER_ZONE (Bright Data tools), OPENAI_API_KEY (OpenAI provider), OPENOSINT_PROXY_URL (proxy).",
+      "repo": "OpenOSINT/OpenOSINT",
+      "license": "MIT",
+      "accepts": [
+        "username",
+        "email",
+        "domain"
+      ],
+      "input_types": [],
+      "api_keys": {
+        "required": [],
+        "optional": [
+          "ANTHROPIC_API_KEY",
+          "SHODAN_API_KEY",
+          "VIRUSTOTAL_API_KEY",
+          "CENSYS_API_ID",
+          "CENSYS_SECRET",
+          "ABUSEIPDB_API_KEY",
+          "IP2LOCATION_API_KEY",
+          "BRIGHTDATA_API_KEY",
+          "BRIGHTDATA_SERP_ZONE",
+          "BRIGHTDATA_UNLOCKER_ZONE",
+          "OPENAI_API_KEY",
+          "OPENOSINT_PROXY_URL"
+        ]
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run openosint -- --help"
+    },
+    {
+      "name": "osint-brazuca-regex",
+      "display_name": "Osint Brazuca Regex",
+      "description": "Repositrio criado com intuito de reunir expresses regulares dentro do contexto Brasil.",
+      "repo": "osintbrazuca/osint-brazuca-regex",
+      "license": "MIT",
+      "accepts": [
+        "domain",
+        "name"
+      ],
+      "input_types": [],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run osint-brazuca-regex -- --help"
+    },
+    {
+      "name": "paramspider",
+      "display_name": "Paramspider",
+      "description": "Mining URLs from dark corners of Web Archives for bug hunting/fuzzing/further probing.",
+      "repo": "devanshbatham/ParamSpider",
+      "license": "MIT",
+      "accepts": [
+        "domain",
+        "url"
+      ],
+      "input_types": [
+        "d"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run paramspider -- d:example.com"
+    },
+    {
+      "name": "pywerview",
+      "display_name": "Pywerview",
+      "description": "A (partial) Python rewriting of PowerSploit's PowerView.",
+      "repo": "the-useless-one/pywerview",
+      "license": "GPL-3.0",
+      "accepts": [
+        "domain",
+        "username"
+      ],
+      "input_types": [],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run pywerview -- --help"
+    },
+    {
+      "name": "secator",
+      "display_name": "Secator",
+      "description": "secator - the pentester's swiss knife.",
+      "repo": "freelabz/secator",
+      "license": "NOASSERTION",
+      "accepts": [
+        "domain",
+        "ip",
+        "username",
+        "email"
+      ],
+      "input_types": [],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": true,
+      "interactive": false,
+      "example": "otlite run secator -- --help"
+    },
+    {
+      "name": "sherlock",
+      "display_name": "Sherlock",
+      "description": "Hunt down social media accounts by username across social networks.",
+      "repo": "sherlock-project/sherlock",
+      "license": "MIT",
+      "accepts": [
+        "username"
+      ],
+      "input_types": [
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run sherlock -- u:johndoe"
+    },
+    {
+      "name": "sitedorks",
+      "display_name": "Sitedorks",
+      "description": "Search Google/Bing/Ecosia/DuckDuckGo/Yandex/Yahoo for a search term (dork) with a default set of websites, bug bounty programs or custom collection.",
+      "repo": "Zarcolio/sitedorks",
+      "license": "GPL-3.0",
+      "accepts": [
+        "domain",
+        "url"
+      ],
+      "input_types": [
+        "q"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": true,
+      "example": "otlite run sitedorks -- q:example"
+    },
+    {
+      "name": "socialscan",
+      "display_name": "Socialscan",
+      "description": "Python library for accurately querying username and email usage on online platforms.",
+      "repo": "iojw/socialscan",
+      "license": "MPL-2.0",
+      "accepts": [
+        "username",
+        "email"
+      ],
+      "input_types": [
+        "q"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run socialscan -- q:example"
+    },
+    {
+      "name": "socid-extractor",
+      "display_name": "Socid Extractor",
+      "description": "The extraction engine behind Maigret: turn any profile URL into a structured OSINT record across 150+ sites.",
+      "repo": "soxoj/socid-extractor",
+      "license": "MIT",
+      "accepts": [
+        "url",
+        "username"
+      ],
+      "input_types": [
+        "url"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run socid-extractor -- url:https://example.com"
+    },
+    {
+      "name": "spiderfoot",
+      "display_name": "Spiderfoot",
+      "description": "SpiderFoot automates OSINT for threat intelligence and mapping your attack surface.",
+      "repo": "smicallef/spiderfoot",
+      "license": "MIT",
+      "accepts": [
+        "domain",
+        "ip",
+        "username",
+        "email"
+      ],
+      "input_types": [
+        "d",
+        "ip"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run spiderfoot -- d:example.com"
+    },
+    {
+      "name": "sublist3r",
+      "display_name": "Sublist3r",
+      "description": "Fast subdomain enumeration tool using multiple search engines and certificate transparency logs.",
+      "repo": "aboul3la/Sublist3r",
+      "license": "GPL-2.0",
+      "accepts": [
+        "domain"
+      ],
+      "input_types": [
+        "d"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run sublist3r -- d:example.com"
+    },
+    {
+      "name": "telegram-phone-number-checker",
+      "display_name": "Telegram Phone Number Checker",
+      "description": "Check if phone numbers are connected to Telegram accounts.",
+      "repo": "bellingcat/telegram-phone-number-checker",
+      "license": "MIT",
+      "accepts": [
+        "phone",
+        "username"
+      ],
+      "input_types": [
+        "p",
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": [
+          "API_ID",
+          "API_HASH",
+          "PHONE_NUMBER"
+        ]
+      },
+      "dual_use": true,
+      "interactive": true,
+      "example": "otlite run telegram-phone-number-checker -- u:johndoe"
+    },
+    {
+      "name": "telepathy",
+      "display_name": "Telepathy",
+      "description": "OSINT toolkit for investigating Telegram chats and accounts. Requires Python <3.13 (dependency googletrans/httpx uses removed cgi module).",
+      "repo": "prose-intelligence-ltd/Telepathy-Community",
+      "license": "MIT",
+      "accepts": [
+        "username"
+      ],
+      "input_types": [
+        "tg"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": true,
+      "interactive": true,
+      "example": "otlite run telepathy -- tg:durov"
+    },
+    {
+      "name": "thebigbrother",
+      "display_name": "The Big Brother",
+      "description": "Find usernames across social networks.",
+      "repo": "chadi0x/TheBigBrother",
+      "license": "MIT",
+      "accepts": [
+        "username"
+      ],
+      "input_types": [
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run thebigbrother -- u:johndoe"
+    },
+    {
+      "name": "theharvester",
+      "display_name": "theHarvester",
+      "description": "Find emails, subdomains and names for a domain",
+      "repo": "laramies/theHarvester",
+      "license": "GPL-2.0",
+      "accepts": [
+        "domain"
+      ],
+      "input_types": [
+        "d"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": [
+          "SHODAN_API_KEY",
+          "HUNTER_API_KEY"
+        ]
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run theharvester -- d:example.com"
+    },
+    {
+      "name": "torbot",
+      "display_name": "Torbot",
+      "description": "Dark Web OSINT Tool.",
+      "repo": "DedSecInside/TorBot",
+      "license": "NOASSERTION",
+      "accepts": [
+        "url",
+        "domain"
+      ],
+      "input_types": [
+        "url"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run torbot -- url:https://example.com"
+    },
+    {
+      "name": "toutatis",
+      "display_name": "Toutatis",
+      "description": "Toutatis is a tool that allows you to extract information from instagrams accounts such as e-mails, phone numbers and more.",
+      "repo": "megadose/toutatis",
+      "license": "GPL-3.0",
+      "accepts": [
+        "phone",
+        "username"
+      ],
+      "input_types": [
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": true,
+      "interactive": false,
+      "example": "otlite run toutatis -- u:johndoe"
+    },
+    {
+      "name": "user-scanner",
+      "display_name": "User Scanner",
+      "description": "(2-in-1) Email & Username OSINT suite featuring native MCP support for deep data extraction just from a single Email/Username.",
+      "repo": "kaifcodec/user-scanner",
+      "license": "MIT",
+      "accepts": [
+        "username",
+        "email"
+      ],
+      "input_types": [
+        "e",
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": true,
+      "interactive": false,
+      "example": "otlite run user-scanner -- u:johndoe"
+    },
+    {
+      "name": "whatsapp-osint",
+      "display_name": "Whatsapp Osint",
+      "description": "WhatsApp spy - logs online/offline events from ANYONE in the world.",
+      "repo": "jasperan/whatsapp-osint",
+      "license": "MIT",
+      "accepts": [
+        "phone",
+        "name"
+      ],
+      "input_types": [],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": true,
+      "interactive": true,
+      "example": "otlite run whatsapp-osint -- --help"
+    },
+    {
+      "name": "yark",
+      "display_name": "Yark",
+      "description": "OSINT for YouTube made simple.",
+      "repo": "Owez/yark",
+      "license": "MIT",
+      "accepts": [
+        "url",
+        "username",
+        "name"
+      ],
+      "input_types": [],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run yark -- --help"
+    },
+    {
+      "name": "zen",
+      "display_name": "Zen",
+      "description": "Find email addresses of GitHub users, repositories and organizations.",
+      "repo": "s0md3v/Zen",
+      "license": "Apache-2.0",
+      "accepts": [
+        "username",
+        "url"
+      ],
+      "input_types": [
+        "u",
+        "url"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run zen -- u:johndoe"
+    }
+  ]
+}
