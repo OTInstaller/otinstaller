@@ -20,8 +20,10 @@ twin is unset (`config.env_value`), and the first run copies `.env`, `accepted.j
   and published to PyPI by `.github/workflows/release-otlite.yml` (trusted publishing).
 - The word "OSINT" must not appear in the package name, command name or CLI help text.
   It may appear in the README and the PyPI description only.
-- Python 3.10+. Linux only. CI tests Ubuntu 22.04 and 24.04 with Python 3.10 to 3.14, plus Debian, Arch, a
-  Kali `.deb` build and a pipx install (`.github/workflows/otlite-ci.yml`).
+- Python 3.10+. Linux and macOS (macOS from 1.2, at the owner's request). CI tests Ubuntu 22.04 and 24.04 with
+  Python 3.10 to 3.14, plus Debian, Arch, a Kali `.deb` build, a pipx install, macOS 14 and the one-line installer
+  (`scripts/install.sh`, served at get.otinstaller.com/otlite) on Debian and macOS (`.github/workflows/otlite-ci.yml`).
+  Platform checks go through `_require_supported_platform()` and `config.platform_name()`.
 - Managed tools are installed with pip or git only. No Go, Rust, Node or Docker.
 - Every managed tool gets its own virtualenv. Never install tools into system Python.
 - Run command shape: `otlite run <tool> -- <args>`. Arguments pass straight through.

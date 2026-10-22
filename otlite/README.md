@@ -11,7 +11,7 @@
   <a href="https://github.com/OTInstaller/otinstaller/actions/workflows/otlite-ci.yml"><img src="https://github.com/OTInstaller/otinstaller/actions/workflows/otlite-ci.yml/badge.svg" alt="CI"></a>
   <a href="https://pypi.org/project/otlite/"><img src="https://img.shields.io/pypi/v/otlite" alt="PyPI"></a>
   <img src="https://img.shields.io/badge/python-3.10%20to%203.14-blue" alt="Python 3.10 to 3.14">
-  <img src="https://img.shields.io/badge/platform-Linux-lightgrey" alt="Linux">
+  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey" alt="Linux and macOS">
   <a href="https://github.com/OTInstaller/otinstaller/blob/main/otlite/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="Apache 2.0 license"></a>
   <a href="https://github.com/OTInstaller/otinstaller/stargazers"><img src="https://img.shields.io/github/stars/OTInstaller/otinstaller?style=flat" alt="GitHub stars"></a>
 </p>
@@ -40,7 +40,7 @@
 
 
 > **otlite is the no-Docker edition of [OTInstaller](https://otinstaller.com).** It installs tools with pip or git
-> into per-tool virtualenvs on Linux, with no container runtime needed. The `ot` command is the other edition: it
+> into per-tool virtualenvs on Linux and macOS, with no container runtime needed. The `ot` command is the other edition: it
 > installs signed, scanned packages from the registry and runs them in a sandbox on Linux, macOS and Windows. Both
 > share the typed inputs and the `results/` layout, so you can use either, or both.
 >
@@ -85,11 +85,14 @@ The same install-and-run pattern works for every tool in the catalogue. Each too
 ## Quick start
 
 ```bash
-pipx install otlite
+curl -fsSL https://get.otinstaller.com/otlite | sh
 otlite init
 otlite install sherlock
 otlite run sherlock -- u:johndoe
 ```
+
+The installer finds a Python 3.10 to 3.14, installs pipx if it is missing and installs otlite with it. If you
+already have pipx, `pipx install otlite` does the same.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/OTInstaller/otinstaller/main/otlite/docs/images/otlite-demo.png" alt="Installing and running a tool with otlite" width="820">
@@ -99,7 +102,9 @@ The full install options are below.
 
 ## Requirements
 
-A Linux machine. Tested on Ubuntu 22.04 and 24.04, Debian 12, Arch Linux and Kali Linux (rolling).
+Linux or macOS. Tested on Ubuntu 22.04 and 24.04, Debian 12, Arch Linux, Kali Linux (rolling) and macOS 14 on
+Apple silicon. On macOS, `brew install python@3.12 git pipx` gives you everything otlite needs; some tools are
+built for Linux first and may not run there.
 
 Python 3.10 to 3.14, git, and the `venv` module. On Debian, Ubuntu and Kali, install that module with:
 
@@ -167,7 +172,7 @@ Check the machine with:
 otlite doctor
 ```
 
-`doctor` prints `[ok]` or `[problem]` for Linux, Python, git, and venv. Fix any `[problem]` line before you continue. It often tells you the package to install.
+`doctor` prints `[ok]`, `[note]` or `[problem]` for the platform, Python, git, venv and pipx. Fix any `[problem]` line before you continue: each one ends with the command that fixes it on your system (apt, dnf, pacman or Homebrew).
 
 ### Upgrading from otinstaller
 
@@ -265,6 +270,8 @@ otlite run --all --live e:john@example.com
 | `otlite update` / `--all` / `--check-only` | Bring tools to the version this release of otlite pins and tested |
 | `otlite check-updates` | Check for updates (read-only) |
 | `otlite remove <tool>...` / `--all` | Remove tools |
+| `otlite keys set NAME` / `--from-env VAR` | Save an API key without editing the env file |
+| `otlite keys list` / `rm NAME` | List key names, or remove one |
 | `otlite keys check` | Check API keys |
 | `otlite crash-reports` / `on` / `off` | Show or change opt-in crash reports (off by default) |
 | `otlite resume` | Handle interrupted jobs |
@@ -288,7 +295,14 @@ Tools that ask for input, such as GHunt's login, setup wizards and menus, run on
 ```
 results/sherlock/testuser/20260929-123456_sherlock_testuser_abc123.txt
 results/sherlock/testuser/20260929-123456_sherlock_testuser_abc123.meta.json
+results/sherlock/testuser/20260929-123456_sherlock_testuser_abc123.envelope.json
 ```
+
+The `.envelope.json` file has the same shape for every tool, so a script or an AI agent reads them all the same way:
+`envelope` (the format version, 1), `tool` (`name@version`), `runtime`, `input`, `started_at`, `ended_at`,
+`duration_ms`, `exit_code`, `status`, `entities` (each `{type, value}`: the emails, domains, IPs and URLs found in the
+output, or the tool's own entities when it prints them in this shape), `warnings` and `output` (the raw file's path,
+SHA-256 and size). `otlite run --json` and `otlite results --json` give its path.
 
 `otlite results` lists saved runs from their `.meta.json` files, newest first. Filter them with `--tool`, `--target`, `--case`, `--status complete|failed|interrupted` and `--since 7d` (or a date such as `2026-10-01`), and sort with `--sort time|tool|target|duration|size`, adding `--reverse` to flip the order. It shows 50 runs unless `--limit` says otherwise (`--limit 0` shows all), and `--json` prints every field for scripts.
 
@@ -301,7 +315,10 @@ Results can contain personal data. Store and share them accordingly.
 
 ## API keys
 
-One env file holds all API keys: `~/.otlite/.env`, permissions 600. From that file, each tool only receives the keys it declares in its registry entry. Tools also inherit your shell environment, so do not export secrets you do not want tools to see. Run `otlite keys check` to verify your keys.
+One env file holds all API keys: `~/.otlite/.env`, permissions 600. From that file, each tool only receives the keys it declares in its registry entry. Tools also inherit your shell environment, so do not export secrets you do not want tools to see. Save a key with `otlite keys set NAME`: it asks for the value without showing it (or reads it from a pipe, or from
+another variable with `--from-env VAR`) and writes the file with the right permissions. `otlite keys list` shows the
+key names you have set and the tools that use them, `otlite keys rm NAME` removes one, and `otlite keys check` shows
+which keys the catalog's tools could use.
 
 ## Resume
 
@@ -429,7 +446,8 @@ Every page linked as docs shows the tool's source, install method, credentials, 
 ## FAQ
 
 **Does it work on Windows or macOS?**
-On Windows, yes, inside WSL2 with Ubuntu. macOS is not tested yet, and most of the tools are built for Linux first.
+macOS, yes, from 1.2. On Windows, inside WSL2 with Ubuntu. Most of the tools are built for Linux first, so a few may
+not run on macOS.
 
 **Do I need root?**
 No. Root is only needed once, for `sudo apt install python3-venv git`. Everything else lives in your home directory under `~/.otlite/`.

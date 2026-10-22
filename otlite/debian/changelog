@@ -1,3 +1,11 @@
+otlite (1.2.0-1) unstable; urgency=medium
+
+  * keys set, keys list and keys rm; a result envelope next to every run;
+    the ip: typed input and an example command in info; doctor says how to
+    fix missing prerequisites; macOS support.
+
+ -- Sushant Koul <sushant@osintverse.com>  Thu, 22 Oct 2026 18:00:00 +0530
+
 otlite (1.1.0-1) unstable; urgency=medium
 
   * New command: otlite results lists saved runs, filtered by tool, target,
