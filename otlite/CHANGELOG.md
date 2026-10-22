@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-10-22
+
+### Added
+- `otlite results` lists saved runs from their `.meta.json` files, filtered by tool, target, case, status and age, and sorted by time, tool, target, duration or size, as a table or `--json`
+
+### Fixed
+- The README quick start ran `ot init`; it is `otlite init`
+
 ## [1.0.0] - 2026-10-22
 
 ### Changed
@@ -15,7 +23,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The package metadata points at otinstaller.com and the OTInstaller/otinstaller repository
 
 ### Added
-- `otlite results` lists saved runs from their `.meta.json` files, filtered by tool, target, case, status and age, and sorted by time, tool, target, duration or size, as a table or `--json`
 - The `otinstaller` distribution on PyPI is now a shim (0.2.0) that depends on otlite and keeps an `otinstaller` command, so `pip install -U otinstaller` keeps working. It prints one line saying the name changed
 
 ### Removed
