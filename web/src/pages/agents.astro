@@ -1,0 +1,197 @@
+---
+// /agents: the homepage for AI agents. Connecting Claude, Cursor, Codex and others through ot mcp or the remote MCP
+// server, what an agent can do, the consent that keeps the person in charge, and the entry points for programs.
+// Static and cached; lib/agents.ts holds the content shared with the Markdown twin at /agents.md.
+import Base from "../layouts/Base.astro";
+import CopyCommand from "../components/CopyCommand.astro";
+import InlineText from "../components/InlineText.astro";
+import InstallBlock from "../components/InstallBlock.astro";
+import PageHead from "../components/PageHead.astro";
+import { CLIENTS, CONSENT, MACHINE, MCPB_URL, PLUGIN, PLUGIN_SOURCE, PROMPTS, READ_ONLY_TOOLS, REMOTE_ADD, REMOTE_MCP, REMOTE_TOOLS, RULES, SIDE_EFFECT_TOOLS, STDIO } from "../lib/agents";
+import { cacheFor } from "../lib/page";
+
+cacheFor(Astro, 3600);
+
+const groups = [
+  { title: "Read-only", text: "Search the registry, plan, read saved results and guides. Never needs your consent.", names: READ_ONLY_TOOLS },
+  { title: "With side effects", text: "Install, run and stop tools. Your client asks before each call, and runs and installs need your consent.", names: SIDE_EFFECT_TOOLS },
+  { title: "Prompts", text: "Ready-made investigations and tasks, which your client may show as slash commands.", names: PROMPTS },
+];
+
+const control = [
+  { title: "Your policy", text: "One file sets what runs without asking, how many runs an hour, and which tools an agent may use. `enabled: false` turns agents off; `\"mode\": \"sandbox\"` runs each tool only on its own test input.", cmd: "ot mcp policy" },
+  { title: "The audit log", text: "Every run, install and uninstall an agent asks for is written to a log on your machine: the tool, its digest, the inputs and how it was allowed. It never leaves your machine.", cmd: "ot mcp audit" },
+  { title: "API keys stay yours", text: "An agent can list the keys a tool needs and where to get them, but never sees or stores one. You store each key in your own terminal; don't paste keys into a chat.", cmd: "ot keys setup" },
+];
+
+const shell = [
+  "`OT_OUTPUT=json`, or `--json` on any command: stdout is only data, progress goes to stderr.",
+  "A failure is one line of JSON on stderr with a stable `code`, a `hint` and the `exit_code`.",
+  "Without a terminal nothing prompts: `ot` fails with `input_required` or `consent_required` instead, naming the flag that answers.",
+  "Every run is saved as the same [result envelope](/docs/results), with its `run_id`.",
+];
+
+const external = (href: string) => (href.startsWith("http") ? "noopener" : undefined);
+---
+<Base title="AI agents" description="Connect Claude, Cursor, VS Code, Codex or Gemini CLI to OTInstaller: your agent searches the registry, installs signed OSINT tools and runs them on your machine, asking you before anything touches a target." markdown="/agents.md">
+  <PageHead eyebrow="For AI agents · MCP" title="Let your AI agent run OSINT tools, with your consent">
+    <p class="muted"><code>ot mcp</code> connects Claude, Cursor, VS Code, Codex and Gemini CLI to the registry. Your agent searches it, installs signed tools and runs them on your machine, in the same locked-down container as <code>ot run</code>. Anything that goes online or touches a target asks you first, and every run is in a local audit log.</p>
+  </PageHead>
+  <p class="notice info small for-agents">An agent? Read this page as Markdown at <a href="/agents.md">/agents.md</a>, or start from <a href="/llms.txt">/llms.txt</a>.</p>
+
+  <section aria-labelledby="connect-h">
+    <h2 id="connect-h">Connect your agent</h2>
+    <div class="install-row">
+      <div>
+        <h3>1. Install <code>ot</code></h3>
+        <p class="small muted">Docker Desktop or Podman has to be running, because tools run in containers. <code>ot doctor</code> checks your machine.</p>
+      </div>
+      <InstallBlock compact />
+    </div>
+    <h3 class="step">2. Add it to your client</h3>
+    <ul class="cells two">
+      {CLIENTS.map((c) => (
+        <li>
+          <h4>{c.name}</h4>
+          <CopyCommand command={c.command} label={`Add ot mcp to ${c.name}`} />
+          <p class="small muted"><InlineText text={c.note} /></p>
+        </li>
+      ))}
+    </ul>
+    <p class="small muted after">Any other client runs <code>ot mcp</code> over stdio: <code>{STDIO}</code>. Add <code>--print</code> to see a client's configuration without writing it.</p>
+    <ul class="cells two extra">
+      <li>
+        <h4>Claude Desktop in one click</h4>
+        <p class="small muted">Download the <code>.mcpb</code> bundle for your system from the latest release and open it. It carries its own <code>ot</code>; Docker or Podman still has to be running.</p>
+        <p class="small"><a href={MCPB_URL} rel="noopener">Latest ot release →</a></p>
+      </li>
+      <li>
+        <h4>The Claude Code plugin</h4>
+        <p class="small muted">The server plus skills for investigating, packaging tools and writing guides. It needs <code>ot</code> on your PATH.</p>
+        {PLUGIN.map((cmd) => <CopyCommand command={cmd} label="Install the Claude Code plugin" />)}
+        <p class="small"><a href={PLUGIN_SOURCE} rel="noopener">Plugin source →</a></p>
+      </li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="servers-h">
+    <h2 id="servers-h">Two servers</h2>
+    <ul class="cells two">
+      <li>
+        <p class="eyebrow">On your machine</p>
+        <h3><code>ot mcp</code></h3>
+        <p class="muted">Searches the registry, installs signed tools, runs them in their sandbox, and reads and compares saved results. Asks you before any run that goes online, touches a target or involves a person.</p>
+        <CopyCommand command="ot mcp tools" label="List what ot mcp offers" />
+      </li>
+      <li>
+        <p class="eyebrow">Remote, read-only</p>
+        <h3>The registry server</h3>
+        <p class="muted">Lets an agent search tools and read guides with nothing installed and no account: <InlineText text={REMOTE_TOOLS.map((t) => `\`${t}\``).join(", ")} />. It can't install or run anything. In Claude, add it as a custom connector.</p>
+        <CopyCommand command={REMOTE_MCP} label="Remote MCP server URL" class="plain" />
+        <CopyCommand command={REMOTE_ADD} label="Add the remote server to Claude Code" />
+      </li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="can-h">
+    <h2 id="can-h">What your agent can do</h2>
+    <ul class="cells three">
+      {groups.map((g) => (
+        <li>
+          <h3>{g.title}</h3>
+          <p class="small muted">{g.text}</p>
+          <ul class="names">{g.names.map((n) => <li><code>{n}</code></li>)}</ul>
+        </li>
+      ))}
+    </ul>
+    <p class="small muted after">Long runs don't block the agent: after <code>wait_seconds</code> it gets a <code>run_id</code> to check later or cancel. <a href="/docs/mcp-tools">Every tool, resource and prompt →</a></p>
+  </section>
+
+  <section aria-labelledby="charge-h">
+    <h2 id="charge-h">You stay in charge</h2>
+    <p class="muted lead-in">Every run is put in a consent class from the tool's manifest. When a run needs your consent, your client shows the exact tool and version, the target, the sites it connects to and the keys it uses; you allow it once, for the session, or decline.</p>
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th scope="col">Class</th><th scope="col">When</th><th scope="col">Asks you</th></tr></thead>
+        <tbody>
+          {CONSENT.map((c) => <tr><th scope="row"><code>{c.name}</code></th><td>{c.when}</td><td>{c.asks}</td></tr>)}
+        </tbody>
+      </table>
+    </div>
+    <ul class="cells three control">
+      {control.map((c) => (
+        <li>
+          <h3>{c.title}</h3>
+          <p class="small muted"><InlineText text={c.text} /></p>
+          <CopyCommand command={c.cmd} label={c.title} />
+        </li>
+      ))}
+    </ul>
+    <p class="small muted after"><a href="/docs/agents#consent">Consent, the policy file and the audit log in full →</a></p>
+  </section>
+
+  <section aria-labelledby="shell-h">
+    <h2 id="shell-h">Without MCP</h2>
+    <ul class="cells two">
+      <li>
+        <h3>Agents with a shell, scripts and CI</h3>
+        <ul class="small muted bullets">{shell.map((s) => <li><InlineText text={s} /></li>)}</ul>
+        <CopyCommand command="ot search --input email --no-keys --json" label="Search the registry as JSON" />
+        <p class="small"><a href="/docs/automation">Scripts, CI and agents →</a></p>
+      </li>
+      <li>
+        <h3>For programs</h3>
+        <dl class="machine small">
+          {MACHINE.map((m) => <><dt><a href={m.href} rel={external(m.href)}>{m.label}</a></dt><dd class="muted"><InlineText text={m.text} /></dd></>)}
+        </dl>
+        <p class="small muted">Every docs, policy, tool and guide page is also Markdown: add <code>.md</code> to its URL, or send <code>Accept: text/markdown</code>. <a href="/docs/api">Registry API →</a></p>
+      </li>
+    </ul>
+  </section>
+
+  <section class="rules" aria-labelledby="rules-h">
+    <h2 id="rules-h">Rules for agents</h2>
+    <p class="small muted"><code>ot mcp</code> tells every agent the following; they apply to agents that use the command line too.</p>
+    <ol>{RULES.map((r) => <li><InlineText text={r} /></li>)}</ol>
+  </section>
+
+  <p class="small muted more"><a href="/docs/agents">AI agents and MCP</a> · <a href="/docs/mcp-tools">MCP tools</a> · <a href="/docs/automation">Scripts, CI and agents</a> · <a href="/docs/api">Registry API</a> · <a href="/policy/acceptable-use">Acceptable use</a></p>
+</Base>
+
+<style>
+  .for-agents { margin: 0 0 32px; max-width: 72ch; }
+  section + section { margin-top: 48px; }
+  section > h2 { font-size: var(--fs-5); margin: 0 0 16px; }
+  h3, h4 { margin: 0; }
+  h3 { font-size: var(--fs-4); }
+  h4 { font-size: var(--fs-3); }
+  .install-row { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 32px; align-items: start; margin-bottom: 28px; }
+  .install-row p { margin: 8px 0 0; }
+  .step { margin: 0 0 12px; }
+  .cells { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; background: var(--border); border: 1px solid var(--border); }
+  .cells.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cells.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .cells > li { background: var(--bg); padding: 20px; display: grid; gap: 10px; align-content: start; }
+  .cells p { margin: 0; }
+  .cells .eyebrow { margin: 0; }
+  .cells :global(.cmd) { font-size: var(--fs-1); }
+  .cells :global(.cmd.plain)::before { content: none; }
+  .extra { margin-top: 16px; }
+  .after { margin: 12px 0 0; }
+  .names { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 10px; font-size: var(--fs-1); }
+  .lead-in { margin: 0 0 16px; max-width: 72ch; }
+  .control { margin-top: 16px; }
+  .bullets { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+  .machine { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; }
+  .machine dd { margin: 0; }
+  .rules p { margin: 0 0 12px; max-width: 72ch; }
+  .rules ol { margin: 0; padding: 16px 20px 16px 40px; display: grid; gap: 8px; max-width: 90ch; border: 1px solid var(--border); border-left: 3px solid var(--info); background: var(--bg-subtle); }
+  .more { margin: 24px 0 0; }
+  @media (max-width: 1000px) {
+    .cells.three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 820px) {
+    .install-row { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+    .cells.two, .cells.three { grid-template-columns: 1fr; }
+  }
+</style>

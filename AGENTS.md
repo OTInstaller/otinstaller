@@ -573,7 +573,9 @@ Astro 7 with `output: "server"` on `@astrojs/cloudflare`, Preact islands, no CSS
   guides under `guides/`, search at `search.astro`, plus `input/[type]`, `category/[slug]`, `[ns]/index.astro` (publisher),
   `dashboard`, `import`, `feedback`, `settings/accounts`, `transfers/[id]`, `admin/[...section]`, `docs/*.md`,
   `policy/*`, `removed.astro`, `404.astro`, `500.astro` (API trouble, shows the request ID), `robots.txt.ts`,
-  `sitemap.xml.ts`. Only `schema/v1.json.ts` is prerendered.
+  `sitemap.xml.ts`. Only `schema/v1.json.ts` is prerendered. `agents.astro` is the homepage for AI agents; its
+  Markdown twin (`agents.md.ts`, and `Accept: text/markdown` on `/agents`) is built from the same content in
+  `lib/agents.ts`, which `agents.test.ts` keeps in step with `docs/agents.md` and `docs/mcp-tools.md`.
 - `src/layouts/`: `Base.astro` (HTML shell, beta strip, header with the account menu, lean footer, the one inline
   script, global client JS for copy buttons and the `/me` account check), `Docs.astro` (with prev/next links),
   `Policy.astro`.
@@ -864,6 +866,8 @@ change. Keep this list current when you fix one or find another.
   hour per IP).
 - The same error code has two statuses in places (`tool_removed` 410/409, `manifest_in_repo` 409/400,
   `unknown_provider` 404/400); `manifest_name_mismatch` exists only in the API.
+- The API reserves no namespace names, so a namespace called `agents`, `tour`, `otlite`, `search` or another site
+  section would have its publisher page hidden by the site's own page.
 
 **Docs debt**
 

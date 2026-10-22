@@ -1,12 +1,15 @@
 // The docs and policy pages as plain Markdown, for the .md twins, content negotiation, llms.txt and llms-full.txt.
+// The /agents page's twin is built in lib/agents.ts and answered here too.
 import { SITE_URL } from "./api";
+import { AGENTS_PAGE } from "./agents";
 
 export interface MarkdownPage {
   /** The page's path on the site, e.g. /docs/cli or /docs for the index. */
   path: string;
   /** The file name without .md, e.g. cli or index. */
   slug: string;
-  section: "docs" | "policy";
+  /** "site" is a page outside docs and policy (/agents). */
+  section: "docs" | "policy" | "site";
   title: string;
   description?: string;
   /** The source with its frontmatter removed. */
@@ -46,11 +49,11 @@ export const DOC_PAGES = load(docs, "docs", ["index", "getting-started", "cli", 
 /** Every Markdown policy page (transparency is a live page and has no twin). */
 export const POLICY_PAGES = load(policies, "policy", ["acceptable-use", "terms", "privacy", "takedown"]);
 
-/** The page for a site path (/docs, /docs/index, /docs/cli, /policy/terms), or null. */
+/** The page for a site path (/docs, /docs/index, /docs/cli, /policy/terms, /agents), or null. */
 export function markdownPage(path: string): MarkdownPage | null {
   const p = path.replace(/\/+$/, "").replace(/\.md$/, "") || "/";
   const norm = p === "/docs/index" ? "/docs" : p;
-  return [...DOC_PAGES, ...POLICY_PAGES].find((page) => page.path === norm) ?? null;
+  return [...DOC_PAGES, ...POLICY_PAGES, AGENTS_PAGE].find((page) => page.path === norm) ?? null;
 }
 
 /** The absolute URL of a page's Markdown twin (/docs.md for the docs index). */

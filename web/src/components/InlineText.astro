@@ -1,0 +1,10 @@
+---
+// Short Markdown-lite text (`code` spans and [links](href)) from lib/agents.ts, rendered as elements, never as raw HTML.
+import { inline } from "../lib/agents";
+
+interface Props {
+  text: string;
+}
+const parts = inline(Astro.props.text);
+---
+{parts.map((p) => (p.kind === "code" ? <code>{p.text}</code> : p.kind === "link" ? <a href={p.href}>{p.text}</a> : p.text))}
