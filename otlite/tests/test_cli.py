@@ -492,18 +492,18 @@ def test_broken_registry_error(monkeypatch, tmp_path):
     assert "error:" in result.output
 
 
-def test_install_refuses_on_non_linux(monkeypatch):
+def test_install_refuses_on_unsupported_platform(monkeypatch):
     monkeypatch.setattr(sys, "platform", "win32")
     result = runner.invoke(app, ["install", "sherlock"])
     assert result.exit_code == 1
-    assert "error: otlite currently supports Linux only" in result.output
+    assert "error: otlite supports Linux and macOS only" in result.output
 
 
-def test_remove_refuses_on_non_linux(monkeypatch):
+def test_remove_runs_on_macos(monkeypatch, tmp_path):
+    monkeypatch.setenv("OTLITE_HOME", str(tmp_path))
     monkeypatch.setattr(sys, "platform", "darwin")
     result = runner.invoke(app, ["remove", "sherlock"])
-    assert result.exit_code == 1
-    assert "error: otlite currently supports Linux only" in result.output
+    assert "supports Linux and macOS only" not in result.output
 
 
 def test_help_no_osint_still():
@@ -973,7 +973,7 @@ def test_doctor_not_linux(monkeypatch, tmp_path):
 
     output = stdout.getvalue()
     assert exit_code == 1
-    assert "[problem] platform is not Linux" in output
+    assert "[problem] platform is not supported; otlite runs on Linux and macOS" in output
 
 
 def test_doctor_python_version_problem(monkeypatch, tmp_path):
@@ -1168,7 +1168,7 @@ def test_doctor_venv_broken_arch(monkeypatch, tmp_path):
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 1
     assert "[problem] venv module failed" in result.output
-    assert "should be included with python on Arch" in result.output
+    assert "venv is part of the python package" in result.output
 
 
 @pytest.mark.skipif(

@@ -21,7 +21,6 @@ from otlite.compat import incompatibility
 from otlite.config import (
     ensure_dir,
     get_distro,
-    get_distro_family,
     get_env_file,
     get_home,
     get_logs_dir,
@@ -221,6 +220,14 @@ def _load_registry(verbose: bool) -> list:
     except RegistryError as e:
         typer.echo(f"error: {e}", err=True)
         raise typer.Exit(code=1) from e
+
+
+def _require_supported_platform() -> None:
+    from otlite.config import platform_name
+
+    if platform_name() is None:
+        typer.echo("error: otlite supports Linux and macOS only", err=True)
+        raise typer.Exit(code=1)
 
 
 def _make_console(no_color: bool) -> Console:
@@ -740,9 +747,7 @@ def install(
     if names is None:
         names = []
     """Install tools by name. Use --all to install all available tools."""
-    if sys.platform != "linux":
-        typer.echo("error: otlite currently supports Linux only", err=True)
-        raise typer.Exit(code=1)
+    _require_supported_platform()
     _require_notice(no_color, json_output)
 
     tools_registry = _load_registry(verbose)
@@ -951,9 +956,7 @@ def remove(
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
 ):
     """Remove installed tools."""
-    if sys.platform != "linux":
-        typer.echo("error: otlite currently supports Linux only", err=True)
-        raise typer.Exit(code=1)
+    _require_supported_platform()
     if names is None:
         names = []
 
@@ -1180,9 +1183,7 @@ def run(
             tool_names = raw_args
             extra_args = []
 
-    if sys.platform != "linux":
-        typer.echo("error: otlite currently supports Linux only", err=True)
-        raise typer.Exit(code=1)
+    _require_supported_platform()
 
     tools_registry = _load_registry(False)
 
@@ -1597,9 +1598,7 @@ def check_updates(
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
 ):
     """Check for updates for installed tools (read-only)."""
-    if sys.platform != "linux":
-        typer.echo("error: otlite currently supports Linux only", err=True)
-        raise typer.Exit(code=1)
+    _require_supported_platform()
 
     if names is None:
         names = []
@@ -1681,9 +1680,7 @@ def update(
     ] = False,
 ):
     """Update installed tools to their latest versions."""
-    if sys.platform != "linux":
-        typer.echo("error: otlite currently supports Linux only", err=True)
-        raise typer.Exit(code=1)
+    _require_supported_platform()
 
     if names is None:
         names = []
@@ -1809,11 +1806,8 @@ def extract(
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
 ):
     """Extract indicators from saved result files."""
-    import sys
 
-    if sys.platform != "linux":
-        typer.echo("error: otlite currently supports Linux only", err=True)
-        raise typer.Exit(code=1)
+    _require_supported_platform()
 
     from otlite.config import get_results_dir
     from otlite.state import get_installed
@@ -1892,11 +1886,8 @@ def diff(
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
 ):
     """Compare two most recent runs of the same tool against the same target."""
-    import sys
 
-    if sys.platform != "linux":
-        typer.echo("error: otlite currently supports Linux only", err=True)
-        raise typer.Exit(code=1)
+    _require_supported_platform()
 
     runs = find_recent_runs(tool, target, case)
     if len(runs) < 2:
@@ -1957,13 +1948,10 @@ def results_cmd(
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
 ):
     """List saved runs, filtered and sorted."""
-    import sys
 
     from otlite.results import RUN_STATUSES, SORT_KEYS, list_runs, parse_since, sort_runs
 
-    if sys.platform != "linux":
-        typer.echo("error: otlite currently supports Linux only", err=True)
-        raise typer.Exit(code=1)
+    _require_supported_platform()
     if status and status not in RUN_STATUSES:
         typer.echo(f"error: --status must be one of: {', '.join(RUN_STATUSES)}", err=True)
         raise typer.Exit(code=2)
@@ -2066,9 +2054,7 @@ def auto(
     """Auto-detect target type and run all matching installed tools."""
     import sys
 
-    if sys.platform != "linux":
-        typer.echo("error: otlite currently supports Linux only", err=True)
-        raise typer.Exit(code=1)
+    _require_supported_platform()
 
     from otlite.registry import default_registry_path, load_registry
     from otlite.state import get_installed
@@ -2246,11 +2232,8 @@ def example(
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
 ):
     """Show example output for a tool."""
-    import sys
 
-    if sys.platform != "linux":
-        typer.echo("error: otlite currently supports Linux only", err=True)
-        raise typer.Exit(code=1)
+    _require_supported_platform()
 
     from otlite.registry import default_registry_path, find_tool, load_registry
 
@@ -2391,11 +2374,8 @@ def keys_check(
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
 ):
     """Check API keys configuration."""
-    import sys
 
-    if sys.platform != "linux":
-        typer.echo("error: otlite currently supports Linux only", err=True)
-        raise typer.Exit(code=1)
+    _require_supported_platform()
 
     from otlite.keys import load_env_file, missing_required_keys
     from otlite.registry import default_registry_path, load_registry
@@ -2480,11 +2460,8 @@ def resume(
     ] = False,
 ):
     """Detect and resume interrupted jobs from crashes."""
-    import sys
 
-    if sys.platform != "linux":
-        typer.echo("error: otlite currently supports Linux only", err=True)
-        raise typer.Exit(code=1)
+    _require_supported_platform()
 
     from otlite.state import _is_pid_running, list_jobs, scan_orphaned_jobs
 
@@ -2666,9 +2643,7 @@ def playbook(
 ):
     """Run a playbook or list available playbooks."""
 
-    if sys.platform != "linux":
-        typer.echo("error: otlite currently supports Linux only", err=True)
-        raise typer.Exit(code=1)
+    _require_supported_platform()
 
     _require_notice(no_color, json_output)
 
@@ -2806,14 +2781,21 @@ def doctor(
     checks = []
     problems = 0
 
+    from otlite.config import install_hint, platform_name
+
     # 1. Platform check
-    if sys.platform != "linux":
+    platform = platform_name()
+    if platform is None:
         checks.append(
-            {"check": "platform", "status": "problem", "message": "platform is not Linux"}
+            {
+                "check": "platform",
+                "status": "problem",
+                "message": "platform is not supported; otlite runs on Linux and macOS",
+            }
         )
         problems += 1
     else:
-        checks.append({"check": "platform", "status": "ok", "message": "platform is Linux"})
+        checks.append({"check": "platform", "status": "ok", "message": f"platform is {platform}"})
 
     # 2. Distro detection (informational)
     distro = get_distro()
@@ -2835,7 +2817,9 @@ def doctor(
                 "check": "python_version",
                 "status": "problem",
                 "message": (
-                    f"python {major}.{minor} is not tested, this project supports 3.10-3.14"
+                    f"python {major}.{minor} is not tested, this project supports 3.10-3.14; "
+                    f"install a supported one with: {install_hint('python')}, "
+                    "then reinstall otlite with it (pipx install --python python3.12 otlite)"
                 ),
             }
         )
@@ -2845,14 +2829,7 @@ def doctor(
     if shutil.which("git"):
         checks.append({"check": "git", "status": "ok", "message": "git found"})
     else:
-        family = get_distro_family()
-        msg = "git not found"
-        if family == "debian":
-            msg += "; install with: sudo apt install git"
-        elif family == "arch":
-            msg += "; install with: sudo pacman -S git"
-        else:
-            msg += "; install git with your package manager"
+        msg = f"git not found; install it with: {install_hint('git')}"
         checks.append({"check": "git", "status": "problem", "message": msg})
         problems += 1
 
@@ -2870,17 +2847,24 @@ def doctor(
     if venv_ok:
         checks.append({"check": "venv", "status": "ok", "message": "venv module works"})
     else:
-        family = get_distro_family()
-        py_version = f"python{major}.{minor}"
-        msg = "venv module failed"
-        if family == "debian":
-            msg += f"; install with: sudo apt install {py_version}-venv"
-        elif family == "arch":
-            msg += "; should be included with python on Arch, check your install"
-        else:
-            msg += "; install python-venv with your package manager"
+        msg = f"venv module failed; fix it with: {install_hint('venv', f'{major}.{minor}')}"
         checks.append({"check": "venv", "status": "problem", "message": msg})
         problems += 1
+
+    # pipx installs and upgrades otlite but isn't needed to run it, so a missing one is a note.
+    if shutil.which("pipx"):
+        checks.append({"check": "pipx", "status": "ok", "message": "pipx found"})
+    else:
+        checks.append(
+            {
+                "check": "pipx",
+                "status": "note",
+                "message": (
+                    "pipx not found; otlite runs without it, but upgrades use it. "
+                    f"Install it with: {install_hint('pipx')}"
+                ),
+            }
+        )
 
     # 6. Home directory writable
     home_ok = False
@@ -2952,10 +2936,6 @@ def doctor(
     for check in checks:
         prefix = {"ok": "[ok]", "note": "[note]"}.get(check["status"], "[problem]")
         typer.echo(f"{prefix} {check['message']}")
-
-    # Early exit for non-Linux when not verbose (matches original behavior)
-    if sys.platform != "linux" and not verbose:
-        raise typer.Exit(code=1)
 
     if problems > 0:
         raise typer.Exit(code=1)

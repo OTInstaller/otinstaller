@@ -169,9 +169,18 @@ def test_get_distro_family_arch_from_id_like(monkeypatch, tmp_path):
     assert get_distro_family() == "arch"
 
 
-def test_get_distro_family_unknown(monkeypatch, tmp_path):
+def test_get_distro_family_fedora(monkeypatch, tmp_path):
     os_release = tmp_path / "os-release"
     os_release.write_text('ID="fedora"\n')
+    monkeypatch.setattr(
+        "otlite.config.Path", lambda x: os_release if x == "/etc/os-release" else Path(x)
+    )
+    assert get_distro_family() == "fedora"
+
+
+def test_get_distro_family_unknown(monkeypatch, tmp_path):
+    os_release = tmp_path / "os-release"
+    os_release.write_text('ID="nixos"\n')
     monkeypatch.setattr(
         "otlite.config.Path", lambda x: os_release if x == "/etc/os-release" else Path(x)
     )
