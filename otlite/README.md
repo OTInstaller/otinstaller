@@ -86,7 +86,7 @@ The same install-and-run pattern works for every tool in the catalogue. Each too
 
 ```bash
 pipx install otlite
-ot init
+otlite init
 otlite install sherlock
 otlite run sherlock -- u:johndoe
 ```
@@ -259,6 +259,7 @@ otlite run --all --live e:john@example.com
 | `otlite auto <target>` | Detect the target type and run matching tools |
 | `otlite playbook [name] [target]` / `--list` | Run or list playbooks |
 | `otlite example <tool>` | Show example output |
+| `otlite results` | List saved runs; filter with `--tool`, `--target`, `--case`, `--status`, `--since`, sort with `--sort` by time, tool, target, duration or size |
 | `otlite extract <target>` | Extract indicators from saved results |
 | `otlite diff <tool> <target>` | Compare the two most recent runs |
 | `otlite update` / `--all` / `--check-only` | Bring tools to the version this release of otlite pins and tested |
@@ -287,6 +288,13 @@ Tools that ask for input, such as GHunt's login, setup wizards and menus, run on
 ```
 results/sherlock/testuser/20260929-123456_sherlock_testuser_abc123.txt
 results/sherlock/testuser/20260929-123456_sherlock_testuser_abc123.meta.json
+```
+
+`otlite results` lists saved runs from their `.meta.json` files, newest first. Filter them with `--tool`, `--target`, `--case`, `--status complete|failed|interrupted` and `--since 7d` (or a date such as `2026-10-01`), and sort with `--sort time|tool|target|duration|size`, adding `--reverse` to flip the order. It shows 50 runs unless `--limit` says otherwise (`--limit 0` shows all), and `--json` prints every field for scripts.
+
+```
+otlite results --tool sherlock --since 7d
+otlite results --status failed --sort duration --json
 ```
 
 Results can contain personal data. Store and share them accordingly.

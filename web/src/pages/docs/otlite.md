@@ -52,7 +52,8 @@ otlite auto johndoe@example.com
 
 Typed inputs `u:` `e:` `p:` `d:` `url:` `q:` `geo:` `tg:` become each tool's own flags. Anything after `--` that is not
 a typed input is passed to the tool as is. Every run's output is saved under `results/<tool>/<target>/` with a
-`.meta.json` sidecar; `otlite extract` and `otlite diff` read them back. `otlite list`, `search`, `info`, `update`,
+`.meta.json` sidecar; `otlite results` lists them, filtered and sorted (`--tool`, `--since 7d`, `--sort duration`), and
+`otlite extract` and `otlite diff` read them back. `otlite list`, `search`, `info`, `update`,
 `check-updates`, `remove`, `playbook`, `keys check` and `crash-reports` are the rest; `--json` and `--yes` work on all
 of them. The full command reference is in the
 [otlite README](https://github.com/OTInstaller/otinstaller/blob/main/otlite/README.md) and, for agents,
