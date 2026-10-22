@@ -1,4 +1,4 @@
-# Tests otlite, the no-Docker edition in otlite/ (the registry CLI is in cli/).
+# Tests otlite, the no-Docker edition in otlite/ (the registry CLI is in cli/), on Linux and macOS.
 name: otlite
 
 on:
@@ -146,6 +146,65 @@ jobs:
           otlite doctor 2>note.err || true
           grep -q "copied .env" note.err
           test -f "$HOME/.otlite/.env"
+
+  test-macos:
+    # macOS is supported from 1.2: the unit tests, then a real install and run of one tool
+    runs-on: macos-14
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+    env:
+      DO_NOT_TRACK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: pip install -e ".[dev,pipeline]"
+      - name: Ruff check
+        run: ruff check .
+      - name: Run tests
+        run: pytest
+      - name: Install and run a tool
+        run: |
+          otlite init --yes
+          otlite doctor
+          otlite install sherlock -y
+          otlite run sherlock -- --version
+          otlite results --json
+
+  test-installer-debian:
+    # The one-line installer on a bare Debian: no pipx, so it installs pipx with apt, then otlite from this checkout
+    runs-on: ubuntu-24.04
+    container: debian:12
+    env:
+      DO_NOT_TRACK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python only
+        run: apt-get update && apt-get install -y --no-install-recommends python3 ca-certificates
+      - name: Run the installer
+        run: OTLITE_PACKAGE="$PWD" sh scripts/install.sh
+      - name: otlite works
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          otlite --version
+          otlite doctor || true
+
+  test-installer-macos:
+    runs-on: macos-14
+    env:
+      DO_NOT_TRACK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the installer
+        run: OTLITE_PACKAGE="$PWD" sh scripts/install.sh
+      - name: otlite works
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          otlite --version
+          otlite doctor
 
   test-browser-tool:
     # MailAccess downloads Chromium's headless shell into its own folder at install.

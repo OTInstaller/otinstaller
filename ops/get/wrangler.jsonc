@@ -5,6 +5,6 @@
   "main": "worker.js",
   "compatibility_date": "2026-10-12",
   "routes": [{ "pattern": "get.otinstaller.com", "custom_domain": true }],
-  "vars": { "RELEASE_REPO": "OTInstaller/ot" },
+  "vars": { "RELEASE_REPO": "OTInstaller/ot", "OTLITE_REPO": "OTInstaller/otinstaller" },
   "observability": { "enabled": true }
 }

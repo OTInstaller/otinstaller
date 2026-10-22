@@ -83,7 +83,9 @@ def test_target_args_use_each_tools_flag():
     assert _target_tool_args(tools["sherlock"], "username", "someuser") == ["someuser"]
     # a type the tool has no input for, or one with no typed input at all
     assert _target_tool_args(tools["theharvester"], "email", "a@example.com") is None
-    assert _target_tool_args(tools["bbot"], "ip", "8.8.8.8") is None
+    assert _target_tool_args(tools["sherlock"], "ip", "8.8.8.8") is None
+    # bbot takes an IP with the same flag as a domain
+    assert _target_tool_args(tools["bbot"], "ip", "8.8.8.8")[-2:] == ["-t", "8.8.8.8"]
 
 
 def test_unattended_runs_skip_prompting_and_setup_tools():
