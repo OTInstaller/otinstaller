@@ -1,0 +1,40 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: radar
+namespace: osintverse-community
+version: 0.1.1
+summary: "Identifies the cloud, email, CDN and security services a domain uses from its DNS records"
+readme: README.md
+license: MIT
+homepage: https://github.com/Elite-Security-Systems/radar
+categories: [domain-dns]
+tags: [dns, technology-detection, passive]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+    example: "example.com"
+outputs:
+  - type: dns_record
+  - type: organization
+    description: "Detected service or vendor"
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/radar@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["radar", "-domain", "{domain}", "-signatures", "/usr/share/radar/signatures.json", "-all-records"]
+  output_format: json
+  timeout_seconds: 120
+  typical_seconds: 15
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "It asks public resolvers (Google, Cloudflare, Quad9, OpenDNS) and the system resolver, not the domain's own servers directly."
+test:
+  input: { domain: "example.com" }

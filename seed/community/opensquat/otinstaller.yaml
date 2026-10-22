@@ -1,0 +1,44 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: opensquat
+namespace: osintverse-community
+version: 2.3.0
+summary: "Finds newly registered look-alike domains for a brand keyword in the daily free domain feed"
+readme: README.md
+license: GPL-3.0
+homepage: https://github.com/atenreiro/opensquat
+categories: [domain-dns, company]
+tags: [typosquatting, phishing, brand-protection, lookalike]
+inputs:
+  - name: keyword
+    type: string
+    required: true
+    description: "Brand or name to look for, such as paypal"
+    example: "otinstaller"
+  - name: confidence
+    type: integer
+    required: false
+    description: "Match strictness from 0 (very high, fewer results) to 4 (very low); default 1"
+outputs:
+  - type: domain
+    description: "Newly registered look-alike domain"
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/opensquat@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["sh", "-c", "printf '%s\n' \"$1\" > /tmp/keywords.txt && shift && exec opensquat -k /tmp/keywords.txt -o /tmp/opensquat-results.txt \"$@\"", "opensquat", "{keyword}", "-c", "{confidence}"]
+  output_format: text
+  timeout_seconds: 900
+  typical_seconds: 90
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "Downloads the public newly-registered-domain feed from opensquat.com and compares it locally; it doesn't contact the matched domains."
+test:
+  input: { keyword: "otinstaller" }

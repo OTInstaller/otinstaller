@@ -1,0 +1,53 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: xurlfind3r
+namespace: osintverse-community
+version: 1.3.0
+summary: "Finds known URLs for a domain from passive sources such as the Wayback Machine, Common Crawl and OTX"
+readme: README.md
+license: MIT
+homepage: https://github.com/hueristiq/xurlfind3r
+categories: [domain-dns, web-archive]
+tags: [urls, passive, wayback, recon]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+    example: "example.com"
+outputs:
+  - type: url
+secrets:
+  - name: XURLFIND3R_KEYS_GITHUB
+    required: false
+    description: "GitHub token for the GitHub code search source"
+    url: https://github.com/settings/tokens
+    pricing: free
+  - name: XURLFIND3R_KEYS_URLSCAN
+    required: false
+    description: "urlscan.io API key"
+    url: https://urlscan.io/user/profile/
+    pricing: free_tier
+  - name: XURLFIND3R_KEYS_VIRUSTOTAL
+    required: false
+    description: "VirusTotal API key"
+    url: https://www.virustotal.com/gui/my-apikey
+    pricing: free_tier
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/xurlfind3r@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["xurlfind3r", "-d", "{domain}", "--jsonl", "-s", "-m"]
+  output_format: jsonl
+  timeout_seconds: 900
+  typical_seconds: 90
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+test:
+  input: { domain: "otinstaller.com" }

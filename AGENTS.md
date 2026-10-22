@@ -64,7 +64,7 @@ web/         Website (Astro 7 SSR on Cloudflare, Preact islands, strict CSP)
 ops/         scanner/ (scan.py, backup.py, health.py, tests, Dockerfile), workflows/ (scan.yml, health.yml) copied
              into registry-ops, get/ (worker.js, wrangler.jsonc: the get.otinstaller.com Worker)
 otlite/      otlite, the no-Docker edition (Python; formerly otinstaller; has its own AGENTS.md)
-seed/        Launch seed: 11 first-party tools, 38 community wrappers, 10 guides, outreach texts
+seed/        Launch seed: 11 first-party tools, 104 community wrappers, 10 guides, outreach texts
 examples/    dns-lookup (scripts/e2e.sh), cosign and tldextract (the local/test seed in api/scripts/seed-lib.mjs
              and scripts/e2e-real.sh)
 scripts/     e2e.sh, e2e-real.sh, e2e-backups.sh, install/ (install.sh, install.ps1, make-test-release.sh),
@@ -682,12 +682,14 @@ table, publish order (namespace → tools → guides), what was not converted an
   Dockerfile running as uid 10001, `otinstaller.yaml` with a zero-digest placeholder the release workflow fills in,
   `README.md`, MIT `LICENSE`, and `.github/workflows/otinstaller-release.yml` (identical to
   `spec/templates/github-docker.yml`).
-- `community/<tool>/` (38): wrappers of third-party tools. Docker wrappers pin the upstream version in a Dockerfile and
+- `community/<tool>/` (104): wrappers of third-party tools. Docker wrappers pin the upstream version in a Dockerfile and
   build amd64+arm64; pipx wrappers are just a manifest pinning the wheel by `wheel_sha256` plus a README crediting
   upstream. The upstream license must be in the API's `REDISTRIBUTABLE` list (`api/src/imports.ts`), which includes the
   AGPL; GHunt (needs a Google login) and blackbird (no license) are outreach only. 11 wrappers were converted from the
   `otlite/` catalog by `scripts/pm-catalog-to-wrappers.py` (`--dry-run`, `--offline`; it never overwrites a folder);
-  git-pinned ones use versions like `0.0.0-git.<commit>`.
+  git-pinned ones use versions like `0.0.0-git.<commit>`. 66 more (October 2026) cover every open-source OSINT tool
+  over 100 stars that could be wrapped; `seed/candidates.md` lists every candidate with why it was wrapped or dropped.
+  None of those 66 has been built or run yet.
 - `guides/<guide>/` (10): `otinstaller.yaml` (`kind: guide`, CC-BY-4.0), `docs/index.md` + numbered pages, README,
   LICENSE.md. Guides have no release workflow: release them with `ot release X.Y.Z` (or a plain `git tag vX.Y.Z && git
   push`), never through GitHub Actions.

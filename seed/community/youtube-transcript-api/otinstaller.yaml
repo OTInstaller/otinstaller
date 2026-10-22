@@ -1,0 +1,46 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: youtube-transcript-api
+namespace: osintverse-community
+version: 1.2.4
+summary: "Downloads the transcript or subtitles of a YouTube video, including auto-generated ones"
+readme: README.md
+license: MIT
+homepage: https://github.com/jdepoix/youtube-transcript-api
+categories: [social-media, documents-metadata]
+tags: [youtube, transcript, subtitles, video]
+inputs:
+  - name: video_id
+    type: string
+    required: true
+    description: "The YouTube video ID (the v= part of the URL)"
+    example: "dQw4w9WgXcQ"
+  - name: language
+    type: string
+    required: false
+    default: "en"
+    description: "Language code to fetch, such as en or de (default en)"
+outputs:
+  - type: document
+runtime:
+  kind: pipx
+  package: youtube-transcript-api
+  package_version: "1.2.4"
+  index: pypi
+  python: "<3.15,>=3.8"
+  entrypoint: youtube_transcript_api
+  wheel_sha256: "03878759356da5caf5edac77431780b91448fb3d8c21d4496015bdc8a7bc43ff"
+  command: ["youtube_transcript_api", "{video_id}", "--format", "json", "--languages", "{language}"]
+  output_format: json
+  timeout_seconds: 300
+  typical_seconds: 10
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+test:
+  input: { video_id: "dQw4w9WgXcQ" }

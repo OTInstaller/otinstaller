@@ -1,0 +1,46 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: thescrapper
+namespace: osintverse-community
+version: 0.0.0-git.de4b51d
+summary: "Scrapes a website for email addresses, phone numbers and social media links"
+readme: README.md
+license: GPL-3.0
+homepage: https://github.com/champmq/TheScrapper
+categories: [email, phone, social-media]
+tags: [scraper, contacts, website]
+inputs:
+  - name: url
+    type: url
+    required: true
+    description: "Website to scrape"
+    example: "https://example.com"
+  - name: crawl
+    type: integer
+    required: false
+    description: "Also crawl up to this many internal links found on the page"
+outputs:
+  - type: email
+  - type: phone
+  - type: url
+    description: "Social media profile links"
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/thescrapper@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["python", "/opt/tool/TheScrapper.py", "--url", "{url}", "--banner", "--crawl", "{crawl}"]
+  output_format: text
+  timeout_seconds: 600
+  typical_seconds: 20
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: true
+  notifies_target: false
+  notes: "It fetches the website's pages, so the site's logs see your IP address. Results are contact details published on the site."
+test:
+  input: { url: "https://example.com" }

@@ -1,0 +1,45 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: ail-typo-squatting
+namespace: osintverse-community
+version: 2.7.6
+summary: "Generates typo-squatting variants of a domain name with 20+ permutation algorithms such as homoglyphs and wrong TLDs"
+readme: README.md
+license: BSD-2-Clause
+homepage: https://github.com/typosquatter/ail-typo-squatting
+categories: [domain-dns]
+tags: [typosquatting, phishing, permutations, brand-protection]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+    example: "example.com"
+  - name: limit
+    type: integer
+    required: false
+    description: "Maximum variants per algorithm"
+outputs:
+  - type: domain
+    description: "Candidate look-alike domain"
+runtime:
+  kind: pipx
+  package: ail-typo-squatting
+  package_version: "2.7.6"
+  index: pypi
+  python: "<4.0,>=3.8"
+  entrypoint: ail-typo-squatting
+  wheel_sha256: "b0c0b67bdf3758303670ac8be6deb9331429fe1259eaf882fe0ef5f6bef29d51"
+  command: ["ail-typo-squatting", "-dn", "{domain}", "-a", "-o", "-", "-l", "{limit}"]
+  output_format: text
+  timeout_seconds: 600
+  typical_seconds: 15
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+test:
+  input: { domain: "example.com", limit: 20 }

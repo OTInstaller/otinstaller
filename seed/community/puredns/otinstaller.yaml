@@ -1,0 +1,42 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: puredns
+namespace: osintverse-community
+version: 2.1.1
+summary: "Brute-forces a domain's subdomains over DNS with massdns and filters out wildcard and poisoned answers"
+readme: README.md
+license: GPL-3.0
+homepage: https://github.com/d3mondev/puredns
+categories: [domain-dns]
+tags: [subdomains, bruteforce, dns, massdns, wildcard]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+    example: "example.com"
+  - name: rate_limit
+    type: integer
+    required: false
+    description: "Queries per second to the public resolvers (unthrottled when not set)"
+outputs:
+  - type: subdomain
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/puredns@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["puredns", "bruteforce", "/opt/puredns/subdomains-top5000.txt", "{domain}", "-r", "/opt/puredns/resolvers.txt", "--rate-limit", "{rate_limit}", "-q"]
+  output_format: text
+  timeout_seconds: 1800
+  typical_seconds: 60
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "It sends thousands of DNS queries for names under the domain through public resolvers, so the domain's name servers see the burst; they see the resolvers, not your IP."
+test:
+  input: { domain: "example.com", rate_limit: 500 }

@@ -1,0 +1,50 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: photon
+namespace: osintverse-community
+version: 0.0.0-git.c8d2566
+summary: "Crawls a website and extracts its URLs, files, scripts, endpoints and intel such as emails and social accounts"
+readme: README.md
+license: GPL-3.0
+homepage: https://github.com/s0md3v/Photon
+categories: [domain-dns, web-archive]
+tags: [crawler, urls, emails, endpoints]
+inputs:
+  - name: url
+    type: url
+    required: true
+    example: "https://example.com"
+  - name: dataset
+    type: enum
+    required: false
+    default: "internal"
+    values: ["internal", "external", "files", "intel", "scripts", "endpoints", "fuzzable", "robots"]
+    description: "Which result set to print (default internal URLs)"
+  - name: level
+    type: integer
+    required: false
+    description: "Levels to crawl (default 2)"
+outputs:
+  - type: url
+  - type: email
+  - type: account
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/photon@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["python", "/opt/photon/photon.py", "-u", "{url}", "-o", "/tmp/photon", "-l", "{level}", "--stdout", "{dataset}"]
+  output_format: text
+  timeout_seconds: 1800
+  typical_seconds: 120
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: true
+  notifies_target: false
+  notes: "It crawls the target site directly, so the web server's logs see your IP address. The intel set can contain email addresses and social profiles found on the site."
+test:
+  input: { url: "https://example.com", level: 1 }

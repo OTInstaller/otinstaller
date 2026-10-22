@@ -1,0 +1,51 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: greynoise
+namespace: osintverse-community
+version: 3.1.0
+summary: "Looks up an IP address in GreyNoise to see whether it is internet background noise or a known benign service"
+readme: README.md
+license: MIT
+homepage: https://github.com/GreyNoise-Intelligence/pygreynoise
+categories: [ip-network]
+tags: [ip, threat-intel, scanners, reputation]
+inputs:
+  - name: ip
+    type: ip
+    required: true
+    example: "1.1.1.1"
+outputs:
+  - type: ip
+  - type: organization
+    description: "Known owner of a benign service"
+  - type: other
+    description: "Noise and RIOT classification"
+secrets:
+  - name: GREYNOISE_API_KEY
+    required: true
+    description: "Your GreyNoise API key (a free Community key works)"
+    url: https://viz.greynoise.io/account/api-key
+    pricing: free_tier
+runtime:
+  kind: pipx
+  package: greynoise
+  package_version: "3.1.0"
+  index: pypi
+  python: ">=3.8"
+  entrypoint: greynoise
+  wheel_sha256: "2165b223f01c06d699ffc0b5e2ac53c0fa93e0eec459961f73feb0de94947572"
+  command: ["greynoise", "ip", "--offering", "community", "--format", "json", "{ip}"]
+  output_format: json
+  timeout_seconds: 300
+  typical_seconds: 5
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: true
+  collects_personal_data: false
+  notifies_target: false
+test:
+  expect_exit_code: 255
+  input: { ip: "1.1.1.1" }

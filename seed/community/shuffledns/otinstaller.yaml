@@ -1,0 +1,38 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: shuffledns
+namespace: osintverse-community
+version: 1.2.1
+summary: "Brute-forces a domain's subdomains with massdns and a bundled 5,000-word list, filtering wildcard answers"
+readme: README.md
+license: GPL-3.0
+homepage: https://github.com/projectdiscovery/shuffledns
+categories: [domain-dns]
+tags: [subdomains, bruteforce, massdns, active, recon]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+    example: "example.com"
+outputs:
+  - type: subdomain
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/shuffledns@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["shuffledns", "-d", "{domain}", "-mode", "bruteforce", "-w", "/opt/shuffledns/wordlist.txt", "-r", "/opt/shuffledns/resolvers.txt", "-t", "200", "-directory", "/tmp", "-silent", "-j", "-duc", "-nc"]
+  output_format: jsonl
+  timeout_seconds: 1800
+  typical_seconds: 120
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "Sends about 5,000 DNS lookups for guessed names through public resolvers, which reach the target's name servers. Only run it against domains you may test."
+test:
+  input: { domain: "otinstaller.com" }

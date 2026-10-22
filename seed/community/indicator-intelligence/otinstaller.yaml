@@ -1,0 +1,39 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: indicator-intelligence
+namespace: osintverse-community
+version: 1.1.1
+summary: "Crawls a website's static files and lists the related domains it links to, with their IPv4 addresses"
+readme: README.md
+license: GPL-3.0
+homepage: https://github.com/OsmanKandemir/indicator-intelligence
+categories: [domain-dns, ip-network]
+tags: [threat-intel, related-domains, crawler]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+    example: "example.com"
+outputs:
+  - type: domain
+  - type: ip
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/indicator-intelligence@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["python", "/opt/tool/indicator/indicator.py", "--domains", "{domain}"]
+  output_format: text
+  timeout_seconds: 900
+  typical_seconds: 60
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "It fetches the target's pages and the pages they link to, so those web servers' logs see your IP address."
+test:
+  input: { domain: "example.com" }

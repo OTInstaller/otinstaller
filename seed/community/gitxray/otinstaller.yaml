@@ -1,0 +1,57 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: gitxray
+namespace: osintverse-community
+version: 1.0.20
+summary: "Inspects a GitHub repository and its contributors for exposed keys, shared accounts, fake stars and altered history"
+readme: README.md
+license: AGPL-3.0
+homepage: https://github.com/kulkansecurity/gitxray
+categories: [username, documents-metadata]
+tags: [github, contributors, forensics, repository]
+inputs:
+  - name: repository
+    type: string
+    required: true
+    description: "owner/repo or https://github.com/owner/repo"
+    example: "kulkansecurity/gitxray"
+outputs:
+  - type: account
+  - type: email
+  - type: username
+  - type: other
+    description: "Repository and contributor findings"
+secrets:
+  - name: GH_ACCESS_TOKEN
+    required: false
+    description: "A read-only GitHub token for public repositories; without it GitHub's unauthenticated rate limit makes large repositories take hours"
+    url: https://github.com/settings/personal-access-tokens/new
+    pricing: free
+  - name: VT_API_KEY
+    required: false
+    description: "VirusTotal API key, used to check hosts found by code search"
+    url: https://www.virustotal.com/gui/my-apikey
+    pricing: free_tier
+runtime:
+  kind: pipx
+  package: gitxray
+  package_version: "1.0.20"
+  index: pypi
+  python: ">=3.8"
+  entrypoint: gitxray
+  wheel_sha256: "8a652cb950395be5b50ba431dae215f61ae8126242ba6eca705a8e9b07673837"
+  command: ["gitxray", "-r", "{repository}", "-outformat", "text", "--shush"]
+  output_format: text
+  timeout_seconds: 3600
+  typical_seconds: 300
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+  notifies_target: false
+  notes: "Results include contributors' public emails, key names and account details from GitHub's public API."
+test:
+  input: { repository: "OTInstaller/feedback" }

@@ -1,0 +1,48 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: carbon14
+namespace: osintverse-community
+version: 1.0.0
+summary: "Estimates when a web page was written from the Last-Modified dates of the images it links"
+readme: README.md
+license: GPL-3.0
+homepage: https://github.com/Lazza/Carbon14
+categories: [documents-metadata, images-geo]
+tags: [dating, web-page, images, timestamps]
+inputs:
+  - name: url
+    type: url
+    required: true
+    example: "https://example.com"
+  - name: author
+    type: string
+    required: false
+    description: "Author name to include in the report"
+outputs:
+  - type: url
+    description: "Image with its Last-Modified date"
+  - type: other
+    description: "Page title and HTTP headers"
+runtime:
+  kind: pipx
+  package: carbon14
+  package_version: "1.0.0"
+  index: pypi
+  python: ">=3.9"
+  entrypoint: carbon14
+  wheel_sha256: "e38d25d3aeb5a53e073e75a5cc2d26fe75422d90a5ab26705c4e1dab5604f286"
+  command: ["carbon14", "--author", "{author}", "{url}"]
+  output_format: text
+  timeout_seconds: 600
+  typical_seconds: 20
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "Fetches the page and every image on it; the site's logs will show your IP."
+test:
+  input: { url: "https://example.com" }

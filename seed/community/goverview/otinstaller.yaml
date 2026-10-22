@@ -1,0 +1,41 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: goverview
+namespace: osintverse-community
+version: 1.0.1
+summary: "Probes a web page and reports its status, title, content length, redirect, content checksum and favicon hash"
+readme: README.md
+license: MIT
+homepage: https://github.com/j3ssie/goverview
+categories: [domain-dns]
+tags: [http, probe, favicon, recon]
+inputs:
+  - name: url
+    type: url
+    required: true
+    description: "The URL to probe"
+    example: "https://example.com"
+outputs:
+  - type: url
+  - type: other
+    description: "Status, title, checksum and favicon hash"
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/goverview@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["goverview", "probe", "--no-output", "--json", "-i", "{url}"]
+  output_format: jsonl
+  timeout_seconds: 300
+  typical_seconds: 10
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "It requests the page and its favicon from the site itself, so the web server's logs see your IP address."
+test:
+  input: { url: "https://example.com" }
