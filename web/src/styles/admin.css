@@ -27,7 +27,7 @@
 /* ---------- Tabs bar ---------- */
 .admin-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .admin-tabs button { display: inline-flex; align-items: center; gap: 8px; }
-.admin-tabs button[aria-selected="true"] { color: var(--text); background: var(--bg-inverse); }
+.admin-tabs button[aria-selected="true"] { color: var(--bg); background: var(--bg-inverse); }
 .tab-count {
   display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 0;
   background: var(--accent-soft); color: var(--accent); font-size: 0.72rem; font-weight: 700; font-variant-numeric: tabular-nums;
