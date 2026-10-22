@@ -19,6 +19,7 @@ Contents
    - h. Takedown, removal, yank and deprecate
    - i. Anonymous reads: edge cache and site SSR
    - j. `ot self-update` and the install scripts
+   - k. Agents: `ot mcp`, unattended runs and the remote MCP server
 
 ## 1. System overview
 
@@ -441,8 +442,9 @@ Step by step:
      (`<engine> build --pull -t ot-local/<ns>-<name>:<version>`) or `installPipxNative` (ot's own `PIPX_HOME`,
      `PIPX_BIN_DIR`).
 4. `state.Load` / `(*State).Save` (`cli/internal/state/state.go`; data dir `OT_HOME` → `%APPDATA%\ot` → `~/.ot`).
-5. Install ping: `api.(*Client).InstallPing` → `POST /v1/installs` (a per-day counter in `install_counts`; 204 even
-   when nothing matched) unless `Config.TelemetryEnabled()` is false (`OT_NO_TELEMETRY` set, or `telemetry: false`
+5. Install ping: `api.(*Client).InstallPing` (anonymous, through `anon()`) → `POST /v1/installs` `{tool, version,
+   client}` (counted once per address, version and day; per-day counters in `install_counts` and `install_clients`;
+   204 even when nothing matched) unless `Config.TelemetryEnabled()` is false (`OT_NO_TELEMETRY` set, or `telemetry: false`
    in `config.json`). Local manifests never ping and skip signature checks.
 6. Run: `cli/run_cmd.go` parses its own args; `cli/run.go:(*App).ensureInstalled` refuses a removed installed
    version (`removedList(ctx, time.Hour)` from `GET /v1/removed`, cached in `<ot home>/cache/removed.json`;
@@ -488,8 +490,8 @@ Step by step:
          POST /v1/auth/device/start {provider}
             github/gitlab: provider device flow -> {device_code, user_code, verification_uri, ...}
             osintverse:    device.ts:startOsintverseDevice (code BCDF-GHJK, 10 min, 5 s interval)
-         poll POST /v1/auth/device/token {provider, device_code, token_name}
-            pending | slow_down (+5 s) | ok -> signIn(..., null) -> mintApiToken -> "ot_..." token
+         poll POST /v1/auth/device/token {provider, device_code, token_name, scopes?}
+            pending | slow_down (+5 s) | ok -> signIn(..., null) -> mintApiToken(scopes) -> "ot_..." token (scoped = 1)
          keys.Set("OTINSTALLER_TOKEN", token)  (keychain service osintverse-ot)
 
  Every request: routes/auth.ts:authenticate
@@ -618,4 +620,43 @@ and daily for the warning (`cli/internal/cli/trust.go:removedList`).
         -> ChecksumFor(archive) -> sha256 of archive -> extract
         any mismatch -> exit 4 "update refused: ..."
      selfupdate.Replace(exe): temp file next to exe; on Windows exe -> exe.old first
+```
+
+### k. Agents: `ot mcp`, unattended runs and the remote MCP server
+
+The design is [docs/agent-friendly-plan.md](../agent-friendly-plan.md); the rules live in `cli/internal/agent/`.
+
+```
+ MCP client (Claude, Cursor, Codex, VS Code, Gemini CLI)
+   | stdio
+   v
+ ot mcp (cli/internal/cli/mcp_cmd.go: AgentMode = true, agent.LoadPolicy)
+   read-only tool (search_tools, get_run, suggest_pivots, ...) -> same code as the CLI command -> structured result
+   run_tool / run_all / run_playbook / install_tool / uninstall_tool:
+     agent.Session.DecideRun(manifest, inputs)
+       policy off, tool denied, rate limit hit       -> refuse (agent_disabled, tool_not_allowed, rate_limited)
+       class <= auto_approve (default: passive)       -> allow ("policy")
+       approved earlier in this session (TTL)         -> allow ("session")
+       else ask (mcp_server.go:ask):
+         client on protocol 2026-07-28  -> input request in the result; the client calls again with the answer
+         client supports elicitation    -> form with the tool's ethics, egress and notifies_target
+         neither (or the form failed)   -> error consent_required + summary + consent_token
+                                           (HMAC over tool, artifact and arguments; single use; 10 min; this process)
+     install: RequireSignature (signer recorded and cosign present); no local manifests, yanked, failed or broken
+     run: the same runner and sandbox as `ot run`; output saved under <ot home>/results (or --results-dir)
+     agent.Record -> <ot home>/agent-audit.jsonl (rotated at 10 MiB)
+```
+
+Unattended CLI runs take the same decision without asking anyone (`cli/consent.go:cliConsent`): when stdin isn't a
+terminal (or `OT_NONINTERACTIVE=1`), `run`, `run --all`, `playbook` and `auto` refuse what the policy refuses (exit 4)
+and stop on anything above passive with exit 2 `consent_required` unless `--yes` or `OT_CONSENT=off`; every such run
+is audited with consent `policy`, `flag` or `off`.
+
+The remote server is separate and runs nothing:
+
+```
+ MCP client --POST JSON-RPC--> api.otinstaller.com/mcp
+   index.ts fetch: path /mcp -> remoteMcp -> mcp.ts:mcpEndpoint (initialize, tools/list, tools/call)
+     tool -> get(path) -> edgeCached anonymous GET of /v1/tools, /v1/tools/:ns/:name, /v1/types, /v1/pivots,
+             /v1/guides, guide pages (no caller headers) -> JSON result with the consent class ot mcp would give
 ```

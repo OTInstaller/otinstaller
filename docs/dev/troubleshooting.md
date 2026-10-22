@@ -75,8 +75,8 @@ Requeue: there is no admin requeue endpoint. Options, in order of preference:
    redelivery has the same `x-github-delivery`, and `onTag` answers "duplicate delivery". It does help if the first
    delivery failed before the insert.
 
-Publishers see the outcome on the commit status and in the dashboard (`GET /v1/me/publish-jobs`, last 50; note this
-query joins `installations`, so GitLab jobs are missing there). Staff see failed jobs from the last 7 days in
+Publishers see the outcome on the commit status (its link opens `/dashboard/publish/<jobId>`) and in the dashboard
+(`GET /v1/me/publish-jobs`, last 50, GitHub and GitLab jobs). Staff see failed jobs from the last 7 days in
 `GET /v1/admin/beta-metrics` (`failed_publishes_7d`), the admin console's Beta tab.
 
 ### Scans that never call back
@@ -336,3 +336,21 @@ Data directory: C:\Users\<you>\AppData\Roaming\ot
   latest release lacks `install.sh`/`install.ps1` (the release workflow writes them to `dist/install/`). The Worker
   caches the script 5 minutes. The script warns "only the checksum is checked" when the key placeholder was not
   filled in or no OpenSSL 3 is available (macOS LibreSSL).
+- `get.otinstaller.com/otlite` serves `otlite/scripts/install.sh` from `main` on GitHub, so a broken installer is
+  fixed by merging the fix; the 5-minute cache still applies.
+
+### Agents and unattended runs
+
+- `consent_required` (exit 2) from `ot run`, `--all`, `playbook` or `auto` in a script or CI: the tool isn't passive
+  and there is no terminal. Pass `--yes` once the person has agreed, or set `OT_CONSENT=off`; both are written to
+  `<ot home>/agent-audit.jsonl`.
+- `consent_required` from `ot mcp`: the client can't show a consent form. The error carries a summary and a
+  `consent_token`, valid once, for that exact call, for 10 minutes and only in the same server process; a restarted
+  server (or a changed argument) needs a new answer.
+- An agent run refused outright: check `ot mcp policy` (`enabled`, `allow_tools`/`deny_tools`, the run limits) and
+  `ot mcp audit --since 24h`. A broken `agent-policy.json` is an error, never ignored; `ot mcp policy reset` writes the
+  defaults.
+- `ot mcp` won't install an image another `ot` would: under `ot mcp`, a Docker image needs a recorded signer and
+  cosign on the PATH.
+- 403 `insufficient_scope` from the API: the token lacks the scope in `required_scope`. Make one with it
+  (`ot token create <name> --scope <scope>`, or `ot login --scope ...`); `staff` tokens come only from the website.
