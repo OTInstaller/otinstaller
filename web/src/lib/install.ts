@@ -5,7 +5,7 @@ export const INSTALLS = [
 ] as const;
 
 // The no-Docker edition: a Python CLI for Linux that installs tools into per-tool virtualenvs.
-export const NO_DOCKER = { command: "pipx install otlite", label: "No Docker? otlite on Linux", docs: "/docs/otlite" } as const;
+export const NO_DOCKER = { command: "pipx install otlite", label: "No Docker? otlite on Linux", docs: "/otlite" } as const;
 
 export const RELEASES_URL = "https://github.com/OTInstaller/ot/releases";
 export const INSTALL_SCRIPT_URL = "https://github.com/OTInstaller/otinstaller/tree/main/scripts/install";

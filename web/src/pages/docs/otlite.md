@@ -7,7 +7,7 @@ description: Install and run OSINT tools on Linux without a container runtime. o
 `otlite` is the lightweight edition of OTInstaller for Linux machines without Docker. It installs tools from pip or
 git, each into its own virtualenv under `~/.otlite`, runs them by name with the same typed inputs as `ot`, and saves
 every run under `results/` with a `.meta.json` sidecar. It needs Python 3.10 or newer, git and `python3-venv`, and
-nothing else. It was called `otinstaller` until version 1.0; see [upgrading from otinstaller](#upgrading-from-otinstaller).
+nothing else. The [otlite page](/otlite) is the short version. It was called `otinstaller` until version 1.0; see [upgrading from otinstaller](#upgrading-from-otinstaller).
 
 ## Which edition?
 

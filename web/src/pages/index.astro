@@ -5,9 +5,11 @@ import Base from "../layouts/Base.astro";
 import PasteBox from "../components/PasteBox.astro";
 import Terminal from "../components/Terminal.astro";
 import InstallBlock from "../components/InstallBlock.astro";
+import CopyCommand from "../components/CopyCommand.astro";
 import ToolRow from "../components/ToolRow.astro";
 import { api, type SearchResult } from "../lib/api";
 import { START_INPUTS, inputLabel } from "../lib/format";
+import { NO_DOCKER } from "../lib/install";
 import { cacheFor } from "../lib/page";
 import { graph, ORGANIZATION } from "../lib/seo";
 
@@ -71,9 +73,20 @@ cacheFor(Astro, 300);
       <div>
         <p class="eyebrow">Install ot</p>
         <h2 id="install-h">Three commands to a result.</h2>
-        <p class="small muted">You need Docker Desktop or Podman running; tools run in containers (no Docker? <a href="/docs/otlite">otlite</a> runs them in virtualenvs on Linux). Then <code>ot doctor</code> confirms your machine is ready. Archives, deb and rpm packages are on <a href="https://github.com/OTInstaller/ot/releases" rel="noopener">GitHub Releases</a>; <code>ot self-update</code> keeps it current.</p>
+        <p class="small muted">You need Docker Desktop or Podman running; tools run in containers. Then <code>ot doctor</code> confirms your machine is ready. Archives, deb and rpm packages are on <a href="https://github.com/OTInstaller/ot/releases" rel="noopener">GitHub Releases</a>; <code>ot self-update</code> keeps it current.</p>
       </div>
       <InstallBlock />
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="otlite-h">
+    <div class="wrap install-grid">
+      <div>
+        <p class="eyebrow">No Docker?</p>
+        <h2 id="otlite-h">otlite: one CLI for popular open-source tools.</h2>
+        <p class="small muted">On Linux without Docker, otlite installs, runs, updates and removes 47 curated tools, each in its own virtualenv, with all API keys in one place and every result saved and sortable. <a href="/otlite">About otlite →</a></p>
+      </div>
+      <CopyCommand command={NO_DOCKER.command} label="Install otlite" />
     </div>
   </section>
 
