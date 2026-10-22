@@ -140,7 +140,10 @@ describe("namespaces, pivots, types, installs", () => {
     const { body } = await get("/namespaces/osintverse");
     expect(body.verified).toBe(true);
     expect(body.tools.map((t: any) => t.name).sort()).toEqual(["email-header-parser", "phone-parse"]);
-    expect((await get("/namespaces/newbie")).status).toBe(404);
+    // A namespace waiting for review has a page, but no packages and nothing its owner wrote (profiles.test.ts).
+    const pending = await get("/namespaces/newbie");
+    expect(pending.status).toBe(200);
+    expect(pending.body).toMatchObject({ status: "pending_review", tools: [] });
   });
 
   it("suggests pivots for entity types that other tools accept, through the pivot map", async () => {

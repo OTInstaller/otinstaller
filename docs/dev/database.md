@@ -26,6 +26,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0010 | `0010_osintverse_login.sql` | **Rebuilds `accounts`** (`accounts_new`, copy, drop, rename) so `provider` allows `'osintverse'`; new table `device_logins` and index `device_logins_expires`. |
 | 0011 | `0011_backups.sql` | `tools` + `git_backups` (default 1), `legal_hold` (default 0), `legal_hold_reason`; new tables `backup_runs`, `backups`, `restore_drills`; indexes `backup_runs_status`, `backups_tool`, `backups_version`, `backups_delete`. |
 | 0012 | `0012_feedback.sql` | New table `feedback` and index `feedback_queue`. (Its header says it was numbered after 0011, which was on its own branch at the time.) |
+| 0014 | `0014_publisher_profiles.sql` | New tables `namespace_profiles` (host values, owner overrides, About, pins, sync state) and `namespace_hosts` (secondary GitHub or GitLab accounts shown on a profile); indexes `namespace_profiles_synced` and `audit_log_target` (for the profile's activity feed). |
 
 ---
 
@@ -100,6 +101,28 @@ Purpose: who may act for a namespace.
 - PK `(namespace_id, user_id)` (composite)
 - `namespace_id` TEXT NN → `namespaces(id)` ON DELETE CASCADE · `user_id` TEXT NN → `users(id)` ON DELETE CASCADE
 - `role` TEXT NN CHECK `('owner', 'publisher')`
+
+#### `namespace_profiles` (0014)
+Purpose: what a publisher's profile shows, synced from GitHub or GitLab, plus the owner's edits. One row per namespace,
+created by the first sync or edit.
+- PK `namespace_id` TEXT → `namespaces(id)` ON DELETE CASCADE
+- From the host (rewritten by every successful sync): `host_login`, `host_url`, `host_name`, `host_bio`, `host_location`,
+  `host_website`, `host_company`, `host_avatar_url` TEXT; `host_socials_json` TEXT NN default `'[]'` (`[{provider, url}]`);
+  `host_members_json` TEXT NN default `'[]'` (public org or group members, `[{login, avatar_url, url}]`, at most 24);
+  `host_created_at` INTEGER. Never an email address.
+- `custom_json` TEXT NN default `'{}'`: overrides by field (`display_name`, `bio`, `location`, `website`, `company`,
+  `avatar_url`, `socials`); a field that is absent uses the host value, `""` shows nothing
+- `about_md`, `about_html` TEXT (the About section and its sanitized rendering) · `pins_json` TEXT NN default `'[]'` (at
+  most 6 package names) · `hide_details` INTEGER NN default 0
+- `sync_status` TEXT NN default `'never'` CHECK `('never', 'ok', 'error')` · `sync_error` TEXT · `synced_at` INTEGER ·
+  `updated_at` INTEGER NN
+
+#### `namespace_hosts` (0014)
+Purpose: GitHub or GitLab accounts an owner linked to a profile besides the namespace's own; the namespace keeps its one
+`(provider, provider_owner_id)` key.
+- PK `(namespace_id, provider)` · `namespace_id` TEXT NN → `namespaces(id)` ON DELETE CASCADE
+- `provider` TEXT NN CHECK `('github', 'gitlab')` · `provider_owner_id`, `login` TEXT NN · `kind` TEXT NN CHECK
+  `('user', 'org', 'group')` · `linked_by` TEXT → `users(id)` ON DELETE SET NULL · `created_at` INTEGER NN
 
 #### `installations`
 Purpose: a GitHub App installation and which repositories it covers.

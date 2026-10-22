@@ -34,6 +34,8 @@ async function gitlabNamespace(env: Env, ns: gitlab.GitlabProject["namespace"]):
     ).bind(id, String(ns.id), found.name, ns.kind === "group" ? "group" : "user", ns.full_path, Date.now()),
     audit(env.DB, null, "gitlab", "namespace.create", "namespace", id, { path: ns.full_path }),
   ]);
+  // The publisher page starts from the user's or group's public GitLab profile.
+  await env.PUBLISH_QUEUE.send({ profileNamespaceId: id });
   return { id, name: found.name, status: "pending_review" };
 }
 
