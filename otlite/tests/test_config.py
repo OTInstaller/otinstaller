@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from otlite.config import (
     ensure_dir,
     get_accept_path,
@@ -15,6 +17,12 @@ from otlite.config import (
     get_tools_dir,
     tool_dir,
 )
+
+
+@pytest.fixture(autouse=True)
+def _linux(monkeypatch):
+    """Distro detection is for Linux; macOS is its own family (test_platform.py)."""
+    monkeypatch.setattr("otlite.config.platform_name", lambda: "Linux")
 
 
 def test_get_home_default(monkeypatch):
