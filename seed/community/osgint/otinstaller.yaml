@@ -1,0 +1,41 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: osgint
+namespace: osintverse-community
+version: 0.0.0-git.866a08b
+summary: "Looks up a GitHub user's public profile, SSH and GPG keys, and email addresses from their commits"
+readme: README.md
+license: MIT
+homepage: https://github.com/hippiiee/osgint
+categories: [username, email, social-media]
+tags: [github, username, email, gpg]
+inputs:
+  - name: username
+    type: username
+    required: true
+    example: "octocat"
+outputs:
+  - type: account
+  - type: email
+  - type: person
+  - type: url
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/osgint@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["python", "/opt/tool/osgint.py", "-u", "{username}", "--json"]
+  output_format: text
+  timeout_seconds: 600
+  typical_seconds: 30
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+  notifies_target: false
+  notes: "It uses GitHub's unauthenticated API (60 requests an hour per IP) and scrapes commit pages to recover the email addresses a user committed with."
+test:
+  input: { username: "octocat" }

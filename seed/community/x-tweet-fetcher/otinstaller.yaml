@@ -1,0 +1,43 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: x-tweet-fetcher
+namespace: osintverse-community
+version: 3.1.0
+summary: "Fetches a public X/Twitter post with its text, stats, media and quotes, without a login or API key"
+readme: README.md
+license: MIT
+homepage: https://github.com/ythx-101/x-tweet-fetcher
+categories: [social-media]
+tags: [twitter, x, tweets, fxtwitter]
+inputs:
+  - name: url
+    type: url
+    required: true
+    description: "A tweet URL on x.com or twitter.com"
+    example: "https://x.com/jack/status/20"
+outputs:
+  - type: account
+  - type: url
+    description: "Media and linked URLs"
+  - type: other
+    description: "Tweet text and engagement stats"
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/x-tweet-fetcher@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["xtf", "--url", "{url}", "--lang", "en"]
+  output_format: json
+  timeout_seconds: 120
+  typical_seconds: 5
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+  notifies_target: false
+  notes: "Single tweets are fetched through the public FxTwitter API, not from X directly."
+test:
+  input: { url: "https://x.com/jack/status/20" }

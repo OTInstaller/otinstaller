@@ -1,0 +1,40 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: linx
+namespace: osintverse-community
+version: 0.2.0
+summary: "Finds links, endpoints and API paths hidden inside a JavaScript file"
+readme: README.md
+license: MIT
+homepage: https://github.com/riza/linx
+categories: [domain-dns, utilities]
+tags: [javascript, endpoints, links, recon]
+inputs:
+  - name: url
+    type: url
+    required: true
+    description: "URL of a JavaScript file (must contain .js)"
+    example: "https://code.jquery.com/jquery-3.7.1.min.js"
+outputs:
+  - type: url
+    description: "Link or path found in the script"
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/linx@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["linx", "-output", "/opt/linx/stdout.json", "{url}"]
+  output_format: json
+  timeout_seconds: 300
+  typical_seconds: 10
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "It downloads the script from the host, so that server's logs see your IP address."
+test:
+  input: { url: "https://code.jquery.com/jquery-3.7.1.min.js" }

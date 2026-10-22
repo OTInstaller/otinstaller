@@ -1,0 +1,42 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: investigo
+namespace: osintverse-community
+version: 0.0.0-git.3ed07ed
+summary: "Checks which of hundreds of websites have an account with a given username"
+readme: README.md
+license: MIT
+homepage: https://github.com/tdh8316/Investigo
+categories: [username, social-media]
+tags: [username, accounts, sherlock-database]
+inputs:
+  - name: username
+    type: username
+    required: true
+    example: "github"
+  - name: sites
+    type: string
+    required: false
+    description: "Only check these sites, comma-separated, such as GitHub,GitLab"
+outputs:
+  - type: account
+  - type: url
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/investigo@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["investigo", "--no-color", "--no-output", "--results", "/tmp/investigo", "--database", "/opt/investigo/data.json", "--timeout", "20", "--sites", "{sites}", "{username}"]
+  output_format: text
+  timeout_seconds: 900
+  typical_seconds: 60
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+  notifies_target: false
+test:
+  input: { username: "github", sites: "GitHub" }

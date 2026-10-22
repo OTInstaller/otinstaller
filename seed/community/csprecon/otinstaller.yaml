@@ -1,0 +1,43 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: csprecon
+namespace: osintverse-community
+version: 0.4.7
+summary: "Finds related domains listed in a website's Content-Security-Policy header"
+readme: README.md
+license: MIT
+homepage: https://github.com/edoardottt/csprecon
+categories: [domain-dns]
+tags: [csp, domains, recon, web]
+inputs:
+  - name: url
+    type: url
+    required: true
+    example: "https://example.com"
+  - name: filter
+    type: domain
+    required: false
+    description: "Only show results under this domain"
+outputs:
+  - type: domain
+  - type: url
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/csprecon@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["csprecon", "-u", "{url}", "-d", "{filter}", "-s", "-j"]
+  output_format: jsonl
+  timeout_seconds: 300
+  typical_seconds: 10
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "It requests the URL from the target's web server, so the server's logs see your IP address."
+test:
+  input: { url: "https://example.com" }

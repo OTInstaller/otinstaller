@@ -1,0 +1,48 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: xcrawl3r
+namespace: osintverse-community
+version: 1.2.0
+summary: "Crawls a website from a start URL, parsing links, scripts, sitemaps and robots.txt, and lists the URLs it finds"
+readme: README.md
+license: MIT
+homepage: https://github.com/hueristiq/xcrawl3r
+categories: [domain-dns]
+tags: [crawler, urls, spider, recon]
+inputs:
+  - name: url
+    type: url
+    required: true
+    description: "The URL to start crawling from"
+    example: "https://example.com"
+  - name: domain
+    type: domain
+    required: false
+    description: "Only keep URLs on this domain"
+    example: "example.com"
+  - name: depth
+    type: integer
+    required: false
+    description: "Maximum crawl depth (default 1, 0 means unlimited)"
+outputs:
+  - type: url
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/xcrawl3r@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["xcrawl3r", "-u", "{url}", "-d", "{domain}", "--depth", "{depth}", "--jsonl", "--silent", "-m"]
+  output_format: jsonl
+  timeout_seconds: 1800
+  typical_seconds: 60
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "It crawls the site itself, so the web server's logs see your IP address and the crawler's user agent. Keep the depth low on sites you don't own."
+test:
+  input: { url: "https://example.com" }

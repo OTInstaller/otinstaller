@@ -9,7 +9,7 @@ content checks → review → published). Never seed production from `api/script
 | Folder | What | Count |
 | --- | --- | --- |
 | [`first-party/`](first-party) | Tools written for the registry, on the result envelope, namespace `osintverse-community` | 11 |
-| [`community/`](community) | Wrapper repositories for third-party tools, namespace `osintverse-community` (27 for launch, 26 published and `instaloader-profile` dropped; 11 converted from `otinstaller`) | 38 |
+| [`community/`](community) | Wrapper repositories for third-party tools, namespace `osintverse-community` (27 for launch, 26 published and `instaloader-profile` dropped; 11 converted from `otinstaller`; 66 open-source tools with more than 100 stars added in October 2026) | 104 |
 | [`guides/`](guides) | Launch guides, namespace `osintverse-community` | 10 |
 | [`outreach/`](outreach) | Issue and pull request texts for maintainer outreach | 2 |
 
@@ -114,6 +114,135 @@ Not converted (the script prints the same reasons):
 | ProtonMail's API rejects its requests, so it never returns a result | neutrosint |
 | GitHub answers its requests with an HTML page, so it never returns a result | zen |
 
+## Open-source tools with more than 100 stars (October 2026)
+
+66 more wrappers aim at breadth: every open-source OSINT tool on GitHub or GitLab with more than 100 stars that
+could be wrapped. They follow the same rules as the launch wrappers (outreach first, then publish). 20 are pipx
+wrappers pinned to a PyPI wheel by SHA-256 and 46 are Docker wrappers that build a pinned upstream release
+(a tag, a module version or, with no usable release, a full commit; those get the version `0.0.0-git.<commit>`).
+
+How the list was built, on 22 Oct 2026:
+
+1. Candidates: GitHub searches for the topics `osint`, `recon`, `reconnaissance`, `osint-tool(s)`,
+   `information-gathering`, `subdomain-enumeration`, `osint-python`, `osint-framework`, `username-checker`,
+   `email-osint`, `dns-enumeration`, `threat-intelligence`, `whois`, `subdomain-finder`, `asset-discovery`,
+   `attack-surface`, `socmint`, `geoint`, `certificate-transparency`, `web-archive`, `bug-bounty` and others, plus
+   keyword searches for "osint" and "reconnaissance", plus every GitHub repository linked from jivoi/awesome-osint,
+   cipher387/osint_stuff_tool_collection, Astrosp/Awesome-OSINT-For-Everything, sinwindie/OSINT and
+   tracelabs/awesome-osint. GitLab's topic and name searches found one project over 100 stars (kennbroorg/iKy, a web
+   app). About 1,850 repositories had more than 100 stars.
+2. Automatic filters: already in the seed (31), forks (2), archived (119), no license GitHub can identify (530), a
+   license outside the API's `REDISTRIBUTABLE` list (none left after the others), or abandoned, meaning no commit
+   since October 2024 (379).
+3. Screening by name, description and topics took out what isn't a single-target command-line OSINT tool: lists and
+   guides, datasets, web apps and dashboards, platforms, libraries, browser extensions, AI-agent and MCP projects,
+   and general security tools.
+4. The remaining 135 were read one by one (README, packaging, argument parser, latest release, PyPI) and either
+   wrapped or dropped with a reason.
+
+Every repository and its outcome is in [`candidates.md`](candidates.md).
+
+| Package | Version | License | Upstream | Runtime | Inputs | Categories |
+| --- | --- | --- | --- | --- | --- | --- |
+| `osintverse-community/ail-typo-squatting` | 2.7.6 | BSD-2-Clause | typosquatter/ail-typo-squatting | pipx (PyPI wheel) | `domain` (domain), `limit` (integer)? | domain-dns |
+| `osintverse-community/alterx` | 0.1.0 | MIT | projectdiscovery/alterx | Docker, built in wrapper | `domain` (domain), `limit` (integer)? | domain-dns |
+| `osintverse-community/anubis` | 1.3.1 | MIT | jonluca/anubis | pipx (PyPI wheel) | `domain` (domain) | domain-dns |
+| `osintverse-community/asn` | 0.83.0 | MIT | nitefood/asn | Docker, built in wrapper | `target` (string) | ip-network, company |
+| `osintverse-community/asnmap` | 1.1.1 | MIT | projectdiscovery/asnmap | Docker, built in wrapper | `org` (company) | ip-network, company |
+| `osintverse-community/carbon14` | 1.0.0 | GPL-3.0 | Lazza/Carbon14 | pipx (PyPI wheel) | `url` (url), `author` (string)? | documents-metadata, images-geo |
+| `osintverse-community/cloud-enum` | 0.9.0 | MIT | initstring/cloud_enum | Docker, built in wrapper | `keyword` (string) | company, domain-dns |
+| `osintverse-community/crt-sh` | 3.0.4 | MIT | az7rb/crt.sh | Docker, built in wrapper | `domain` (domain) | domain-dns |
+| `osintverse-community/csprecon` | 0.4.7 | MIT | edoardottt/csprecon | Docker, built in wrapper | `url` (url), `filter` (domain)? | domain-dns |
+| `osintverse-community/cut-cdn` | 0.0.0-git.2105f01 | MIT | ImAyrix/cut-cdn | Docker, built in wrapper | `target` (ip) | ip-network, domain-dns |
+| `osintverse-community/ddgr` | 2.2.0 | GPL-3.0 | jarun/ddgr | pipx (PyPI wheel) | `query` (string), `site` (domain)?, `num` (integer)? | utilities |
+| `osintverse-community/dnsanity` | 1.4.2 | MIT | nil0x42/dnsanity | Docker, built in wrapper | `servers` (ip) | ip-network, domain-dns |
+| `osintverse-community/dnsx` | 1.3.1 | MIT | projectdiscovery/dnsx | Docker, built in wrapper | `domain` (domain) | domain-dns |
+| `osintverse-community/favicorn` | 0.1.1 | Apache-2.0 | sharsil/favicorn | pipx (PyPI wheel) | `domain` (domain) | domain-dns, ip-network |
+| `osintverse-community/favihunter` | 1.4.0 | MIT | eremit4/favihunter | pipx (PyPI wheel) | `url` (url) | domain-dns, ip-network |
+| `osintverse-community/favirecon` | 1.0.4 | MIT | edoardottt/favirecon | Docker, built in wrapper | `target` (url) | domain-dns, ip-network |
+| `osintverse-community/findcdn` | 0.0.0-git.7bbf50e | CC0-1.0 | cisagov/findcdn | Docker, built in wrapper | `domain` (domain) | domain-dns, ip-network |
+| `osintverse-community/findomain` | 10.0.1 | GPL-3.0 | Findomain/Findomain | Docker, built in wrapper | `domain` (domain) | domain-dns |
+| `osintverse-community/geointel` | 0.2.0 | MIT | atiilla/GeoIntel | pipx (PyPI wheel) | `image_url` (url), `context` (string)?, `guess` (string)? | images-geo |
+| `osintverse-community/getjs` | 2.0.0 | MIT | 003random/getJS | Docker, built in wrapper | `url` (url) | domain-dns |
+| `osintverse-community/gitcolombo` | 0.3.0 | MIT | soxoj/gitcolombo | Docker, built in wrapper | `url` (url) | email, people, username |
+| `osintverse-community/gitxray` | 1.0.20 | AGPL-3.0 | kulkansecurity/gitxray | pipx (PyPI wheel) | `repository` (string) | username, documents-metadata |
+| `osintverse-community/gogetcrawl` | 1.1.3 | MIT | karust/gogetcrawl | Docker, built in wrapper | `domain` (domain), `limit` (integer)? | web-archive, domain-dns |
+| `osintverse-community/goverview` | 1.0.1 | MIT | j3ssie/goverview | Docker, built in wrapper | `url` (url) | domain-dns |
+| `osintverse-community/gowitness` | 3.2.2 | GPL-3.0 | sensepost/gowitness | Docker, built in wrapper | `url` (url) | domain-dns, images-geo |
+| `osintverse-community/greynoise` | 3.1.0 | MIT | GreyNoise-Intelligence/pygreynoise | pipx (PyPI wheel) | `ip` (ip) | ip-network |
+| `osintverse-community/hakrawler` | 0.0.0-git.52a16fe | GPL-3.0 | hakluke/hakrawler | Docker, built in wrapper | `url` (url), `depth` (integer)? | domain-dns, web-archive |
+| `osintverse-community/htmldate` | 1.11.0 | Apache-2.0 | adbar/htmldate | pipx (PyPI wheel) | `url` (url) | documents-metadata, web-archive |
+| `osintverse-community/indicator-intelligence` | 1.1.1 | GPL-3.0 | OsmanKandemir/indicator-intelligence | Docker, built in wrapper | `domain` (domain) | domain-dns, ip-network |
+| `osintverse-community/investigo` | 0.0.0-git.3ed07ed | MIT | tdh8316/Investigo | Docker, built in wrapper | `username` (username), `sites` (string)? | username, social-media |
+| `osintverse-community/ioc-finder` | 9.4.1 | LGPL-3.0 | fhightower/ioc-finder | pipx (PyPI wheel) | `text` (string) | utilities, ip-network, domain-dns |
+| `osintverse-community/katana` | 1.8.0 | MIT | projectdiscovery/katana | Docker, built in wrapper | `url` (url), `depth` (integer)? | domain-dns, web-archive |
+| `osintverse-community/knockpy` | 9.0.0 | GPL-3.0 | guelfoweb/knockpy | pipx (PyPI wheel) | `domain` (domain) | domain-dns |
+| `osintverse-community/likexian-whois` | 1.15.7 | Apache-2.0 | likexian/whois | Docker, built in wrapper | `domain` (domain) | domain-dns, ip-network |
+| `osintverse-community/linx` | 0.2.0 | MIT | riza/linx | Docker, built in wrapper | `url` (url) | domain-dns, utilities |
+| `osintverse-community/marple` | 0.0.0-git.4c33136 | MIT | soxoj/marple | Docker, built in wrapper | `username` (username), `threshold` (integer)? | username, social-media |
+| `osintverse-community/metabigor` | 2.2.0 | MIT | j3ssie/metabigor | Docker, built in wrapper | `domain` (domain), `sources` (string)? | domain-dns, company |
+| `osintverse-community/nerva` | 1.77.0 | Apache-2.0 | praetorian-inc/nerva | Docker, built in wrapper | `target` (string) | ip-network |
+| `osintverse-community/numint` | 0.0.0-git.9186c35 | MIT | whoamitang/numint | Docker, built in wrapper | `phone` (phone), `country` (string)? | phone |
+| `osintverse-community/octosuite` | 5.1.0 | MIT | bellingcat/octosuite | Docker, built in wrapper | `username` (username) | username, social-media |
+| `osintverse-community/opensquat` | 2.3.0 | GPL-3.0 | atenreiro/opensquat | Docker, built in wrapper | `keyword` (string), `confidence` (integer)? | domain-dns, company |
+| `osintverse-community/osgint` | 0.0.0-git.866a08b | MIT | hippiiee/osgint | Docker, built in wrapper | `username` (username) | username, email, social-media |
+| `osintverse-community/photon` | 0.0.0-git.c8d2566 | GPL-3.0 | s0md3v/Photon | Docker, built in wrapper | `url` (url), `dataset` (enum)?, `level` (integer)? | domain-dns, web-archive |
+| `osintverse-community/puredns` | 2.1.1 | GPL-3.0 | d3mondev/puredns | Docker, built in wrapper | `domain` (domain), `rate_limit` (integer)? | domain-dns |
+| `osintverse-community/pyfunceble` | 4.3.1 | Apache-2.0 | funilrys/PyFunceble | pipx (PyPI wheel) | `domain` (domain) | domain-dns |
+| `osintverse-community/pywhat` | 5.1.0 | MIT | bee-san/pyWhat | pipx (PyPI wheel) | `text` (string) | utilities |
+| `osintverse-community/quien` | 0.12.0 | MIT | retlehs/quien | Docker, built in wrapper | `domain` (domain) | domain-dns, ip-network |
+| `osintverse-community/radar` | 0.1.1 | MIT | Elite-Security-Systems/radar | Docker, built in wrapper | `domain` (domain) | domain-dns |
+| `osintverse-community/robofinder` | 0.2.2 | MIT | Spix0r/robofinder | pipx (PyPI wheel) | `url` (url) | web-archive, domain-dns |
+| `osintverse-community/shuffledns` | 1.2.1 | GPL-3.0 | projectdiscovery/shuffledns | Docker, built in wrapper | `domain` (domain) | domain-dns |
+| `osintverse-community/social-analyzer` | 0.45.0 | AGPL-3.0 | qeeqbox/social-analyzer | pipx (PyPI wheel) | `username` (username), `websites` (string)?, `top` (integer)? | username, social-media |
+| `osintverse-community/subdominator` | 3.0.3 | MIT | RevoltSecurities/Subdominator | Docker, built in wrapper | `domain` (domain) | domain-dns |
+| `osintverse-community/thescrapper` | 0.0.0-git.de4b51d | GPL-3.0 | champmq/TheScrapper | Docker, built in wrapper | `url` (url), `crawl` (integer)? | email, phone, social-media |
+| `osintverse-community/uncover` | 1.2.1 | MIT | projectdiscovery/uncover | Docker, built in wrapper | `query` (string), `engine` (enum)?, `limit` (integer)? | ip-network, domain-dns |
+| `osintverse-community/urlfinder` | 0.0.3 | MIT | projectdiscovery/urlfinder | Docker, built in wrapper | `domain` (domain) | domain-dns, web-archive |
+| `osintverse-community/urx` | 0.11.0 | MIT | hahwul/urx | Docker, built in wrapper | `domain` (domain) | web-archive, domain-dns |
+| `osintverse-community/user-scanner` | 1.5.2 | MIT | kaifcodec/user-scanner | pipx (PyPI wheel) | `username` (username)?, `email` (email)? | username, email, social-media |
+| `osintverse-community/waybackpack` | 0.6.4 | MIT | jsvine/waybackpack | pipx (PyPI wheel) | `url` (url), `from_date` (string)?, `to_date` (string)? | web-archive |
+| `osintverse-community/waymore` | 8.9.0 | MIT | xnl-h4ck3r/waymore | pipx (PyPI wheel) | `domain` (domain), `from_date` (string)?, `to_date` (string)? | web-archive, domain-dns |
+| `osintverse-community/webpalm` | 2.0.20 | GPL-3.0 | XORbit01/webpalm | Docker, built in wrapper | `url` (url), `level` (integer)? | domain-dns, utilities |
+| `osintverse-community/whois` | 5.6.6 | GPL-2.0 | rfc1036/whois | Docker, built in wrapper | `query` (domain) | domain-dns, ip-network |
+| `osintverse-community/x-tweet-fetcher` | 3.1.0 | MIT | ythx-101/x-tweet-fetcher | Docker, built in wrapper | `url` (url) | social-media |
+| `osintverse-community/xcrawl3r` | 1.2.0 | MIT | hueristiq/xcrawl3r | Docker, built in wrapper | `url` (url), `domain` (domain)?, `depth` (integer)? | domain-dns |
+| `osintverse-community/xsubfind3r` | 1.1.2 | MIT | hueristiq/xsubfind3r | Docker, built in wrapper | `domain` (domain) | domain-dns |
+| `osintverse-community/xurlfind3r` | 1.3.0 | MIT | hueristiq/xurlfind3r | Docker, built in wrapper | `domain` (domain) | domain-dns, web-archive |
+| `osintverse-community/youtube-transcript-api` | 1.2.4 | MIT | jdepoix/youtube-transcript-api | pipx (PyPI wheel) | `video_id` (string), `language` (string)? | social-media, documents-metadata |
+
+Not checked: none of these images was built and no wrapper was run, at the owner's request. Flags, entry points and
+output formats were read from each tool's source at the pinned version, and every manifest passes
+`TestSeedManifests`. The release workflow's build and the registry's scan (smoke test with `test.input`) are the first
+real runs, so expect some to need a fix before they publish. Run `ot validate --smoke` after the first release.
+
+Dropped after reading the tool (the full list with each reason is in [`candidates.md`](candidates.md)):
+
+| Reason | Tools |
+| --- | --- |
+| Acceptable use: credential attacks, leaked credentials or breach data | chiasmod0n/chiasmodon, vflame6/leaker, ibnaleem/gosearch (searches leak databases and cracks hashes on every run), drego85/tosint (uses leaked Telegram bot tokens), N0rz3/Zehef (prints masked infostealer passwords), nodauf/GoMapEnum, nyxgeek/onedrive_user_enum, m8sec/CrossLinked, Jayy001/Search-That-Hash, mnismt/CompressedCrack, hmaverickadams/DeHashed-API-Tool |
+| Acceptable use: exploits, vulnerability testing or CAPTCHA bypass | xPloits3c/DorkEye, punk-security/dnsReaper (subdomain-takeover check), and scanners and fuzzers such as projectdiscovery/nuclei, ffuf/ffuf, OJ/gobuster, s0md3v/XSStrike |
+| Acceptable use: hunts exposed secrets | nsonaniya2010/SubDomainizer, eth0izzle/shhgit, tillson/git-hound |
+| Acceptable use: tracks one person | Kr0wZ/SnapIntel, 0xPrateek/Stardox (bulk-collects stargazers' emails), mxrch/GitFive, misiektoja/instagram_monitor, misiektoja/spotify_monitor, IvanGlinkin/CCTV, obitouka/InstagramPrivSniffer |
+| Needs a login, session or config file first | Datalux/Osintgram, megadose/toutatis, Te-k/harpoon, alexandreborges/malwoverview, JosephLai241/URS, pielco11/telescan, xadhrit/terra, eth0izzle/the-endorser, AzizKpln/Gokboru_Intel, pixelbubble/ProtOSINT, pielco11/fav-up |
+| Prompts for input or runs until stopped | lanmaster53/recon-ng, kpcyrd/sn0int, divinelabio/Argus, Alfredredbird/tookie-osint, spyboy-productions/CloakQuest3r, mishakorzik/UserFinder, 0xSaikat/findme, amitrajputfff/Profil3r, s-r-e-e-r-a-j/WebSift, spider863644/PhoneNumber-OSINT, Cyber-Dioxide/IP_Rover, snooppr/shotstars, SSLMate/certspotter, securisec/chepy |
+| Writes results only to files | shmilylty/OneForAll, anmolksachan/TheTimeMachine, claromes/waybacktweets, egbertbouman/youtube-comment-downloader, si9int/cc.py, bitdruid/python-wayback-machine-downloader, Owez/yark, skynet0x01/tugarecon |
+| Reads local files or a list, not one target | aydinnyunus/exifLooter, ianare/exif-py, vstinner/hachoir, franckferman/MetaDetective, keraattin/EmailAnalyzer, deckflow/deckprobe, blechschmidt/massdns, AlephNullSK/dnsgen, rotemreiss/uddup, utkusen/urlhunter |
+| Broken upstream or its services are gone | UndeadSec/SwaggerSpy, HowToFind-bot/YaSeeker, dhn/udon, tanaikech/goris, dievus/msdorkdump, xenova/chat-downloader, krishpranav/vesper |
+| Needs Tor, Selenium or an AI service, or isn't a CLI | apurvsinghgautam/robin, z0m31en7/Uscrapper, MikeMeliz/TorCrawl.py, Oldcircle/geo-sleuth, OSINT-TECHNOLOGIES/dpulse, LayeredStudio/whoiser, tasos-py/Search-Engines-Scraper, ninoseki/mihari, 0xsha/CloudBrute, ninoseki/miteru, wimpysworld/ia-get |
+
+Health risks for these, beyond the general ones below:
+
+| Package | Risk |
+| --- | --- |
+| `asnmap`, `geointel`, `greynoise` | Need a key; the test expects the exit code the source gives without one (1, 1 and 255), read from the code, not seen |
+| `youtube-transcript-api`, `ddgr`, `x-tweet-fetcher` | YouTube, DuckDuckGo and FxTwitter may block cloud IPs |
+| `gowitness` | Runs Chromium inside ot's sandbox (1 GB, 256 processes, read-only root); arm64 Chromium on Alpine not confirmed |
+| `photon`, `indicator-intelligence`, `dnsanity`, `nerva`, `urx` | Unusual base images: Python 3.10 (photon's regex breaks on 3.11+), Python 3.11, Go 1.27 and Rust 1.98 as upstream requires |
+| `pywhat`, `linx`, `goverview` | Old pinned dependencies (2021–2022) that may not build today |
+| `cut-cdn`, `favirecon`, `dnsanity` | Print nothing for their test input when nothing matches; that is a pass (exit 0) |
+| `shuffledns`, `puredns` | Bundle a 5,000-word list and eight public resolvers; brute-forcing contacts the target's name servers |
+
 ## How each part gets published
 
 Order matters: namespaces first, then tools, then guides (a guide's `related_tools` must already be published).
@@ -134,7 +263,7 @@ The step-by-step runbook with commands is in the session notes (`seeding.md`); i
 
 ## Checked so far
 
-- `ot validate` passes for all 48 manifests.
+- `ot validate` passes for all 48 launch manifests, and `TestSeedManifests` passes for all 125 in `seed/`.
 - Unit tests pass for all 11 first-party tools (`python -m unittest` in each folder). The network ones were also run
   against their live APIs with their test inputs.
 - These wrappers were run locally with their exact command and test input: sherlock, socialscan, checkdmarc,

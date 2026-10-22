@@ -1,0 +1,43 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: metabigor
+namespace: osintverse-community
+version: 2.2.0
+summary: "Finds other domains owned by the same organisation via certificate logs, reverse WHOIS and shared analytics IDs"
+readme: README.md
+license: MIT
+homepage: https://github.com/j3ssie/metabigor
+categories: [domain-dns, company]
+tags: [related-domains, reverse-whois, certificates, analytics, recon]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+    example: "example.com"
+  - name: sources
+    type: string
+    required: false
+    description: "Comma-separated sources: crt, whois, analytics, or all (default all)"
+outputs:
+  - type: domain
+    description: "Related domain, tagged with the source that found it"
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/metabigor@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["metabigor", "related", "-f", "json", "-q", "--no-color", "--sources", "{sources}", "{domain}"]
+  output_format: jsonl
+  timeout_seconds: 900
+  typical_seconds: 60
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "The analytics source fetches the domain's home page to read its tracking IDs; pass sources=crt,whois to avoid touching the target."
+test:
+  input: { domain: "otinstaller.com", sources: "crt" }

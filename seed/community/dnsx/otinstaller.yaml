@@ -1,0 +1,41 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: dnsx
+namespace: osintverse-community
+version: 1.3.1
+summary: "Resolves a domain's DNS records (A, AAAA, CNAME, NS, TXT, MX, SOA, CAA) through public resolvers"
+readme: README.md
+license: MIT
+homepage: https://github.com/projectdiscovery/dnsx
+categories: [domain-dns]
+tags: [dns, records, recon]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+    example: "example.com"
+outputs:
+  - type: dns_record
+  - type: ip
+  - type: domain
+    description: "Name servers, mail servers and CNAME targets"
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/dnsx@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["dnsx", "-l", "{domain}", "-a", "-aaaa", "-cname", "-ns", "-txt", "-mx", "-soa", "-caa", "-json", "-omit-raw", "-silent", "-duc"]
+  output_format: jsonl
+  timeout_seconds: 300
+  typical_seconds: 10
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "Queries go through public resolvers, so the domain's own name servers see the resolver, not you. AXFR is left off on purpose."
+test:
+  input: { domain: "otinstaller.com" }

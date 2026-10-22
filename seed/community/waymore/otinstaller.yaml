@@ -1,0 +1,51 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: waymore
+namespace: osintverse-community
+version: 8.9.0
+summary: "Collects a domain's known URLs from the Wayback Machine, Common Crawl, AlienVault OTX and other archives"
+readme: README.md
+license: MIT
+homepage: https://github.com/xnl-h4ck3r/waymore
+categories: [web-archive, domain-dns]
+tags: [urls, wayback-machine, common-crawl, recon]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+    description: "Domain without www."
+    example: "example.com"
+  - name: from_date
+    type: string
+    required: false
+    description: "Earliest capture date, yyyyMMddhhmmss or a prefix such as 2016"
+    example: "2020"
+  - name: to_date
+    type: string
+    required: false
+    description: "Latest capture date, yyyyMMddhhmmss or a prefix such as 201805"
+    example: "2024"
+outputs:
+  - type: url
+runtime:
+  kind: pipx
+  package: waymore
+  package_version: "8.9"
+  index: pypi
+  python: ">=3.9"
+  entrypoint: waymore
+  wheel_sha256: "e64e04b672af2a9b2bd6b27d19803ea78b4bb60af5b11e7211690f84061311cf"
+  command: ["waymore", "-i", "{domain}", "-mode", "U", "--stream", "-from", "{from_date}", "-to", "{to_date}"]
+  output_format: text
+  timeout_seconds: 1800
+  typical_seconds: 180
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+test:
+  input: { domain: "otinstaller.com" }

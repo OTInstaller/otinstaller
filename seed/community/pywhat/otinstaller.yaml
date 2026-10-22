@@ -1,0 +1,45 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: pywhat
+namespace: osintverse-community
+version: 5.1.0
+summary: "Identifies what a string is: email, IP, URL, crypto address, hash, phone number, API key and hundreds more"
+readme: README.md
+license: MIT
+homepage: https://github.com/bee-san/pyWhat
+categories: [utilities]
+tags: [identify, regex, indicators, classify]
+inputs:
+  - name: text
+    type: string
+    required: true
+    description: "Text to identify"
+    example: "example@example.com"
+outputs:
+  - type: email
+  - type: ip
+  - type: url
+  - type: crypto_address
+  - type: other
+runtime:
+  kind: pipx
+  package: pywhat
+  package_version: "5.1.0"
+  index: pypi
+  python: ">=3.6,<4.0"
+  entrypoint: pywhat
+  wheel_sha256: "4f790aa4497156d593c55b4ae4ab684c8bd4d5fe935d44d5a1781d4961ab6e12"
+  command: ["pywhat", "--only-text", "--json", "{text}"]
+  output_format: json
+  timeout_seconds: 120
+  typical_seconds: 3
+network:
+  egress: false
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+test:
+  input: { text: "example@example.com" }
