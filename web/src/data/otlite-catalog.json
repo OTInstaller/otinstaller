@@ -1,5 +1,5 @@
 {
-  "otlite": "1.2.0",
+  "otlite": "1.2.1",
   "tools": [
     {
       "name": "aliens-eye",
@@ -548,7 +548,11 @@
         "email",
         "domain"
       ],
-      "input_types": [],
+      "input_types": [
+        "d",
+        "e",
+        "u"
+      ],
       "api_keys": {
         "required": [],
         "optional": [
@@ -568,7 +572,7 @@
       },
       "dual_use": false,
       "interactive": false,
-      "example": "otlite run openosint -- --help"
+      "example": "otlite run openosint -- u:johndoe"
     },
     {
       "name": "osint-brazuca-regex",
@@ -641,14 +645,18 @@
         "username",
         "email"
       ],
-      "input_types": [],
+      "input_types": [
+        "d",
+        "e",
+        "u"
+      ],
       "api_keys": {
         "required": [],
         "optional": []
       },
       "dual_use": true,
       "interactive": false,
-      "example": "otlite run secator -- --help"
+      "example": "otlite run secator -- u:johndoe"
     },
     {
       "name": "sherlock",
