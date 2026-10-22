@@ -47,7 +47,7 @@ def platform_name() -> str | None:
 
 def get_distro_family() -> str:
     """Return the family: 'debian', 'arch', 'fedora', 'macos', or 'unknown'."""
-    if sys.platform == "darwin":
+    if platform_name() == "macOS":
         return "macos"
     distro = get_distro()
     if distro in ("ubuntu", "debian", "kali", "linuxmint", "pop", "elementary", "zorin"):
