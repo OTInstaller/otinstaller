@@ -9,7 +9,7 @@ content checks → review → published). Never seed production from `api/script
 | Folder | What | Count |
 | --- | --- | --- |
 | [`first-party/`](first-party) | Tools written for the registry, on the result envelope, namespace `osintverse-community` | 11 |
-| [`community/`](community) | Wrapper repositories for third-party tools, namespace `osintverse-community` (27 for launch, 26 published and `instaloader-profile` dropped; 11 converted from `otinstaller`; 66 open-source tools with more than 100 stars added in October 2026) | 104 |
+| [`community/`](community) | Wrapper repositories for third-party tools, namespace `osintverse-community` (27 for launch, 26 published and `instaloader-profile` dropped; 11 converted from `otinstaller`; 65 open-source tools with more than 100 stars added in October 2026) | 103 |
 | [`guides/`](guides) | Launch guides, namespace `osintverse-community` | 10 |
 | [`outreach/`](outreach) | Issue and pull request texts for maintainer outreach | 2 |
 
@@ -116,9 +116,9 @@ Not converted (the script prints the same reasons):
 
 ## Open-source tools with more than 100 stars (October 2026)
 
-66 more wrappers aim at breadth: every open-source OSINT tool on GitHub or GitLab with more than 100 stars that
-could be wrapped. They follow the same rules as the launch wrappers (outreach first, then publish). 20 are pipx
-wrappers pinned to a PyPI wheel by SHA-256 and 46 are Docker wrappers that build a pinned upstream release
+65 more wrappers aim at breadth: every open-source OSINT tool on GitHub or GitLab with more than 100 stars that
+could be wrapped. At the owner's request they were published straight away on 22 Oct 2026, without the outreach
+step. 19 are pipx wrappers pinned to a PyPI wheel by SHA-256 and 46 are Docker wrappers that build a pinned upstream release
 (a tag, a module version or, with no usable release, a full commit; those get the version `0.0.0-git.<commit>`).
 
 How the list was built, on 22 Oct 2026:
@@ -188,7 +188,6 @@ Every repository and its outcome is in [`candidates.md`](candidates.md).
 | `osintverse-community/osgint` | 0.0.0-git.866a08b | MIT | hippiiee/osgint | Docker, built in wrapper | `username` (username) | username, email, social-media |
 | `osintverse-community/photon` | 0.0.0-git.c8d2566 | GPL-3.0 | s0md3v/Photon | Docker, built in wrapper | `url` (url), `dataset` (enum)?, `level` (integer)? | domain-dns, web-archive |
 | `osintverse-community/puredns` | 2.1.1 | GPL-3.0 | d3mondev/puredns | Docker, built in wrapper | `domain` (domain), `rate_limit` (integer)? | domain-dns |
-| `osintverse-community/pyfunceble` | 4.3.1 | Apache-2.0 | funilrys/PyFunceble | pipx (PyPI wheel) | `domain` (domain) | domain-dns |
 | `osintverse-community/pywhat` | 5.1.0 | MIT | bee-san/pyWhat | pipx (PyPI wheel) | `text` (string) | utilities |
 | `osintverse-community/quien` | 0.12.0 | MIT | retlehs/quien | Docker, built in wrapper | `domain` (domain) | domain-dns, ip-network |
 | `osintverse-community/radar` | 0.1.1 | MIT | Elite-Security-Systems/radar | Docker, built in wrapper | `domain` (domain) | domain-dns |
@@ -211,10 +210,16 @@ Every repository and its outcome is in [`candidates.md`](candidates.md).
 | `osintverse-community/xurlfind3r` | 1.3.0 | MIT | hueristiq/xurlfind3r | Docker, built in wrapper | `domain` (domain) | domain-dns, web-archive |
 | `osintverse-community/youtube-transcript-api` | 1.2.4 | MIT | jdepoix/youtube-transcript-api | pipx (PyPI wheel) | `video_id` (string), `language` (string)? | social-media, documents-metadata |
 
-Not checked: none of these images was built and no wrapper was run, at the owner's request. Flags, entry points and
-output formats were read from each tool's source at the pinned version, and every manifest passes
-`TestSeedManifests`. The release workflow's build and the registry's scan (smoke test with `test.input`) are the first
-real runs, so expect some to need a fix before they publish. Run `ot validate --smoke` after the first release.
+None was built or run before release, at the owner's request: flags, entry points and output formats were read from
+each tool's source at the pinned version. The release workflows and the registry's scans (signature, vulnerabilities,
+smoke test with `test.input`) were the first real runs. All 65 passed and are published. Four needed a fix first:
+
+| Package | Problem | Fix |
+| --- | --- | --- |
+| `findomain` | The vendored OpenSSL build needs `make` and `perl` | Installed in the build stage |
+| `puredns` | massdns v1.1.0 no longer compiles with current GCC | massdns built from a later commit, the one `shuffledns` uses |
+| `octosuite` | 5.1.0 imports `requests` without declaring it, and calls update-checker's pre-1.0 API | `requests` installed and `update-checker` pinned to 0.18.0 |
+| `pyfunceble` | Crashes at start-up: its user-agent dataset no longer lists its default browser, and no flag avoids it | Dropped; its repository is archived |
 
 Dropped after reading the tool (the full list with each reason is in [`candidates.md`](candidates.md)):
 
@@ -228,7 +233,7 @@ Dropped after reading the tool (the full list with each reason is in [`candidate
 | Prompts for input or runs until stopped | lanmaster53/recon-ng, kpcyrd/sn0int, divinelabio/Argus, Alfredredbird/tookie-osint, spyboy-productions/CloakQuest3r, mishakorzik/UserFinder, 0xSaikat/findme, amitrajputfff/Profil3r, s-r-e-e-r-a-j/WebSift, spider863644/PhoneNumber-OSINT, Cyber-Dioxide/IP_Rover, snooppr/shotstars, SSLMate/certspotter, securisec/chepy |
 | Writes results only to files | shmilylty/OneForAll, anmolksachan/TheTimeMachine, claromes/waybacktweets, egbertbouman/youtube-comment-downloader, si9int/cc.py, bitdruid/python-wayback-machine-downloader, Owez/yark, skynet0x01/tugarecon |
 | Reads local files or a list, not one target | aydinnyunus/exifLooter, ianare/exif-py, vstinner/hachoir, franckferman/MetaDetective, keraattin/EmailAnalyzer, deckflow/deckprobe, blechschmidt/massdns, AlephNullSK/dnsgen, rotemreiss/uddup, utkusen/urlhunter |
-| Broken upstream or its services are gone | UndeadSec/SwaggerSpy, HowToFind-bot/YaSeeker, dhn/udon, tanaikech/goris, dievus/msdorkdump, xenova/chat-downloader, krishpranav/vesper |
+| Broken upstream or its services are gone | funilrys/PyFunceble (crashes at start-up, found by the scan), UndeadSec/SwaggerSpy, HowToFind-bot/YaSeeker, dhn/udon, tanaikech/goris, dievus/msdorkdump, xenova/chat-downloader, krishpranav/vesper |
 | Needs Tor, Selenium or an AI service, or isn't a CLI | apurvsinghgautam/robin, z0m31en7/Uscrapper, MikeMeliz/TorCrawl.py, Oldcircle/geo-sleuth, OSINT-TECHNOLOGIES/dpulse, LayeredStudio/whoiser, tasos-py/Search-Engines-Scraper, ninoseki/mihari, 0xsha/CloudBrute, ninoseki/miteru, wimpysworld/ia-get |
 
 Health risks for these, beyond the general ones below:
@@ -263,7 +268,7 @@ The step-by-step runbook with commands is in the session notes (`seeding.md`); i
 
 ## Checked so far
 
-- `ot validate` passes for all 48 launch manifests, and `TestSeedManifests` passes for all 125 in `seed/`.
+- `ot validate` passes for all 48 launch manifests, and `TestSeedManifests` passes for all 124 in `seed/`.
 - Unit tests pass for all 11 first-party tools (`python -m unittest` in each folder). The network ones were also run
   against their live APIs with their test inputs.
 - These wrappers were run locally with their exact command and test input: sherlock, socialscan, checkdmarc,

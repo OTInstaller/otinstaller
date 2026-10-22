@@ -4,7 +4,7 @@ Every open-source repository with more than 100 stars that the October 2026 sear
 keyword searches plus the repositories linked from five well-known OSINT lists; see [README.md](README.md)), with
 what happened to it. Star counts are from 22 Oct 2026.
 
-66 wrapped, 31 already in the seed, 1757 dropped.
+65 wrapped, 31 already in the seed, 1758 dropped.
 
 ## Judged one by one
 
@@ -51,7 +51,6 @@ what happened to it. Star counts are from 22 Oct 2026.
 | [champmq/TheScrapper](https://github.com/champmq/TheScrapper) | 376 | GPL-3.0 | wrapped | `osintverse-community/thescrapper` |
 | [praetorian-inc/nerva](https://github.com/praetorian-inc/nerva) | 370 | Apache-2.0 | wrapped | `osintverse-community/nerva` |
 | [ImAyrix/cut-cdn](https://github.com/ImAyrix/cut-cdn) | 352 | MIT | wrapped | `osintverse-community/cut-cdn` |
-| [funilrys/PyFunceble](https://github.com/funilrys/PyFunceble) | 349 | Apache-2.0 | wrapped | `osintverse-community/pyfunceble` |
 | [soxoj/marple](https://github.com/soxoj/marple) | 333 | MIT | wrapped | `osintverse-community/marple` |
 | [tdh8316/Investigo](https://github.com/tdh8316/Investigo) | 285 | MIT | wrapped | `osintverse-community/investigo` |
 | [Spix0r/robofinder](https://github.com/Spix0r/robofinder) | 272 | MIT | wrapped | `osintverse-community/robofinder` |
@@ -521,6 +520,7 @@ what happened to it. Star counts are from 22 Oct 2026.
 | [PatrikFehrenbach/h1-brain](https://github.com/PatrikFehrenbach/h1-brain) | 356 | MIT | dropped | not a single-target command-line OSINT tool (screened by name, description and topics: lists, web apps, platforms, libraries, extensions, offensive security and AI-agent projects) |
 | [Kr0wZ/SnapIntel](https://github.com/Kr0wZ/SnapIntel) | 356 | AGPL-3.0 | dropped | profiles one person's Snapchat activity (story and bitmoji downloads, upload-time heatmap); also no release, and its console script runs the tool twice |
 | [MrHacker-X/DevilX](https://github.com/MrHacker-X/DevilX) | 351 | BSL-1.0 | dropped | not a single-target command-line OSINT tool (screened by name, description and topics: lists, web apps, platforms, libraries, extensions, offensive security and AI-agent projects) |
+| [funilrys/PyFunceble](https://github.com/funilrys/PyFunceble) | 349 | Apache-2.0 | dropped | broken upstream: crashes at start-up because its user-agent dataset no longer lists its default browser (wrapper published, then archived) |
 | [mwakidenis/WebCheck-OSINT](https://github.com/mwakidenis/WebCheck-OSINT) | 345 | MIT | dropped | not a single-target command-line OSINT tool (screened by name, description and topics: lists, web apps, platforms, libraries, extensions, offensive security and AI-agent projects) |
 | [opentrap/opentrap](https://github.com/opentrap/opentrap) | 344 | AGPL-3.0 | dropped | not a single-target command-line OSINT tool (screened by name, description and topics: lists, web apps, platforms, libraries, extensions, offensive security and AI-agent projects) |
 | [prodaft/cradle](https://github.com/prodaft/cradle) | 341 | MIT | dropped | not a single-target command-line OSINT tool (screened by name, description and topics: lists, web apps, platforms, libraries, extensions, offensive security and AI-agent projects) |
