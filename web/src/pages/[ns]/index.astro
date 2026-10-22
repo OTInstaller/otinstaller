@@ -1,79 +1,300 @@
 ---
-// A publisher's page: who they are, what they publish about, and their tools and guides as rows.
+// A publisher's profile: who they are (from GitHub or GitLab, with the owner's edits), numbers, an About section,
+// pinned packages, and tabs for packages, guides and public activity. Server-rendered from public data only.
 import Base from "../../layouts/Base.astro";
+import ToolCard from "../../components/ToolCard.astro";
 import ToolRow from "../../components/ToolRow.astro";
-import { apiOrNull, type Namespace } from "../../lib/api";
-import { formatDate, inputLabel } from "../../lib/format";
+import { api, apiOrNull, type ActivityEvent, type Namespace, type NamespaceStats, type Profile } from "../../lib/api";
+import { ago, formatCount, formatDate, inputLabel } from "../../lib/format";
 import { cacheFor } from "../../lib/page";
+import { aboutHtml, activityParts, hostName, kindLabel, profilePage, profileQuery, shortUrl, socialLabel, sortPackages, type KindFilter, type ProfileSort, type ProfileTab } from "../../lib/profile";
 import { breadcrumbs, graph, itemList } from "../../lib/seo";
 
 const ns = Astro.params.ns!;
 const n = await apiOrNull<Namespace>(`/namespaces/${encodeURIComponent(ns)}`);
 if (!n) return Astro.rewrite("/404");
+
+const pending = n.status === "pending_review";
+const { tab, sort, kind } = profileQuery(Astro.url);
 const want = Astro.url.searchParams.get("input");
-const tools = n.tools.filter((t) => t.kind === "tool").filter((t) => !want || t.inputs.includes(want));
-const guides = n.tools.filter((t) => t.kind === "guide");
-const profile = n.provider === "github" ? `https://github.com/${n.name}` : n.provider === "gitlab" ? `https://gitlab.com/${n.name}` : null;
 const name = n.display_name ?? n.name;
-const about = [...new Set(n.tools.filter((t) => t.kind === "tool").flatMap((t) => t.inputs))].sort();
-const allTools = n.tools.filter((t) => t.kind === "tool");
-const counts = [allTools.length ? `${allTools.length} OSINT ${allTools.length === 1 ? "tool" : "tools"}` : "", guides.length ? `${guides.length} ${guides.length === 1 ? "guide" : "guides"}` : ""].filter(Boolean).join(" and ");
+// An API from before profiles answers without these; the page still works with what it has.
+const p: Profile = n.profile ?? {
+  bio: null, location: null, website: null, company: null, socials: [], members: [], about_html: null, pins: [], details_hidden: false, host_since: null,
+  hosts: n.provider === "github" || n.provider === "gitlab" ? [{ provider: n.provider, login: n.name, url: `https://${n.provider}.com/${n.name}`, primary: true }] : [],
+};
+const toolsOnly = n.tools.filter((t) => t.kind === "tool");
+const guidesOnly = n.tools.filter((t) => t.kind === "guide");
+const s: NamespaceStats = n.stats ?? {
+  packages: n.tools.length, tools: toolsOnly.length, guides: guidesOnly.length, installs_30d: n.tools.reduce((a, t) => a + t.installs_30d, 0), installs_total: 0,
+  stars: n.tools.reduce((a, t) => a + t.stars, 0), healthy: toolsOnly.filter((t) => t.health === "healthy").length, broken: toolsOnly.filter((t) => t.health === "broken").length,
+  last_published_at: null,
+};
+
+const activity: ActivityEvent[] | null = tab === "activity" && !pending
+  ? await api<{ events: ActivityEvent[] }>(`/namespaces/${encodeURIComponent(n.name)}/activity`).then((r) => r.events, () => null)
+  : [];
+
+const byName = new Map(n.tools.map((t) => [t.name, t]));
+const pinned = p.pins.map((x) => byName.get(x)).filter((t): t is (typeof n.tools)[number] => !!t);
+const inputs = [...new Set(toolsOnly.flatMap((t) => t.inputs))].sort();
+const packages = sortPackages(n.tools.filter((t) => (kind === "all" || t.kind === kind) && (!want || (t.kind === "tool" && t.inputs.includes(want)))), sort);
+const guides = sortPackages(guidesOnly, sort);
+
+/** A link to this profile with some of the view's parameters changed (defaults are left out of the URL). */
+const href = (over: { tab?: ProfileTab; sort?: ProfileSort; kind?: KindFilter; input?: string | null }) => {
+  const next = { tab, sort, kind, input: want, ...over };
+  const q = new URLSearchParams();
+  if (next.tab !== "packages") q.set("tab", next.tab);
+  if (next.sort !== "installs" && next.tab !== "activity") q.set("sort", next.sort);
+  if (next.kind !== "all" && next.tab === "packages") q.set("kind", next.kind);
+  if (next.input && next.tab === "packages" && next.kind !== "guide") q.set("input", next.input);
+  const qs = q.toString();
+  return `/${n.name}${qs ? `?${qs}` : ""}`;
+};
+const SORTS: [ProfileSort, string][] = [["installs", "Most installed"], ["updated", "Recently updated"], ["name", "Name"]];
+const KINDS: [KindFilter, string][] = [["all", "All"], ["tool", "Tools"], ["guide", "Guides"]];
+const TABS: [ProfileTab, string, number | null][] = [["packages", "Packages", s.packages], ["guides", "Guides", s.guides], ["activity", "Activity", null]];
+
+const primary = p.hosts.find((h) => h.primary);
+const counts = [s.tools ? `${s.tools} OSINT ${s.tools === 1 ? "tool" : "tools"}` : "", s.guides ? `${s.guides} ${s.guides === 1 ? "guide" : "guides"}` : ""].filter(Boolean).join(" and ");
 const title = counts ? `${name}: ${counts}` : name;
-const description = `${counts || "Tools and guides"} published by ${name} on the OTInstaller Registry${about.length ? `, for ${about.map(inputLabel).join(", ").toLowerCase()} investigations` : ""}. Signed, scanned and health-checked; install any of them with one command.`;
-const jsonLd = graph(
-  { "@type": "ProfilePage", name, url: `${Astro.site}${n.name}`, mainEntity: { "@type": "Organization", name, url: profile ?? `${Astro.site}${n.name}`, ...(n.avatar_url ? { logo: n.avatar_url } : {}) } },
-  breadcrumbs([["Tools", "/search"], [name, `/${n.name}`]]),
-  itemList(`Published by ${name}`, [...allTools, ...guides]),
-);
+const description = pending
+  ? `${name} is a new publisher on the OTInstaller Registry; its first release is waiting for review.`
+  : `${p.bio ? `${p.bio.replace(/\s+$/, "").replace(/[.!?]?$/, ".")} ` : ""}${counts || "Tools and guides"} published by ${name} on the OTInstaller Registry${inputs.length ? `, for ${inputs.map(inputLabel).join(", ").toLowerCase()} investigations` : ""}.`;
+const jsonLd = graph(profilePage(n), breadcrumbs([["Tools", "/search"], [name, `/${n.name}`]]), ...(n.tools.length ? [itemList(`Published by ${name}`, n.tools)] : []));
+const about = p.about_html ? aboutHtml(p.about_html) : null;
+const health = s.tools ? [s.healthy ? `${s.healthy} passing` : "", s.broken ? `${s.broken} possibly broken` : "", s.tools - s.healthy - s.broken > 0 ? `${s.tools - s.healthy - s.broken} not checked` : ""].filter(Boolean).join(" · ") : null;
+const reportHref = `mailto:abuse@otinstaller.com?subject=${encodeURIComponent(`Report publisher ${n.name}`)}&body=${encodeURIComponent(`${Astro.site}${n.name}\n\nWhat is wrong:\n`)}`;
 cacheFor(Astro, 300);
 ---
-<Base title={title} description={description} noindex={!!want} jsonLd={jsonLd} jsonHref={`https://api.otinstaller.com/v1/namespaces/${encodeURIComponent(n.name)}`}>
-  <header class="pub">
-    <span class="avatar" aria-hidden="true">
-      {n.avatar_url ? <img src={n.avatar_url} alt="" width="56" height="56" /> : <span class="initial">{n.name.slice(0, 1).toUpperCase()}</span>}
-    </span>
-    <div>
-      <p class="eyebrow">Publisher</p>
-      <h1>{name}</h1>
-      <p class="small muted meta">
-        {n.verified && <span class="badge ok">Verified publisher</span>}
-        <span>{n.kind === "user" ? "User" : n.kind === "group" ? "Group" : "Organization"} on {n.provider === "gitlab" ? "GitLab" : "GitHub"}</span>
-        <span>· publishing since {formatDate(n.created_at)}</span>
-        {profile && <span>· <a href={profile} rel="nofollow noopener">{profile.replace("https://", "")}</a></span>}
+<Base
+  title={title}
+  description={description}
+  noindex={pending || Astro.url.search !== ""}
+  jsonLd={jsonLd}
+  jsonHref={`https://api.otinstaller.com/v1/namespaces/${encodeURIComponent(n.name)}`}
+  markdown={`${Astro.site}${n.name}.md`}
+  ogType="website"
+  ogImage={n.avatar_url && !pending ? { url: n.avatar_url, alt: `Avatar of ${name}` } : undefined}
+>
+  <div class="profile">
+    <aside class="side" aria-label={`About ${name}`}>
+      <span class="avatar" aria-hidden="true">
+        {n.avatar_url && !pending ? <img src={n.avatar_url} alt="" width="240" height="240" /> : <span class="initial">{n.name.slice(0, 1).toUpperCase()}</span>}
+      </span>
+      <div class="who">
+        <h1><span class="dn">{name}</span>{name !== n.name && <span class="handle">{n.name}</span>}</h1>
+        <p class="tags small">
+          {n.verified && <span class="badge ok">Verified publisher</span>}
+          <span class="badge plain">{kindLabel(n.kind, n.provider)}</span>
+          {pending && <span class="badge warn">Waiting for review</span>}
+        </p>
+      </div>
+      {p.bio && <p class="bio">{p.bio}</p>}
+      <ul class="facts list-plain small">
+        {p.company && <li><span class="k">Company</span> {p.company}</li>}
+        {p.location && <li><span class="k">Location</span> {p.location}</li>}
+        {p.website && <li><span class="k">Website</span> <a href={p.website} rel="nofollow noopener me">{shortUrl(p.website)}</a></li>}
+        {p.socials.map((so) => <li><span class="k">{socialLabel(so)}</span> <a href={so.url} rel="nofollow noopener me">{shortUrl(so.url)}</a></li>)}
+        {p.hosts.map((h) => <li><span class="k">{hostName(h.provider)}</span> <a href={h.url} rel="nofollow noopener me">{h.login}</a></li>)}
+        <li><span class="k">Publishing since</span> {formatDate(n.created_at)}</li>
+        {p.host_since && primary && <li><span class="k">On {hostName(primary.provider)} since</span> {formatDate(p.host_since)}</li>}
+      </ul>
+      {p.members.length > 0 && (
+        <section class="people" aria-labelledby="people">
+          <h2 id="people" class="eyebrow">People</h2>
+          <ul class="list-plain">
+            {p.members.map((m) => (
+              <li>
+                <a href={m.url} rel="nofollow noopener" title={m.login}>
+                  {m.avatar_url ? <img src={m.avatar_url} alt={m.login} width="32" height="32" loading="lazy" /> : <span class="mini">{m.login.slice(0, 1).toUpperCase()}</span>}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      <p class="small muted links">
+        <a href={reportHref}>Report this publisher</a>
+        <span aria-hidden="true">·</span>
+        <a href={`/dashboard/profile/${n.name}`} rel="nofollow">Edit (owners)</a>
       </p>
-      {n.verified && <p class="small muted note">Verified: the registry confirmed who runs this namespace, and a person reviewed its first release.</p>}
+    </aside>
+
+    <div class="main">
+      {pending ? (
+        <div class="notice warn">
+          <p><b>{n.name} is new to the registry.</b> A reviewer checks a new publisher's first release before anything goes public, usually within 3 business days. Its packages and profile appear here once that is done.</p>
+          {primary && <p class="small">Meanwhile, see <a href={primary.url} rel="nofollow noopener">{primary.login} on {hostName(primary.provider)}</a>.</p>}
+        </div>
+      ) : (
+        <>
+          <dl class="stats">
+            <div><dt>Packages</dt><dd>{s.packages}<span class="sub">{s.tools} {s.tools === 1 ? "tool" : "tools"} · {s.guides} {s.guides === 1 ? "guide" : "guides"}</span></dd></div>
+            <div><dt>Installs, 30 days</dt><dd>{formatCount(s.installs_30d)}<span class="sub">{formatCount(s.installs_total)} in all</span></dd></div>
+            <div><dt>Stars</dt><dd>{formatCount(s.stars)}</dd></div>
+            <div><dt>Health</dt><dd class="health">{health ? <><span class={`status ${s.broken ? "warn" : s.healthy ? "ok" : "none"}`}>{s.broken ? `${s.broken} broken` : s.healthy ? "Passing" : "Not checked"}</span><span class="sub">{health}</span></> : <span class="sub">No tools</span>}</dd></div>
+            <div><dt>Last published</dt><dd class="when">{s.last_published_at ? ago(s.last_published_at).replace(/^on /, "") : "—"}</dd></div>
+          </dl>
+
+          {about && (
+            <section class="about" aria-labelledby="about-h">
+              <h2 id="about-h">About</h2>
+              <div class="prose" set:html={about} />
+            </section>
+          )}
+
+          {pinned.length > 0 && (
+            <section aria-labelledby="pinned">
+              <h2 id="pinned">Pinned</h2>
+              <div class="grid pins">{pinned.map((t) => <ToolCard tool={t} />)}</div>
+            </section>
+          )}
+
+          <nav class="tabs" aria-label="Profile sections">
+            {TABS.map(([key, label, count]) => (
+              <a href={href({ tab: key })} rel={key === "packages" ? undefined : "nofollow"} aria-current={tab === key ? "page" : undefined}>
+                {label}{count !== null && <span class="count">{count}</span>}
+              </a>
+            ))}
+          </nav>
+
+          {tab === "packages" && (
+            <section aria-labelledby="pk">
+              <h2 id="pk" class="sr-only">Packages</h2>
+              {n.tools.length === 0 ? (
+                <div class="empty">
+                  <p><b>Nothing published yet.</b> {name} has no public tools or guides on the registry.</p>
+                  <p class="small muted">Publishers add <code>otinstaller.yaml</code> to a repository and push a <code>vX.Y.Z</code> tag; see <a href="/publish">how publishing works</a>.</p>
+                </div>
+              ) : (
+                <>
+                  <div class="controls">
+                    <div class="segmented" role="group" aria-label="Show">
+                      {KINDS.map(([k, label]) => <a href={href({ kind: k, input: k === "guide" ? null : want })} rel="nofollow" aria-current={kind === k ? "page" : undefined}>{label}</a>)}
+                    </div>
+                    <div class="segmented" role="group" aria-label="Sort by">
+                      {SORTS.map(([k, label]) => <a href={href({ sort: k })} rel="nofollow" aria-current={sort === k ? "page" : undefined}>{label}</a>)}
+                    </div>
+                  </div>
+                  {inputs.length > 1 && kind !== "guide" && (
+                    <p class="about-inputs row small">
+                      <span class="muted">Takes:</span>
+                      <a class="chip" href={href({ input: null })} rel="nofollow" aria-current={!want ? "page" : undefined}>Any</a>
+                      {inputs.map((t) => <a class="chip" href={href({ input: t })} rel="nofollow" aria-current={want === t ? "page" : undefined}>{inputLabel(t)}</a>)}
+                    </p>
+                  )}
+                  {packages.length ? <div class="grid">{packages.map((t) => <ToolCard tool={t} />)}</div> : <p class="muted">Nothing matches. <a href={href({ kind: "all", input: null })} rel="nofollow">Show everything</a>.</p>}
+                </>
+              )}
+            </section>
+          )}
+
+          {tab === "guides" && (
+            <section aria-labelledby="gd">
+              <h2 id="gd" class="sr-only">Guides</h2>
+              {guides.length ? (
+                <>
+                  <div class="controls">
+                    <div class="segmented" role="group" aria-label="Sort by">
+                      {SORTS.map(([k, label]) => <a href={href({ sort: k })} rel="nofollow" aria-current={sort === k ? "page" : undefined}>{label}</a>)}
+                    </div>
+                  </div>
+                  <div class="rows">{guides.map((t) => <ToolRow tool={t} />)}</div>
+                </>
+              ) : <div class="empty"><p><b>No guides yet.</b> {name} has not published an investigation guide.</p><p class="small muted"><a href="/guides">Browse every guide</a>.</p></div>}
+            </section>
+          )}
+
+          {tab === "activity" && (
+            <section aria-labelledby="act">
+              <h2 id="act" class="sr-only">Activity</h2>
+              {activity === null ? <p class="notice">The activity list could not be loaded just now. Try again in a minute.</p>
+                : activity.length === 0 ? <div class="empty"><p><b>No public activity yet.</b> Releases, yanks, deprecations and transfers show here.</p></div>
+                : (
+                  <ol class="activity list-plain">
+                    {activity.map((e) => (
+                      <li>
+                        <span class={`dot ${e.type === "published" ? "ok" : e.type === "yanked" || e.type === "deprecated" ? "warn" : ""}`} aria-hidden="true" />
+                        <span class="what">{activityParts(e).before}<a href={e.kind === "guide" ? `/guides/${e.ref}` : `/${e.ref}`}>{e.ref}</a>{activityParts(e).after}</span>
+                        <time class="small muted" datetime={new Date(e.at).toISOString()}>{formatDate(e.at)}</time>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+            </section>
+          )}
+        </>
+      )}
     </div>
-  </header>
-  {about.length > 0 && (
-    <p class="about row small">
-      <span class="muted">Publishes about:</span>
-      <a class="chip" href={`/${n.name}`} aria-current={!want ? "page" : undefined}>All</a>
-      {about.map((t) => <a class="chip" href={`/${n.name}?input=${t}`} rel="nofollow" aria-current={want === t ? "page" : undefined}>{inputLabel(t)}</a>)}
-    </p>
-  )}
-  <section aria-labelledby="tools">
-    <div class="section-head"><h2 id="tools">{tools.length} {tools.length === 1 ? "tool" : "tools"}{want && <> that take {inputLabel(want).toLowerCase()}</>}</h2></div>
-    {tools.length ? <div class="rows">{tools.map((t) => <ToolRow tool={t} />)}</div> : <p class="muted">No tools yet.</p>}
-  </section>
-  {guides.length > 0 && (
-    <section aria-labelledby="guides">
-      <div class="section-head"><h2 id="guides">{guides.length} {guides.length === 1 ? "guide" : "guides"}</h2></div>
-      <div class="rows">{guides.map((t) => <ToolRow tool={t} />)}</div>
-    </section>
-  )}
+  </div>
 </Base>
 
 <style>
-  .pub { display: flex; gap: 16px; align-items: start; padding-bottom: 20px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
-  .pub h1 { margin: 4px 0 6px; }
-  .pub .eyebrow { margin: 0; }
-  .avatar { display: grid; place-items: center; flex: none; width: 56px; height: 56px; border: 1px solid var(--border-strong); overflow: hidden; margin-top: 4px; }
-  .avatar img { width: 56px; height: 56px; object-fit: cover; }
-  .initial { font-weight: 600; font-size: var(--fs-5); }
-  .meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 0; }
-  .note { margin: 6px 0 0; max-width: 70ch; }
-  .about { margin: 0 0 24px; gap: 6px; }
-  section + section { margin-top: 32px; }
-  .section-head { margin-bottom: 0; }
-  .section-head h2 { font-size: var(--fs-4); margin-bottom: 8px; }
+  .profile { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 40px; align-items: start; }
+  .side { display: grid; gap: 14px; }
+  .avatar { display: grid; place-items: center; width: 100%; max-width: 260px; aspect-ratio: 1; border: 1px solid var(--border-strong); overflow: hidden; background: var(--bg-subtle); }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .initial { font-weight: 600; font-size: var(--fs-7); color: var(--text-muted); }
+  .who h1 { margin: 0; display: grid; gap: 2px; font-size: var(--fs-6); overflow-wrap: anywhere; }
+  .handle { font-size: var(--fs-4); font-weight: 400; color: var(--text-muted); letter-spacing: 0; }
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 0; }
+  .bio { margin: 0; color: var(--text); overflow-wrap: anywhere; }
+  .facts { display: grid; gap: 6px; }
+  .facts li + li { margin-top: 0; }
+  .facts li { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 8px; overflow-wrap: anywhere; }
+  .facts .k { color: var(--text-faint); }
+  .people h2 { margin: 0 0 8px; }
+  .people ul { display: flex; flex-wrap: wrap; gap: 6px; }
+  .people li + li { margin-top: 0; }
+  .people a { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--border); overflow: hidden; text-decoration: none; }
+  .people img { width: 32px; height: 32px; object-fit: cover; }
+  .mini { font-size: var(--fs-1); color: var(--text-muted); }
+  .links { display: flex; gap: 8px; flex-wrap: wrap; margin: 0; padding-top: 12px; border-top: 1px solid var(--border); }
+
+  .main { min-width: 0; display: grid; gap: 28px; align-content: start; }
+  .main h2 { font-size: var(--fs-4); margin: 0 0 12px; }
+  .stats { margin: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border: 1px solid var(--border); background: var(--border); gap: 1px; }
+  .stats > div { background: var(--bg); padding: 12px 14px; display: grid; gap: 4px; align-content: start; }
+  .stats dt { font-size: var(--fs-0); text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-faint); }
+  .stats dd { margin: 0; font-size: var(--fs-5); font-weight: 600; display: grid; gap: 2px; }
+  .stats .sub { font-size: var(--fs-1); font-weight: 400; color: var(--text-muted); }
+  .stats .health .status, .stats .when { font-size: var(--fs-3); }
+  .about .prose { max-width: 80ch; }
+  /* auto-fit: a short row of pins stretches instead of leaving empty cells. */
+  .main .grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); }
+
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+  .tabs a { display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; text-decoration: none; color: var(--text-muted); white-space: nowrap; }
+  .tabs a:hover { color: var(--text); }
+  .tabs a[aria-current="page"] { color: var(--text); box-shadow: inset 0 -2px 0 var(--text); font-weight: 600; }
+  .tabs .count { font-size: var(--fs-0); padding: 0 6px; border: 1px solid var(--border-strong); color: var(--text-muted); font-weight: 400; }
+  .controls { display: flex; gap: 12px; flex-wrap: wrap; justify-content: space-between; margin-bottom: 14px; }
+  .about-inputs { margin: 0 0 14px; gap: 6px; }
+  .empty { border: 1px dashed var(--border-strong); padding: 20px; }
+  .empty p { margin: 0; }
+  .empty p + p { margin-top: 6px; }
+
+  .activity { border-top: 1px solid var(--border); }
+  .activity li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 10px 0; border-bottom: 1px solid var(--border); margin: 0; }
+  .activity .dot { width: 8px; height: 8px; background: var(--text-faint); align-self: center; }
+  .activity .dot.ok { background: var(--ok); }
+  .activity .dot.warn { background: var(--warn); }
+  .activity .what { overflow-wrap: anywhere; }
+
+  @media (max-width: 960px) {
+    .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+  @media (max-width: 820px) {
+    .profile { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+    .side { position: static; grid-template-columns: 96px minmax(0, 1fr); column-gap: 16px; }
+    .side > :not(.avatar):not(.who) { grid-column: 1 / -1; }
+    .avatar { max-width: 96px; }
+    .initial { font-size: var(--fs-6); }
+    .who { align-self: center; }
+    .who h1 { font-size: var(--fs-5); }
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stats > div:last-child { grid-column: 1 / -1; }
+  }
 </style>

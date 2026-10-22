@@ -426,10 +426,11 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
 
 - Public: `GET /health`, `/types`, `/tools` (search: `q`, `input`, `output`, `category`, `runtime`, `kind`, `level`,
   `format`, `lang`, `sort`, `no_keys`, `limit`, `cursor`), `/guides`, `/tools/:ns/:name[/versions|/:version[/manifest|/scans|/wheel/:file]]`,
-  `/namespaces/:ns`, `/pivots`, `/removed`, guide pages, tool docs, readmes, `/assets/:sha256.ext`; `POST /installs`,
+  `/namespaces[/:ns[/activity]]` (publisher profiles), `/pivots`, `/removed`, guide pages, tool docs, readmes, `/assets/:sha256.ext`; `POST /installs`,
   `POST /feedback`. The manifest response includes `mirror_image` / `wheel_url` install fallbacks for public backups.
 - Auth: `/auth/:provider/login|callback` (github, gitlab, osintverse), `/auth/logout`, `/auth/device/start|token`,
-  `/me`, `/me/tokens`, `/me/publish-jobs`, `/me/repos`, `/me/transfers`, `/me/backups`.
+  `/me`, `/me/tokens`, `/me/publish-jobs`, `/me/repos`, `/me/transfers`, `/me/backups`,
+  `/me/namespaces/:ns/profile[/preview|/sync|/hosts[/:provider]]` (an owner's profile settings).
 - Publishing: `POST /webhooks/github` (HMAC), `POST /webhooks/gitlab` (per-source token), `/imports...`,
   `/sources/gitlab`, `/packages/:ns/:name/sync|sync-log|manifest|manifest/pr|source|backups|backups/restore`.
 - Owners: yank/unyank, deprecate, claim, transfer, git-backup opt-out, restore, switch source. Anyone: reports, feedback.
@@ -496,7 +497,8 @@ pages, tool_guides, stars, install_counts, reports, transfers, aliases, audit_lo
 migrations add publish intake (0002), scans/review and `notifications` (0003), sync (0004, 0006), imports (0005), guides and
 `page_links` (0007, 0008), trust/takedowns/claims/health and `rate_limits` (0009), OSINTverse login plus `device_logins`
 (0010), backups (`backup_runs`, `backups`, `restore_drills`, tool `git_backups`/`legal_hold`/`legal_hold_reason`, 0011)
-and `feedback` (0012). That is 33 tables plus `tools_fts`; every table, column, CHECK value set and status transition is
+`feedback` (0012), scoped tokens and `install_clients` (0013), and publisher profiles (`namespace_profiles`,
+`namespace_hosts`, 0014). That is 36 tables plus `tools_fts`; every table, column, CHECK value set and status transition is
 in [docs/dev/database.md](docs/dev/database.md).
 
 - IDs are ULIDs (`ulid()`), timestamps are Unix **milliseconds**, booleans are 0/1, JSON columns end in `_json`

@@ -134,12 +134,18 @@ export default function Dashboard({ back }: { back: string }) {
       </section>
 
       <section aria-labelledby="ns">
-        <h2 id="ns">Namespaces</h2>
+        <h2 id="ns">Namespaces and profiles</h2>
         {me.namespaces.length === 0 ? <p class="muted">None yet; importing a repository creates one.</p> : (
           <ul class="list-plain">
-            {me.namespaces.map((n) => <li class="row"><a href={`/${n.name}`}>{n.name}</a> <Status value={n.status} /> <span class="small muted">{n.role}{n.verified ? " · verified" : ""}</span></li>)}
+            {me.namespaces.map((n) => (
+              <li class="row">
+                <a href={`/${n.name}`}>{n.name}</a> <Status value={n.status} /> <span class="small muted">{n.role}{n.verified ? " · verified" : ""}</span>
+                {n.role === "owner" && <a class="btn btn-sm" href={`/dashboard/profile/${n.name}`}>Edit profile</a>}
+              </li>
+            ))}
           </ul>
         )}
+        <p class="small muted">Each namespace has a public profile, synced from GitHub or GitLab. Owners can change any detail, pin packages and write an About section.</p>
       </section>
 
       <section aria-labelledby="jobs">

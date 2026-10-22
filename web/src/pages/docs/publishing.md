@@ -37,6 +37,27 @@ It sets `version`, checks the guide as the registry will, commits, and pushes th
 
 Your [dashboard](/dashboard) shows every release and why any failed.
 
+## Your publisher profile
+
+Every namespace has a public profile at `otinstaller.com/<namespace>`, like a GitHub or GitLab profile: your name,
+avatar, bio, links, the accounts you publish from, your numbers, pinned packages and recent releases.
+
+- **It fills itself in.** The registry copies the public details of the GitHub user or organization, or the GitLab
+  user or group, your namespace belongs to, when the namespace is created and every 6 hours after that. Org members
+  who made their membership public are listed. Email addresses are never copied.
+- **You can change anything.** Open [Dashboard](/dashboard) → **Edit profile**. Each field uses the host value or your
+  own; your value wins until you switch back. **Sync now** refreshes from your hosts right away (10 times an hour).
+- **Both hosts.** If you publish from GitHub and GitLab, link the other account (or an org or group you own) and the
+  profile links to both. Connect the host first under [Accounts and sync](/settings/accounts).
+- **About and pins.** Write an About section in Markdown (raw HTML and images are not rendered) and pin up to six
+  packages.
+- **Privacy.** *Hide profile details* removes the bio, location, website, company, links and people; the name, avatar
+  and host links stay. A namespace waiting for its first review shows only its handle and host link.
+
+From the terminal: `ot profile` shows yours, `ot profile --sync` refreshes it, and
+`ot profile --set bio="OSINT tools for newsrooms" --set pins=whois-plus,dns-records` edits it. Agents can read
+`otinstaller.com/<namespace>.md`.
+
 ## Versions
 
 - Versions are immutable. A rejected version can be tagged again after you fix it; a published one cannot change.
