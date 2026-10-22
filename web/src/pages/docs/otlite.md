@@ -1,10 +1,10 @@
 ---
 layout: ../../layouts/Docs.astro
 title: otlite, the no-Docker edition
-description: Install and run OSINT tools on Linux without a container runtime. otlite installs pinned releases into per-tool virtualenvs.
+description: Install and run OSINT tools on Linux and macOS without a container runtime. otlite installs pinned releases into per-tool virtualenvs.
 ---
 
-`otlite` is the lightweight edition of OTInstaller for Linux machines without Docker. It installs tools from pip or
+`otlite` is the lightweight edition of OTInstaller for Linux and macOS machines without Docker. It installs tools from pip or
 git, each into its own virtualenv under `~/.otlite`, runs them by name with the same typed inputs as `ot`, and saves
 every run under `results/` with a `.meta.json` sidecar. It needs Python 3.10 or newer, git and `python3-venv`, and
 nothing else. The [otlite page](/otlite) is the short version. It was called `otinstaller` until version 1.0; see [upgrading from otinstaller](#upgrading-from-otinstaller).
@@ -13,12 +13,12 @@ nothing else. The [otlite page](/otlite) is the short version. It was called `ot
 
 | | `ot` | `otlite` |
 | --- | --- | --- |
-| Platforms | Linux, macOS, Windows | Linux |
+| Platforms | Linux, macOS, Windows | Linux, macOS |
 | Needs | Docker Desktop, OrbStack, Colima or Podman (pipx tools can run `--native` without one) | Python 3.10+, git, `python3-venv` |
 | Where tools come from | The registry: signed, scanned, reviewed packages | A tested catalog bundled with each otlite release |
 | How a tool runs | In a container with all capabilities dropped, no host files | Directly on your machine, in its own virtualenv |
 | Tool arguments | Only the inputs the manifest declares | Anything after `--` goes to the tool |
-| API keys | Your OS keychain (`ot keys set`) | `~/.otlite/.env`, mode 600 |
+| API keys | Your OS keychain (`ot keys set`) | `~/.otlite/.env`, mode 600 (`otlite keys set`) |
 | Results | `results/<tool>/<target>/` plus a sidecar | The same layout and sidecar |
 
 Use `ot` when you can: its packages are pinned by digest or hash, signed, scanned and reviewed, and run with no
@@ -28,8 +28,10 @@ arguments or an interactive terminal. Both can share one `results/` folder.
 ## Install
 
 ```sh
-pipx install otlite
+curl -fsSL https://get.otinstaller.com/otlite | sh
 ```
+
+Or, with pipx already installed, `pipx install otlite`.
 
 `pip install otlite` inside a virtualenv works too. On Debian, Ubuntu and Kali a `.deb` is built by the CI from
 [`otlite/debian`](https://github.com/OTInstaller/otinstaller/tree/main/otlite/debian). Then:
@@ -53,8 +55,9 @@ otlite auto johndoe@example.com
 Typed inputs `u:` `e:` `p:` `d:` `url:` `q:` `geo:` `tg:` become each tool's own flags. Anything after `--` that is not
 a typed input is passed to the tool as is. Every run's output is saved under `results/<tool>/<target>/` with a
 `.meta.json` sidecar; `otlite results` lists them, filtered and sorted (`--tool`, `--since 7d`, `--sort duration`), and
-`otlite extract` and `otlite diff` read them back. `otlite list`, `search`, `info`, `update`,
-`check-updates`, `remove`, `playbook`, `keys check` and `crash-reports` are the rest; `--json` and `--yes` work on all
+`otlite extract` and `otlite diff` read them back. Each run also gets a `.envelope.json` in one shape for every tool (tool and version,
+input, timing, exit code and the entities found), so scripts and agents read every tool the same way. `otlite list`, `search`, `info`, `update`,
+`check-updates`, `remove`, `playbook`, `keys set`, `keys list`, `keys check` and `crash-reports` are the rest; `--json` and `--yes` work on all
 of them. The full command reference is in the
 [otlite README](https://github.com/OTInstaller/otinstaller/blob/main/otlite/README.md) and, for agents,
 [llms.txt](https://github.com/OTInstaller/otinstaller/blob/main/otlite/llms.txt).

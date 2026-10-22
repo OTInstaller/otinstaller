@@ -16,7 +16,7 @@ No. Tools run on your machine and their results stay there. `ot` sends one anony
 
 For Docker tools, yes (Docker Desktop, OrbStack, Colima or Podman). Python tools also run in a container when Docker is available; without it, `ot` asks before running them directly on your machine.
 
-On Linux there is also [otlite](/docs/otlite), the no-Docker edition: `pipx install otlite` installs tools from pip or git into per-tool virtualenvs and runs them directly, without the registry's signatures and sandbox.
+On Linux and macOS there is also [otlite](/otlite), the no-Docker edition: `curl -fsSL https://get.otinstaller.com/otlite | sh` installs it, and it installs tools from pip or git into per-tool virtualenvs and runs them directly, without the registry's signatures and sandbox.
 
 ## Can I publish a tool someone else wrote?
 

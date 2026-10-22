@@ -19,8 +19,8 @@ const steps = [
 const features = [
   { title: "One command for every tool", text: "Install, run, update and remove any tool in the catalog the same way. Typed inputs such as u:johndoe and e:ada@example.com become each tool's own flags, so you never look up a tool's options again.", cmd: "otlite update --all" },
   { title: "Results you can use", text: "Every run is saved by tool, target and time with a JSON sidecar. otlite results sorts and filters them, otlite extract pulls out emails, domains, IPs and URLs, and otlite diff shows what changed since the last run.", cmd: "otlite results --since 7d --sort duration" },
-  { title: "Built for scripts and AI agents", text: "Every command takes --json. Nothing prompts with --yes or without a terminal, exit codes are stable, and an llms.txt explains it all to an agent.", cmd: "otlite results --status failed --json" },
-  { title: "All API keys in one place", text: "One file, ~/.otlite/.env, readable only by you. Each tool receives only the keys it declares, and key values are never written to logs or results.", cmd: "otlite keys check" },
+  { title: "Built for scripts and AI agents", text: "Every run is also saved as an envelope in the same JSON shape for every tool, with the entities it found. Every command takes --json, nothing prompts with --yes or without a terminal, and exit codes are stable.", cmd: "otlite results --status failed --json" },
+  { title: "All API keys in one place", text: "otlite keys set asks for the value without showing it and stores it in one file, ~/.otlite/.env, readable only by you. Each tool receives only the keys it declares, and key values are never written to logs or results.", cmd: "otlite keys set SHODAN_API_KEY" },
   { title: "Every tool in its own virtualenv", text: "Tools never share or break each other's dependencies, and none of them touch your system Python. Removing a tool removes all of it.", cmd: "otlite remove sherlock" },
   { title: "Curated, so you can relax", text: "A tool is listed only when it installs cleanly and passes a smoke test, and every release pins the versions it was tested with. Attack and harassment tools are excluded by policy.", cmd: "otlite list" },
 ];
@@ -29,15 +29,15 @@ const covers = [
   ["Username", 24], ["Domain", 19], ["Email", 14], ["URL", 11], ["IP address", 7], ["Name", 5], ["Phone", 4],
 ] as const;
 ---
-<Base title="otlite" description="otlite: one command line for 47 popular open-source OSINT tools on Linux. Install, run, update and remove each in its own virtualenv, with all API keys in one place and every result saved, sorted and ready for scripts and AI agents.">
+<Base title="otlite" description="otlite: one command line for 47 popular open-source OSINT tools on Linux and macOS. Install, run, update and remove each in its own virtualenv, with all API keys in one place and every result saved, sorted and ready for scripts and AI agents.">
   <PageHead eyebrow="otlite · no Docker needed" title="One CLI for popular open-source OSINT tools">
-    <p class="muted">We pick, pin and test the tools, so you don't have to. One command installs, runs, updates or removes any of them, each in its own virtualenv, with every result saved and ready for scripts and AI agents. For Linux.</p>
+    <p class="muted">We pick, pin and test the tools, so you don't have to. One command installs, runs, updates or removes any of them, each in its own virtualenv, with every result saved and ready for scripts and AI agents. For Linux and macOS.</p>
   </PageHead>
 
   <section class="start" aria-labelledby="start-h">
     <h2 id="start-h" class="sr-only">Install and first run</h2>
     <CopyCommand command={NO_DOCKER.command} label="Install otlite" class="install" />
-    <p class="small muted">Needs Python 3.10 or newer, git and <code>python3-venv</code>; <code>pip install otlite</code> in a virtualenv works too. Debian, Ubuntu and Kali packages, and other ways to install, are in the <a href="/docs/otlite">otlite docs</a>.</p>
+    <p class="small muted">The installer finds Python 3.10 or newer and installs pipx if it is missing; with pipx already there, <code>pipx install otlite</code> does the same. Debian, Ubuntu and Kali packages, and other ways to install, are in the <a href="/docs/otlite">otlite docs</a>.</p>
     <ol class="steps">
       {steps.map((s) => (
         <li>
@@ -63,14 +63,14 @@ const covers = [
     <ul class="counts">
       {covers.map(([label, n]) => <li><b>{n}</b><span>{label}</span></li>)}
     </ul>
-    <p class="small muted">Sherlock, Maigret, Holehe, theHarvester, GHunt, SpiderFoot and more. <code>otlite list</code> shows them all; a tool can take more than one kind of input.</p>
+    <p class="small muted">Sherlock, Maigret, Holehe, theHarvester, GHunt, SpiderFoot and more; a tool can take more than one kind of input. <a href="/otlite/tools">All 47 tools, each with a command to try →</a></p>
   </section>
 
   <section class="panel compare" aria-labelledby="compare-h">
     <h2 id="compare-h">otlite or ot?</h2>
     <dl>
       <dt>otlite</dt>
-      <dd>Linux only (Ubuntu, Debian, Arch, Kali). Tools install with pip or git and run on your machine, in a virtualenv but not in a sandbox. No Docker, no account.</dd>
+      <dd>Linux and macOS (Ubuntu, Debian, Arch, Kali, macOS 14). Tools install with pip or git and run on your machine, in a virtualenv but not in a sandbox. No Docker, no account.</dd>
       <dt><a href="/docs/quick-start">ot</a></dt>
       <dd>Linux, macOS and Windows. Every tool in the registry is signed, scanned and run in a locked-down container with no host files and no network unless it needs one. Needs Docker or Podman.</dd>
     </dl>

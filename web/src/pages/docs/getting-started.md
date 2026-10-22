@@ -33,13 +33,16 @@ ot doctor
 
 ### No Docker? Install otlite
 
-On a Linux machine without a container runtime, [otlite](/docs/otlite) is the lightweight edition: it installs the
+On Linux or macOS without a container runtime, [otlite](/docs/otlite) is the lightweight edition: it installs the
 same kind of tools from pip or git into per-tool virtualenvs and runs them directly, with the same typed inputs and
 `results/` layout.
 
 ```sh
-pipx install otlite
+curl -fsSL https://get.otinstaller.com/otlite | sh
 ```
+
+The installer finds a supported Python, installs pipx if it is missing and installs otlite with it; with pipx
+already there, `pipx install otlite` does the same.
 
 Then `otlite init`, `otlite install sherlock` and `otlite run sherlock -- u:johndoe`. The rest of this page is about
 `ot`; the [otlite page](/docs/otlite) has its own walkthrough.
