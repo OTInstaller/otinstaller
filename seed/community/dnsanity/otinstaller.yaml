@@ -1,0 +1,40 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: dnsanity
+namespace: osintverse-community
+version: 1.4.2
+summary: "Checks whether DNS resolvers answer correctly by comparing them with trusted resolvers on a test template"
+readme: README.md
+license: MIT
+homepage: https://github.com/nil0x42/dnsanity
+categories: [ip-network, domain-dns]
+tags: [dns, resolvers, validation]
+inputs:
+  - name: servers
+    type: ip
+    required: true
+    description: "A DNS resolver IP address (several can be comma separated)"
+    example: "1.1.1.1"
+outputs:
+  - type: ip
+    description: "Resolvers that passed every check"
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/dnsanity@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["dnsanity", "-list", "{servers}"]
+  output_format: text
+  timeout_seconds: 600
+  typical_seconds: 20
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "It sends a few DNS queries to each resolver you give it (rate limited to 2 per second per server), so the resolver's operator can see your IP address."
+test:
+  input: { servers: "1.1.1.1" }

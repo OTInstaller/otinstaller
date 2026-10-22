@@ -1,0 +1,42 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: htmldate
+namespace: osintverse-community
+version: 1.11.0
+summary: "Finds the publication or last-modified date of a web page from its HTML, metadata and URL"
+readme: README.md
+license: Apache-2.0
+homepage: https://github.com/adbar/htmldate
+categories: [documents-metadata, web-archive]
+tags: [date, web-page, metadata, verification]
+inputs:
+  - name: url
+    type: url
+    required: true
+    example: "https://example.com"
+outputs:
+  - type: other
+    description: "Date in YYYY-MM-DD form"
+runtime:
+  kind: pipx
+  package: htmldate
+  package_version: "1.11.0"
+  index: pypi
+  python: ">=3.10"
+  entrypoint: htmldate
+  wheel_sha256: "2a5a0d80cce38d3f986a64bb9ab64ba03e5953159b38fd78a841492131ead348"
+  command: ["htmldate", "-u", "{url}"]
+  output_format: text
+  timeout_seconds: 120
+  typical_seconds: 5
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "It downloads the page, so that web server's logs see your IP address."
+test:
+  input: { url: "https://example.com" }

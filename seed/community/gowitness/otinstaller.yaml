@@ -1,0 +1,41 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: gowitness
+namespace: osintverse-community
+version: 3.2.2
+summary: "Screenshots a web page with headless Chrome and records its title, status, headers, TLS and technologies"
+readme: README.md
+license: GPL-3.0
+homepage: https://github.com/sensepost/gowitness
+categories: [domain-dns, images-geo]
+tags: [screenshot, web, chrome, recon]
+inputs:
+  - name: url
+    type: url
+    required: true
+    example: "https://example.com"
+outputs:
+  - type: url
+  - type: image
+  - type: certificate
+  - type: other
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/gowitness@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["gowitness", "scan", "single", "--url", "{url}", "--chrome-path", "/usr/bin/chromium-browser", "--screenshot-path", "/tmp/screenshots", "--write-screenshots", "--skip-network-logs", "--skip-html", "--write-jsonl", "--write-jsonl-file", "/dev/stdout", "--threads", "1"]
+  output_format: jsonl
+  timeout_seconds: 300
+  typical_seconds: 20
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "It loads the page in a real browser, so the web server's logs see your IP address."
+test:
+  input: { url: "https://example.com" }

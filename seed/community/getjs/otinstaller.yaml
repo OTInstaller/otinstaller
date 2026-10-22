@@ -1,0 +1,39 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: getjs
+namespace: osintverse-community
+version: 2.0.0
+summary: "Lists the JavaScript files a web page loads, with relative paths turned into full URLs"
+readme: README.md
+license: MIT
+homepage: https://github.com/003random/getJS
+categories: [domain-dns]
+tags: [javascript, urls, web, recon]
+inputs:
+  - name: url
+    type: url
+    required: true
+    example: "https://example.com"
+outputs:
+  - type: url
+    description: "JavaScript source URL"
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/getjs@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["getJS", "-url", "{url}", "-complete", "-timeout", "20s"]
+  output_format: text
+  timeout_seconds: 300
+  typical_seconds: 10
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "It fetches the page from the target's web server, so the server's logs see your IP address."
+test:
+  input: { url: "https://example.com" }

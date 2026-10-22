@@ -1,0 +1,45 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: favihunter
+namespace: osintverse-community
+version: 1.4.0
+summary: "Downloads a website's favicon, hashes it and prints search links for finding related hosts"
+readme: README.md
+license: MIT
+homepage: https://github.com/eremit4/favihunter
+categories: [domain-dns, ip-network]
+tags: [favicon, hash, pivot, infrastructure]
+inputs:
+  - name: url
+    type: url
+    required: true
+    description: "Website whose favicon to hash"
+    example: "https://example.com"
+outputs:
+  - type: url
+    description: "Search links on Shodan, Censys, FOFA and others"
+  - type: other
+    description: "MMH3, MD5 and SHA-256 favicon hashes"
+runtime:
+  kind: pipx
+  package: favihunter
+  package_version: "1.4.0"
+  index: pypi
+  python: "<4.0,>=3.10"
+  entrypoint: favihunter
+  wheel_sha256: "60afb7f1dbccaca34668b5a71224d9468607e3f713006381aff2d556aa31b492"
+  command: ["favihunter", "--url", "{url}"]
+  output_format: text
+  timeout_seconds: 300
+  typical_seconds: 20
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "It fetches the site's page and favicon, so the site's logs see your IP address. Long search links are shortened through da.gd."
+test:
+  input: { url: "https://example.com" }

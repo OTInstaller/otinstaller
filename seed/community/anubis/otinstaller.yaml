@@ -1,0 +1,41 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: anubis
+namespace: osintverse-community
+version: 1.3.1
+summary: "Finds a domain's subdomains from certificate logs, HackerTarget, Netcraft and other sources, plus zone transfers"
+readme: README.md
+license: MIT
+homepage: https://github.com/jonluca/anubis
+categories: [domain-dns]
+tags: [subdomains, certificates, zone-transfer, recon]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+    example: "example.com"
+outputs:
+  - type: subdomain
+runtime:
+  kind: pipx
+  package: anubis-netsec
+  package_version: "1.3.1"
+  index: pypi
+  python: ">=3"
+  entrypoint: anubis
+  wheel_sha256: "d7a066f73069e55daf3652eaffcd8ea2d6c3d3d64dfe88d599b47e2b12c447e9"
+  command: ["anubis", "-t", "{domain}", "-S"]
+  output_format: text
+  timeout_seconds: 900
+  typical_seconds: 60
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "Besides third-party sources it tries a DNS zone transfer against the domain's name servers and reads its TLS certificate; the target's logs see your IP."
+test:
+  input: { domain: "otinstaller.com" }

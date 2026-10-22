@@ -1,0 +1,51 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: waybackpack
+namespace: osintverse-community
+version: 0.6.4
+summary: "Lists every Wayback Machine snapshot of a URL, optionally within a date range"
+readme: README.md
+license: MIT
+homepage: https://github.com/jsvine/waybackpack
+categories: [web-archive]
+tags: [wayback-machine, archive, snapshots]
+inputs:
+  - name: url
+    type: url
+    required: true
+    description: "The page to look up (a domain alone also works)"
+    example: "https://example.com"
+  - name: from_date
+    type: string
+    required: false
+    description: "Earliest snapshot, YYYYMMDDhhss or a prefix such as 2015"
+    example: "2020"
+  - name: to_date
+    type: string
+    required: false
+    description: "Latest snapshot, YYYYMMDDhhss or a prefix such as 201604"
+    example: "2021"
+outputs:
+  - type: url
+    description: "Archived snapshot URL on web.archive.org"
+runtime:
+  kind: pipx
+  package: waybackpack
+  package_version: "0.6.4"
+  index: pypi
+  entrypoint: waybackpack
+  wheel_sha256: "2567daa20fd1009b8defcfa4861ed79dbe7fe17680ec4d90e3bd515c79828743"
+  command: ["waybackpack", "--list", "--quiet", "--from-date", "{from_date}", "--to-date", "{to_date}", "{url}"]
+  output_format: text
+  timeout_seconds: 600
+  typical_seconds: 20
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+test:
+  input: { url: "https://example.com", from_date: "202401", to_date: "202402" }

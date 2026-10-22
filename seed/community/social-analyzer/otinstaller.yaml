@@ -1,0 +1,49 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: social-analyzer
+namespace: osintverse-community
+version: 0.45.0
+summary: "Finds profiles for a username across 1,000+ social media and other websites, with a confidence rating"
+readme: README.md
+license: AGPL-3.0
+homepage: https://github.com/qeeqbox/social-analyzer
+categories: [username, social-media]
+tags: [username, accounts, profiles, social-media]
+inputs:
+  - name: username
+    type: username
+    required: true
+    example: "github"
+  - name: websites
+    type: string
+    required: false
+    description: "Only check sites whose URL contains these words, space separated, such as \"github gitlab\""
+  - name: top
+    type: integer
+    required: false
+    description: "Only check the N most popular sites"
+outputs:
+  - type: account
+  - type: url
+runtime:
+  kind: pipx
+  package: social-analyzer
+  package_version: "0.45"
+  index: pypi
+  python: ">=3"
+  entrypoint: social-analyzer
+  wheel_sha256: "3f47114ceb1e5c4adeddf4dff67c50e9a96dbd379b403caad2608e6b24ff7a7b"
+  command: ["social-analyzer", "--username", "{username}", "--output", "json", "--method", "find", "--websites", "{websites}", "--top", "{top}"]
+  output_format: json
+  timeout_seconds: 1800
+  typical_seconds: 300
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+  notifies_target: false
+test:
+  input: { username: "github", websites: "github" }

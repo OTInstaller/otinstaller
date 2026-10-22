@@ -1,0 +1,43 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: gitcolombo
+namespace: osintverse-community
+version: 0.3.0
+summary: "Clones a git repository and lists its contributors' names, emails and linked identities from the commit history"
+readme: README.md
+license: MIT
+homepage: https://github.com/soxoj/gitcolombo
+categories: [email, people, username]
+tags: [git, github, commits, identities]
+inputs:
+  - name: url
+    type: url
+    required: true
+    description: "Clone URL of a public git repository"
+    example: "https://github.com/soxoj/gitcolombo"
+outputs:
+  - type: person
+    description: "Commit author and committer names"
+  - type: email
+  - type: username
+    description: "GitHub login resolved from a commit"
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/gitcolombo@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["gitcolombo", "--no-color", "--repos-dir", "/tmp/repos", "-u", "{url}"]
+  output_format: text
+  timeout_seconds: 1200
+  typical_seconds: 60
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+  notifies_target: false
+  notes: "It clones the public repository from its git host and asks the GitHub API which account made each commit; nothing is sent to the people found."
+test:
+  input: { url: "https://github.com/soxoj/gitcolombo" }

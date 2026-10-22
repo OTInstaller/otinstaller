@@ -1,0 +1,44 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: alterx
+namespace: osintverse-community
+version: 0.1.0
+summary: "Generates likely subdomain permutations from a known subdomain using pattern templates"
+readme: README.md
+license: MIT
+homepage: https://github.com/projectdiscovery/alterx
+categories: [domain-dns]
+tags: [subdomains, permutations, wordlist, offline]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+    description: "A known subdomain (or comma-separated list) to permute"
+    example: "api.otinstaller.com"
+  - name: limit
+    type: integer
+    required: false
+    description: "Maximum number of permutations to print"
+outputs:
+  - type: subdomain
+    description: "Candidate subdomain (not resolved)"
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/alterx@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["alterx", "-l", "{domain}", "-silent", "-duc", "-limit", "{limit}"]
+  output_format: text
+  timeout_seconds: 300
+  typical_seconds: 5
+network:
+  egress: false
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "Runs offline and only generates names; nothing is resolved. Pipe the output to a resolver to test which exist."
+test:
+  input: { domain: "api.otinstaller.com", limit: 50 }

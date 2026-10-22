@@ -1,0 +1,42 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: hakrawler
+namespace: osintverse-community
+version: 0.0.0-git.52a16fe
+summary: "Crawls a web page and lists the links, scripts and forms it finds"
+readme: README.md
+license: GPL-3.0
+homepage: https://github.com/hakluke/hakrawler
+categories: [domain-dns, web-archive]
+tags: [crawler, urls, endpoints, recon]
+inputs:
+  - name: url
+    type: url
+    required: true
+    example: "https://example.com"
+  - name: depth
+    type: integer
+    required: false
+    description: "Depth to crawl (default 2)"
+outputs:
+  - type: url
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/hakrawler@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["hakrawler-url", "{url}", "-json", "-u", "-d", "{depth}", "-timeout", "300"]
+  output_format: jsonl
+  timeout_seconds: 600
+  typical_seconds: 60
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "It crawls the target site directly, so the web server's logs see your IP address."
+test:
+  input: { url: "https://example.com", depth: 1 }

@@ -1,0 +1,48 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: quien
+namespace: osintverse-community
+version: 0.12.0
+summary: "Looks up a domain's WHOIS/RDAP, DNS, mail security, TLS, HTTP headers, tech stack and SEO in one JSON report"
+readme: README.md
+license: MIT
+homepage: https://github.com/retlehs/quien
+categories: [domain-dns, ip-network]
+tags: [whois, rdap, dns, email-security, tls]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+    example: "example.com"
+outputs:
+  - type: dns_record
+  - type: certificate
+  - type: organization
+  - type: ip
+  - type: other
+secrets:
+  - name: QUIEN_CRUX_API_KEY
+    required: false
+    description: "Google Chrome UX Report API key, adds Core Web Vitals to the SEO section"
+    url: https://console.cloud.google.com/apis/library/chromeuxreport.googleapis.com
+    pricing: free
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/quien@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["quien", "all", "{domain}"]
+  output_format: json
+  timeout_seconds: 300
+  typical_seconds: 20
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "It connects to the domain's web server for the TLS, HTTP, tech stack and SEO checks, so the server's logs see your IP address."
+test:
+  input: { domain: "otinstaller.com" }

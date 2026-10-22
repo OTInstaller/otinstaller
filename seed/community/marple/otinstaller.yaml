@@ -1,0 +1,59 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: marple
+namespace: osintverse-community
+version: 0.0.0-git.4c33136
+summary: "Collects links to a username's profiles from more than ten search engines and ranks them by reliability"
+readme: README.md
+license: MIT
+homepage: https://github.com/soxoj/marple
+categories: [username, social-media]
+tags: [username, search-engines, profiles, dorking]
+inputs:
+  - name: username
+    type: username
+    required: true
+    example: "github"
+  - name: threshold
+    type: integer
+    required: false
+    description: "Junk score cut-off; lower shows only more reliable links (default 300)"
+outputs:
+  - type: url
+  - type: account
+  - type: document
+    description: "PDF files that mention the username"
+secrets:
+  - name: SERPAPI_KEY
+    required: false
+    description: "SerpApi key, enables the Baidu and Naver sources"
+    url: https://serpapi.com/
+    pricing: free_tier
+  - name: YANDEX_USER
+    required: false
+    description: "Yandex XML search user, enables the Yandex source"
+    url: https://github.com/fluquid/yandex-search
+  - name: YANDEX_KEY
+    required: false
+    description: "Yandex XML search key, used with YANDEX_USER"
+    url: https://github.com/fluquid/yandex-search
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/marple@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["python", "/opt/tool/marple.py", "--threshold", "{threshold}", "{username}"]
+  output_format: text
+  timeout_seconds: 900
+  typical_seconds: 90
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+  notifies_target: false
+  notes: "It scrapes public search engines, some of which may answer with a CAPTCHA; those sources are then reported as problems and skipped."
+test:
+  input: { username: "github" }
