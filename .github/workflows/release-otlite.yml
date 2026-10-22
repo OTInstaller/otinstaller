@@ -1,7 +1,9 @@
 # Releases otlite (otlite/) to PyPI with trusted publishing. Push a tag `otlite-vX.Y.Z` whose version matches
 # otlite/pyproject.toml; run the workflow by hand with `repository: testpypi` for a dry run first.
-# The `otinstaller` shim (otlite/otinstaller-shim) is built and published alongside; a version PyPI already has
-# is skipped, so bump its version only when it changes.
+# The `otinstaller` shim (otlite/otinstaller-shim) is built alongside and published after otlite by its own step;
+# a version PyPI already has is skipped, so bump its version only when it changes. To retry a failed release, run the
+# workflow by hand with `repository: pypi`: it uploads what is missing and creates the GitHub release for an
+# existing `otlite-vX.Y.Z` tag.
 #
 # Setup on PyPI (once, per project): Publishing → add a GitHub publisher with owner OTInstaller, repository
 # otinstaller, workflow release-otlite.yml and environment pypi (or testpypi on test.pypi.org).
@@ -60,6 +62,8 @@ jobs:
           name: dist
           path: otlite/dist/
 
+  # Each package is uploaded by its own step, otlite first. A trusted-publishing token only covers the projects
+  # whose publisher matches this run, so a problem with the otinstaller shim's publisher must never block otlite.
   publish-testpypi:
     needs: build
     if: github.event_name == 'workflow_dispatch' && inputs.repository == 'testpypi'
@@ -74,9 +78,24 @@ jobs:
         with:
           name: dist
           path: dist/
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Separate otlite from the shim
+        run: |
+          mkdir dist-otlite dist-shim
+          mv dist/otlite-* dist-otlite/
+          mv dist/otinstaller-* dist-shim/
+          ls -l dist-otlite dist-shim
+      - name: Publish otlite
+        uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
+          packages-dir: dist-otlite/
+          skip-existing: true
+          print-hash: true
+      - name: Publish the otinstaller shim
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: dist-shim/
           skip-existing: true
           print-hash: true
 
@@ -95,14 +114,35 @@ jobs:
         with:
           name: dist
           path: dist/
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Separate otlite from the shim
+        run: |
+          mkdir dist-otlite dist-shim
+          mv dist/otlite-* dist-otlite/
+          mv dist/otinstaller-* dist-shim/
+          ls -l dist-otlite dist-shim
+      - name: Publish otlite
+        uses: pypa/gh-action-pypi-publish@release/v1
         with:
+          packages-dir: dist-otlite/
           skip-existing: true
           print-hash: true
       - name: GitHub release with the archives
-        if: github.ref_type == 'tag'
+        # On a manual run the tag must already exist (--verify-tag): this never creates a tag
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" dist/* --repo "${GITHUB_REPOSITORY}" \
-            --title "${GITHUB_REF_NAME}" --notes "otlite ${GITHUB_REF_NAME#otlite-v}. Changes: https://github.com/${GITHUB_REPOSITORY}/blob/main/otlite/CHANGELOG.md"
+          sdist="$(basename dist-otlite/otlite-*.tar.gz .tar.gz)"
+          version="${sdist#otlite-}"
+          tag="otlite-v${version}"
+          if gh release view "$tag" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "release $tag already exists"
+          else
+            gh release create "$tag" dist-otlite/* dist-shim/* --repo "${GITHUB_REPOSITORY}" --verify-tag \
+              --title "$tag" --notes "otlite ${version}. Changes: https://github.com/${GITHUB_REPOSITORY}/blob/main/otlite/CHANGELOG.md"
+          fi
+      - name: Publish the otinstaller shim
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist-shim/
+          skip-existing: true
+          print-hash: true
