@@ -72,6 +72,7 @@ _INPUT_TYPE_PREFIXES = (
     "p",
     "d",
     "url",
+    "ip",
     "q",
     "geo",
     "tg",
