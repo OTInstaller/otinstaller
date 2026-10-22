@@ -206,8 +206,9 @@ async function record(env: Env, job: Job, sha: string, ns: Namespace, m: Manifes
         `INSERT INTO tools (id, namespace_id, kind, name, summary, categories, tags, repo_url, readme_text, community_packaged, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).bind(toolId, ns.id, m.kind ?? "tool", m.name, m.summary, JSON.stringify(m.categories), JSON.stringify(m.tags ?? []), repoUrl(job.provider, job.repo), readme.slice(0, 20000),
-        // Packages in the community namespace wrap someone else's tool and are labelled so.
-        ns.name === COMMUNITY_NAMESPACE ? 1 : 0, now, now));
+        // A package in the community namespace whose homepage is another repository wraps someone else's tool and is
+        // labelled so; the namespace's own tools (homepage is the source repository, or none) are first-party.
+        upstreamOf(job, m) ? 1 : 0, now, now));
     }
     // Link the package to its source repository, which sync keeps up to date from now on.
     if (job.provider === "github") {
