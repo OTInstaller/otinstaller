@@ -1,0 +1,116 @@
+---
+// /otlite: the no-Docker edition, presented on its own. What it does, the commands, what it covers and where it
+// differs from ot. Static copy plus the install command from lib/install.ts; nothing here is personal.
+import Base from "../layouts/Base.astro";
+import CopyCommand from "../components/CopyCommand.astro";
+import PageHead from "../components/PageHead.astro";
+import { NO_DOCKER } from "../lib/install";
+import { cacheFor } from "../lib/page";
+
+cacheFor(Astro, 3600);
+const SOURCE = "https://github.com/OTInstaller/otinstaller/tree/main/otlite";
+
+const steps = [
+  { cmd: "otlite install sherlock", text: "Installs each tool into its own virtualenv, at the version otlite pins and tested." },
+  { cmd: "otlite run --all u:johndoe", text: "Runs every installed tool that takes a username, in parallel, and saves each run." },
+  { cmd: "otlite results --sort time", text: "Lists every saved run, newest first; filter by tool, target, case, status or age." },
+];
+
+const features = [
+  { title: "One command for every tool", text: "Install, run, update and remove any tool in the catalog the same way. Typed inputs such as u:johndoe and e:ada@example.com become each tool's own flags, so you never look up a tool's options again.", cmd: "otlite update --all" },
+  { title: "Results you can use", text: "Every run is saved by tool, target and time with a JSON sidecar. otlite results sorts and filters them, otlite extract pulls out emails, domains, IPs and URLs, and otlite diff shows what changed since the last run.", cmd: "otlite results --since 7d --sort duration" },
+  { title: "Built for scripts and AI agents", text: "Every command takes --json. Nothing prompts with --yes or without a terminal, exit codes are stable, and an llms.txt explains it all to an agent.", cmd: "otlite results --status failed --json" },
+  { title: "All API keys in one place", text: "One file, ~/.otlite/.env, readable only by you. Each tool receives only the keys it declares, and key values are never written to logs or results.", cmd: "otlite keys check" },
+  { title: "Every tool in its own virtualenv", text: "Tools never share or break each other's dependencies, and none of them touch your system Python. Removing a tool removes all of it.", cmd: "otlite remove sherlock" },
+  { title: "Curated, so you can relax", text: "A tool is listed only when it installs cleanly and passes a smoke test, and every release pins the versions it was tested with. Attack and harassment tools are excluded by policy.", cmd: "otlite list" },
+];
+
+const covers = [
+  ["Username", 24], ["Domain", 19], ["Email", 14], ["URL", 11], ["IP address", 7], ["Name", 5], ["Phone", 4],
+] as const;
+---
+<Base title="otlite" description="otlite: one command line for 47 popular open-source OSINT tools on Linux. Install, run, update and remove each in its own virtualenv, with all API keys in one place and every result saved, sorted and ready for scripts and AI agents.">
+  <PageHead eyebrow="otlite · no Docker needed" title="One CLI for popular open-source OSINT tools">
+    <p class="muted">We pick, pin and test the tools, so you don't have to. One command installs, runs, updates or removes any of them, each in its own virtualenv, with every result saved and ready for scripts and AI agents. For Linux.</p>
+  </PageHead>
+
+  <section class="start" aria-labelledby="start-h">
+    <h2 id="start-h" class="sr-only">Install and first run</h2>
+    <CopyCommand command={NO_DOCKER.command} label="Install otlite" class="install" />
+    <p class="small muted">Needs Python 3.10 or newer, git and <code>python3-venv</code>; <code>pip install otlite</code> in a virtualenv works too. Debian, Ubuntu and Kali packages, and other ways to install, are in the <a href="/docs/otlite">otlite docs</a>.</p>
+    <ol class="steps">
+      {steps.map((s) => (
+        <li>
+          <CopyCommand command={s.cmd} label={s.text} />
+          <p class="small muted">{s.text}</p>
+        </li>
+      ))}
+    </ol>
+  </section>
+
+  <ul class="features">
+    {features.map((f) => (
+      <li>
+        <h2>{f.title}</h2>
+        <p class="muted">{f.text}</p>
+        <CopyCommand command={f.cmd} label={`Example: ${f.title}`} />
+      </li>
+    ))}
+  </ul>
+
+  <section class="covers" aria-labelledby="covers-h">
+    <h2 id="covers-h">47 tools, by what they take</h2>
+    <ul class="counts">
+      {covers.map(([label, n]) => <li><b>{n}</b><span>{label}</span></li>)}
+    </ul>
+    <p class="small muted">Sherlock, Maigret, Holehe, theHarvester, GHunt, SpiderFoot and more. <code>otlite list</code> shows them all; a tool can take more than one kind of input.</p>
+  </section>
+
+  <section class="panel compare" aria-labelledby="compare-h">
+    <h2 id="compare-h">otlite or ot?</h2>
+    <dl>
+      <dt>otlite</dt>
+      <dd>Linux only (Ubuntu, Debian, Arch, Kali). Tools install with pip or git and run on your machine, in a virtualenv but not in a sandbox. No Docker, no account.</dd>
+      <dt><a href="/docs/quick-start">ot</a></dt>
+      <dd>Linux, macOS and Windows. Every tool in the registry is signed, scanned and run in a locked-down container with no host files and no network unless it needs one. Needs Docker or Podman.</dd>
+    </dl>
+    <p class="small muted">Both use the same typed inputs and the same <code>results/</code> folder, so you can switch later. <a href="/docs/otlite">Full comparison →</a></p>
+  </section>
+
+  <p class="small muted more">
+    <a href="/docs/otlite">otlite docs</a> · <a href="/docs/migrating-from-otinstaller">Upgrading from otinstaller</a> ·
+    <a href={SOURCE} rel="noopener">Source</a> · <a href="https://pypi.org/project/otlite/" rel="noopener">PyPI</a>
+  </p>
+</Base>
+
+<style>
+  .start { display: grid; gap: 12px; margin-bottom: 32px; }
+  .start p { margin: 0; max-width: 72ch; }
+  .start :global(.install) { font-size: var(--fs-3); }
+  .steps { list-style: none; margin: 8px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .steps li { display: grid; gap: 6px; align-content: start; }
+  .steps :global(.cmd) { font-size: var(--fs-1); }
+  .features { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); }
+  .features li { background: var(--bg); padding: 20px; display: grid; gap: 10px; align-content: start; }
+  .features h2 { margin: 0; font-size: var(--fs-4); }
+  .features p { margin: 0; }
+  .features :global(.cmd) { font-size: var(--fs-1); }
+  .covers { margin-top: 40px; }
+  .covers h2, .compare h2 { font-size: var(--fs-4); margin: 0 0 12px; }
+  .counts { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-wrap: wrap; gap: 1px; background: var(--border); border: 1px solid var(--border); }
+  .counts li { background: var(--bg); padding: 12px 16px; display: grid; gap: 2px; flex: 1 1 110px; }
+  .counts b { font-size: var(--fs-4); font-variant-numeric: tabular-nums; }
+  .counts span { font-size: var(--fs-1); color: var(--text-muted); }
+  .covers p { margin: 0; }
+  .compare { margin-top: 40px; }
+  .compare dl { margin: 0 0 10px; display: grid; grid-template-columns: max-content 1fr; gap: 8px 20px; }
+  .compare dt { font-weight: 650; }
+  .compare dd { margin: 0; color: var(--text-muted); }
+  .compare p, .more { margin: 0; }
+  .more { margin-top: 24px; }
+  @media (max-width: 1000px) { .steps { grid-template-columns: 1fr; } }
+  @media (max-width: 820px) {
+    .features { grid-template-columns: 1fr; }
+    .compare dl { grid-template-columns: 1fr; }
+  }
+</style>

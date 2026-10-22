@@ -5,7 +5,7 @@ import { cacheControl } from "../lib/page";
 import { DOC_PAGES, POLICY_PAGES, markdownUrl, type MarkdownPage } from "../lib/markdown";
 import { INPUT_LANDING } from "../lib/landing";
 
-const START = ["getting-started", "agents", "mcp-tools", "cli", "automation", "results", "errors", "api"];
+const START = ["getting-started", "otlite", "agents", "mcp-tools", "cli", "automation", "results", "errors", "api"];
 
 const link = (page: MarkdownPage) => `- [${page.title}](${markdownUrl(page)})${page.description ? `: ${page.description}` : ""}`;
 
