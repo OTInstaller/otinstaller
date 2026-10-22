@@ -1,0 +1,48 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: user-scanner
+namespace: osintverse-community
+version: 1.5.2
+summary: "Checks whether a username or email is registered on 2,700+ sites and services"
+readme: README.md
+license: MIT
+homepage: https://github.com/kaifcodec/user-scanner
+categories: [username, email, social-media]
+tags: [username, email, accounts, registration]
+inputs:
+  - name: username
+    type: username
+    required: false
+    description: "Username to check (give a username or an email, not both)"
+    example: "github"
+  - name: email
+    type: email
+    required: false
+    description: "Email address to check (give a username or an email, not both)"
+    example: "example@example.com"
+outputs:
+  - type: account
+  - type: url
+runtime:
+  kind: pipx
+  package: user-scanner
+  package_version: "1.5.2"
+  index: pypi
+  python: ">=3.10"
+  entrypoint: user-scanner
+  wheel_sha256: "ebb7dc99213f91757ece6259f2b9a655d639ed4a2936703ada7eb51b72f1c757"
+  command: ["user-scanner", "-u", "{username}", "-e", "{email}"]
+  output_format: text
+  timeout_seconds: 1200
+  typical_seconds: 180
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+  notifies_target: false
+  notes: "Modules that may send the account owner an email or alert are skipped by default (the wrapper never passes --allow-loud)."
+test:
+  input: { username: "github" }

@@ -1,0 +1,44 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: webpalm
+namespace: osintverse-community
+version: 2.0.20
+summary: "Crawls a website to a set depth and prints the tree of linked pages with their status codes"
+readme: README.md
+license: GPL-3.0
+homepage: https://github.com/XORbit01/webpalm
+categories: [domain-dns, utilities]
+tags: [crawler, web, links, sitemap]
+inputs:
+  - name: url
+    type: url
+    required: true
+    description: "Website to start crawling from"
+    example: "https://example.com"
+  - name: level
+    type: integer
+    required: false
+    default: 1
+    description: "How many links deep to crawl (0 fetches only the start page)"
+outputs:
+  - type: url
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/webpalm@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["webpalm", "-u", "{url}", "-l", "{level}", "-t", "15"]
+  output_format: text
+  timeout_seconds: 1800
+  typical_seconds: 60
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "It requests every page it crawls, so the site's logs see your IP address. Deep levels can mean many requests."
+test:
+  input: { url: "https://example.com", level: 1 }

@@ -1,0 +1,42 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: whois
+namespace: osintverse-community
+version: 5.6.6
+summary: "Looks up WHOIS records for a domain, IP address or AS number, picking the right server automatically"
+readme: README.md
+license: GPL-2.0
+homepage: https://github.com/rfc1036/whois
+categories: [domain-dns, ip-network]
+tags: [whois, registration, rir]
+inputs:
+  - name: query
+    type: domain
+    required: true
+    description: "A domain, IP address or AS number such as AS13335"
+    example: "example.com"
+outputs:
+  - type: organization
+  - type: email
+  - type: other
+    description: "Registrar, dates, name servers and network ranges"
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/whois@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["whois", "-H", "{query}"]
+  output_format: text
+  timeout_seconds: 120
+  typical_seconds: 5
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+  notifies_target: false
+  notes: "Queries registry and RIR WHOIS servers, not the target. Records can name registrants, though most are redacted today."
+test:
+  input: { query: "example.com" }

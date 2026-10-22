@@ -1,0 +1,41 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: octosuite
+namespace: osintverse-community
+version: 5.1.0
+summary: "Shows a GitHub account's public profile from the GitHub API, as JSON"
+readme: README.md
+license: MIT
+homepage: https://github.com/bellingcat/octosuite
+categories: [username, social-media]
+tags: [github, profile, username]
+inputs:
+  - name: username
+    type: username
+    required: true
+    description: "A GitHub user or organisation name"
+    example: "github"
+outputs:
+  - type: account
+  - type: person
+  - type: location
+  - type: url
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/octosuite@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["octosuite", "--json", "user", "{username}"]
+  output_format: text
+  timeout_seconds: 300
+  typical_seconds: 10
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+  notifies_target: false
+test:
+  input: { username: "github" }

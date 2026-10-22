@@ -1,0 +1,37 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: urlfinder
+namespace: osintverse-community
+version: 0.0.3
+summary: "Gathers a domain's known URLs passively from web archives and other public sources"
+readme: README.md
+license: MIT
+homepage: https://github.com/projectdiscovery/urlfinder
+categories: [domain-dns, web-archive]
+tags: [urls, passive, recon, archive]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+    example: "example.com"
+outputs:
+  - type: url
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/urlfinder@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["urlfinder", "-d", "{domain}", "-silent", "-j", "-duc", "-nc"]
+  output_format: jsonl
+  timeout_seconds: 900
+  typical_seconds: 120
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+test:
+  input: { domain: "otinstaller.com" }

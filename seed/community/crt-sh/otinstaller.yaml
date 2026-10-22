@@ -1,0 +1,37 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: crt-sh
+namespace: osintverse-community
+version: 3.0.4
+summary: "Finds a domain's subdomains from four Certificate Transparency log sources at once"
+readme: README.md
+license: MIT
+homepage: https://github.com/az7rb/crt.sh
+categories: [domain-dns]
+tags: [subdomains, certificate-transparency, passive, recon]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+    example: "example.com"
+outputs:
+  - type: subdomain
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/crt-sh@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["crt.sh", "-d", "{domain}", "-q"]
+  output_format: text
+  timeout_seconds: 300
+  typical_seconds: 30
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+test:
+  input: { domain: "otinstaller.com" }

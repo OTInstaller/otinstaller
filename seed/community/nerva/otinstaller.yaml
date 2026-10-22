@@ -1,0 +1,42 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: nerva
+namespace: osintverse-community
+version: 1.77.0
+summary: "Identifies the service running on an open port across 170+ protocols and reports its version and metadata"
+readme: README.md
+license: Apache-2.0
+homepage: https://github.com/praetorian-inc/nerva
+categories: [ip-network]
+tags: [fingerprint, services, ports, recon]
+inputs:
+  - name: target
+    type: string
+    required: true
+    description: "A host:port or ip:port (the port is assumed open); several can be comma separated"
+    example: "scanme.nmap.org:22"
+outputs:
+  - type: ip
+  - type: url
+  - type: other
+    description: "Protocol, transport and service metadata"
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/nerva@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["nerva", "--json", "-t", "{target}"]
+  output_format: jsonl
+  timeout_seconds: 600
+  typical_seconds: 20
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "Connects to the target's ports and sends protocol probes, which its logs and IDS see with your IP address. Only scan hosts you are allowed to."
+test:
+  input: { target: "scanme.nmap.org:22" }

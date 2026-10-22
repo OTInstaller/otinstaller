@@ -1,0 +1,85 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: numint
+namespace: osintverse-community
+version: 0.0.0-git.9186c35
+summary: "Looks up a phone number: validity, line type, country, carrier, time zones and optional provider risk scores"
+readme: README.md
+license: MIT
+homepage: https://github.com/whoamitang/numint
+categories: [phone]
+tags: [phone, carrier, libphonenumber, reputation]
+inputs:
+  - name: phone
+    type: phone
+    required: true
+    description: "Phone number in international format"
+    example: "+14155552671"
+  - name: country
+    type: string
+    required: false
+    description: "ISO country hint for a local-format number, such as GB"
+outputs:
+  - type: phone
+  - type: location
+    description: "Country, region and time zones"
+  - type: organization
+    description: "Carrier"
+  - type: url
+    description: "Search links for the number"
+secrets:
+  - name: NUMVERIFY_API_KEY
+    required: false
+    description: "Numverify key for carrier and line type"
+    url: https://numverify.com/product
+    pricing: free_tier
+  - name: VERIPHONE_API_KEY
+    required: false
+    description: "Veriphone key for validation and carrier"
+    url: https://veriphone.io/
+    pricing: free_tier
+  - name: ABSTRACTAPI_API_KEY
+    required: false
+    description: "AbstractAPI phone validation key"
+    url: https://www.abstractapi.com/phone-validation-api
+    pricing: free_tier
+  - name: NUMLOOKUPAPI_API_KEY
+    required: false
+    description: "NumLookupAPI key"
+    url: https://www.numlookupapi.com/
+    pricing: free_tier
+  - name: IPQS_API_KEY
+    required: false
+    description: "IPQualityScore key for the fraud and spam risk score"
+    url: https://www.ipqualityscore.com/create-account
+    pricing: free_tier
+  - name: TWILIO_ACCOUNT_SID
+    required: false
+    description: "Twilio Lookup account SID (needs TWILIO_AUTH_TOKEN too)"
+    url: https://www.twilio.com/try-twilio
+    pricing: paid
+  - name: TWILIO_AUTH_TOKEN
+    required: false
+    description: "Twilio Lookup auth token (needs TWILIO_ACCOUNT_SID too)"
+    url: https://www.twilio.com/try-twilio
+    pricing: paid
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/numint@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["numint", "scan", "{phone}", "--offline", "--api", "--json", "--no-cache", "--country", "{country}"]
+  output_format: json
+  timeout_seconds: 300
+  typical_seconds: 15
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: true
+  notifies_target: false
+  notes: "Runs the offline libphonenumber layer and any data providers you have keys for. The account-presence check (--presence) and the AI summary are left off."
+test:
+  input: { phone: "+14155552671" }

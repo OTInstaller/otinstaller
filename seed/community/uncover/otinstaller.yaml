@@ -1,0 +1,139 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: uncover
+namespace: osintverse-community
+version: 1.2.1
+summary: "Finds exposed hosts by querying Shodan, Censys, FOFA and other internet search engines"
+readme: README.md
+license: MIT
+homepage: https://github.com/projectdiscovery/uncover
+categories: [ip-network, domain-dns]
+tags: [shodan, censys, exposed-hosts, recon]
+inputs:
+  - name: query
+    type: string
+    required: true
+    description: "Search query in the engine's syntax, such as ssl:\"example.com\" for Shodan, or an IP for shodan-idb"
+    example: "1.1.1.1"
+  - name: engine
+    type: enum
+    required: false
+    default: "shodan-idb"
+    values: ["shodan-idb", "shodan", "censys", "fofa", "zoomeye", "netlas", "criminalip", "onyphe", "hunter", "quake", "publicwww", "hunterhow", "google", "driftnet", "daydaymap"]
+    description: "Search engine to query; shodan-idb (Shodan InternetDB) needs no key, the others need their key"
+  - name: limit
+    type: integer
+    required: false
+    description: "Maximum number of results (default 100)"
+outputs:
+  - type: ip
+  - type: domain
+    description: "Host name, when the engine reports one"
+  - type: other
+    description: "Open port"
+secrets:
+  - name: SHODAN_API_KEY
+    required: false
+    description: "Shodan API key (engine shodan)"
+    url: https://account.shodan.io
+    pricing: free_tier
+  - name: CENSYS_API_TOKEN
+    required: false
+    description: "Censys API token (engine censys)"
+    url: https://censys.io/register
+    pricing: free_tier
+  - name: CENSYS_ORGANIZATION_ID
+    required: false
+    description: "Censys organisation ID (engine censys)"
+    url: https://censys.io/register
+    pricing: free_tier
+  - name: FOFA_EMAIL
+    required: false
+    description: "FOFA account email (engine fofa)"
+    url: https://fofa.info
+    pricing: free_tier
+  - name: FOFA_KEY
+    required: false
+    description: "FOFA API key (engine fofa)"
+    url: https://fofa.info
+    pricing: free_tier
+  - name: ZOOMEYE_API_KEY
+    required: false
+    description: "ZoomEye API key (engine zoomeye)"
+    url: https://www.zoomeye.ai
+    pricing: free_tier
+  - name: NETLAS_API_KEY
+    required: false
+    description: "Netlas API key (engine netlas)"
+    url: https://app.netlas.io/registration/
+    pricing: free_tier
+  - name: CRIMINALIP_API_KEY
+    required: false
+    description: "Criminal IP API key (engine criminalip)"
+    url: https://www.criminalip.io/register
+    pricing: free_tier
+  - name: ONYPHE_API_KEY
+    required: false
+    description: "ONYPHE API key (engine onyphe)"
+    url: https://search.onyphe.io/signup
+    pricing: free_tier
+  - name: HUNTER_API_KEY
+    required: false
+    description: "Hunter (Qianxin) API key (engine hunter)"
+    url: https://hunter.qianxin.com
+    pricing: free_tier
+  - name: QUAKE_TOKEN
+    required: false
+    description: "Quake (360) API token (engine quake)"
+    url: https://quake.360.net
+    pricing: free_tier
+  - name: PUBLICWWW_API_KEY
+    required: false
+    description: "PublicWWW API key (engine publicwww)"
+    url: https://publicwww.com/profile/signup.html
+    pricing: free_tier
+  - name: HUNTERHOW_API_KEY
+    required: false
+    description: "Hunter.how API key (engine hunterhow)"
+    url: https://hunter.how
+    pricing: free_tier
+  - name: GOOGLE_API_KEY
+    required: false
+    description: "Google Custom Search API key (engine google)"
+    url: https://developers.google.com/custom-search/v1/introduction
+    pricing: free_tier
+  - name: GOOGLE_API_CX
+    required: false
+    description: "Google Programmable Search engine ID (engine google)"
+    url: https://programmablesearchengine.google.com/controlpanel/create
+    pricing: free_tier
+  - name: DRIFTNET_API_KEY
+    required: false
+    description: "Driftnet API key (engine driftnet)"
+    url: https://driftnet.io
+    pricing: free_tier
+  - name: DAYDAYMAP_API_KEY
+    required: false
+    description: "DayDayMap API key (engine daydaymap)"
+    url: https://www.daydaymap.com
+    pricing: free_tier
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/uncover@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["uncover", "-q", "{query}", "-e", "{engine}", "-l", "{limit}", "-j", "-silent", "-nc", "-duc"]
+  output_format: jsonl
+  timeout_seconds: 600
+  typical_seconds: 20
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "It only queries the search engines' APIs, never the hosts. Every engine except shodan-idb needs its own API key, set with `ot keys set`."
+test:
+  input: { query: "1.1.1.1", engine: "shodan-idb" }

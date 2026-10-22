@@ -1,0 +1,40 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: cloud-enum
+namespace: osintverse-community
+version: 0.9.0
+summary: "Finds public AWS S3 buckets, Azure storage and apps, and Google Cloud buckets and apps named after a keyword"
+readme: README.md
+license: MIT
+homepage: https://github.com/initstring/cloud_enum
+categories: [company, domain-dns]
+tags: [cloud, s3, azure, gcp, buckets]
+inputs:
+  - name: keyword
+    type: string
+    required: true
+    description: "A company or product name, such as the domain without its TLD"
+    example: "otinstaller"
+outputs:
+  - type: url
+    description: "Bucket, storage account or app URL; open buckets have their files listed"
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/cloud-enum@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["cloud_enum", "-k", "{keyword}", "--quickscan", "-t", "10"]
+  output_format: text
+  timeout_seconds: 1800
+  typical_seconds: 120
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "It requests storage and app URLs at AWS, Azure and Google Cloud. If a matching resource exists, its owner's access logs can show your IP."
+test:
+  input: { keyword: "otinstaller" }

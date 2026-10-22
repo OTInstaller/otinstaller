@@ -1,0 +1,41 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: gogetcrawl
+namespace: osintverse-community
+version: 1.1.3
+summary: "Lists archived URLs for a domain and its subdomains from the Wayback Machine and Common Crawl"
+readme: README.md
+license: MIT
+homepage: https://github.com/karust/gogetcrawl
+categories: [web-archive, domain-dns]
+tags: [wayback, common-crawl, urls, passive]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+    example: "example.com"
+  - name: limit
+    type: integer
+    required: false
+    description: "Max results to fetch from each archive"
+outputs:
+  - type: url
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/gogetcrawl@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["gogetcrawl", "url", "*.{domain}/*", "--collapse", "--limit", "{limit}"]
+  output_format: text
+  timeout_seconds: 1800
+  typical_seconds: 90
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+test:
+  input: { domain: "otinstaller.com", limit: 20 }

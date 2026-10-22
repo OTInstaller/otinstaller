@@ -1,0 +1,53 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: ddgr
+namespace: osintverse-community
+version: 2.2.0
+summary: "Searches DuckDuckGo from the command line and returns titles, URLs and snippets"
+readme: README.md
+license: GPL-3.0
+homepage: https://github.com/jarun/ddgr
+categories: [utilities]
+tags: [search, duckduckgo, web-search]
+inputs:
+  - name: query
+    type: string
+    required: true
+    description: "Search keywords; DuckDuckGo operators work"
+    example: "otinstaller"
+  - name: site
+    type: domain
+    required: false
+    description: "Only search this site"
+    example: "github.com"
+  - name: num
+    type: integer
+    required: false
+    description: "Results per page, 0 to 25 (default 10)"
+outputs:
+  - type: url
+  - type: other
+    description: "Result title and abstract"
+runtime:
+  kind: pipx
+  package: ddgr
+  package_version: "2.2"
+  index: pypi
+  python: ">=3.8"
+  entrypoint: ddgr
+  wheel_sha256: "5db4e8a4323ce748d40fcdec0c476fc4685e9bb942b79a566eec4f7577bd1037"
+  command: ["ddgr", "--json", "-C", "-n", "{num}", "-w", "{site}", "{query}"]
+  output_format: json
+  timeout_seconds: 120
+  typical_seconds: 5
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "DuckDuckGo may rate-limit or block requests from cloud or datacenter IP addresses."
+test:
+  input: { query: "otinstaller", num: 5 }

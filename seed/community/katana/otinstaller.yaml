@@ -1,0 +1,43 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: katana
+namespace: osintverse-community
+version: 1.8.0
+summary: "Crawls a website and lists the URLs, endpoints and JavaScript files it finds"
+readme: README.md
+license: MIT
+homepage: https://github.com/projectdiscovery/katana
+categories: [domain-dns, web-archive]
+tags: [crawler, urls, endpoints, recon]
+inputs:
+  - name: url
+    type: url
+    required: true
+    example: "https://example.com"
+  - name: depth
+    type: integer
+    required: false
+    default: 2
+    description: "Maximum crawl depth (default 2)"
+outputs:
+  - type: url
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/katana@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["katana", "-u", "{url}", "-d", "{depth}", "-jsonl", "-silent", "-nc", "-duc", "-or", "-ob", "-ct", "15m"]
+  output_format: jsonl
+  timeout_seconds: 1200
+  typical_seconds: 120
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "It crawls the target site directly, so the web server's logs see your IP address and many requests."
+test:
+  input: { url: "https://example.com", depth: 1 }

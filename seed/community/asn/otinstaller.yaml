@@ -1,0 +1,59 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: asn
+namespace: osintverse-community
+version: 0.83.0
+summary: "Looks up an IP, prefix, AS number, hostname or organisation: ASN, BGP, RPKI, geolocation and reputation"
+readme: README.md
+license: MIT
+homepage: https://github.com/nitefood/asn
+categories: [ip-network, company]
+tags: [asn, bgp, rpki, geolocation, reputation]
+inputs:
+  - name: target
+    type: string
+    required: true
+    description: "An IP, prefix, AS number (AS13335), hostname, URL or organisation name"
+    example: "1.1.1.1"
+outputs:
+  - type: ip
+  - type: organization
+  - type: location
+  - type: other
+    description: "ASN, prefixes, RPKI status, BGP peers and reputation"
+secrets:
+  - name: IPINFO_TOKEN
+    required: false
+    description: "ipinfo.io token for more geolocation lookups"
+    url: https://ipinfo.io/signup
+    pricing: free_tier
+  - name: IQS_TOKEN
+    required: false
+    description: "IPQualityScore token for in-depth IP reputation"
+    url: https://www.ipqualityscore.com/create-account
+    pricing: free_tier
+  - name: CLOUDFLARE_TOKEN
+    required: false
+    description: "Cloudflare Radar API token for an AS's BGP hijack and route leak history"
+    url: https://dash.cloudflare.com/profile/api-tokens/
+    pricing: free
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/asn@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["asn-ot", "-n", "-j", "{target}"]
+  output_format: json
+  timeout_seconds: 300
+  typical_seconds: 20
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "With -n it skips the traceroute and only queries public lookup services (RIPEstat, pWhois, ipinfo.io, StopForumSpam and others)."
+test:
+  input: { target: "1.1.1.1" }

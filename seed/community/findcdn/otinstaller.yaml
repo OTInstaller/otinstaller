@@ -1,0 +1,40 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: findcdn
+namespace: osintverse-community
+version: 0.0.0-git.7bbf50e
+summary: "Detects which CDN a domain uses from its DNS records, HTTP headers and IP ownership"
+readme: README.md
+license: CC0-1.0
+homepage: https://github.com/cisagov/findcdn
+categories: [domain-dns, ip-network]
+tags: [cdn, dns, hosting]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+    example: "example.com"
+outputs:
+  - type: ip
+  - type: organization
+    description: "The CDN provider"
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/findcdn@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["findcdn", "list", "{domain}", "--all"]
+  output_format: text
+  timeout_seconds: 300
+  typical_seconds: 15
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "It makes an HTTPS request to the domain to read its headers, so the web server's logs see your IP address."
+test:
+  input: { domain: "example.com" }

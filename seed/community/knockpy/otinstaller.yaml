@@ -1,0 +1,43 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: knockpy
+namespace: osintverse-community
+version: 9.0.0
+summary: "Finds a domain's subdomains from passive sources, then checks each one's DNS, HTTP status and TLS certificate"
+readme: README.md
+license: GPL-3.0
+homepage: https://github.com/guelfoweb/knockpy
+categories: [domain-dns]
+tags: [subdomains, recon, dns, tls]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+    example: "example.com"
+outputs:
+  - type: subdomain
+  - type: ip
+  - type: certificate
+  - type: url
+runtime:
+  kind: pipx
+  package: knock-subdomains
+  package_version: "9.0.0"
+  index: pypi
+  entrypoint: knockpy
+  wheel_sha256: "03cf1b8e4e9b05843db678797682df4a926a713010b8d84056a4f55df78dd464"
+  command: ["knockpy", "-d", "{domain}", "--recon", "--json"]
+  output_format: json
+  timeout_seconds: 1800
+  typical_seconds: 120
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "After the passive lookup it resolves each subdomain, makes HTTP/HTTPS requests to it and tries a zone transfer on the domain's name servers, so the target's logs see your IP address."
+test:
+  input: { domain: "otinstaller.com" }

@@ -1,0 +1,44 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: favicorn
+namespace: osintverse-community
+version: 0.1.1
+summary: "Hashes a site's favicons and builds search links to find other hosts using the same icon"
+readme: README.md
+license: Apache-2.0
+homepage: https://github.com/sharsil/favicorn
+categories: [domain-dns, ip-network]
+tags: [favicon, shodan, censys, pivot, infrastructure]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+    example: "otinstaller.com"
+outputs:
+  - type: url
+    description: "Search link on Shodan, Censys, FOFA, ZoomEye and other engines"
+  - type: other
+    description: "Favicon MurmurHash, MD5 and SHA-256 hashes"
+runtime:
+  kind: pipx
+  package: favicorn-osint
+  package_version: "0.1.1"
+  index: pypi
+  python: ">=3.8"
+  entrypoint: favicorn
+  wheel_sha256: "214172df59434dcaf5853c116fedbb15bf155f9f2db7b82c66ae6fdd1bf43bab"
+  command: ["favicorn", "-d", "{domain}", "--no-logo", "--no-fetch", "-v"]
+  output_format: text
+  timeout_seconds: 300
+  typical_seconds: 20
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "It fetches favicons from the domain and from its resolved IP addresses, so those servers' logs see your IP address."
+test:
+  input: { domain: "otinstaller.com" }
