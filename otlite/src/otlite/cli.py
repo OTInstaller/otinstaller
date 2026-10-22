@@ -2452,6 +2452,105 @@ def keys_check(
             typer.echo(f"  Adding {key} would unlock {count} more tool(s)")
 
 
+@keys_app.command("set")
+def keys_set(
+    name: Annotated[str, typer.Argument(help="Key name, such as SHODAN_API_KEY")],
+    from_env: Annotated[
+        str | None,
+        typer.Option("--from-env", help="Copy the value from this environment variable"),
+    ] = None,
+    json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
+):
+    """Save an API key. The value is read from a hidden prompt, piped input or --from-env."""
+    import sys
+
+    from otlite.keys import set_key
+    from otlite.registry import default_registry_path, load_registry
+
+    _require_supported_platform()
+    if from_env is not None:
+        value = os.environ.get(from_env, "")
+        if not value:
+            typer.echo(f"error: environment variable {from_env} is not set", err=True)
+            raise typer.Exit(code=2)
+    elif sys.stdin.isatty():
+        value = typer.prompt(f"Value for {name}", hide_input=True)
+    else:
+        value = sys.stdin.readline().rstrip("\r\n")
+    try:
+        set_key(name, value)
+    except ValueError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=2) from None
+
+    tools = load_registry(default_registry_path())
+    used_by = sorted(
+        t.name for t in tools if name in t.api_keys.required or name in t.api_keys.optional
+    )
+    if json_output:
+        typer.echo(json.dumps({"key": name, "saved": True, "used_by": used_by}))
+        return
+    typer.echo(f"saved {name} to {get_env_file()}")
+    if used_by:
+        typer.echo(f"used by: {', '.join(used_by)}")
+    else:
+        typer.echo("note: no tool in the registry declares this key; it is saved anyway")
+
+
+@keys_app.command("list")
+def keys_list(
+    json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
+):
+    """List the keys that are set (names only) and the tools that use them."""
+    from otlite.keys import load_env_file
+    from otlite.registry import default_registry_path, load_registry
+
+    _require_supported_platform()
+    names = sorted(load_env_file())
+    tools = load_registry(default_registry_path())
+    rows = [
+        {
+            "key": n,
+            "used_by": sorted(
+                t.name for t in tools if n in t.api_keys.required or n in t.api_keys.optional
+            ),
+        }
+        for n in names
+    ]
+    if json_output:
+        typer.echo(json.dumps(rows))
+        return
+    if not rows:
+        typer.echo("no keys set; add one with: otlite keys set NAME")
+        return
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Key")
+    table.add_column("Used by")
+    for row in rows:
+        table.add_row(row["key"], ", ".join(row["used_by"]) or "no tool")
+    _make_console(False).print(table)
+
+
+@keys_app.command("rm")
+def keys_rm(
+    name: Annotated[str, typer.Argument(help="Key name")],
+    json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
+):
+    """Remove an API key."""
+    from otlite.keys import remove_key
+
+    _require_supported_platform()
+    removed = remove_key(name)
+    if json_output:
+        typer.echo(json.dumps({"key": name, "removed": removed}))
+    elif removed:
+        typer.echo(f"removed {name}")
+    else:
+        typer.echo(f"{name} was not set")
+    if not removed:
+        raise typer.Exit(code=1)
+
+
 @app.command(name="resume")
 def resume(
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
