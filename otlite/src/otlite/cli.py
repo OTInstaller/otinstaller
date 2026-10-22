@@ -30,6 +30,7 @@ from otlite.config import (
 )
 from otlite.detect import detect_target_type
 from otlite.diff import diff_runs, find_recent_runs
+from otlite.examples import example_command
 from otlite.extract import extract_from_files
 from otlite.installer import (
     AlreadyInstalled,
@@ -277,7 +278,7 @@ def _print_table(
     typer.echo(f"{count} tool{'s' if count != 1 else ''}")
 
 
-_INPUT_TYPE_PREFIXES = ("u", "e", "p", "d", "url", "q", "geo", "tg", "lat", "lng")
+_INPUT_TYPE_PREFIXES = ("u", "e", "p", "d", "url", "ip", "q", "geo", "tg", "lat", "lng")
 
 
 def _parse_typed_inputs(args: list[str]) -> tuple[dict[str, str], list[str]]:
@@ -369,7 +370,14 @@ def _build_tool_args(tool, typed_inputs: dict[str, str]) -> list[str]:
 
 
 # Target type from detect_target_type (or --type) -> typed-input prefix
-_TARGET_TYPE_PREFIX = {"username": "u", "email": "e", "domain": "d", "url": "url", "phone": "p"}
+_TARGET_TYPE_PREFIX = {
+    "username": "u",
+    "email": "e",
+    "domain": "d",
+    "url": "url",
+    "phone": "p",
+    "ip": "ip",
+}
 
 
 def _target_tool_args(tool, target_type: str, target: str) -> list[str] | None:
@@ -404,7 +412,9 @@ def _show_tool_info(
     if json_output:
         from dataclasses import asdict
 
-        typer.echo(json.dumps(asdict(tool), default=str))
+        typer.echo(
+            json.dumps({**asdict(tool), "example_command": example_command(tool)}, default=str)
+        )
         return
 
     lines = []
@@ -442,7 +452,8 @@ def _show_tool_info(
         input_types_str = ", ".join(f"{k}:{v}" for k, v in sorted(tool.input_types.items()))
         lines.append(f"Input types: {input_types_str}")
     else:
-        lines.append("Input types: none")
+        lines.append("Input types: none; pass the tool's own arguments after --")
+    lines.append(f"Example: {example_command(tool)}")
 
     api_keys = []
     if tool.api_keys.required:
@@ -485,7 +496,7 @@ def _show_tool_info(
         lines.append(f"Usage: python {tool.entrypoint.script} [OPTIONS]")
 
     if tool.example:
-        lines.append(f"Example: {tool.example}")
+        lines.append(f"Sample output: otlite example {tool.name}")
 
     for line in lines:
         console.print(line)
@@ -603,7 +614,9 @@ def info(
     if json_output:
         from dataclasses import asdict
 
-        typer.echo(json.dumps(asdict(tool), default=str))
+        typer.echo(
+            json.dumps({**asdict(tool), "example_command": example_command(tool)}, default=str)
+        )
         return
 
     console = _make_console(no_color)
@@ -661,7 +674,8 @@ def info(
         input_types_str = ", ".join(f"{k}:{v}" for k, v in sorted(tool.input_types.items()))
         lines.append(f"Input types: {input_types_str}")
     else:
-        lines.append("Input types: none")
+        lines.append("Input types: none; pass the tool's own arguments after --")
+    lines.append(f"Example: {example_command(tool)}")
 
     if tool.requires_python:
         lines.append(f"Requires Python: {tool.requires_python}")
@@ -1197,7 +1211,7 @@ def run(
     # Handle --all mode
     if all_tools:
         # Validate that typed inputs are only from allowed set for --all
-        allowed_all_prefixes = {"u", "e", "p", "d", "url"}
+        allowed_all_prefixes = {"u", "e", "p", "d", "url", "ip"}
         for prefix in typed_inputs:
             if prefix not in allowed_all_prefixes:
                 typer.echo(

@@ -380,7 +380,7 @@ A tool that accepts several input types is listed under the first one.
 
 | Tool | What it does | Typed inputs | Notes |
 | --- | --- | --- | --- |
-| [Bbot](https://github.com/blacklanternsecurity/bbot) ([docs](https://osintverse.gitbook.io/otinstaller/tools/bbot)) | The recursive internet scanner for hackers | `d:` |  |
+| [Bbot](https://github.com/blacklanternsecurity/bbot) ([docs](https://osintverse.gitbook.io/otinstaller/tools/bbot)) | The recursive internet scanner for hackers | `d:` `ip:` |  |
 | [Ctfr](https://github.com/UnaPibaGeek/ctfr) ([docs](https://osintverse.gitbook.io/otinstaller/tools/ctfr)) | Abusing Certificate Transparency logs for getting HTTPS websites subdomains | `d:` |  |
 | [Dnsgen](https://github.com/AlephNullSK/dnsgen) ([docs](https://osintverse.gitbook.io/otinstaller/tools/dnsgen)) | DNSGen is a powerful and flexible DNS name permutation tool designed for security researchers and... | args after `--` |  |
 | [Dnstwist](https://github.com/elceef/dnstwist) ([docs](https://osintverse.gitbook.io/otinstaller/tools/dnstwist)) | Domain name permutation engine for detecting homograph phishing attacks, typo squatting, and brand... | `d:` |  |
@@ -393,7 +393,7 @@ A tool that accepts several input types is listed under the first one.
 | [Pywerview](https://github.com/the-useless-one/pywerview) ([docs](https://osintverse.gitbook.io/otinstaller/tools/pywerview)) | A (partial) Python rewriting of PowerSploit's PowerView | args after `--` |  |
 | [Secator](https://github.com/freelabz/secator) ([docs](https://osintverse.gitbook.io/otinstaller/tools/secator)) | secator - the pentester's swiss knife | args after `--` |  |
 | [Sitedorks](https://github.com/Zarcolio/sitedorks) ([docs](https://osintverse.gitbook.io/otinstaller/tools/sitedorks)) | Search Google/Bing/Ecosia/DuckDuckGo/Yandex/Yahoo for a search term (dork) with a default set of websites,... | `q:` |  |
-| [Spiderfoot](https://github.com/smicallef/spiderfoot) ([docs](https://osintverse.gitbook.io/otinstaller/tools/spiderfoot)) | SpiderFoot automates OSINT for threat intelligence and mapping your attack surface | `d:` |  |
+| [Spiderfoot](https://github.com/smicallef/spiderfoot) ([docs](https://osintverse.gitbook.io/otinstaller/tools/spiderfoot)) | SpiderFoot automates OSINT for threat intelligence and mapping your attack surface | `d:` `ip:` |  |
 | [Sublist3r](https://github.com/aboul3la/Sublist3r) ([docs](https://osintverse.gitbook.io/otinstaller/tools/sublist3r)) | Fast subdomain enumeration tool using multiple search engines and certificate transparency logs | `d:` |  |
 | [theHarvester](https://github.com/laramies/theHarvester) ([docs](https://osintverse.gitbook.io/otinstaller/tools/theharvester)) | Find emails, subdomains and names for a domain | `d:` |  |
 
