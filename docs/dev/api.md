@@ -58,7 +58,9 @@ to the public routes below through `edgeCached`, with none of the caller's heade
 | GET | `/tools/:ns/:name/:version/manifest` | none | `cached(c, version === "latest" ? 60 : 3600)` | index.ts | Removed versions return status and `removed_reason` with `manifest: null`; otherwise adds `installFallbacks()` (`mirror_image` / `wheel_url`). `manifest` is `compatManifest()` (`lib/manifest.ts`): without the optional fields added after ot v0.12, whose install-time validation rejects them; `manifest_full` carries them when anything was left out |
 | GET | `/tools/:ns/:name/:version/scans` | none | `cached(c, 300)` | index.ts | PII scan summaries reduced to `{hits: <count>}` |
 | GET | `/tools/:ns/:name/:version` | none | `cached(c, 3600)` | index.ts | Also 3600 for `latest` (unlike `/manifest`, which uses 60 for `latest`) |
-| GET | `/namespaces/:ns` | none | `cached(c, 300)` | index.ts | Active namespaces only; visible tools ordered by `installs_30d` |
+| GET | `/namespaces` | none | `cached(c, 600)` | routes/profiles.ts | Publishers with a visible package (at most 500), most installed first, for the sitemap and llms.txt |
+| GET | `/namespaces/:ns` | none | `cached(c, 300)` | routes/profiles.ts | The profile (`effectiveProfile()`: host values with the owner's overrides), `stats` and visible tools (with `published_at`). `pending_review` namespaces answer 200 with only the handle and host links and no tools; `rejected`/`suspended` 404 |
+| GET | `/namespaces/:ns/activity` | none | `cached(c, 300)` | routes/profiles.ts | `?limit` (1–100, 30). Public audit events of visible packages: `version.published`, `version.yank`/`unyank`, `tool.deprecate`/`undeprecate`, `transfer.complete` |
 | GET | `/facets` | none | `cached(c, 600)` | index.ts | How many visible packages match each facet value: `inputs`, `outputs`, `categories`, `runtimes`, `no_keys`. `kind` is tool (default) or guide; counts ignore other filters |
 | GET | `/pivots` | none | `cached(c, 600)` | index.ts | `from=` comma list of entity types; top 10 non-broken tools per usable type |
 | POST | `/installs` | none | - | index.ts | Anonymous per-day counter; always 204 (also for unknown packages) |
@@ -112,6 +114,21 @@ to the public routes below through `edgeCached`, with none of the caller's heade
 | --- | --- | --- | --- | --- | --- |
 | POST | `/webhooks/github` | HMAC (`GITHUB_WEBHOOK_SECRET`) | - | routes/webhooks.ts | 5 MB max (413). `ping`, `installation`, `installation_repositories`, `create` (tag → `{jobId}` queued, 202), `push`, `release`, `repository` |
 | POST | `/webhooks/gitlab` | GitLab token (per source) | - | routes/webhooks.ts | 5 MB max. `tag_push` (202 when queued), `release`, `push`; a bad token returns 401 `bad_signature` built by hand (no `docs`/`hint`) |
+
+### 1.5a Publisher profiles (owner)
+
+All need an `owner` role in the namespace (or admin), work for `active` and `pending_review` namespaces, and answer
+the owner view (host values, `custom`, `effective`, About, pins, sync state, hosts, the user's accounts, packages)
+with `private, no-store`. Code in `routes/profiles.ts` and `profiles.ts`.
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/me/namespaces/:ns/profile` | owner | `private, no-store` | routes/profiles.ts | The owner view |
+| PATCH | `/me/namespaces/:ns/profile` | owner | `private, no-store` | routes/profiles.ts | `{custom?: {field: value or null}, about?: string or null, pins?: string[], hide_details?: bool}`; null goes back to the host value; About is rendered with `renderPage` (no raw HTML, images dropped); pins must be the namespace's packages (max 6); audited `profile.update` |
+| POST | `/me/namespaces/:ns/profile/preview` | owner | `private, no-store` | routes/profiles.ts | `{about}` → `{html, problems}` |
+| POST | `/me/namespaces/:ns/profile/sync` | owner | `private, no-store` | routes/profiles.ts | `syncProfile()` now; 10 per namespace per hour (429 `profile_sync_rate_limited`) |
+| POST | `/me/namespaces/:ns/profile/hosts` | owner | `private, no-store` | routes/profiles.ts | `{provider, account?}`: the user's own account on that host, a GitHub org they administer or a public GitLab group they own (Owner). 400 `host_account_not_linked`, 404 `host_not_found`, 403 `host_not_owned`, 409 `host_already_primary`; 201 |
+| DELETE | `/me/namespaces/:ns/profile/hosts/:provider` | owner | `private, no-store` | routes/profiles.ts | Removes a secondary host and resyncs |
 
 ### 1.6 Sources, sync and package settings (10)
 
@@ -295,6 +312,7 @@ Queue `otinstaller-publish`, producer binding `PUBLISH_QUEUE`. Consumer settings
 | `{ linkCheckToolId }` | `recheckLinks(env, linkCheckToolId)` (guides.ts) | `queueNightlyLinkChecks` (batches of 100) |
 | `{ publishVersionId }` | `publishApproved(env, publishVersionId)` (publish.ts): publishes only if the version is `awaiting_review` and the namespace is `active` | `POST /admin/namespaces/:ns/approve` (batches of 100) |
 | `{ backupVersionId }` | `backupVersion(env, backupVersionId)` (backups.ts) | versions published without a scanner run (approvals, guides) |
+| `{ profileNamespaceId }` | `syncProfile(env, id)` (profiles.ts); never throws, failures are recorded on the profile | a new namespace (GitHub App installation, GitLab connect); GitHub `organization` and `membership` webhooks |
 | `{ jobId }` (the `else` branch) | `processJob(env, jobId)` (publish.ts) | GitHub `create` webhook, GitLab `tag_push`, poller, imports |
 
 Dispatch is by `"key" in body`, in the order `importId`, `checkVersionId`, `linkCheckToolId`, `publishVersionId`,

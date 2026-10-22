@@ -471,6 +471,15 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 - File: `cli/login.go`. Args: `NoArgs`. Deletes `OTINSTALLER_TOKEN` from the keychain and the index; does not revoke
   it on the server. Exit: 0; 1 on keychain error. (An `OTINSTALLER_TOKEN` environment variable keeps working.)
 
+#### `ot profile [namespace]`
+- File: `cli/profile.go`. Args: `MaximumNArgs(1)`; without one it uses the only namespace the user owns (`GET /me`).
+- Flags: `--sync` (bool), `--set key=value` and `--unset key` (repeatable; keys name, bio, location, website, company,
+  avatar, socials, about, pins, hide; `about=@file` or `@-` for stdin; socials and pins are comma lists); `--json`.
+- API: `GET /namespaces/{ns}` (anonymous); edits `PATCH /me/namespaces/{ns}/profile`, then
+  `POST /me/namespaces/{ns}/profile/sync` with `--sync`.
+- Sign-in: needed for edits and for no namespace (exit 2). Exit: 0; 2 for usage, unknown keys and wrapped registry 4xx
+  (including 429 `profile_sync_rate_limited`); 1 otherwise.
+
 #### `ot whoami`
 - File: `cli/login.go`. Args: `NoArgs`.
 - API: `GET /me`. Prints `login (provider:login, ...)` and each namespace with role and status.
@@ -681,6 +690,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `cli/login_test.go` | Device-flow login (GitHub) and `--osintverse` |
 | `cli/release_test.go` | `ot release` with real git: happy path, refusals (dirty tree, existing tag), tools refused, `--no-push` |
 | `cli/sync_test.go` | `ot sync` and `--log` |
+| `cli/profile_test.go` | `ot profile`: show, `--set`/`--unset`, `--sync`, rate limit, `--json` |
 | `cli/trust_test.go` | report/claim/transfer against a fake registry, removed-package warnings and refusal, `self-update` with a signed fake release |
 | `cli/feedback_test.go` | `ot feedback`: message with `--kind`/`--about`, piped stdin with `--email`, bad kind exits 2 |
 | `envelope/envelope_test.go` | `ParseOutput` per format; `Write` formats |

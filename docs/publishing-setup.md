@@ -13,7 +13,8 @@ GitHub → Settings → Developer settings → GitHub Apps → New GitHub App (c
 | Webhook URL | `https://api.otinstaller.com/v1/webhooks/github` |
 | Webhook secret | a long random string → `GITHUB_WEBHOOK_SECRET` |
 | Repository permissions | Contents: Read and write · Metadata: Read-only · Commit statuses: Read and write · Pull requests: Read and write · Workflows: Read and write |
-| Subscribe to events | Create · Release · Push · Repository · Installation target (push, release and repository keep packages in sync) |
+| Organization permissions | Members: Read-only (so org membership changes reach the registry) |
+| Subscribe to events | Create · Release · Push · Repository · Installation target · Organization · Membership (push, release and repository keep packages in sync; organization and membership refresh publisher profiles) |
 | Where can it be installed | Any account |
 
 Contents, Pull requests and Workflows write access are used only by the import wizard, to push the `otinstaller/import`
