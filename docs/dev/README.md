@@ -6,7 +6,7 @@ detail it links to.
 
 | Page | What's in it |
 | --- | --- |
-| [architecture.md](architecture.md) | System diagram and step-by-step flows: publish, scan, guide checks, backup, install/run, sign-in, review, takedown, edge cache, self-update |
+| [architecture.md](architecture.md) | System diagram and step-by-step flows: publish, scan, guide checks, backup, install/run, sign-in, review, takedown, edge cache, self-update, agents |
 | [api.md](api.md) | Every API route with auth and caching, middleware order, rate limits, queue messages, crons, the mirror's OCI routes, every error code |
 | [database.md](database.md) | Every migration, the final D1 schema by table, status state machines, seed contents |
 | [cli.md](cli.md) | Every `ot` command and flag, exit codes per command, env vars, files under the data dir, packages and tests |
