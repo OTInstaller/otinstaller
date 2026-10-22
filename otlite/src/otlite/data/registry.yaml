@@ -152,6 +152,7 @@ tools:
   - email
   input_types:
     d: -s
+    ip: -s
   default_args:
   - -u
   - passive
@@ -304,6 +305,7 @@ tools:
   - ip
   input_types:
     d: -t
+    ip: -t
   default_args:
   - -y
   - -p

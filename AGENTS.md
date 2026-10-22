@@ -88,11 +88,11 @@ reads `otlite/`; no test does.)
 - Go 1.25+ (CLI)
 - Node.js 22+ (API and site); dependencies are pinned in each `package-lock.json`, install with `npm install`
 - Docker Desktop or Podman (running Docker tools, sandboxed pipx tools, the e2e scripts, the scanner image)
-- Python 3.12 (scanner, seed tool unit tests, the converter); Python 3.10+ on Linux for `otlite/`
+- Python 3.12 (scanner, seed tool unit tests, the converter); Python 3.10+ on Linux or macOS for `otlite/`
 - `cosign`, `crane` and `git` for some e2e scripts and the `ot release` tests
 
 The main development machine is Windows. Use forward slashes in scripts, keep files LF (`.gitattributes` sets
-`* text=auto eol=lf`), and don't assume `bash`-only tools exist outside Git Bash. `otlite/` is Linux-only.
+`* text=auto eol=lf`), and don't assume `bash`-only tools exist outside Git Bash. `otlite/` runs on Linux and macOS, not Windows.
 
 ## Quick command reference
 
@@ -700,7 +700,7 @@ table, publish order (namespace → tools → guides), what was not converted an
 
 ## otlite, the no-Docker edition (`otlite/`)
 
-`otlite` (PyPI, version 1.0.0; called `otinstaller` until then) is the Linux-only, Docker-free edition: it installs
+`otlite` (PyPI, version 1.0.0; called `otinstaller` until then) is the Docker-free edition for Linux and macOS: it installs
 tools by name into per-tool virtualenvs from the catalog in `otlite/src/otlite/data/registry.yaml`. It is supported
 alongside `ot`; the `ot` alias it once had was removed. The `OTINSTALLER_*` environment variables are still read and
 the first run copies settings from `~/.otinstaller`. Releases: tag `otlite-vX.Y.Z`, `release-otlite.yml` publishes to

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-10-22
+
+### Added
+- `otlite keys set NAME` saves an API key from a hidden prompt, piped input or `--from-env VAR`, writing the env file with mode 600; `otlite keys list` shows key names and the tools that use them; `otlite keys rm NAME` removes one
+- Every run writes `<run>.envelope.json`, one result shape for every tool: tool and version, input, timing, exit code, status, entities found and the output file's path, hash and size. `otlite run --json` and `otlite results --json` give its path
+- The `ip:` typed input, for SpiderFoot and bbot, and in `auto` and `run --all`
+- `otlite info` and `otlite <tool>` show a runnable example command built from the tool's typed inputs (`example_command` in `--json`)
+- macOS support, tested on macOS 14 in CI
+- A one-line installer: `curl -fsSL https://get.otinstaller.com/otlite | sh` finds a supported Python, installs pipx when it is missing and installs otlite with it
+
+### Changed
+- `otlite doctor` ends each problem with the command that fixes it on Debian, Arch, Fedora or macOS, and notes a missing pipx
+
 ## [1.1.0] - 2026-10-22
 
 ### Added

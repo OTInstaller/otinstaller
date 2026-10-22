@@ -771,6 +771,7 @@ def test_registry_contract_input_types_match_accepts():
         "p": "phone",
         "d": "domain",
         "url": "url",
+        "ip": "ip",
     }
 
     errors = []
