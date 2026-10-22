@@ -2,6 +2,7 @@
 
 import os
 import shutil
+import sys
 from pathlib import Path
 
 # Set by the old otinstaller package, honoured until the next major version
@@ -36,13 +37,25 @@ def get_distro() -> str:
     return "unknown"
 
 
+SUPPORTED_PLATFORMS = {"linux": "Linux", "darwin": "macOS"}
+
+
+def platform_name() -> str | None:
+    """Return "Linux" or "macOS" on a supported platform, else None."""
+    return SUPPORTED_PLATFORMS.get(sys.platform)
+
+
 def get_distro_family() -> str:
-    """Return the distro family: 'debian', 'arch', or 'unknown'."""
+    """Return the family: 'debian', 'arch', 'fedora', 'macos', or 'unknown'."""
+    if platform_name() == "macOS":
+        return "macos"
     distro = get_distro()
     if distro in ("ubuntu", "debian", "kali", "linuxmint", "pop", "elementary", "zorin"):
         return "debian"
     if distro in ("arch", "manjaro", "endeavouros", "garuda", "artix"):
         return "arch"
+    if distro in ("fedora", "rhel", "centos", "rocky", "almalinux", "ol", "amzn"):
+        return "fedora"
     # Check ID_LIKE for derivatives
     path = Path("/etc/os-release")
     if path.exists():
@@ -55,6 +68,8 @@ def get_distro_family() -> str:
                         return "debian"
                     if "arch" in value:
                         return "arch"
+                    if "fedora" in value or "rhel" in value:
+                        return "fedora"
         except Exception:
             pass
     return "unknown"
@@ -137,3 +152,45 @@ def get_accept_path() -> Path:
 def tool_dir(name: str) -> Path:
     """Return the directory for a specific tool."""
     return get_tools_dir() / name
+
+
+# The command that installs each prerequisite, per family. Python is named by version
+# because otlite needs 3.10 to 3.14 and the system Python may be older or newer.
+_INSTALL_HINTS = {
+    "git": {
+        "debian": "sudo apt install git",
+        "arch": "sudo pacman -S git",
+        "fedora": "sudo dnf install git",
+        "macos": "xcode-select --install (or: brew install git)",
+    },
+    "venv": {
+        "debian": "sudo apt install python{v}-venv",
+        "arch": "venv is part of the python package; reinstall it with: sudo pacman -S python",
+        "fedora": "venv is part of python3; reinstall it with: sudo dnf install python3",
+        "macos": "brew install python@3.12, then reinstall otlite with that Python",
+    },
+    "python": {
+        "debian": "sudo apt install python3.12 python3.12-venv",
+        "arch": "sudo pacman -S python",
+        "fedora": "sudo dnf install python3.12",
+        "macos": "brew install python@3.12",
+    },
+    "pipx": {
+        "debian": "sudo apt install pipx && pipx ensurepath",
+        "arch": "sudo pacman -S python-pipx && pipx ensurepath",
+        "fedora": "sudo dnf install pipx && pipx ensurepath",
+        "macos": "brew install pipx && pipx ensurepath",
+    },
+}
+_GENERIC_HINTS = {
+    "git": "install git with your package manager",
+    "venv": "install the venv module for your Python with your package manager",
+    "python": "install Python 3.12 with your package manager or from python.org",
+    "pipx": "python3 -m pip install --user pipx && python3 -m pipx ensurepath",
+}
+
+
+def install_hint(what: str, python_version: str = "") -> str:
+    """Return the command that installs `what` (git, venv, python or pipx) on this machine."""
+    hint = _INSTALL_HINTS[what].get(get_distro_family(), _GENERIC_HINTS[what])
+    return hint.replace("{v}", python_version)

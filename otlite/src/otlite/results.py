@@ -97,8 +97,82 @@ class RunMeta:
 
 
 def write_meta(meta: RunMeta, path: Path) -> None:
-    """Write RunMeta as pretty JSON with sorted keys."""
+    """Write RunMeta as pretty JSON with sorted keys, and the run's envelope next to it."""
     path.write_text(json.dumps(meta.to_dict(), sort_keys=True, indent=2))
+    write_envelope(meta, path)
+
+
+ENVELOPE_VERSION = 1
+# Indicators are pulled from at most this much output, so a huge run can't stall the save.
+ENVELOPE_SCAN_BYTES = 5 * 1024 * 1024
+_ENTITY_TYPES = (("emails", "email"), ("domains", "domain"), ("ips", "ip"), ("urls", "url"))
+
+
+def envelope_path_for(meta_path: Path) -> Path:
+    return meta_path.with_name(meta_path.name.removesuffix(".meta.json") + ".envelope.json")
+
+
+def _output_entities(text: str) -> list[dict[str, Any]]:
+    # A tool that prints otlite's own shape ({"entities": [{type, value}, ...]}) is taken as is.
+    try:
+        doc = json.loads(text)
+    except ValueError:
+        doc = None
+    if isinstance(doc, dict) and isinstance(doc.get("entities"), list):
+        own = [e for e in doc["entities"] if isinstance(e, dict) and "type" in e and "value" in e]
+        if own:
+            return own
+    from otlite.extract import extract_indicators
+
+    found = extract_indicators(text)
+    return [
+        {"type": kind, "value": value, "source": "text"}
+        for key, kind in _ENTITY_TYPES
+        for value in found.get(key, [])
+    ]
+
+
+def build_envelope(meta: RunMeta, output_text: str, truncated: bool) -> dict[str, Any]:
+    """The same result shape for every tool, like ot's: what ran, on what, and what it found."""
+    try:
+        started = datetime.fromisoformat(meta.started_at)
+        ended = datetime.fromisoformat(meta.ended_at)
+        duration_ms = int((ended - started).total_seconds() * 1000)
+    except ValueError:
+        duration_ms = int(meta.duration_seconds * 1000)
+    warnings = []
+    if truncated:
+        warnings.append(
+            f"output is over {ENVELOPE_SCAN_BYTES} bytes; entities come from the first part only"
+        )
+    return {
+        "envelope": ENVELOPE_VERSION,
+        "tool": f"{meta.tool}@{meta.tool_version}" if meta.tool_version else meta.tool,
+        "runtime": "otlite",
+        "input": {"target": meta.target},
+        "case": meta.case,
+        "started_at": meta.started_at,
+        "ended_at": meta.ended_at,
+        "duration_ms": duration_ms,
+        "exit_code": meta.exit_code,
+        "status": meta.status,
+        "entities": _output_entities(output_text),
+        "warnings": warnings,
+        "output": {"path": meta.output_path, "sha256": meta.sha256, "bytes": meta.bytes},
+    }
+
+
+def write_envelope(meta: RunMeta, meta_path: Path) -> Path:
+    output = meta_path.with_name(meta_path.name.removesuffix(".meta.json") + ".txt")
+    text, truncated = "", False
+    if output.exists():
+        with output.open("rb") as f:
+            raw = f.read(ENVELOPE_SCAN_BYTES + 1)
+        truncated = len(raw) > ENVELOPE_SCAN_BYTES
+        text = raw[:ENVELOPE_SCAN_BYTES].decode("utf-8", errors="replace")
+    path = envelope_path_for(meta_path)
+    path.write_text(json.dumps(build_envelope(meta, text, truncated), indent=2))
+    return path
 
 
 def hash_file(path: Path) -> str:
@@ -177,6 +251,9 @@ def list_runs(
         if since and _started(meta) < since:
             continue
         meta["meta_path"] = meta_path.relative_to(base).as_posix()
+        envelope = envelope_path_for(meta_path)
+        if envelope.exists():
+            meta["envelope_path"] = envelope.relative_to(base).as_posix()
         runs.append(meta)
     return runs
 

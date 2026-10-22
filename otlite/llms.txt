@@ -1,6 +1,6 @@
 # otlite - LLM Usage Guide
 
-This file describes how to use otlite programmatically or via CLI for AI agents. otlite is the no-Docker edition of OTInstaller (https://otinstaller.com); it runs on Linux only.
+This file describes how to use otlite programmatically or via CLI for AI agents. otlite is the no-Docker edition of OTInstaller (https://otinstaller.com); it runs on Linux and macOS.
 
 ## Overview
 
@@ -96,6 +96,12 @@ otlite sherlock --json  # bare name also works
 otlite auto johndoe@example.com --yes
 `
 
+### Read one result the same way for every tool
+`ash
+otlite results --tool sherlock --limit 1 --json   # envelope_path points at the run's .envelope.json
+`
+Each .envelope.json has: envelope (1), tool (name@version), runtime, input, started_at, ended_at, duration_ms, exit_code, status, entities [{type, value}], warnings, output {path, sha256, bytes}.
+
 ### List saved runs, filtered and sorted
 `ash
 otlite results --json
@@ -106,6 +112,8 @@ otlite results --status failed --sort duration --limit 0 --json
 ### Check API keys
 `ash
 otlite keys check --json
+otlite keys list --json
+printf '%s' "$VALUE" | otlite keys set SHODAN_API_KEY --json
 `
 
 ## Agent-Friendly Features
