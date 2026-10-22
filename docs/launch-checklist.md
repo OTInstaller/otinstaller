@@ -30,9 +30,11 @@ Items marked **(you)** need the owner of the GitHub, GitLab, Cloudflare, Resend,
 - [ ] **(you)** Back up `~/.mcp-registry/otinstaller.com.ed25519.hex` somewhere safe and offline. Without it, a new
       key pair, a new `web/public/.well-known/mcp-registry-auth` and a site deploy are needed to publish to the MCP
       Registry again.
-- [ ] Re-release the nine seed packages whose manifests gained `ethics.notifies_target`/`notes` or a key's `pricing`
-      (dnsrecon, fierce, finalrecon, httpx, tlsx, holehe, shodan-host, exif-meta, image-hash): pending, needs the
-      owner's go-ahead ([../seed/README.md](../seed/README.md), "Not yet released").
+- [x] Re-release the seed packages whose manifests gained `ethics.notifies_target`/`notes` or a key's `pricing`. Done
+      22 Oct: dnsrecon 1.6.4, httpx 1.12.1, tlsx 1.4.1, holehe 1.61.1, shodan-host 1.31.1, exif-meta 0.1.1 and
+      image-hash 0.1.1 are published and `@latest`, with the new fields in `manifest_full`. fierce and finalrecon were
+      never published, so there was nothing to re-release
+      ([../seed/README.md](../seed/README.md), "notifies_target and key pricing").
 
 ## History: blocking the beta (21 October 2026)
 
@@ -241,4 +243,4 @@ record.
       (21 Oct): rota and reviewer schedule, posts for each channel, demo video script. Nothing posted; each needs your OK.
 - [x] otlite on PyPI: 1.0.0, 1.1.0 and 1.2.0 (22 Oct) with GitHub releases; the `otinstaller` shim 0.2.0; the one-line
       installer at `get.otinstaller.com/otlite`; the `/otlite` and `/otlite/tools` pages on the site.
-- [ ] Seed re-releases for `notifies_target` and key `pricing` (nine packages): pending, see "Left before announcing".
+- [x] Seed re-releases for `notifies_target` and key `pricing`: seven published 22 Oct, see "Left before announcing".
