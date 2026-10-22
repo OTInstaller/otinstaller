@@ -1365,6 +1365,9 @@ def run(
                             "status": "ok" if meta.exit_code == 0 else "failed",
                             "exit_code": meta.exit_code,
                             "output_path": meta.output_path,
+                            "envelope_path": Path(meta.output_path)
+                            .with_suffix(".envelope.json")
+                            .as_posix(),
                             "sha256": meta.sha256,
                         }
                     )
@@ -1447,6 +1450,9 @@ def run(
                         "status": status,
                         "exit_code": meta.exit_code,
                         "output_path": meta.output_path,
+                        "envelope_path": Path(meta.output_path)
+                        .with_suffix(".envelope.json")
+                        .as_posix(),
                         "sha256": meta.sha256,
                     }
                 )
