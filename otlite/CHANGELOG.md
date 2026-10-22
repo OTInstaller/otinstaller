@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The package metadata points at otinstaller.com and the OTInstaller/otinstaller repository
 
 ### Added
+- `otlite results` lists saved runs from their `.meta.json` files, filtered by tool, target, case, status and age, and sorted by time, tool, target, duration or size, as a table or `--json`
 - The `otinstaller` distribution on PyPI is now a shim (0.2.0) that depends on otlite and keeps an `otinstaller` command, so `pip install -U otinstaller` keeps working. It prints one line saying the name changed
 
 ### Removed

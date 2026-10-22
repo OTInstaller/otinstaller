@@ -96,6 +96,13 @@ otlite sherlock --json  # bare name also works
 otlite auto johndoe@example.com --yes
 `
 
+### List saved runs, filtered and sorted
+`ash
+otlite results --json
+otlite results --tool sherlock --since 7d --sort time --json
+otlite results --status failed --sort duration --limit 0 --json
+`
+
 ### Check API keys
 `ash
 otlite keys check --json

@@ -7,7 +7,7 @@ import json
 import os
 import re
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -108,3 +108,93 @@ def hash_file(path: Path) -> str:
         for chunk in iter(lambda: f.read(65536), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+RUN_STATUSES = ("complete", "failed", "interrupted")
+SORT_KEYS = ("time", "tool", "target", "duration", "size")
+_SINCE_UNITS = {"m": 60, "h": 3600, "d": 86400, "w": 604800}
+
+
+def parse_since(value: str, now: datetime | None = None) -> datetime:
+    """Turn "30m", "12h", "7d", "2w" or an ISO date such as "2026-10-01" into a UTC time.
+
+    Raises ValueError with a message the CLI can show as is.
+    """
+    now = now or datetime.now(timezone.utc)
+    text = value.strip().lower()
+    if len(text) > 1 and text[-1] in _SINCE_UNITS and text[:-1].isdigit():
+        return now - timedelta(seconds=int(text[:-1]) * _SINCE_UNITS[text[-1]])
+    try:
+        when = datetime.fromisoformat(value.strip())
+    except ValueError:
+        raise ValueError(
+            f"can't read --since {value!r}; use an age such as 30m, 12h, 7d or 2w, "
+            "or a date such as 2026-10-01"
+        ) from None
+    return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
+
+
+def _started(run: dict[str, Any]) -> datetime:
+    try:
+        when = datetime.fromisoformat(str(run.get("started_at", "")))
+    except ValueError:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
+
+
+def list_runs(
+    base: Path,
+    *,
+    tool: str | None = None,
+    target: str | None = None,
+    case: str | None = None,
+    status: str | None = None,
+    since: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """Return each saved run's .meta.json, plus meta_path, that matches every filter given."""
+    if not base.is_dir():
+        return []
+    # Targets and cases compare as folder names, so "JohnDoe" finds runs saved as johndoe.
+    want_target = sanitize_component(target) if target else None
+    want_case = sanitize_component(case) if case else None
+    runs: list[dict[str, Any]] = []
+    for meta_path in base.rglob("*.meta.json"):
+        # A damaged or foreign sidecar is skipped so it never hides the other runs.
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(meta, dict) or "tool" not in meta or "started_at" not in meta:
+            continue
+        if tool and str(meta.get("tool", "")).lower() != tool.lower():
+            continue
+        if want_target and sanitize_component(str(meta.get("target", ""))) != want_target:
+            continue
+        if want_case and sanitize_component(str(meta.get("case") or "")) != want_case:
+            continue
+        if status and meta.get("status") != status:
+            continue
+        if since and _started(meta) < since:
+            continue
+        meta["meta_path"] = meta_path.relative_to(base).as_posix()
+        runs.append(meta)
+    return runs
+
+
+def sort_runs(
+    runs: list[dict[str, Any]], key: str = "time", reverse: bool = False
+) -> list[dict[str, Any]]:
+    # Each key starts with what people look for first: newest, A to Z, longest, largest.
+    # Ties stay newest first.
+    if key not in SORT_KEYS:
+        raise ValueError(f"can't sort by {key!r}; use one of: {', '.join(SORT_KEYS)}")
+    newest = sorted(runs, key=_started, reverse=True)
+    if key == "time":
+        ordered = newest
+    elif key in ("tool", "target"):
+        ordered = sorted(newest, key=lambda r: str(r.get(key, "")).lower())
+    elif key == "duration":
+        ordered = sorted(newest, key=lambda r: float(r.get("duration_seconds") or 0), reverse=True)
+    else:
+        ordered = sorted(newest, key=lambda r: int(r.get("bytes") or 0), reverse=True)
+    return list(reversed(ordered)) if reverse else ordered
