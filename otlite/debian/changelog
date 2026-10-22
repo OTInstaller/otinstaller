@@ -1,3 +1,10 @@
+otlite (1.1.0-1) unstable; urgency=medium
+
+  * New command: otlite results lists saved runs, filtered by tool, target,
+    case, status and age, and sorted by time, tool, target, duration or size.
+
+ -- Sushant Koul <sushant@osintverse.com>  Thu, 22 Oct 2026 15:30:00 +0530
+
 otlite (1.0.0-1) unstable; urgency=medium
 
   * Renamed from otinstaller to otlite, the no-Docker edition of OTInstaller.
