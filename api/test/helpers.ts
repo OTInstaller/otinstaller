@@ -49,13 +49,18 @@ async function appPrivateKey(): Promise<string> {
 }
 
 export const sent: unknown[] = [];
+/** Profile refreshes ({profileNamespaceId}), kept apart so tests that count publish messages are not affected. */
+export const profileSent: unknown[] = [];
 
 /** The Worker's env with a generated GitHub App key and a queue that records messages. */
 export async function testEnv(): Promise<Env> {
   return {
     ...(env as unknown as Env),
     GITHUB_APP_PRIVATE_KEY: await appPrivateKey(),
-    PUBLISH_QUEUE: { send: async (m: unknown) => void sent.push(m), sendBatch: async () => {} } as unknown as Queue<any>,
+    PUBLISH_QUEUE: {
+      send: async (m: unknown) => void (m && typeof m === "object" && "profileNamespaceId" in m ? profileSent : sent).push(m),
+      sendBatch: async () => {},
+    } as unknown as Queue<any>,
   };
 }
 

@@ -27,6 +27,8 @@ async function namespaceFor(env: Env, account: { id: number; login: string; type
     ).bind(id, String(account.id), name, account.type === "Organization" ? "org" : "user", account.login, Date.now()),
     audit(db, null, "github", "namespace.create", "namespace", id, { login: account.login }),
   ]);
+  // The publisher page starts from the account's public GitHub profile.
+  await env.PUBLISH_QUEUE.send({ profileNamespaceId: id });
   return id;
 }
 
@@ -119,6 +121,21 @@ async function onGithubSync(env: Env, event: string, delivery: string, p: Payloa
   return "ignored";
 }
 
+/**
+ * Org changes (renames, public members joining or leaving) refresh the publisher profile of the namespace bound to the
+ * org. The GitHub App must subscribe to Organization events (and have Members: read) for GitHub to send them.
+ */
+async function onOrganization(env: Env, p: Payload): Promise<string> {
+  const orgId = p.organization?.id;
+  if (!orgId) return "ignored: no organization";
+  const rows = await env.DB.prepare(
+    `SELECT id FROM namespaces WHERE provider = 'github' AND provider_owner_id = ?1
+     UNION SELECT namespace_id FROM namespace_hosts WHERE provider = 'github' AND provider_owner_id = ?1`,
+  ).bind(String(orgId)).all<{ id: string }>();
+  for (const r of rows.results) await env.PUBLISH_QUEUE.send({ profileNamespaceId: r.id });
+  return rows.results.length ? "profile refresh queued" : "ignored: not a registry namespace";
+}
+
 async function onGitlab(env: Env, eventId: string, p: Payload, token: string): Promise<{ code: number; body: Record<string, unknown> }> {
   const projectId = String(p.project_id ?? p.project?.id ?? "");
   const s = projectId ? await sourceByProject(env, "gitlab", projectId) : null;
@@ -191,6 +208,9 @@ export function webhookRoutes(app: App) {
       case "create":
         if (p.ref_type !== "tag") return c.json({ status: "ignored: not a tag" });
         return c.json(await onTag(c.env, delivery, p), 202);
+      case "organization":
+      case "membership":
+        return c.json({ status: await onOrganization(c.env, p) });
       case "push":
       case "release":
       case "repository":
