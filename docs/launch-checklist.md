@@ -31,6 +31,19 @@ invitations can go out.
 | Site docs that went live "at the next deploy" | Live since today's deploy. | Nothing. |
 | API `total` on `/v1/tools` and `/v1/guides` | Live (`/v1/tools?kind=tool` total 38, `/v1/guides` total 10). | Nothing. |
 
+## Publisher profiles (22 October 2026)
+
+[PR #49](https://github.com/OTInstaller/otinstaller/pull/49), merged as `6a2890b`, is live: every namespace has a profile
+at `otinstaller.com/<namespace>`, synced from GitHub or GitLab, with an owner Profile tab and `ot profile`.
+
+| Step | Result |
+|------|--------|
+| Migration 0014 | Applied remotely; it was the only pending migration. |
+| API | Deployed from `main` as version `1e5d3dac-1465-428c-bb46-45770d5e7e22`. Roll back to `fe8ed60f-de32-4ae8-8e30-fc785cc9c155`. |
+| Site | Deployed from `main` with `PUBLIC_BETA=0` as version `eb560212-62ad-4a05-8271-908693a79e04`. Roll back to `d8409e6c-6293-45be-896a-141f247f5d37`. |
+| Checks | `/v1/health` OK. `/v1/namespaces/osintverse-community` returns the profile and stats (112 packages). `/v1/namespaces` and `/activity` answer 200. The profile page renders in both themes with no CSP errors; the Markdown twin and the llms.txt publisher list are live. A tool page and search still work. The first profile sync ran from the cron (GitHub avatar and creation date present). |
+| Still to do **(you)** | GitHub App: add the Organization permission Members: Read-only and subscribe to the Organization and Membership events (`docs/publishing-setup.md`). Until then org profiles refresh only every 6 hours and on Sync now. |
+
 ## Production checks (21 October 2026)
 
 | Check | Result |
