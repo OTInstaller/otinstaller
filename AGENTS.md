@@ -8,7 +8,7 @@ This file is the entry point. The deep reference lives in [docs/dev/](docs/dev/R
 
 | Page | What's in it |
 | --- | --- |
-| [architecture.md](docs/dev/architecture.md) | System diagram and step-by-step flows: publish, scan, guide checks, backup, install/run, sign-in, review, takedown, edge cache, self-update |
+| [architecture.md](docs/dev/architecture.md) | System diagram and step-by-step flows: publish, scan, guide checks, backup, install/run, sign-in, review, takedown, edge cache, self-update, agents and MCP |
 | [api.md](docs/dev/api.md) | Every API route with auth and caching, middleware order, rate limits, queue messages, crons, the mirror's OCI routes, every error code |
 | [database.md](docs/dev/database.md) | Every migration, the final D1 schema by table, status state machines, seed contents |
 | [cli.md](docs/dev/cli.md) | Every `ot` command and flag, exit codes per command, env vars, files under the data dir, packages and tests |
@@ -29,15 +29,18 @@ publishes it, and backs it up. Users then run `ot install <ns>/<name>` and `ot r
 digest-pinned, cosign-verified Docker image (or a hash-pinned PyPI wheel) and run it in a locked-down container. If the
 original host later refuses the artifact, `ot` falls back to the registry's own mirror or wheel copy.
 
+AI agents are first-class callers: `ot mcp` is a local MCP server that searches, installs and runs tools with the
+person's consent and a local audit log, the API serves a read-only remote MCP server at `/mcp`, and every command and
+error has a JSON form (see [Agents](#agents-ot-mcp-the-remote-mcp-server-and-the-plugin)).
+
 The repository also holds `otlite/`, the no-Docker edition `otlite` (the Python package manager formerly called
 `otinstaller`; see [otlite/](#otlite-the-no-docker-edition-otlite)).
 
-The registry is in **closed beta** (beta strip on the site, `ot feedback`, issues on `OTInstaller/feedback`);
-[docs/launch-checklist.md](docs/launch-checklist.md) records what is deployed and what is left before launch. As of
-21 Oct 2026 every beta blocker is done: `ot` v0.12.0 is released on `OTInstaller/ot` and served by
-`get.otinstaller.com`, email (Resend) works, feedback goes to the public `OTInstaller/feedback` repo, GitLab publishing
-works, the week 11 backup resources exist and migrations up to 0012 are applied in production. Check the checklist
-for anything newer; don't restate production state here.
+The launch is **public**: the closed beta planned for week 12 never ran (nobody was invited), and the site is built
+with `PUBLIC_BETA=0`. `ot feedback` and issues on `OTInstaller/feedback` stay as the feedback channels.
+[docs/launch-checklist.md](docs/launch-checklist.md) records what is deployed and what is left; as of 22 Oct 2026 the
+latest `ot` is v0.13.1 on `OTInstaller/ot`, migrations up to 0013 are applied in production, and otlite is on PyPI.
+Check the checklist for anything newer; don't restate production state here.
 
 Production:
 
@@ -46,19 +49,25 @@ Production:
 | Website | `https://otinstaller.com` (`web/`, a Cloudflare Worker) |
 | Registry API | `https://api.otinstaller.com/v1` (`api/`, Worker `otinstaller-registry-api`) |
 | Image mirror | `https://mirror.otinstaller.com` (`api/src/mirror/`, Worker `otinstaller-mirror`, config `api/wrangler.mirror.jsonc`) |
-| Install scripts | `get.otinstaller.com/ot` and `/ot.ps1` (`ops/get/`, a Worker proxying the latest `ot` release's scripts) |
-| Manifest schema | `https://otinstaller.com/schema/v1.json` (served from `spec/schema/v1.json`) |
+| Remote MCP server | `https://api.otinstaller.com/mcp` (`api/src/mcp.ts`, same Worker as the API, read-only) |
+| Install scripts | `get.otinstaller.com/ot` and `/ot.ps1` (the latest `ot` release's scripts), `get.otinstaller.com/otlite` (`otlite/scripts/install.sh` from `main`); all from `ops/get/` |
+| Manifest schema | `https://otinstaller.com/schema/v1.json` (served from `spec/schema/v1.json`); also `/schema/envelope-v1.json`, `run-all-v1.json`, `error-v1.json` |
+| API reference | `https://api.otinstaller.com/v1/openapi.json` (served from `spec/openapi/v1.json`) |
 | Scanner, backups, drills, health checks | GitHub Actions in the private repo `OTInstaller/registry-ops` (copied from `ops/`) |
-| `ot` releases | the public repo `OTInstaller/ot` (built from `cli/` by GoReleaser) |
-| Beta feedback and bug reports | `OTInstaller/feedback` issues |
+| `ot` releases | the public repo `OTInstaller/ot` (built from `cli/` by GoReleaser, with `.mcpb` bundles and `server.json`) |
+| `otlite` releases | PyPI projects `otlite` and `otinstaller` (the shim), from `release-otlite.yml`; GitHub releases `otlite-vX.Y.Z` on this repo |
+| Agent plugin | the public repo `OTInstaller/agent-plugin` (copied from `integrations/agent-plugin/`) |
+| MCP Registry | `com.otinstaller/ot` (each `ot` release) and `com.otinstaller/registry` (the remote server) |
+| Feedback and bug reports | `OTInstaller/feedback` issues |
 
 The first-party namespace is `osintverse-community` (a GitHub organisation). The launch seed in `seed/` publishes there.
 
 ## Repository layout
 
 ```
-spec/        Manifest JSON Schema, valid/invalid fixtures, release workflow templates (the source of truth)
-cli/         The `ot` CLI (Go 1.25+, cobra)
+spec/        Manifest JSON Schema, valid/invalid fixtures, release workflow templates, the envelope, run-all and
+             error schemas, types.json, pivots.json and openapi/v1.json (the source of truth)
+cli/         The `ot` CLI (Go 1.25+, cobra); cmd/ot is the binary, cmd/mcpb packs the release's MCP bundles
 api/         Registry API and image mirror (TypeScript, Hono on Cloudflare Workers, D1, Queues, R2)
 web/         Website (Astro 7 SSR on Cloudflare, Preact islands, strict CSP)
 ops/         scanner/ (scan.py, backup.py, health.py, tests, Dockerfile), workflows/ (scan.yml, health.yml) copied
@@ -69,8 +78,11 @@ examples/    dns-lookup (scripts/e2e.sh), cosign and tldextract (the local/test 
              and scripts/e2e-real.sh)
 scripts/     e2e.sh, e2e-real.sh, e2e-backups.sh, install/ (install.sh, install.ps1, make-test-release.sh),
              beta/labels.sh, pm-catalog-to-wrappers.py
+integrations/ agent-plugin/ (the Claude Code and Cursor plugin, published as OTInstaller/agent-plugin) and
+             mcp-registry/server.json (the remote server's MCP Registry entry)
 docs/        publishing-setup.md (operator runbook), launch-checklist.md, migrating-from-otinstaller.md,
-             typed-inputs-and-results.md (design note), beta/ (invitation, onboarding, survey drafts),
+             typed-inputs-and-results.md and agent-friendly-plan.md (design notes), code-signing.md, seo.md,
+             web-redesign-plan.md, launch/ (posts, agent listings, rota), beta/ (unused beta drafts),
              dev/ (developer reference, see the table above)
 .github/     workflows/ (see CI below) and ISSUE_TEMPLATE/ (bug with severity, idea, config.yml contact links);
              the live issue forms are in the public OTInstaller/feedback repo
@@ -154,7 +166,10 @@ heavy work (pulling, scanning and copying images). Step-by-step flows with file 
                      scan.py, backup.py, health.py  --crane push--> mirror.otinstaller.com (otinstaller-mirror,
                                                                     OCI registry on R2 MIRROR)
   ot (cli/) ---- pulls image by digest from GHCR (or the mirror), wheel by hash from PyPI (or BACKUPS via the API)
-  get.otinstaller.com (ops/get) ---- proxies install.sh / install.ps1 from the latest OTInstaller/ot release
+  MCP client --stdio--> ot mcp (same install/run path, plus consent and the audit log)
+  MCP client --HTTP---> api.otinstaller.com/mcp (read-only, anonymous GETs of the public API through the edge cache)
+  get.otinstaller.com (ops/get) ---- proxies install.sh / install.ps1 from the latest OTInstaller/ot release, and
+                                     otlite/scripts/install.sh from main
 ```
 
 | Flow | In one line |
@@ -164,7 +179,8 @@ heavy work (pulling, scanning and copying images). Step-by-step flows with file 
 | Backup | plan with signed upload URLs → `backup.py` copies image/wheel/bundle → `POST /internal/backups/:run` → `completeRun` checks what arrived |
 | Install | `GET /tools/:ns/:name/:version/manifest` → pull by digest + `cosign verify` (or wheel by hash) → mirror or wheel copy only when the original host refuses |
 | Run | `ContainerArgs` builds a locked-down `docker run` → output parsed into the envelope → saved under `results/` |
-| Sign-in | site: OAuth → `ot_session` cookie; CLI: device flow → `ot_` API token in the keychain |
+| Sign-in | site: OAuth → `ot_session` cookie; CLI: device flow → scoped `ot_` API token in the keychain |
+| Agent run | MCP `run_tool` → `agent.Session.DecideRun` (policy, consent class) → ask the person (elicitation or a consent token) → the same install and run → audit log line |
 
 ---
 
@@ -181,19 +197,26 @@ breach-data, web-archive, documents-metadata, utilities). Optional: `kind` (`too
 
 **Tools** also require `readme`, `inputs`, `outputs`, `runtime`, `ethics`:
 
-- `inputs[]`: `{name (^[a-z][a-z0-9_]{0,31}$), type, required, default?, description?, values?}`. Types: email, username,
-  phone, domain, ip, url, name, image, crypto_address, hash, company, string, integer, boolean, enum (`enum` needs
-  `values`).
-- `outputs[]`: `{type}` from: account, email, username, phone, domain, subdomain, ip, url, person, organization, location,
-  breach, certificate, dns_record, image, document, crypto_address, transaction, other.
+- `inputs[]`: `{name (^[a-z][a-z0-9_]{0,31}$), type, required, default?, description?, values?, example?}`. Types:
+  email, username, phone, domain, ip, url, name, image, crypto_address, hash, company, string, integer, boolean, enum
+  (`enum` needs `values`).
+- `outputs[]`: `{type, description?, attrs?: [{name, type?, description?}]}`, type from: account, email, username, phone,
+  domain, subdomain, ip, url, person, organization, location, breach, certificate, dns_record, image, document,
+  crypto_address, transaction, other.
 - `runtime`: `kind` (`docker` | `pipx`), `command` (an **array**, never a shell string, with `{input_name}` placeholders),
-  `output_format` (json | jsonl | csv | text), `timeout_seconds` (default 300).
+  `output_format` (json | jsonl | csv | text), `timeout_seconds` (default 300), `typical_seconds?`.
   - docker: `image` pinned by digest (`...@sha256:<64 hex>`), `platforms` must include `linux/amd64`.
   - pipx: `package`, `package_version`, `entrypoint`, `wheel_sha256`; optional `index: pypi`, `python`.
-- `secrets[]`: `{name (^[A-Z][A-Z0-9_]{2,63}$), required, description?, url?}`.
-- `network`: `{egress, domains}`. `ethics`: `{touches_target, auth_required, collects_personal_data}` (all required).
+- `secrets[]`: `{name (^[A-Z][A-Z0-9_]{2,63}$), required, description?, url?, pricing?}`.
+- `network`: `{egress, domains}`. `ethics`: `{touches_target, auth_required, collects_personal_data}` (all required),
+  plus optional `notifies_target` and `notes`, which agents' consent prompts show.
 - `test`: `{input, expect_exit_code (default 0)}`, used by the scanner's smoke test and the nightly health check.
 - `docs`: `{root: "docs/", nav: ["page.md", ...]}` for tool docs.
+
+The optional fields marked `?` above that came after `ot` v0.12 (`example`, output `description`/`attrs`,
+`typical_seconds`, `pricing`, `notifies_target`, `notes`) are rejected by v0.12's install-time validation, so the
+manifest endpoint serves `compatManifest()` (`api/src/lib/manifest.ts`) without them and the full one as
+`manifest_full`. A new optional field needs the same treatment.
 
 **Guides** (`kind: guide`) require `title`, `level` (beginner | intermediate | advanced), `format` (guide | reference),
 `content` (`{root, nav}` like `docs`), and must not have `runtime` or `inputs`. Optional `language`, `related_tools`
@@ -220,6 +243,9 @@ invalid ones. Digests and hashes in fixtures are fake. Separately, `cli/internal
 | `spec/templates/*.yml` | `api/src/release-templates.ts` (generated, "Do not edit") | `cd api && npm run sync:templates` | `week7.test.ts` |
 | `spec/templates/github-docker.yml` | `seed/*/*/.github/workflows/otinstaller-release.yml` | copy by hand | — |
 | `spec/schema/v1.json` | imported directly by `api/src` and `web/src/pages/schema/v1.json.ts` | nothing to do | — |
+| `spec/schema/{envelope,run-all,error}-v1.json`, `spec/pivots.json`, `spec/types.json` | `cli/internal/specfiles/files/` (embedded; MCP resources, `list_types`, `suggest_pivots`, `ot pivot`) | `cd cli && go generate ./...` | `TestCopiesMatchSpec`; `TestPivotsCoverEveryEntityType` and `TestTypesDescribeEverySchemaValue` check them against the schema |
+| `spec/pivots.json`, `spec/types.json`, `spec/openapi/v1.json` | imported directly by `api/src/index.ts` (`/pivots`, `/types`, `/openapi.json`) | nothing to do | `api.test.ts` checks every enum value has a description and that the OpenAPI document lists every public and owner route |
+| `spec/schema/{envelope,run-all,error}-v1.json` | imported directly by `web/src/pages/schema/[name].json.ts` | nothing to do | — |
 
 Never edit a generated copy by hand. Edit `spec/`, then regenerate. `TestWorkflowsAreValidYAML` (`scaffold_test.go`)
 also checks every generated workflow parses as YAML with string script lines (write lines containing `: ` as `|-` blocks).
@@ -249,7 +275,9 @@ stderr and returns `ExitCodeFor(err)`. `cli/README.md` ships in the release arch
 
 | Package | Responsibility |
 | --- | --- |
-| `cli` | Every command. `root.go` has the `App` struct (`Out`, `Err`, `In`, `Config`, `API`, `Runner`, `OpenURL`, `CheckRemovals`, `Updater`, `SelfPath`), exit codes, `ExitError`/`exitErr` and command registration |
+| `cli` | Every command. `root.go` has the `App` struct (`Out`, `Err`, `In`, `Config`, `API`, `Runner`, `OpenURL`, `CheckRemovals`, `Updater`, `SelfPath`, `JSON`, `AgentMode`), exit codes, `ExitError`/`exitErr` (with `Reason`, the JSON error code) and command registration; `machine.go` has JSON errors and the no-prompt rule; `mcp_*.go` the MCP server |
+| `agent` | What an agent (or any run without a terminal) may do: consent classes (`Classify`: passive, networked, target, personal), the policy file, session approvals and limits, signed single-use consent tokens, the audit log. Shared by `ot mcp` and unattended `ot run` |
+| `specfiles` | Embedded copies of `spec/`'s envelope, run-all and error schemas, `pivots.json` and `types.json` (`go generate`) |
 | `api` | Registry HTTP client. Decodes `{"error":{...}}` into `*api.Error` (`Status`, `Code`, `Message`, `Hint`, `Docs`, `Problems`, `RequestID`) |
 | `manifest` | Typed `Manifest`, `Parse`/`LoadFile`, `Validate(doc, m, Options{Tag, Dir})`, content rules, embedded schema |
 | `runner` | Install and run: engine detection (docker, then podman), `Install` (with backup fallbacks), `Run`, `ContainerArgs`, input resolution, typed inputs, command building, target type detection (`detect.go` + embedded IANA `tlds.txt`) |
@@ -264,22 +292,36 @@ stderr and returns `ExitCodeFor(err)`. `cli/README.md` ships in the release arch
 ### Commands
 
 Packages: `search`, `info`, `install`, `list`, `uninstall`, `outdated`, `update`. Running: `run`, `auto`, `playbook`,
-`extract`, `diff`, `keys set|list|rm`, `doctor`. Guides: `guide search|read|open|get|tools`, `docs`. Publishing:
-`init`, `validate`, `import`, `sync`, `release`, `login` (`--gitlab`, `--osintverse`), `logout`, `whoami`. Trust:
-`report`, `claim`, `transfer`, `yank`, `deprecate`. Other: `feedback`, `self-update`. Cobra adds `help`, `completion`
-and `--version`. The root has no persistent flags, but its `PersistentPreRun` refreshes `cache/removed.json` (daily)
-and warns about installed versions that were removed. Every flag of every command, with its exit codes, is in
+`extract`, `diff`, `pivot`, `keys set|setup|list|rm`, `doctor`. Agents: `mcp` (`mcp install|audit|policy [reset]|tools`).
+Guides: `guide search|read|open|get|tools`, `docs`. Publishing: `init`, `validate`, `import`, `sync`, `release`,
+`login` (`--gitlab`, `--osintverse`, `--scope`, `--print-token`), `logout`, `whoami`, `token create|list|revoke`.
+Trust: `report`, `claim`, `transfer`, `yank`, `deprecate`. Other: `feedback`, `self-update`. Cobra adds `help`,
+`completion` and `--version`. The root's one persistent flag is `--json` (JSON output, and errors as one JSON line on
+stderr; `OT_OUTPUT=json` turns it on for a session). Its `PersistentPreRun` refreshes `cache/removed.json` (daily) and
+warns about installed versions that were removed. Every flag of every command, with its exit codes, is in
 [docs/dev/cli.md](docs/dev/cli.md).
 
 Each is an `(a *App) xxxCmd() *cobra.Command` method. Files: `packages.go` (search/info/install/list/uninstall),
 `update.go` (outdated/update), `run_cmd.go` + `run_all.go` (run), `auto.go`, `playbook.go`, `saved.go` (extract/diff),
-`run.go` (keys/doctor), `guide.go` (guide/docs), `init_validate.go`, `import.go`, `sync.go`, `release.go`, `login.go`,
-`trust.go` (report/claim/transfer/yank/deprecate), `feedback.go`, `selfupdate.go`.
+`pivot.go`, `run.go` (keys/doctor), `keysetup.go` (keys setup), `guide.go` (guide/docs), `init_validate.go`,
+`import.go`, `sync.go`, `release.go`, `login.go`, `token.go`, `trust.go` (report/claim/transfer/yank/deprecate),
+`feedback.go`, `selfupdate.go`, `mcp_cmd.go` (mcp and its subcommands), `consent.go` (unattended runs).
 
-- `ot run` disables cobra flag parsing and parses its own args (`run_cmd.go`): ot flags (`-f/--format`, `-o`, `--out-dir`,
-  `--native`, `-y`, `--results-dir`, `--case`, `--no-save`, `--all`, `--parallel`, `--dry-run` with `--all`, `--live`
-  accepted as a no-op), any other `--x v` is a tool input, and positionals after the package like `u:johndoe` are typed
-  inputs (`u:` username, `d:` domain, `e:` email, `p:` phone, `ip:` ip, `url:` url).
+- `ot run` disables cobra flag parsing and parses its own args (`run_cmd.go`): ot flags (`-f/--format`, `--json`, `-o`,
+  `--out-dir`, `--native`, `-y`, `--results-dir`, `--case`, `--no-save`, `--max-raw`, `--all`, `--parallel`,
+  `--dry-run` with `--all`, `--live` accepted as a no-op), any other `--x v` is a tool input, and positionals after the
+  package like `u:johndoe` are typed inputs (`u:` username, `d:` domain, `e:` email, `p:` phone, `ip:` ip, `url:` url).
+- The envelope carries `run_id`, `ot_version` and `client` (`cli`, `ci` when `CI` is set, `mcp`). When a text or CSV
+  tool reports no entities, `runner/textentities.go` lists the emails, URLs, IPs and domains its output mentions (up
+  to 200, `confidence: low`, the run's own inputs left out), so pivots and summaries have something to chain from.
+- Nothing prompts without a terminal (`machine.go`): piped stdin, `OT_NONINTERACTIVE=1`, CI and `ot mcp` get an
+  `input_required` error naming the flag to pass. Unattended `run`, `--all`, `playbook` and `auto` (`consent.go`) also
+  need `--yes` for any tool that isn't passive (exit 2, `consent_required`; `OT_CONSENT=off` turns the check off) and
+  write each run to the audit log.
+- `ot pivot <run-id | file>` suggests next runs from a saved run's entities through `spec/pivots.json`
+  (`--registry` adds tools not installed). `ot keys setup [tool...]` walks a person through the keys their tools
+  declare, with cost and sign-up link; it refuses without a terminal (`needs_terminal`), so only a person can store a
+  key. `ot token create <name>` mints a scoped registry token (`--scope`, `--expires` days, default 90).
 - `runAll` (`run_all.go`) is shared by `run --all`, `playbook` and `auto`: runs `--parallel` at a time, skips tools that
   can't run unattended, prints `[n/N]` progress on stderr and a summary table or JSON.
 - `ot auto <target>` guesses the type (url, ip, email, phone, domain by IANA TLD, else username; `--type` overrides) and
@@ -292,7 +334,8 @@ Each is an `(a *App) xxxCmd() *cobra.Command` method. Files: `packages.go` (sear
 - `ot release <version> [path]` (`release.go`) releases **guides only**: checks a clean tree and an unused tag, rewrites
   `version:`, validates, commits `Release X` if changed, creates an annotated tag and runs `git push --atomic`.
   Tools are released by their release workflow, which builds and signs the artifact.
-- Commands that need a sign-in (`whoami`, `import`, `sync`, `claim`, `transfer`) fail with exit 2 when there is no token.
+- Commands that need a sign-in (`whoami`, `import`, `sync`, `claim`, `transfer`, `token`) fail with exit 2 when there
+  is no token.
 - [docs/typed-inputs-and-results.md](docs/typed-inputs-and-results.md) is the design note for typed inputs, saved
   results, `--all`, playbooks, auto, extract/diff and outdated/update; [docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md)
   maps `otinstaller` commands to `ot`. Keep both in step with behaviour changes.
@@ -306,7 +349,9 @@ silently). Wrap registry 4xx errors with `a.requestError(err)` so they exit 2 an
 documented to users; don't repurpose them. Caveats: errors raised by cobra itself (wrong argument count, unknown
 flag) exit 1, not 2; `search`, `info`, `login`, `outdated` and `update` don't wrap registry 4xx errors, so those exit
 1; `doctor` exits 5 when any check fails; `self-update` exits 4 on a failed verification. With `--no-save`, Ctrl-C
-during a single run exits 1, not 130.
+during a single run exits 1, not 130. With `--json`, the error is `{"error": {code, message, hint?, exit_code, ...}}`
+on stderr (`spec/schema/error-v1.json`, shared with the API); its `code` is the registry's own code, else
+`ExitError.Reason`, else one that follows from the exit code.
 
 ### Security model when installing and running tools (don't weaken it)
 
@@ -316,6 +361,9 @@ during a single run exits 1, not 130.
   the same digest from `mirror_image` and verifies the same signature; when PyPI answers 403/404/410 or lacks the wheel,
   it downloads `wheel_url` and checks the same SHA-256. Network errors never trigger a fallback. Tests are in
   `runner/backup_test.go`.
+- Under `ot mcp` (`AgentMode`) the rules are stricter: a Docker image needs a recorded signer and cosign present
+  (`RequireSignature`); local manifests, yanked versions, versions that failed their scan and possibly broken tools
+  are refused (`trust_refused`, exit 4); nothing prompts or opens a browser.
 - Containers run with `--rm --read-only --tmpfs /tmp:rw,size=256m --cap-drop ALL --security-opt no-new-privileges
   --pids-limit 256 --memory 1g --cpus 2 --user 65534:65534 -e HOME=/tmp`, plus `-v <out dir>:/out:rw` when there is
   an output folder and `--entrypoint` from the manifest's `command` (`ContainerArgs` in `runner/runner.go`), and
@@ -331,10 +379,13 @@ during a single run exits 1, not 130.
 ### Environment variables
 
 `OT_HOME`, `OT_API_URL`, `OT_SITE_URL` (`guide open`, `report`, `feedback`), `OT_NO_TELEMETRY` (any non-empty value
-disables the install ping; the ping carries the bearer token when signed in), `OT_RESULTS_DIR` (legacy
+disables the install ping; the ping, like search, tool and manifest reads, goes through `api.Client.anon()` and never
+carries the token), `OT_RESULTS_DIR` (legacy
 `OTINSTALLER_RESULTS_DIR`; results default to `./results`, not the data dir), `OTINSTALLER_TOKEN` (overrides the
-keychain token; like every key, an env var of the same name wins). `config.json` (`api_url`, `site_url`, `telemetry`,
-`format`) is read, never written. Install scripts:
+keychain token; like every key, an env var of the same name wins), `OT_OUTPUT=json` (as `--json`),
+`OT_NONINTERACTIVE=1` (never prompt), `OT_CONSENT=off` (no `--yes` needed unattended; still audited), `OT_MAX_RAW`
+(leave `raw` out of large envelopes), `CI` (the envelope's `client` becomes `ci`). `config.json` (`api_url`,
+`site_url`, `telemetry`, `format`) is read, never written. Install scripts:
 `OT_VERSION`, `OT_RELEASE_REPO`, `OT_INSTALL_DIR`, `OT_DOWNLOAD_BASE` (serve a release from another URL; checks still
 apply), `OT_NO_MODIFY_PATH=1` (Windows). Build-time only: `OT_RELEASE_PUBLIC_KEY`, `OT_RELEASE_KEY_FILE`,
 `RELEASE_OWNER`, `RELEASE_NAME`, `TAP_GITHUB_TOKEN`.
@@ -359,9 +410,13 @@ Push a `vX.Y.Z` tag on this repo: `.github/workflows/release-cli.yml` writes the
 filled in to `dist/install/` (the checkout must stay clean), then runs GoReleaser (`cli/.goreleaser.yaml`) for
 windows/darwin/linux × amd64/arm64. Archives contain exactly `LICENSE`, `README.md` and `ot`; `checksums.txt` is signed
 with the Ed25519 release key and with cosign; deb/rpm are built; the Homebrew tap and Scoop bucket update only with
-`TAP_GITHUB_TOKEN` (not offered during the beta). It publishes to `OTInstaller/ot` (the default when the variables are
+`TAP_GITHUB_TOKEN` (not offered yet). It publishes to `OTInstaller/ot` (the default when the variables are
 unset). Archive names `ot_<ver>_<os>_<arch>.tar.gz|.zip` are relied on by `self-update`, the install scripts and the
-`ops/get` Worker. `cli-install.yml` tests this whole path on PRs. Only tag a release when asked.
+`ops/get` Worker. The last step runs `cli/cmd/mcpb` on GoReleaser's binaries and uploads six MCP Bundles
+(`ot_<ver>_<os>_<arch>.mcpb`, one-click installs for Claude Desktop, not yet `mcpb sign`ed) and the MCP Registry
+`server.json` to the release. `cli-install.yml` tests this whole path on PRs, including `mcpb validate`. Listing a
+release in the MCP Registry is a manual step afterwards (see [Agents](#agents-ot-mcp-the-remote-mcp-server-and-the-plugin)).
+Only tag a release when asked.
 
 ---
 
@@ -386,7 +441,9 @@ and beta work, so `R2_*`, `ISSUES_REPO`/`ISSUES_TOKEN` and `EDGE_CACHE` are only
 | Path | Responsibility |
 | --- | --- |
 | `index.ts` | App setup, CORS (credentialed only when `Origin` equals `SITE_URL` exactly, so not `www.`), auth middleware, write rate limit (30/min per signed-in non-staff user on non-GET requests; registered after `authRoutes`, so auth, token and device routes aren't limited), public read routes, `onError`/`notFound`, default export `{ fetch, queue, scheduled }` (fetch wrapped in `edgeCached`). Exporting anything but the handlers from this file makes workerd refuse to start, and vitest won't catch it |
-| `edge-cache.ts` | Edge cache for anonymous reads (see below) |
+| `edge-cache.ts` | Edge cache for anonymous reads (see below), plus weak ETags and 304s on every successful JSON or text read |
+| `mcp.ts` | The read-only remote MCP server at `/mcp` (outside `/v1`; see [Agents](#agents-ot-mcp-the-remote-mcp-server-and-the-plugin)) |
+| `scopes.ts` | API token scopes: `requiredScope(method, path)`, `enforceScopes` (403 `insufficient_scope`, and an audit row for every write a token makes) |
 | `env.ts` | `Env`, `PublishMessage`, `User`, `deps.fetch` (all outbound HTTP), `requireSecret` |
 | `catalog.ts` | Shared public-read SQL (`VISIBLE`, `LISTED`, `summary()`, `findTool()` with aliases, `cached()`) |
 | `ranking.ts` | Search score (bm25 + installs + stars + health + verified − broken − registry-held) |
@@ -424,10 +481,16 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
 
 ### Main endpoints (all under `/v1`)
 
-- Public: `GET /health`, `/types`, `/tools` (search: `q`, `input`, `output`, `category`, `runtime`, `kind`, `level`,
-  `format`, `lang`, `sort`, `no_keys`, `limit`, `cursor`), `/guides`, `/tools/:ns/:name[/versions|/:version[/manifest|/scans|/wheel/:file]]`,
-  `/namespaces/:ns`, `/pivots`, `/removed`, guide pages, tool docs, readmes, `/assets/:sha256.ext`; `POST /installs`,
-  `POST /feedback`. The manifest response includes `mirror_image` / `wheel_url` install fallbacks for public backups.
+- Public: `GET /health`, `/openapi.json` (`spec/openapi/v1.json`), `/types` (enums, the pivot map and descriptions from
+  `spec/types.json`), `/tools` (search: `q`, `input`, `output`, `category`, `runtime`, `kind`, `level`, `format`,
+  `lang`, `sort`, `no_keys`, `passive_only`, `limit`, `cursor`; summaries carry ethics and egress), `/facets`,
+  `/guides`, `/tools/:ns/:name[/versions|/:version[/manifest|/scans|/wheel/:file]]`, `/namespaces/:ns`, `/pivots`
+  (follows `spec/pivots.json`), `/removed`, guide pages, tool docs, readmes, `/assets/:sha256.ext`; `POST /installs`
+  (counted once per address, version and day through a salted hash in `rate_limits`; only per-version and
+  per-client-kind daily counts are kept), `POST /feedback`. The manifest response includes
+  `mirror_image` / `wheel_url` install fallbacks for public backups. `GET /tools/:ns/:name` carries `sample`: what the
+  scanner's smoke test of the latest version produced (first five entities, or the start of stdout), which the tool
+  page shows as its sample output.
 - Auth: `/auth/:provider/login|callback` (github, gitlab, osintverse), `/auth/logout`, `/auth/device/start|token`,
   `/me`, `/me/tokens`, `/me/publish-jobs`, `/me/repos`, `/me/transfers`, `/me/backups`.
 - Publishing: `POST /webhooks/github` (HMAC), `POST /webhooks/gitlab` (per-source token), `/imports...`,
@@ -441,7 +504,10 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
   `POST /internal/drills/:id`, `/internal/health[/targets]`. Scans, backup runs and drills each use their own
   single-use token (scan 1 h, run 3 h or 12 h weekly, drill 6 h); the health endpoints use the static shared
   `HEALTH_TOKEN`.
-- The full route table (99 routes, with auth and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
+- The full route table (101 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
+  `spec/openapi/v1.json` describes the public and owner routes, each with its token scope as `x-scope`; a test in
+  `api.test.ts` fails when a route and the document disagree, so add new routes to both.
+- 429s carry `Retry-After`, `RateLimit-Policy` and `retry_after_s` (`rateLimited` in `lib/errors.ts`).
 
 ### Publish pipeline
 
@@ -495,9 +561,10 @@ installations, tools, versions, tool_io, tool_secrets, sources, sync_events, imp
 pages, tool_guides, stars, install_counts, reports, transfers, aliases, audit_log) and the FTS5 table `tools_fts`. Later
 migrations add publish intake (0002), scans/review and `notifications` (0003), sync (0004, 0006), imports (0005), guides and
 `page_links` (0007, 0008), trust/takedowns/claims/health and `rate_limits` (0009), OSINTverse login plus `device_logins`
-(0010), backups (`backup_runs`, `backups`, `restore_drills`, tool `git_backups`/`legal_hold`/`legal_hold_reason`, 0011)
-and `feedback` (0012). That is 33 tables plus `tools_fts`; every table, column, CHECK value set and status transition is
-in [docs/dev/database.md](docs/dev/database.md).
+(0010), backups (`backup_runs`, `backups`, `restore_drills`, tool `git_backups`/`legal_hold`/`legal_hold_reason`, 0011),
+`feedback` (0012), and scoped tokens (`api_tokens.scoped`) plus the `install_clients` daily counts by client kind
+(0013). That is 34 tables plus `tools_fts`; every table, column, CHECK value set and status transition is in
+[docs/dev/database.md](docs/dev/database.md).
 
 - IDs are ULIDs (`ulid()`), timestamps are Unix **milliseconds**, booleans are 0/1, JSON columns end in `_json`
   (older exceptions: `tools.categories`, `tools.tags`, `installations.repo_ids`, `sources.topics`,
@@ -517,10 +584,20 @@ stored. Provider tokens are AES-GCM encrypted with `TOKEN_ENC_KEY`. Accounts lin
 never by email. Use `requireUser` (401), `requireReviewer` / `requireAdmin` (403, in `routes/review.ts`) and
 `requireMember` (`routes/sources.ts`). Staff are `users.is_reviewer` / `users.is_admin`.
 
+API tokens are scoped (`scopes.ts`, migration 0013): `read`, `publish`, `manage`, `feedback`, and `staff`, which only a
+signed-in reviewer or admin can mint from the website. `enforceScopes` runs right after `authenticate` and refuses a
+token request outside its scopes with 403 `insufficient_scope`; the session cookie has every power its user has, and
+tokens minted before 0013 (`scoped = 0`) keep theirs. A token can't mint one with more than it has. `ot login` tokens
+get all four user scopes unless `--scope` says otherwise and don't expire; `/me/tokens` (`ot token create`) defaults
+to 90 days. Creating, revoking and every write made with a token are audited. A new route needs the right scope in
+`requiredScope` (GETs are `read`, `/admin` is `staff`, imports, sources, manifests and syncs are `publish`, reports and
+feedback `feedback`, other writes `manage`).
+
 ### API conventions
 
 - Errors: `apiError(status, code, message, hint?)` throws; the body is
-  `{ error: { code, message, hint, docs: "https://otinstaller.com/docs/errors#<code>" } }`. Codes are snake_case;
+  `{ error: { code, message, hint, docs: "https://otinstaller.com/docs/errors#<code>" } }` (`spec/schema/error-v1.json`,
+  the same shape as `ot --json` errors). Codes are snake_case;
   messages are short lowercase sentences; hints usually name an `ot` command or a sign-in link (the site makes hint
   links clickable). Multi-problem responses add `problems`. Unhandled errors become 500 `internal_error` with a
   `request_id` (the `cf-ray` header) and go to Sentry. If you add a user-facing code, document it in
@@ -535,7 +612,7 @@ never by email. Use `requireUser` (401), `requireReviewer` / `requireAdmin` (403
   `private, no-store` (only a few do today; the rest are safe only because requests with a cookie or `authorization`
   header bypass the edge cache).
 - camelCase in TS, snake_case in SQL and JSON responses, kebab-case file names. Each file opens with a `//` comment saying
-  what it owns and where related logic lives (`env.ts`, `index.ts` and `lib/errors.ts` don't yet); exported functions get `/** */` docs; sections use
+  what it owns and where related logic lives (`env.ts` and `index.ts` don't yet); exported functions get `/** */` docs; sections use
   `// ---------- name ----------`. Double quotes, semicolons, two-space indent, long lines are normal here.
 
 ### API tests (`api/test/`)
@@ -549,7 +626,8 @@ longest prefix wins, unmatched requests get status 599), `testEnv()` (a generate
 `manifestFor`, `fakeRelease`. Signed-in users are usually inserted directly into D1 with an `ot_test_<id>` token. Test
 files are named by plan week (`week4` publish intake, `week5` scans/review, `week6` GitLab/sync, `week7` imports,
 `week8` guides/content, `week10` trust/ops, `week11` backups and mirror, `week12` feedback/beta/test email) plus
-`api.test.ts`, `edge-cache.test.ts`, `osintverse.test.ts`, `community-provenance.test.ts`; add tests to the file for
+`api.test.ts` (search, pivots, types, facets, OpenAPI, old-`ot` manifests, the remote MCP server), `edge-cache.test.ts`,
+`osintverse.test.ts`, `community-provenance.test.ts`; add tests to the file for
 that area. The rate-limit test in `week10` waits for the start of a minute, so a slow run is expected.
 
 ### Seed data
@@ -571,9 +649,21 @@ Astro 7 with `output: "server"` on `@astrojs/cloudflare`, Preact islands, no CSS
 
 - `src/pages/`: SSR pages. Tool pages live under `[ns]/[name]/` (overview, versions, security, docs, report, claim),
   guides under `guides/`, search at `search.astro`, plus `input/[type]`, `category/[slug]`, `[ns]/index.astro` (publisher),
-  `dashboard`, `import`, `feedback`, `settings/accounts`, `transfers/[id]`, `admin/[...section]`, `docs/*.md`,
+  `dashboard`, `import`, `feedback`, `publish.astro`, `tour.astro`, `settings/accounts`, `transfers/[id]`,
+  `admin/[...section]`, `docs/*.md` (including `agents`, `mcp-tools`, `automation`, `api`, `results`, `otlite`),
   `policy/*`, `removed.astro`, `404.astro`, `500.astro` (API trouble, shows the request ID), `robots.txt.ts`,
-  `sitemap.xml.ts`. Only `schema/v1.json.ts` is prerendered.
+  `sitemap.xml.ts`, `llms.txt.ts` and `llms-full.txt.ts`, `schema/v1.json.ts` and `schema/[name].json.ts` (the
+  envelope, run-all and error schemas). Only `schema/v1.json.ts` is prerendered.
+- Markdown twins for agents: `<ns>/<name>.md`, guide pages and docs and policy pages as `.md` (`docs/[page].md.ts`,
+  `policy/[page].md.ts`, `lib/twins.ts`); `src/middleware.ts` serves them for `Accept: text/markdown` too.
+- `/otlite` and `/otlite/tools`: the no-Docker edition and its tool catalog, read at build time from
+  `src/data/otlite-catalog.json`, which `otlite/scripts/web_catalog.py` generates from otlite's registry (a test in
+  `otlite/tests/test_web_catalog.py` fails when it is stale; regenerate it, don't edit it).
+- Tool pages show sample output: the envelope the scanner's smoke test recorded (`sample` from the API,
+  `recordedEnvelope` in `lib/evidence.ts`), else one shaped from the declared output types, with a caption saying
+  which.
+- `public/.well-known/mcp-registry-auth`: the public key that proves `otinstaller.com` to the MCP Registry. Don't
+  remove or change it without a new key pair (see [Agents](#agents-ot-mcp-the-remote-mcp-server-and-the-plugin)).
 - `src/layouts/`: `Base.astro` (HTML shell, beta strip, header with the account menu, lean footer, the one inline
   script, global client JS for copy buttons and the `/me` account check), `Docs.astro` (with prev/next links),
   `Policy.astro`.
@@ -631,8 +721,8 @@ Environment: `PUBLIC_API_URL` (default production), `PUBLIC_BETA` (`"0"` hides t
 
 ### Local environments
 
-- Production API holds the published seed (most of `seed/`) plus the beta dry-run packages, and sits behind the edge
-  cache; staging (`staging-api.otinstaller.com`) only works
+- Production API holds the published seed (most of `seed/`; the dry-run test packages were taken down on 21 Oct),
+  and sits behind the edge cache; staging (`staging-api.otinstaller.com`) only works
   while a tunnel to someone's local `wrangler dev` is up, so it's usually down.
 - From a `localhost` origin, browser-side calls to the production API with credentials (`/me`, quick search) fail CORS.
   That is expected, not a site bug.
@@ -641,6 +731,66 @@ Environment: `PUBLIC_API_URL` (default production), `PUBLIC_BETA` (`"0"` hides t
   [docs/dev/local-setup.md](docs/dev/local-setup.md).
 
 ---
+
+## Agents: `ot mcp`, the remote MCP server and the plugin
+
+The design note is [docs/agent-friendly-plan.md](docs/agent-friendly-plan.md) (phases 1 to 5 built; each phase's
+status section says where the build differs). User docs: `web/src/pages/docs/agents.md`, `mcp-tools.md` (every tool,
+resource and prompt) and `automation.md` (JSON output, exit and error codes, no prompts, consent for scripts).
+
+**`ot mcp`** (`cli/internal/cli/mcp_*.go`, rules in `cli/internal/agent/`) is a local MCP server over stdio, on the
+official Go SDK. Tools run on the person's machine in the same sandbox as `ot run`.
+
+- Read-only tools (`mcp_tools.go`): `search_tools`, `get_tool`, `list_installed`, `list_types`, `key_setup`,
+  `suggest_pivots`, `detect_type`, `list_playbooks`, `get_playbook`, `list_runs`, `get_run`, `extract_indicators`,
+  `diff_runs`, `search_guides`, `read_guide`, `validate_manifest`, `doctor`, `get_consent_status`. Tools with effects
+  (`mcp_run.go`): `install_tool`, `uninstall_tool`, `run_tool`, `run_all`, `run_playbook`, `cancel_run`. Resources
+  (`ot://schema/...`, `ot://types`, `ot://policy/...`, `ot://runs/{run_id}`, `ot://cases/{case}`, tool manifests,
+  guide pages) and prompts (`investigate_*`, `pivot_from_run`, `compare_runs`, `write_playbook`, `publish_tool`) are in
+  `mcp_content.go`. Every result that carries tool output starts with a note that it is untrusted data, not instructions.
+- Consent: `agent.Classify` puts each run in the strictest class that applies: passive (offline), networked, target
+  (`ethics.touches_target`, or the person's own keys or account) or personal (`collects_personal_data`, or an email,
+  phone, name or image input). By default only passive runs go ahead unasked. Otherwise the server asks the person:
+  clients on the 2026-07-28 protocol get an input request back, older clients that support elicitation get a form, and
+  the rest get a `consent_required` error with a summary and a consent token (`ct_...`). The token is an HMAC over
+  that exact call (tool, artifact and arguments), works once, expires after 10 minutes and dies with the process; an
+  agent must only pass it back after the person said yes. "Allow for this session" lasts `consent_ttl_minutes`.
+- Policy: `<ot home>/agent-policy.json` (`ot mcp policy` shows it, `ot mcp policy reset` writes the defaults):
+  `enabled` (kill switch), `mode` (`live`, or `sandbox` to run every tool on its own test input), `allow_tools` /
+  `deny_tools`, `auto_approve` (none, passive or networked; target and personal runs always ask), rate limits per hour,
+  per target and in parallel, `max_output_chars`, `allow_install` and `redact_targets_in_audit`. A broken file is an
+  error, never a silent fallback to looser rules; changes apply without a restart.
+- Audit log: `<ot home>/agent-audit.jsonl`, one line per install, uninstall or run by an agent or an unattended
+  `ot run` (client, tool and digest, inputs or their hash, class, how consent was given, outcome, run id), rotated at
+  10 MiB with four old files kept. It never leaves the machine. `ot mcp audit [--since 24h]` reads it.
+- `ot mcp install <claude|claude-desktop|cursor|vscode|codex|gemini>` writes the client's configuration (`--print`
+  shows it instead). `ot mcp tools` lists the tools, resources and prompts.
+- API keys: agents never set keys. `key_setup` describes each key a tool needs (cost, sign-up link, whether it is set,
+  never the value) and hands over `ot keys setup <tool>`, which only works at a terminal.
+- Tests: `mcp_test.go`. `TestMCPToolsDocsMatch` requires every tool's exact description in
+  `web/src/pages/docs/mcp-tools.md`, and `TestAgentPluginMatchesServer` that every tool and prompt the plugin names
+  exists, so a renamed or reworded tool means editing both.
+
+**Remote MCP server** (`api/src/mcp.ts`, `https://api.otinstaller.com/mcp`): Streamable HTTP without sessions, answered
+by the API Worker's `fetch` before the Hono app. Six read-only tools (`search_tools`, `get_tool`, `list_types`,
+`suggest_pivots`, `search_guides`, `read_guide`), each an anonymous GET of the public API through the edge cache, so
+it costs what a page view does. It can't install or run anything and points agents at `ot mcp` for that. A
+Cloudflare rate-limiting rule on the zone covers `/mcp` and the search routes (launch checklist). Tests are in
+`api/test/api.test.ts` ("remote MCP server"). It reports the consent class `ot mcp` would give a run, from a hand-made
+copy of `cli/internal/agent/consent.go` (`PERSONAL_INPUTS`); keep the two in step.
+
+**Agent plugin** (`integrations/agent-plugin/`): a Claude Code and Cursor plugin with skills
+(`osint-investigation`, `publish-osint-tool`, `write-osint-guide`), a Cursor rule, hooks and the MCP configuration.
+It is published by copying the folder to the public repo `OTInstaller/agent-plugin` and tagging there
+([publishing-setup.md](docs/publishing-setup.md) section 12).
+
+**MCP Registry.** `com.otinstaller/ot` is listed from each `ot` release's `server.json` (written by `cli/cmd/mcpb`;
+descriptions must stay within the registry's 100 characters), `com.otinstaller/registry` from
+`integrations/mcp-registry/server.json` (bump its `version` when the remote tools change). Both are published by hand
+with `mcp-publisher`, signed in with `mcp-publisher login http --domain otinstaller.com` and the owner's private key
+(kept outside the repository in `~/.mcp-registry/`); the registry checks it against
+`web/public/.well-known/mcp-registry-auth`. The steps are in [publishing-setup.md](docs/publishing-setup.md),
+section 10, "MCP bundles and the MCP Registry".
 
 ## Ops (`ops/`)
 
@@ -668,8 +818,10 @@ Environment: `PUBLIC_API_URL` (default production), `PUBLIC_BETA` (`"0"` hides t
   `OPS_INSTALLATION_ID`. Secrets on the registry-ops side: `MIRROR_PUSH_TOKEN` and `HEALTH_TOKEN` (must match the
   mirror's and the API's), variables `MIRROR_HOST` and `REGISTRY_API`; see [docs/dev/config.md](docs/dev/config.md).
 - `ops/get/`: the `otinstaller-get` Worker for `get.otinstaller.com`. It maps `/ot`, `/ot.sh`, `/install.sh` and
-  `/ot.ps1`, `/install.ps1` to the latest release's scripts on `OTInstaller/ot` (cached 5 minutes), answers upstream
-  errors with a script that fails loudly, and redirects other paths to the getting-started docs. Deploy with
+  `/ot.ps1`, `/install.ps1` to the latest release's scripts on `OTInstaller/ot` (`RELEASE_REPO`), and `/otlite`,
+  `/otlite.sh` to `otlite/scripts/install.sh` on this repo's `main` (`OTLITE_REPO`; it installs from PyPI, so it needs
+  no release). Both are cached 5 minutes; upstream errors get a script that fails loudly, and other paths redirect to
+  the getting-started docs. A change to `otlite/scripts/install.sh` is live as soon as it reaches `main`. Deploy with
   `npx wrangler deploy` from `ops/get` (only when asked). It has no automated test.
 
 ## Seed (`seed/`)
@@ -690,6 +842,8 @@ table, publish order (namespace → tools → guides), what was not converted an
   git-pinned ones use versions like `0.0.0-git.<commit>`. 65 more (October 2026) cover every open-source OSINT tool
   over 100 stars that could be wrapped; `seed/candidates.md` lists every candidate with why it was wrapped or dropped.
   All 65 were published on 22 Oct 2026.
+- Nine seed folders gained `ethics.notifies_target`/`notes` or a key's `pricing` after their last release; they need
+  new releases from their own repositories (seed/README.md, "Not yet released"), which is the owner's call.
 - `guides/<guide>/` (10): `otinstaller.yaml` (`kind: guide`, CC-BY-4.0), `docs/index.md` + numbered pages, README,
   LICENSE.md. Guides have no release workflow: release them with `ot release X.Y.Z` (or a plain `git tag vX.Y.Z && git
   push`), never through GitHub Actions.
@@ -700,23 +854,35 @@ table, publish order (namespace → tools → guides), what was not converted an
 
 ## otlite, the no-Docker edition (`otlite/`)
 
-`otlite` (PyPI, version 1.0.0; called `otinstaller` until then) is the Docker-free edition for Linux and macOS: it installs
-tools by name into per-tool virtualenvs from the catalog in `otlite/src/otlite/data/registry.yaml`. It is supported
-alongside `ot`; the `ot` alias it once had was removed. The `OTINSTALLER_*` environment variables are still read and
-the first run copies settings from `~/.otinstaller`. Releases: tag `otlite-vX.Y.Z`, `release-otlite.yml` publishes to
-PyPI (trusted publishing); `otlite/otinstaller-shim/` is the old PyPI name, depending on `otlite`. Users of both
-editions use [docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md).
+`otlite` (on PyPI; called `otinstaller` until 1.0.0) is the Docker-free edition for Linux and macOS (macOS from 1.2): it
+installs tools by name into per-tool virtualenvs from the catalog in `otlite/src/otlite/data/registry.yaml`. It is
+supported alongside `ot`; the `ot` alias it once had was removed. The `OTINSTALLER_*` environment variables are still
+read and the first run copies settings from `~/.otinstaller`. Users of both editions use
+[docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md).
 
+- Releases: bump the version in `otlite/pyproject.toml` and `src/otlite/__init__.py`, add a `CHANGELOG.md` entry and
+  tag `otlite-vX.Y.Z`; `release-otlite.yml` tests, builds, publishes with PyPI trusted publishing and creates the
+  GitHub release. 1.0.0, 1.1.0 and 1.2.0 went out on 22 Oct 2026 (a 1.2.1 pull request was open that day); check PyPI
+  or `gh release list` for the latest rather than trusting a number here. The `otinstaller` shim
+  (`otlite/otinstaller-shim/`, the old PyPI name, depending on `otlite`; 0.2.0 is published) is uploaded by its own job
+  from its own environment (`pypi-otinstaller`, `testpypi-otinstaller`), because PyPI picks one publisher per
+  environment.
+- The one-line installer `curl -fsSL https://get.otinstaller.com/otlite | sh` is `otlite/scripts/install.sh` (pipx
+  from PyPI), served from `main` by `ops/get`.
+- `otlite/scripts/web_catalog.py` writes `web/src/data/otlite-catalog.json` for the site's `/otlite/tools` page; rerun
+  it whenever the catalog changes (its test fails otherwise). This is the one place where `otlite/` writes outside its
+  folder.
 - **Read [otlite/AGENTS.md](otlite/AGENTS.md) before touching anything in `otlite/`.** Its rules apply there and differ
   from the rest of the repo: the package and command are `otlite`; no "OSINT" in package/command names or CLI help;
   Typer (with click), Rich, PyYAML, sentry-sdk and the standard library only (ask before adding dependencies); pip or git installs, one venv per
   tool; never `shell=True`; never log API key values; no emojis; neutral metadata; short lowercase imperative commit
   messages; run `ruff check .`, `ruff format --check .` and `pytest` after every change.
 - Layout: `src/otlite/` (`cli.py` thin Typer layer, `registry.py`, `installer/`, `runner.py`, `results.py`,
-  `keys.py`, `crash_reports.py`, `data/`), `tests/` (run from `otlite/`; network tests need
+  `keys.py`, `crash_reports.py`, `examples.py`, `data/`), `tests/` (run from `otlite/`; network tests need
   `RUN_NETWORK_TESTS=1`), `pipeline/` (discover and verify candidate tools; a human merges approved entries),
-  `registry/` (denylist and pipeline output), `debian/` (Debian/Kali packaging), `docs/`, `scripts/readme_tools.py`
-  (regenerates the README tool list; a test fails when it's stale).
+  `registry/` (denylist and pipeline output), `debian/` (Debian/Kali packaging), `docs/`, `scripts/` (`install.sh`,
+  `web_catalog.py`, `readme_tools.py` which regenerates the README tool list and fails a test when stale,
+  `generate_status_page.py`), `otinstaller-shim/`.
 - Crash reports are opt-in Sentry with scrubbing; tests and the Debian build force `DO_NOT_TRACK=1`. Keep it that way.
 - `otlite/LICENSE` is Apache 2.0 with a `NOTICE` that redistributions must keep.
 - If you change the catalog's shape, check `scripts/pm-catalog-to-wrappers.py`, which reads it.
@@ -740,11 +906,11 @@ editions use [docs/migrating-from-otinstaller.md](docs/migrating-from-otinstalle
 
 | Workflow | Runs on | What it does |
 | --- | --- | --- |
-| `cli-install.yml` | PRs and pushes to main touching `cli/**`, `scripts/install/**`, `cli-install.yml` or `release-cli.yml`; `workflow_dispatch` | GoReleaser snapshot with the real config, archive contents check, then installs with `install.sh` / `install.ps1` on Linux (x64, arm), macOS and Windows and runs `ot --version`, `search`, `info`, `doctor`, and on Linux (x64 and arm) a real install/run |
-| `release-cli.yml` | `v*.*.*` tags | Releases `ot` (see above) |
-| `otlite-ci.yml` | pushes and PRs touching `otlite/**` | ruff and pytest on Ubuntu × Python 3.10–3.14, Debian, Arch; a Kali `.deb` build and install; wheel build, pipx install and the `otinstaller` shim; a Playwright browser tool check |
+| `cli-install.yml` | PRs and pushes to main touching `cli/**`, `scripts/install/**`, `cli-install.yml` or `release-cli.yml`; `workflow_dispatch` | GoReleaser snapshot with the real config, archive contents check, the MCP bundles built and checked with `mcpb validate`, then installs with `install.sh` / `install.ps1` on Linux (x64, arm), macOS and Windows and runs `ot --version`, `search`, `info`, `doctor`, and on Linux (x64 and arm) a real install/run |
+| `release-cli.yml` | `v*.*.*` tags | Releases `ot` with its `.mcpb` bundles and `server.json` (see above) |
+| `otlite-ci.yml` | pushes and PRs touching `otlite/**` | ruff and pytest on Ubuntu × Python 3.10–3.14, Debian, Arch and macOS 14; a Kali `.deb` build and install; wheel build, pipx install and the `otinstaller` shim; the one-line installer on Debian and macOS; a Playwright browser tool check |
 | `otlite-nightly.yml` | 02:00 UTC daily; `workflow_dispatch` | ruff, otlite pipeline verify (20 candidates), an installed-tool contract test and the full otlite test suite |
-| `release-otlite.yml` | `otlite-v*.*.*` tags; `workflow_dispatch` (`testpypi` or `pypi`) | Tests, builds otlite and the shim, publishes with PyPI trusted publishing, creates a GitHub release |
+| `release-otlite.yml` | `otlite-v*.*.*` tags; `workflow_dispatch` (`testpypi` or `pypi`) | Tests, builds otlite and the shim, publishes each with PyPI trusted publishing from its own environment (otlite first), creates a GitHub release |
 | `issue-severity.yml` | issues opened/edited | Sets one `sev-N` label from the bug form's Severity field |
 
 Nothing in CI runs `go test`, the API tests, the site checks, the scanner tests or the e2e scripts.
@@ -759,20 +925,30 @@ Nothing in CI runs `go test`, the API tests, the site checks, the scanner tests 
 3. Update `api/src/lib/manifest.ts` (and `publish.ts` if release-time) with the same codes.
 4. Update `web/src/pages/docs/manifest.md` and `errors.md`; check `api/scripts/seed-lib.mjs`, the seed manifests
    (`TestSeedManifests`) and `scripts/pm-catalog-to-wrappers.py` still produce valid manifests.
-5. `go test ./...` in `cli`, `npm test` in `api`.
+5. A new optional field: add it to `compatManifest()` so older `ot` releases can still install; a new input or entity
+   type: describe it in `spec/types.json` and map it in `spec/pivots.json` (both have tests).
+6. `go test ./...` in `cli`, `npm test` in `api`.
 
 **Changing a release template**: edit `spec/templates/`, run `go generate ./...` in `cli` and `npm run sync:templates`
 in `api`, keep the GitLab merge-request text in `api/src/imports.ts` in step, and update the copies under
 `seed/*/*/.github/workflows/` if the seed should pick it up.
 
 **Adding an API endpoint**: put it in the matching `routes/*.ts`, logic in the domain module, outbound calls through
-`deps.fetch`, errors through `apiError`, the right caching (`public` lands in the edge cache), a test in the matching
-test file, and if the CLI or site uses it, the client in `cli/internal/api` or `web/src/lib/api.ts`. User-visible
-behaviour belongs in `web/src/pages/docs/`.
+`deps.fetch`, errors through `apiError`, the right caching (`public` lands in the edge cache), the right token scope
+(`requiredScope` in `scopes.ts`), the operation in `spec/openapi/v1.json` for public and owner routes, a test in the
+matching test file, and if the CLI or site uses it, the client in `cli/internal/api` or `web/src/lib/api.ts`.
+User-visible behaviour belongs in `web/src/pages/docs/`.
 
-**Adding a CLI command**: an `xxxCmd()` method registered in `Root()`, output via `a.Out`/`a.Err`, typed errors for exit
-codes, a test with `newTestApp`, an entry in `web/src/pages/docs/cli.md`, and in `cli/README.md` /
-`docs/typed-inputs-and-results.md` where relevant.
+**Adding a CLI command**: an `xxxCmd()` method registered in `Root()`, output via `a.Out`/`a.Err`, a `--json` form,
+no prompt without a terminal (`needsInput`), typed errors for exit codes (with a `Reason` for the JSON code), a test
+with `newTestApp`, entries in `web/src/pages/docs/cli.md` and [docs/dev/cli.md](docs/dev/cli.md), and in
+`cli/README.md` / `docs/typed-inputs-and-results.md` where relevant.
+
+**Changing an MCP tool**: `cli/internal/cli/mcp_tools.go` or `mcp_run.go`; its row in
+`web/src/pages/docs/mcp-tools.md` must carry the exact description (`TestMCPToolsDocsMatch`); the plugin's skills and
+rule in `integrations/agent-plugin/` must name only tools that exist (`TestAgentPluginMatchesServer`); anything with an
+effect goes through `agent.Session.DecideRun` and the audit log. If the remote server should offer it too, add it to
+`api/src/mcp.ts` and bump `integrations/mcp-registry/server.json`'s version.
 
 **Changing what the scanner receives or reports**: `api/src/scans.ts` / `backups.ts`, the matching route parser,
 `ops/scanner/*.py` and their tests, and a note that registry-ops needs the new copy.
@@ -803,9 +979,11 @@ and verify in the preview build.
 
 These affect production or other people, so do them only when asked: `npm run deploy` / `wrangler deploy` (api, mirror,
 web or `ops/get`), `wrangler d1 ... --remote`, `wrangler secret put`, pushing `v*` tags on this repo (releases `ot`),
-pushing tags or running workflows on seed repositories (publishes packages), publishing `otlite/` to PyPI (pushing `otlite-v*` tags or running `release-otlite.yml`), posting
-outreach issues or PRs, running `scripts/beta/labels.sh`, sending beta emails, triggering backups or drills on
-production, and changing GitHub App, OAuth, R2 or registry-ops settings. The operator runbook for all of these is
+pushing tags or running workflows on seed repositories (publishes packages), publishing `otlite/` to PyPI (pushing
+`otlite-v*` tags or running `release-otlite.yml`), pushing to `OTInstaller/agent-plugin`, `mcp-publisher publish` to
+the MCP Registry, submitting to directories or marketplaces (Anthropic, Cursor), posting outreach issues or PRs or
+launch posts, running `scripts/beta/labels.sh`, triggering backups or drills on production, changing the Cloudflare
+rate-limiting rule, and changing GitHub App, OAuth, R2 or registry-ops settings. The operator runbook for all of these is
 [docs/publishing-setup.md](docs/publishing-setup.md); current production state is in
 [docs/launch-checklist.md](docs/launch-checklist.md).
 
@@ -835,6 +1013,7 @@ needs the owner's go-ahead.
 | `ot install` exits 4 | signer identity in the manifest response vs the image's signature | [cosign failures](docs/dev/troubleshooting.md#cosign-verify-failures-in-ot-exit-4) |
 | Install fails though a mirror copy exists | the original's error type: network errors never fall back | [Mirror fallback](docs/dev/troubleshooting.md#mirror-fallback-not-triggering) |
 | `ot` misbehaves on a user's machine | `ot doctor` (exits 5 when any check fails) | [`ot doctor`](docs/dev/troubleshooting.md#ot-doctor) |
+| An agent or script run stops with `consent_required`, or a token gets `insufficient_scope` | `ot mcp policy`, `ot mcp audit`, `--yes`; the token's scopes | [Agents and unattended runs](docs/dev/troubleshooting.md#agents-and-unattended-runs) |
 
 ## Known gaps and tech debt
 
@@ -853,8 +1032,6 @@ change. Keep this list current when you fix one or find another.
 - `expireStaleScans` leaves the commit status pending and sends no email.
 - `sendEmail` records `sent` before calling Resend, so a thrown fetch loses the email silently; failed emails are never
   retried.
-- `/me/publish-jobs` joins `installations`, so GitLab publishers never see their jobs; the commit status "Details"
-  link `/dashboard/publish/<jobId>` has no page in `web/`.
 - Review: request-changes and reject leave the waiting jobs at `awaiting_review`; nothing moves a namespace out of
   `rejected` or `suspended`; a report can be resolved twice.
 - `tools_fts` triggers fire only on `tools`, so renaming a namespace leaves the old name in search.
@@ -864,22 +1041,24 @@ change. Keep this list current when you fix one or find another.
   hour per IP).
 - The same error code has two statuses in places (`tool_removed` 410/409, `manifest_in_repo` 409/400,
   `unknown_provider` 404/400); `manifest_name_mismatch` exists only in the API.
+- `ot login --osintverse` ignores `--scope` and token expiry: the OSINTverse device poll (`pollOsintverseDevice` in
+  `routes/device.ts`) mints with the default four scopes and never reads `scopes` or `expires_in_days`, unlike the
+  GitHub and GitLab path. It also writes `token.create` to the audit log twice (once in `mintApiToken`, once itself).
 
 **Docs debt**
 
 - `api/.dev.vars.example` lacks `OPS_DISPATCH_TOKEN`, `OPS_INSTALLATION_ID`, `RESEND_API_KEY`, `R2_*` and more; the
   secrets comment in `wrangler.jsonc` lacks `HEALTH_TOKEN`, `SENTRY_DSN` and `ISSUES_TOKEN` ([config.md](docs/dev/config.md)).
-- `docs/launch-checklist.md` contradicts itself (week 11 row still "Not deployed"; 79 vs 81 failed notifications; the
-  intro names a merged branch).
 - Stale comments: "within 30 days" for takedown deletion in `backups.ts` and `trust.ts` (the code uses 14);
-  `web/astro.config.mjs` says Cloudflare Pages (it is a Worker); `release-cli.yml` says `otinstaller/ot`.
+  `release-cli.yml` says `otinstaller/ot`.
+- The root `README.md` still describes `otlite/` as Linux-only; it runs on macOS too since 1.2.
 
 **Hygiene**
 
 - CI runs no Go, API, site or scanner tests; there is no `engines` field for Node; `cli/internal/api`, `keys`,
   `state` and `selfupdate` have no test files of their own.
 - `ops/scanner/__pycache__/scan.cpython-313.pyc` is committed and the root `.gitignore` has no `__pycache__/` rule.
-- `api/src/env.ts`, `index.ts` and `lib/errors.ts` miss their opening purpose comment.
+- `api/src/env.ts` and `index.ts` miss their opening purpose comment.
 - Schema: `versions.status` allows `received`/`validating`, which nothing writes; `tools.latest_version_id` and
   `audit_log.actor_id` have no foreign key.
 - The `week10` write-limit test is flaky under load.
@@ -913,21 +1092,29 @@ change. Keep this list current when you fix one or find another.
 | Typed input | A positional like `d:example.com` that maps to an input by type |
 | Case | A folder under `results/` grouping saved runs (`--case`; playbooks use `playbook-<name>`) |
 | Playbook | A named list of tools run against the same inputs |
-| Data dir | `OT_HOME`, else `%APPDATA%\ot`, else `~/.ot`: `state.json`, `keys.json`, `cache/`, `playbooks/`, `guides/` |
+| Data dir | `OT_HOME`, else `%APPDATA%\ot`, else `~/.ot`: `state.json`, `keys.json`, `cache/`, `playbooks/`, `guides/`, `agent-policy.json`, `agent-audit.jsonl` |
 | Device login | `ot login`'s flow: `/auth/device/start`, then polling `/auth/device/token` for an `ot_` token |
+| Scope | What an API token may do: `read`, `publish`, `manage`, `feedback`, `staff` (`api/src/scopes.ts`) |
+| Consent class | How far a run reaches: passive, networked, target or personal (`agent.Classify`); decides whether an agent or an unattended run must ask |
+| Consent token | A single-use `ct_...` HMAC over one exact MCP call, returned with `consent_required` and valid for 10 minutes in the same `ot mcp` process |
+| Audit log | `agent-audit.jsonl` in the data dir: every install, uninstall and run by an agent or an unattended `ot run` |
+| Pivot | An entity type found by one run that can feed another tool's input (`spec/pivots.json`) |
+| Sample output | What the scanner's smoke test of the latest version produced, shown on the tool page |
 | OSINTverse | The sister site whose OIDC sign-in the registry accepts (`hosts/osintverse.ts`) |
 
 ## User-facing and operator docs
 
 | Where | What |
 | --- | --- |
-| [web/src/pages/docs/](web/src/pages/docs) | The site's docs: getting started, CLI, manifest, publishing, guides, security, errors, FAQ |
+| [web/src/pages/docs/](web/src/pages/docs) | The site's docs: quick start, getting started, otlite, CLI, agents, MCP tools, automation, results, API, manifest, publishing, guides, security, errors, FAQ |
 | [web/src/pages/policy/](web/src/pages/policy) | Acceptable use, privacy, takedown, terms, transparency |
 | [docs/publishing-setup.md](docs/publishing-setup.md) | Operator runbook: GitHub App, OAuth apps, registry-ops, secrets, imports, guides, trust, releasing `ot`, backups |
 | [docs/launch-checklist.md](docs/launch-checklist.md) | What is deployed, what was verified, what is left before launch |
 | [docs/typed-inputs-and-results.md](docs/typed-inputs-and-results.md) | Design note for typed inputs, saved results, `--all`, playbooks, auto, extract/diff, outdated/update |
+| [docs/agent-friendly-plan.md](docs/agent-friendly-plan.md) | Design note for `ot mcp`, consent, JSON output, scoped tokens, OpenAPI, the remote MCP server and the plugin |
+| [docs/launch/](docs/launch/README.md) | Launch posts, agent directory listings, on-call rota, demo video script (drafts; each needs the owner's OK) |
 | [docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md) | `otinstaller` to `ot` command map |
-| [docs/beta/](docs/beta) | Beta invitation, author onboarding, feedback survey |
+| [docs/beta/](docs/beta) | Beta invitation, author onboarding, feedback survey (unused: no beta ran) |
 | [seed/README.md](seed/README.md) | The launch seed: every package, publish order, health risks |
 | [cli/README.md](cli/README.md) | The README shipped in `ot` release archives |
 | [otlite/README.md](otlite/README.md), [otlite/AGENTS.md](otlite/AGENTS.md) | otlite, the no-Docker edition |

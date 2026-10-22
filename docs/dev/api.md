@@ -2,8 +2,10 @@
 
 Derived by reading `api/src/index.ts`, `api/src/routes/*.ts`, `api/src/edge-cache.ts`, `api/src/catalog.ts`,
 `api/src/env.ts`, `api/src/publish.ts`, `api/src/trust.ts` (`overLimit`), `api/src/backups.ts`, `api/src/imports.ts`,
-`api/src/transfers.ts`, `api/src/mirror/*.ts`, `api/wrangler.jsonc` and `api/wrangler.mirror.jsonc`. Paths are under
-`/v1` (Hono `basePath("/v1")`) unless stated.
+`api/src/transfers.ts`, `api/src/scopes.ts`, `api/src/mcp.ts`, `api/src/mirror/*.ts`, `api/wrangler.jsonc` and
+`api/wrangler.mirror.jsonc`. Paths are under `/v1` (Hono `basePath("/v1")`) unless stated. The public and owner routes
+are also described in `spec/openapi/v1.json`, served at `/v1/openapi.json`, with each operation's token scope as
+`x-scope`; a test in `api/test/api.test.ts` fails when the routes and the document disagree.
 
 ## Conventions used in the table
 
@@ -27,6 +29,15 @@ Derived by reading `api/src/index.ts`, `api/src/routes/*.ts`, `api/src/edge-cach
 | HMAC | GitHub: `x-hub-signature-256` = `sha256=` + HMAC-SHA256(`GITHUB_WEBHOOK_SECRET`, raw body) |
 | GitLab token | `x-gitlab-token` whose SHA-256 equals the matching source's `webhook_secret_hash` (one secret per project) |
 
+**Token scopes** (`scopes.ts`, migration 0013). A request made with an `ot_` token whose `scoped = 1` must hold the
+scope `requiredScope(method, path)` names, or `enforceScopes` answers 403 `insufficient_scope` (with
+`required_scope` and a `WWW-Authenticate: Bearer error="insufficient_scope"` header). The rule, by path: `/auth/*`,
+`/internal/*`, `/webhooks/*`, `/installs` and `/health` need none; `/admin*` needs `staff`; any other GET, HEAD or
+OPTIONS needs `read`; `POST /feedback` and `POST /tools/:ns/:name/reports` need `feedback`; `/imports*`, `/sources*`
+and `/packages/:ns/:name/manifest|sync|source*` need `publish`; every other write needs `manage`. The session cookie,
+and tokens from before 0013 (`scoped = 0`), are not limited. Every successful non-read request made with a token
+writes a `token.write` audit row.
+
 **Caching**: `cached(c, N)` writes `Cache-Control: public, max-age=N` (`catalog.ts`). It is only set on the success
 path; `apiError` throws a separate response, so errors carry no `Cache-Control`. "-" means the handler sets no
 `Cache-Control` at all (per-user routes are still never edge cached, because they need an `authorization` header or a
@@ -35,23 +46,27 @@ anonymous GET.
 
 ## 1. Routes
 
-Total: **99 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
+Total: **101 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
 call; the `for` loop in `routes/trust.ts` registers two (`yank`, `unyank`). The mirror Worker's OCI routes are in
 section 6 and are not in this count. There is no route for stars, although the rate-limit comment in `index.ts`
-mentions stars.
+mentions stars. Every route under a removed package answers 410 `tool_removed`.
 
 Outside `/v1` and the Hono app, the Worker's `fetch` also answers `/mcp`: the read-only remote MCP server
 (`src/mcp.ts`, sessionless Streamable HTTP; POST JSON-RPC, GET 405, `Access-Control-Allow-Origin: *`, `no-store`). Its
 six tools (`search_tools`, `get_tool`, `list_types`, `suggest_pivots`, `search_guides`, `read_guide`) make anonymous GETs
-to the public routes below through `edgeCached`, with none of the caller's headers. It has no rate limit of its own.
+to the public routes below through `edgeCached`, with none of the caller's headers. It has no rate limit of its own
+in code; a Cloudflare rate-limiting rule on the zone covers `/mcp`, `/v1/tools*`, `/v1/guides*` and `/v1/pivots`
+(30 requests per 10 s per IP; see the launch checklist). Protocol versions `2025-11-25`, `2025-06-18` and
+`2025-03-26`; it handles `initialize`, `tools/list` and `tools/call`. Tests: `api.test.ts`, "remote MCP server".
 
-### 1.1 Public catalog (12)
+### 1.1 Public catalog (14)
 
 | Method | Path | Auth | Caching | Defined in | Notes |
 | --- | --- | --- | --- | --- | --- |
 | GET | `/health` | none | - | index.ts | `{ok: true}` |
-| GET | `/types` | none | `cached(c, 86400)` | index.ts | Input, output and category enums from `spec/schema/v1.json` |
-| GET | `/tools` | none | `cached(c, 60)` | index.ts | Search. Params `q`, `input`, `output`, `category`, `runtime`, `kind`, `level`, `format`, `lang`, `sort` (relevance, installs, stars, updated, health: healthy tools by their last passing nightly check first), `no_keys`, `limit` (1–100, default 25), `cursor` (offset). FTS path caps at 200 rows, non-FTS at 1000 |
+| GET | `/openapi.json` | none | `cached(c, 3600)` | index.ts | `spec/openapi/v1.json` (OpenAPI 3.1) |
+| GET | `/types` | none | `cached(c, 86400)` | index.ts | Input, output and category enums from `spec/schema/v1.json`, `pivots` (`spec/pivots.json`) and `descriptions` (`spec/types.json`) |
+| GET | `/tools` | none | `cached(c, 60)` | index.ts | Search. Params `q`, `input`, `output`, `category`, `runtime`, `kind`, `level`, `format`, `lang`, `sort` (relevance, installs, stars, updated, health: healthy tools by their last passing nightly check first), `no_keys`, `passive_only` (`1`/`true`: no target contact, personal data or egress), `limit` (1–100, default 25), `cursor` (offset). FTS path caps at 200 rows, non-FTS at 1000; `total_capped: true` says the total hit the cap. Summaries carry ethics and egress. A bad enum value is 400 `invalid_parameter` with the allowed values |
 | GET | `/guides` | none | 60 (inherited) | index.ts | Re-dispatches internally to `/v1/tools?kind=guide` with `app.fetch`, so the `/tools` response (and its `max-age=60`) is returned |
 | GET | `/tools/:ns/:name` | none | `cached(c, 60)` | index.ts | Follows aliases (`moved_to`); not found goes through `notFound()`: 410 `tool_removed` or 404 `tool_not_found`. `sample` is the latest version's passing `smoke` scan row's `sample` (entities or stdout from the test input) with `version` and `recorded_at`, when the scanner sent one |
 | GET | `/tools/:ns/:name/versions` | none | `cached(c, 60)` | index.ts | Published, yanked and removed versions, semver-sorted |
@@ -60,8 +75,8 @@ to the public routes below through `edgeCached`, with none of the caller's heade
 | GET | `/tools/:ns/:name/:version` | none | `cached(c, 3600)` | index.ts | Also 3600 for `latest` (unlike `/manifest`, which uses 60 for `latest`) |
 | GET | `/namespaces/:ns` | none | `cached(c, 300)` | index.ts | Active namespaces only; visible tools ordered by `installs_30d` |
 | GET | `/facets` | none | `cached(c, 600)` | index.ts | How many visible packages match each facet value: `inputs`, `outputs`, `categories`, `runtimes`, `no_keys`. `kind` is tool (default) or guide; counts ignore other filters |
-| GET | `/pivots` | none | `cached(c, 600)` | index.ts | `from=` comma list of entity types; top 10 non-broken tools per usable type |
-| POST | `/installs` | none | - | index.ts | Anonymous per-day counter; always 204 (also for unknown packages) |
+| GET | `/pivots` | none | `cached(c, 600)` | index.ts | `from=` comma list of entity types; follows `spec/pivots.json` to the input types each can feed (`inputs`, plus `unmapped` for types with none); top 10 non-broken tools per usable type |
+| POST | `/installs` | none | - | index.ts | `{tool, version, client?}`; 400 `invalid_body` without tool and version, else always 204 (also for unknown packages). Counts once per `cf-connecting-ip`, version and day (`overLimit` scope `install`: a salted hash of address and version in `rate_limits`, never the address itself), into `install_counts` and `install_clients` (`client` `cli`, `mcp`, `ci`, else `other`) |
 
 ### 1.2 Guides, docs, READMEs, assets, wheel copies, transparency (12)
 
@@ -88,7 +103,7 @@ to the public routes below through `edgeCached`, with none of the caller's heade
 | GET | `/auth/:provider/callback` | state cookie | - | routes/auth.ts | Exchanges the code, signs in or links (when already signed in), sets `ot_session` (30 days, httpOnly, Secure, Lax), 302 |
 | POST | `/auth/logout` | session cookie (optional) | - | routes/auth.ts | Deletes the session row and cookie; 204 |
 | POST | `/auth/device/start` | none | - | routes/auth.ts | `{provider}` (default github); osintverse uses the registry's own device flow |
-| POST | `/auth/device/token` | none (device code) | - | routes/auth.ts | `{provider, device_code, token_name}`; on success mints an `ot_` API token (scopes `read,publish`) |
+| POST | `/auth/device/token` | none (device code) | - | routes/auth.ts | `{provider, device_code, token_name, scopes?, expires_in_days?}`; on success mints a scoped `ot_` API token (default `read,publish,manage,feedback`, no expiry) and answers with its `scopes` and `expires_at`. For `osintverse` it goes to `pollOsintverseDevice` (`routes/device.ts`), which ignores `scopes` and `expires_in_days` |
 | GET | `/auth/osintverse/device` | none | - | routes/device.ts | HTML code-entry form |
 | POST | `/auth/osintverse/device` | none (user code) | - | routes/device.ts | Form `code`; valid pending code redirects to OSINTverse sign-in (400 HTML page otherwise) |
 | POST | `/auth/osintverse/device/confirm` | one-time confirm token (form) | - | routes/device.ts | Form `id`, `confirm`, `decision`; approve or deny; 410 HTML page if expired |
@@ -98,10 +113,10 @@ to the public routes below through `edgeCached`, with none of the caller's heade
 | Method | Path | Auth | Caching | Defined in | Notes |
 | --- | --- | --- | --- | --- | --- |
 | GET | `/me` | user | - | routes/auth.ts | Login, admin/reviewer flags, linked accounts, namespaces with role |
-| GET | `/me/tokens` | user | - | routes/auth.ts | Unrevoked API tokens |
-| POST | `/me/tokens` | user | - | routes/auth.ts | `{name}`; 201 with the token shown once |
-| DELETE | `/me/tokens/:id` | user | - | routes/auth.ts | Revoke; 204 or 404 `token_not_found` |
-| GET | `/me/publish-jobs` | user | - | routes/auth.ts | Last 50 jobs; joins `installations` on `github_installation_id`, so GitLab jobs (no installation) appear never to be listed |
+| GET | `/me/tokens` | user | - | routes/auth.ts | Unrevoked API tokens, with `scopes` and `expires_at` |
+| POST | `/me/tokens` | user | - | routes/auth.ts | `{name, scopes?, expires_in_days?}` (1–365, default 90); 201 with the token shown once. 400 `invalid_scope` for an unknown scope; 403 `insufficient_scope` when a token asks for more than it has, or for `staff` from anything but a reviewer's or admin's session. Audited (`token.create`) |
+| DELETE | `/me/tokens/:id` | user | - | routes/auth.ts | Revoke; 204 or 404 `token_not_found`. Audited (`token.revoke`) |
+| GET | `/me/publish-jobs` | user | - | routes/auth.ts | Last 50 jobs of the user's namespaces, found through `installations` (GitHub) or `sources` (GitLab) |
 | GET | `/me/repos` | user | - | routes/imports.ts | `?provider=github|gitlab`, `?q`; GitHub admin or GitLab Maintainer+ public repos, with `published_as` |
 | GET | `/me/transfers` | user | - | routes/transfers.ts | Pending, verified and accepted transfers the user is party to |
 | GET | `/me/backups` | user | - | routes/backups.ts | Backup summary for up to 200 packages in the user's namespaces |
@@ -217,14 +232,15 @@ handler that returns ends the chain):
    `cors({ origin: SITE_URL, credentials: true })`; every other origin (including none) gets `cors({ origin: "*" })`
    without credentials. Note that `https://www.otinstaller.com` is not equal to `SITE_URL`, so it gets the
    uncredentialed `*` answer.
-2. **`authRoutes(app)`**, which first registers `app.use("*", authenticate)` and then `deviceRoutes(app)` and all
-   `/auth/*` and `/me*` routes of `auth.ts`. `authenticate` never rejects: a `Bearer ot_...` token is looked up by
-   SHA-256 in `api_tokens` (not revoked, not expired, user not banned; `last_used_at` updated via `waitUntil`);
-   otherwise the `ot_session` cookie is looked up in `sessions`. Non-`ot_` bearer tokens (scan, backup, health) leave
-   `user` null.
+2. **`authRoutes(app)`**, which first registers `app.use("*", authenticate)` and `app.use("*", enforceScopes)`, then
+   `deviceRoutes(app)` and all `/auth/*` and `/me*` routes of `auth.ts`. `authenticate` never rejects: a
+   `Bearer ot_...` token is looked up by SHA-256 in `api_tokens` (not revoked, not expired, user not banned;
+   `last_used_at` updated via `waitUntil`) and sets `c.var.token` (`id`, `scopes`, `scoped`); otherwise the `ot_session` cookie is looked up in `sessions`. Non-`ot_` bearer tokens (scan, backup,
+   health) leave `user` null. `enforceScopes` is described under [Conventions](#conventions-used-in-the-table).
 3. **Write rate limit** (`app.use("*")`, lines 45–52): when there is a user who is neither `is_reviewer` nor
    `is_admin`, and the method is not `GET`, `HEAD` or `OPTIONS`, `overLimit(env, "write", user.id, 30, 60_000)`; over
-   the limit throws 429 `too_many_requests` ("at most 30 changes a minute"). Because it is registered *after*
+   the limit throws 429 `too_many_requests` ("at most 30 changes a minute", with `Retry-After`, `RateLimit-Policy`
+   and `retry_after_s` from `rateLimited`). Because it is registered *after*
    `authRoutes`, the auth and device routes and `POST /me/tokens`, `DELETE /me/tokens/:id`, `POST /auth/logout`,
    `/auth/device/*`, `/auth/osintverse/device*` are **not** covered, even though the comment lists "tokens".
    Anonymous writes (installs, feedback, reports) are not covered either.
@@ -232,8 +248,9 @@ handler that returns ends the chain):
    `trustRoutes`, `transferRoutes`, `opsRoutes`, `betaRoutes`, `backupRoutes`.
 5. `app.onError`: an `HTTPException` (every `apiError`) returns its own response. Anything else: request ID =
    `cf-ray` header or a new ULID, `reportError` to Sentry via `waitUntil`, `console.error`, and
-   `500 {error: {code: "internal_error", message: "Something went wrong on our side.", request_id}}`.
-6. `app.notFound`: `404 {error: {code: "not_found", message: "No such endpoint."}}` (no `docs`/`hint`).
+   `500 {error: {code: "internal_error", message: "Something went wrong on our side.", hint, docs, request_id}}`.
+6. `app.notFound`: `404 {error: {code: "not_found", message: "No such endpoint.", hint: "the API reference is at
+   /v1/openapi.json", docs}}`.
 7. The public catalog endpoints of `index.ts` (section 1.1), registered last at module level.
 
 **Registration-order constraints**
@@ -247,7 +264,9 @@ handler that returns ends the chain):
 
 **Default export** (`index.ts` lines 378–406):
 
-- `fetch`: `edgeCached(req, env, ctx, () => app.fetch(req, env, ctx))`. `edgeCached` (`edge-cache.ts`) bypasses the
+- `fetch`: `/mcp` goes to the remote MCP server (`mcpEndpoint` in `mcp.ts`) first; everything else is
+  `edgeCached(req, env, ctx, () => app.fetch(req, env, ctx))`. Every successful GET with a JSON or text body gets a
+  weak `ETag` (a hash of the body), and a matching `If-None-Match` gets a 304, cached or signed in. `edgeCached` (`edge-cache.ts`) bypasses the
   cache when `env.EDGE_CACHE === "off"`, the method isn't `GET`, or the request has an `authorization` or `cookie`
   header. The key is the URL with sorted query params plus `__cors=site|any` (site when `Origin === SITE_URL`). It
   stores only `200` responses whose `Cache-Control` contains `public` and a non-zero `max-age`, and no `set-cookie`,
@@ -268,6 +287,7 @@ count is greater than `limit`. Windows older than a day are deleted nightly by `
 | Writes by signed-in non-staff users | 30 per 60 s | `write` / user id | 429 `too_many_requests` | index.ts |
 | Reports, signed in | 20 per 86 400 000 ms (day) | `report-user` / user id | 429 `too_many_reports` | routes/trust.ts |
 | Reports, anonymous | 5 per 3 600 000 ms (hour) | `report-ip` / `cf-connecting-ip` (or `"unknown"`) | 429 `too_many_reports` | routes/trust.ts |
+| Install pings | 1 per day per address and version (extra pings answer 204 and are not counted) | `install` / `cf-connecting-ip` + version id | none (204) | index.ts |
 | Feedback, signed in | 10 per hour | `feedback-user` / user id | 429 `too_many_requests` | routes/beta.ts |
 | Feedback, anonymous | 10 per hour | `feedback-ip` / `cf-connecting-ip` | 429 `too_many_requests` | routes/beta.ts |
 | Manual sync | 10 per rolling hour per source (`MANUAL_SYNC_PER_HOUR`), counted from `sync_events` with `kind = 'manual'` | source | 429 `sync_rate_limited` | routes/sources.ts |
@@ -393,8 +413,10 @@ entry (`index.ts`) wraps `mirrorFetch` (`registry.ts`) and turns any throw into
 
 `ErrorStatus` allows 400, 401, 403, 404, 409, 410, 413, 429, 500, 503. Responses built by hand differ:
 
-- 500 `internal_error`: `{error: {code, message, request_id}}` (no `docs`) from `onError`.
-- 404 `not_found`: `{error: {code, message}}` from `notFound`.
+- 500 `internal_error`: `{error: {code, message, hint, docs, request_id}}` from `onError`.
+- 404 `not_found`: `{error: {code, message, hint, docs}}` from `notFound`.
+- 403 `insufficient_scope` from `enforceScopes`: adds `required_scope` and a `WWW-Authenticate` header.
+- 429s from `rateLimited` add `retry_after_s` and the `Retry-After` and `RateLimit-Policy` headers.
 - 401 `bad_signature` from the GitLab webhook: `{error: {code, message}}` (the GitHub webhook uses `apiError`).
 - 400 `manifest_invalid` from `PUT /packages/:ns/:name/manifest`: `{error: {code, message, problems}}`.
 - Import refusals with a draft's problems (`import_not_ready`): `{error: {code, message, problems}}` (no `docs`).
@@ -445,8 +467,10 @@ route wrappers, so they reach clients the same way.
 | invalid_reason | 400 | routes/trust.ts | yes |
 | invalid_replacement | 400 | routes/trust.ts | yes |
 | invalid_repo | 400 | routes/imports.ts, routes/sources.ts | yes |
+| insufficient_scope | 403 | scopes.ts (hand-built), routes/auth.ts | yes |
 | invalid_scan_results | 400 | routes/review.ts | yes |
 | invalid_scan_token | 401 | routes/review.ts | yes |
+| invalid_scope | 400 | scopes.ts (`parseScopes`) | yes |
 | invalid_signature | 403 | routes/backups.ts | yes |
 | invalid_state | 409 | routes/trust.ts; transfers.ts | yes |
 | length_required | 400 | routes/backups.ts | yes |

@@ -1,27 +1,52 @@
-# Launch checklist: closed beta (week 12) and public launch (week 13)
+# Launch checklist: the public launch
 
-State as of **21 October 2026**, from a readiness audit and a dry run on production. Branch
-`claude/week12-beta-7d9771` holds the fixes and beta tools below. Items marked **(you)** need the owner of the
-GitHub, GitLab, Cloudflare, Resend or osintverse.com accounts.
+The launch is **public and direct**. The closed beta planned for week 12 never ran: nobody was invited, and on
+21 Oct 2026 it was decided to launch publicly instead. The sections further down are kept as the record of the
+readiness audit, the production dry run and the beta preparation on 21 Oct; they describe what was true then.
+Items marked **(you)** need the owner of the GitHub, GitLab, Cloudflare, Resend, PyPI or osintverse.com accounts.
 
-**Beta exit criteria** (plan, week 12): 10+ external authors have published, at least 3 from GitLab; no open
-severity-1 bugs; `ot` installs cleanly on Windows, macOS and Linux. The admin console's **Beta** tab
-(https://otinstaller.com/admin/beta) tracks the first two.
+## Current state (22 October 2026)
 
-## Blocking the beta
+| Thing | State |
+|-------|-------|
+| `ot` | v0.13.1 is the latest release on `OTInstaller/ot` (22 Oct), with archives, `.deb`/`.rpm`, signed checksums, six `.mcpb` bundles and `server.json`; `get.otinstaller.com/ot` and `/ot.ps1` serve its install scripts |
+| API and site | Deployed from `main` with `PUBLIC_BETA=0` (no beta strip); migrations up to 0013 applied in production |
+| Agents | `ot mcp` (since v0.13.0), the remote MCP server at `https://api.otinstaller.com/mcp`, the plugin `OTInstaller/agent-plugin` v0.1.0; MCP Registry entries `com.otinstaller/ot` 0.13.1 and `com.otinstaller/registry` 1.0.0 |
+| otlite | 1.0.0, 1.1.0 and 1.2.0 released to PyPI on 22 Oct (09:23, 09:39 and 10:51 UTC) by `release-otlite.yml`, each with a GitHub release `otlite-vX.Y.Z` on `OTInstaller/otinstaller`. [PR #48](https://github.com/OTInstaller/otinstaller/pull/48) (1.2.1) was still open on 22 Oct |
+| `otinstaller` shim | 0.2.0 is on PyPI (22 Oct, 11:23 UTC), and its files are on the `otlite-v1.2.0` GitHub release. The workflow publishes it from its own environment `pypi-otinstaller` ([PR #44](https://github.com/OTInstaller/otinstaller/pull/44)), but in the `otlite-v1.2.0` run that job failed with `invalid-publisher` (10:52 UTC), so the Actions history doesn't show how 0.2.0 was uploaded. **(you)** Check that PyPI's trusted publisher for `otinstaller` names the environment `pypi-otinstaller` before the next release |
+| otlite installer | `curl -fsSL https://get.otinstaller.com/otlite \| sh` answers 200 (`otlite/scripts/install.sh` from `main`, through `ops/get`) |
+| Site pages | `/otlite` and `/otlite/tools` (the catalog from `web/src/data/otlite-catalog.json`); tool pages show the sample output recorded by the scanner's smoke test |
 
-These stop testers on day one. Don't send invitations until they are done. **All done as of 21 Oct**; the
-invitations can go out.
+## Left before announcing
+
+- [ ] **(you)** Legal review (details under "Before the public launch" below).
+- [ ] **(you)** Code signing for Windows and macOS ([code-signing.md](code-signing.md)).
+- [ ] **(you)** Delete the GitHub test repositories `dheerajydv19/ot-test-tool` and `dheerajydv19/ot-test-guide`
+      (private and archived now), and make GitLab `osintversehq/ot-test-tool` private or delete it.
+- [ ] **(you)** Resubmit the sitemap in Google Search Console.
+- [ ] **(you)** Submit the plugin to Anthropic's directory and the Cursor marketplace (texts in
+      [launch/agent-listings.md](launch/agent-listings.md)); try `ot mcp` and the plugin in a real client first.
+- [ ] **(you)** Pick the launch date and approve the launch posts ([launch/](launch/README.md)); nothing is posted.
+- [ ] **(you)** Back up `~/.mcp-registry/otinstaller.com.ed25519.hex` somewhere safe and offline. Without it, a new
+      key pair, a new `web/public/.well-known/mcp-registry-auth` and a site deploy are needed to publish to the MCP
+      Registry again.
+- [ ] Re-release the nine seed packages whose manifests gained `ethics.notifies_target`/`notes` or a key's `pricing`
+      (dnsrecon, fierce, finalrecon, httpx, tlsx, holehe, shodan-host, exif-meta, image-hash): pending, needs the
+      owner's go-ahead ([../seed/README.md](../seed/README.md), "Not yet released").
+
+## History: blocking the beta (21 October 2026)
+
+These would have stopped testers on day one. **All done as of 21 Oct.** The beta itself never ran.
 
 | # | Item | State | What it needs |
 |---|------|-------|---------------|
 | 1 | **`ot` has never been released.** No `OTInstaller/ot` release repository, no tags, no Homebrew tap or Scoop bucket, and `get.otinstaller.com` doesn't resolve, so every install command in the docs fails. | Release workflow and GoReleaser config exist. `ops/get/` (new) serves the install scripts at get.otinstaller.com. The install scripts are tested end to end on Windows here and in a Linux container; `.github/workflows/cli-install.yml` (new) covers Linux, macOS and Windows on CI. **Done (21 Oct):** `ot` v0.12.0 is the latest release on `OTInstaller/ot`; `get.otinstaller.com` is deployed. Verified against the published release: `irm https://get.otinstaller.com/ot.ps1 \| iex` on Windows 11 and `curl -fsSL https://get.otinstaller.com/ot \| sh` in a Debian container both install with "Signature verified"; `ot --version`, `ot self-update` ("v0.12.0 is the latest release") and `ot search` against production work on both. | Nothing for the beta. Later: Homebrew tap and Scoop bucket (`TAP_GITHUB_TOKEN`); the install docs hide them until then. |
-| 2 | **Email doesn't send.** Resend answers `401 API key is invalid`; 79 notifications failed since 20 Oct (publish, reject, review, archive), one was ever sent. Authors get no "published" or "rejected" mail and reviewers no alerts. | Code is fine; the old key had been deleted in Resend. **Done (21 Oct):** `otinstaller.com` is verified in Resend (no DNS changes needed); new key `otinstaller-api` (sending access, otinstaller.com only) set with `wrangler secret put RESEND_API_KEY`. New admin endpoint `POST /v1/admin/email-test` (mails the calling admin, answers with Resend's error on failure) deployed; its test email showed "Delivered" in Resend. | Nothing. The 81 notifications that failed on 20–21 Oct are **not** re-sent (decided 21 Oct: stale). |
+| 2 | **Email doesn't send.** Resend answers `401 API key is invalid`; 79 notifications had failed since 20 Oct when this was audited (publish, reject, review, archive), one was ever sent. Authors get no "published" or "rejected" mail and reviewers no alerts. | Code is fine; the old key had been deleted in Resend. **Done (21 Oct):** `otinstaller.com` is verified in Resend (no DNS changes needed); new key `otinstaller-api` (sending access, otinstaller.com only) set with `wrangler secret put RESEND_API_KEY`. New admin endpoint `POST /v1/admin/email-test` (mails the calling admin, answers with Resend's error on failure) deployed; its test email showed "Delivered" in Resend. | Nothing. The 81 notifications that failed on 20–21 Oct are **not** re-sent (decided 21 Oct: stale). |
 | 3 | **Testers can't file issues.** `OTInstaller/otinstaller` is private, so the bug-report link on the site and in `ot feedback` 404s for anyone outside the org, and the admin console can't count sev-1 issues. | Issue forms with a severity field, a labeller workflow and `scripts/beta/labels.sh` are on this branch. **Done (21 Oct):** public `OTInstaller/feedback` has the issue forms, `issue-severity.yml` and the beta labels (`sev-1`–`sev-3`, `beta`, `needs-triage`, `area:*`). The API and site default to it (`60ea168`, deployed), so no `ISSUES_REPO`/`PUBLIC_ISSUES_URL` override is needed. Verified: production `/feedback` links to `github.com/OTInstaller/feedback/issues`; `ot feedback` without a message opens that page. | Nothing. |
 | 4 | **GitLab publishing was impossible.** Found in the dry run: (a) the GitLab OAuth app lacked the `api` scope, so connecting a project failed at GitLab; (b) all three GitLab release templates were invalid YAML; (c) they needed a project access token, which is paid-only on GitLab.com; (d) new GitLab.com projects can't set pipeline variables, so "run a pipeline with VERSION" didn't work; (e) arm64 images couldn't build without QEMU; (f) the registry set GitLab's commit status to `running` twice and GitLab's 400 failed the job, rejecting every GitLab release. | (a) fixed on the app (21 Oct) and in the setup guide; (b)–(f) fixed on this branch (`165961e`, `0df6d53`, `d9a19a0`) and **deployed** (`d9a19a0`, 21 Oct). **Done (21 Oct):** the GitLab application is now "OTInstaller" with only `https://api.otinstaller.com/v1/auth/gitlab/callback`. Verified: web sign-in with GitLab reaches the dashboard, and `ot login --gitlab` (device grant, consent screen says "OTInstaller") signs in. | Nothing. Local development needs its own GitLab app now (the 127.0.0.1 callback is gone). |
 | 5 | **Production was down** most of 21 Oct: crawlers walking every search filter combination used up D1's free daily reads, and every page answered 500 or 404. | Fixed and deployed (`2821b22`, `1bd47e4`): edge cache for anonymous API reads, nofollow and noindex on filtered views, `Disallow: /*?`, a 500 page. You moved the account to Workers Paid. | Nothing. Watch D1 reads in the Cloudflare dashboard for a few days. |
 
-## Not merged or not deployed
+## History: merges and deploys (21 October 2026)
 
 | Item | State | What it needs |
 |------|-------|---------------|
@@ -111,7 +136,7 @@ record.
 - **Feedback** goes to D1 (`/admin/feedback`); bugs that block someone also go to GitHub issues with a severity,
   which the Beta tab counts.
 
-## Before the public launch (week 13)
+## Before the public launch (week 13), as tracked from 21 Oct
 
 - [x] ~~Beta exit criteria met, survey read~~: doesn't apply. There was no beta cohort; the launch is public (21 Oct).
 - [x] Week 11 backups merged and deployed; restore drill run once (21 Oct, below).
@@ -138,11 +163,11 @@ record.
       macOS: Apple Developer Program ($99/year) for Developer ID signing and notarization.
 - [x] Source public: `OTInstaller/otinstaller` made public 21 Oct (history scanned with gitleaks first: no secrets).
 - [x] Site deployed without the beta strip (21 Oct, `a8ff315`); `ot` v0.12.1 released.
-- [ ] Dummy repositories out of public view: `dheerajydv19/ot-test-tool` and `dheerajydv19/ot-test-guide` are private
-      and archived (21 Oct). **(you)** GitLab `osintversehq/ot-test-tool` is still public: Settings → General →
+- [ ] **(you)** Dummy repositories out of public view: `dheerajydv19/ot-test-tool` and `dheerajydv19/ot-test-guide` are private
+      and archived (21 Oct). GitLab `osintversehq/ot-test-tool` is still public: Settings → General →
       Visibility → Private → Save, or Settings → General → Advanced → Delete. To delete the GitHub ones for good:
       `gh repo delete dheerajydv19/ot-test-tool` and `gh repo delete dheerajydv19/ot-test-guide`.
-- [ ] **Agents** ([agent-friendly-plan.md](agent-friendly-plan.md), phases 1–5 merged in
+- [x] **Agents** ([agent-friendly-plan.md](agent-friendly-plan.md), phases 1–5 merged in
       [PR #18](https://github.com/OTInstaller/otinstaller/pull/18) and [PR #20](https://github.com/OTInstaller/otinstaller/pull/20),
       **deployed 21 Oct**). Decided 21 Oct:
       - **Consent from launch:** `ot run`, `--all`, playbooks and `auto` without a terminal need `--yes` for tools
@@ -208,10 +233,12 @@ record.
           200, the new docs are live, and there are no CSP errors.
         - The seed tools' `notifies_target` changes need new releases from their own repositories
           ([../seed/README.md](../seed/README.md)).
-      - **Next:**
-        - the Anthropic directory and Cursor marketplace submissions (each needs your OK; texts in
-          [launch/agent-listings.md](launch/agent-listings.md));
-        - a test in a real client.
-- [ ] Resubmit the sitemap in Google Search Console (crawlers saw 404s and 500s on 21 Oct).
-- [ ] On-call rota for launch week; launch posts (plan, week 13). Drafts and templates in [launch/](launch/README.md)
+      - **Next** (moved to "Left before announcing" above): the Anthropic directory and Cursor marketplace
+        submissions (each needs your OK; texts in [launch/agent-listings.md](launch/agent-listings.md)), after a test
+        in a real client.
+- [ ] **(you)** Resubmit the sitemap in Google Search Console (crawlers saw 404s and 500s on 21 Oct).
+- [ ] **(you)** On-call rota for launch week; launch posts and the launch date (plan, week 13). Drafts and templates in [launch/](launch/README.md)
       (21 Oct): rota and reviewer schedule, posts for each channel, demo video script. Nothing posted; each needs your OK.
+- [x] otlite on PyPI: 1.0.0, 1.1.0 and 1.2.0 (22 Oct) with GitHub releases; the `otinstaller` shim 0.2.0; the one-line
+      installer at `get.otinstaller.com/otlite`; the `/otlite` and `/otlite/tools` pages on the site.
+- [ ] Seed re-releases for `notifies_target` and key `pricing` (nine packages): pending, see "Left before announcing".

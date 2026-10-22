@@ -4,8 +4,8 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 `api/migrations/*.sql` and the code in `api/src/`, `api/test/` and `api/scripts/`.
 
 - Binding: `DB`, database name `otinstaller`, `migrations_dir: "migrations"` (`api/wrangler.jsonc`).
-- 12 migrations, `0001` to `0012`.
-- Final schema: **33 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 34. FTS5 also creates its own shadow
+- 13 migrations, `0001` to `0013`.
+- Final schema: **34 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 35. FTS5 also creates its own shadow
   tables, which aren't listed here.
 
 ---
@@ -26,6 +26,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0010 | `0010_osintverse_login.sql` | **Rebuilds `accounts`** (`accounts_new`, copy, drop, rename) so `provider` allows `'osintverse'`; new table `device_logins` and index `device_logins_expires`. |
 | 0011 | `0011_backups.sql` | `tools` + `git_backups` (default 1), `legal_hold` (default 0), `legal_hold_reason`; new tables `backup_runs`, `backups`, `restore_drills`; indexes `backup_runs_status`, `backups_tool`, `backups_version`, `backups_delete`. |
 | 0012 | `0012_feedback.sql` | New table `feedback` and index `feedback_queue`. (Its header says it was numbered after 0011, which was on its own branch at the time.) |
+| 0013 | `0013_agent_tokens.sql` | `api_tokens` + `scoped` (INTEGER NN default 0; tokens minted before scopes were enforced keep 0 and every power); new table `install_clients`. Must be applied before an API that reads `scoped` is deployed: `authenticate` selects it on every token request. |
 
 ---
 
@@ -65,9 +66,15 @@ Purpose: web sessions (the `ot_session` cookie). Only the hash is stored.
 Purpose: `ot_...` bearer tokens for the CLI.
 - PK `id` TEXT · `user_id` TEXT NN → `users(id)` ON DELETE CASCADE
 - `name` TEXT NN · `token_hash` TEXT NN UNIQUE
-- `scopes` TEXT NN default `'read'` (a comma list; `routes/auth.ts` inserts `'read,publish'`)
-- `last_used_at`, `expires_at`, `revoked_at` INTEGER · `created_at` INTEGER NN
+- `scopes` TEXT NN default `'read'` (a comma list from `read`, `publish`, `manage`, `feedback`, `staff`; `mintApiToken`
+  in `routes/auth.ts` writes the requested scopes, by default the four user scopes)
+- `scoped` INTEGER NN default 0 (0013): 1 for every token minted since; `enforceScopes` (`scopes.ts`) only limits
+  tokens with `scoped = 1`
+- `last_used_at`, `expires_at`, `revoked_at` INTEGER · `created_at` INTEGER NN. `expires_at` is set for `/me/tokens`
+  tokens (90 days unless `expires_in_days` says otherwise) and left null for `ot login` tokens unless asked
 - Index `api_tokens_user (user_id)` (0002)
+- Audit: `token.create`, `token.revoke` and `token.write` (every successful write made with a token) rows in
+  `audit_log`
 
 #### `device_logins` (0010)
 Purpose: the registry's own device flow for `ot login --osintverse`.
@@ -178,6 +185,13 @@ Purpose: a user's star on a package.
 Purpose: daily install counts per version (from `POST /installs`).
 - PK `(tool_id, version_id, day)` · `tool_id` → `tools(id)` ON DELETE CASCADE · `version_id` → `versions(id)`
 - `day` TEXT NN (`YYYY-MM-DD`, UTC) · `count` INTEGER NN default 0
+
+#### `install_clients` (0013)
+Purpose: daily install counts by kind of client, with no IP, user, token or package.
+- PK `(day, client)` · `day` TEXT NN (`YYYY-MM-DD`, UTC) · `client` TEXT NN CHECK in (`cli`, `mcp`, `ci`, `other`) ·
+  `count` INTEGER NN default 0
+- Written by `POST /installs` from the body's `client` (anything unknown counts as `other`), in the same batch as
+  `install_counts`.
 
 #### `aliases`
 Purpose: old addresses of transferred or renamed packages.
@@ -354,7 +368,8 @@ Purpose: beta feedback from the site form and `ot feedback`.
 ### 2.13 Rate limits (0009)
 
 #### `rate_limits`
-Purpose: fixed-window counters, for example anonymous reports (5 per hour per IP). The nightly cron purges windows older than a day.
+Purpose: fixed-window counters, for example anonymous reports (5 per hour per IP) and install pings (one per address,
+version and day, so `install_counts` can't be inflated). The nightly cron purges windows older than a day.
 - PK `(key, window_start)` · `key` TEXT NN (a salted hash, never the raw IP) · `window_start` INTEGER NN · `count` INTEGER NN default 0
 - Written by `trust.ts` with `INSERT ... ON CONFLICT`.
 
@@ -528,12 +543,13 @@ Observed conventions:
 Exceptions:
 - **JSON without the `_json` suffix**: `tools.categories`, `tools.tags`, `installations.repo_ids`, `sources.topics`,
   `sources.baseline_tags`.
-- **Comma lists, not JSON**: `api_tokens.scopes` (`'read,publish'`), `accounts.scopes`, `notifications.to_email`.
+- **Comma lists, not JSON**: `api_tokens.scopes` (`'read,publish,manage,feedback'`), `accounts.scopes`,
+  `notifications.to_email`.
 - **Non-ULID keys**: composite PKs on `namespace_members`, `tool_io`, `tool_secrets`, `tool_guides`, `stars`,
-  `install_counts`, `aliases` (name-based), `rate_limits` (hash + window).
+  `install_counts`, `install_clients` (day + client), `aliases` (name-based), `rate_limits` (hash + window).
 - **Seed IDs are deterministic, not ULIDs**: `ns_dheeraj`, `tool_<ns>_<name>`, `ver_<ns>_<name>_<version>`, `src_<name>`.
   Tests also insert `ot_test_<id>` tokens.
-- **Not milliseconds**: `install_counts.day` is TEXT `YYYY-MM-DD`; `rate_limits.window_start` is the window start;
+- **Not milliseconds**: `install_counts.day` and `install_clients.day` are TEXT `YYYY-MM-DD`; `rate_limits.window_start` is the window start;
   `health_checks.duration_ms` is a duration.
 - **Provider IDs stored as INTEGER, without an FK**: `installations.github_installation_id`,
   `publish_jobs.installation_id`, `sources.installation_id`.

@@ -7,8 +7,10 @@ Conventions used here:
 
 - "API" paths are relative to the configured API base (`OT_API_URL`, default `https://api.otinstaller.com/v1`). All
   calls go through `api.Client.do` (`api/client.go`), which sends `User-Agent: ot/<Version>`, `Accept:
-  application/json`, and `Authorization: Bearer <token>` **whenever a token is loaded** (keychain or
-  `OTINSTALLER_TOKEN`), on every request, including the install ping. HTTP timeout 30 s.
+  application/json`, and `Authorization: Bearer <token>` when a token is loaded (keychain or `OTINSTALLER_TOKEN`),
+  except for the calls made through `anon()`, which never carry it: search, tool detail, manifest, guide search,
+  guides and guide pages, tool docs, `/removed`, the install ping and the device-login start and poll. So public reads
+  stay anonymous and edge cached even when signed in. HTTP timeout 30 s.
 - "Sign-in" = whether the command itself refuses without a token (client-side check), or only the registry does
   (server answers 401/403, which `requestError` turns into exit 2 where it is used).
 - "Exit codes" lists what the command can return. Every command can also return **1** for an unclassified error
@@ -24,8 +26,12 @@ Conventions used here:
 
 Registered in `Root()` (`cli/root.go`) in this order: init, validate, search, info, install, run, playbook, auto,
 extract, diff, list, outdated, update, uninstall, keys, doctor, login, logout, whoami, import, sync, guide, docs,
-report, feedback, claim, transfer, yank, deprecate, self-update, release. 31 top-level commands, plus subcommands
-`keys set|list|rm` and `guide search|read|open|get|tools`.
+report, feedback, claim, transfer, yank, deprecate, self-update, release, mcp, pivot, token. 34 top-level commands,
+plus subcommands `keys set|setup|list|rm`, `guide search|read|open|get|tools`, `mcp install|audit|policy|tools`
+(with `mcp policy reset`) and `token create|list|revoke`.
+
+Commands that print data also print JSON with the global `--json` flag (or `OT_OUTPUT=json`); the per-command
+`--json` rows below are that flag. Nothing prompts without a terminal: see [section 2](#2-global-and-persistent-flags).
 
 There are **no aliases** (`Aliases` is never set), **no `Hidden: true` commands**, and **no `Deprecated` commands** in
 the code. Cobra adds its own built-ins (see [cobra built-ins](#cobra-built-ins)).
@@ -141,12 +147,16 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   | `--results-dir` | string | `$OT_RESULTS_DIR`, else `$OTINSTALLER_RESULTS_DIR`, else `./results` | where runs are saved (`~` expanded) |
   | `--case` | string | none | save under `<results-dir>/cases/<case>/` |
   | `--parallel` | int | 4 | tools run at once with `--all`; must be a whole number ≥ 1 |
+  | `--max-raw` | int | `$OT_MAX_RAW`, else no limit | leave `raw` out of the envelope when the output is over this many bytes |
+
+  With `--all`, `-f` also takes `jsonl` (one summary row per line as each tool finishes).
 
   | Switch | Meaning |
   | --- | --- |
   | `-h`, `--help` | print the run help, exit 0 |
+  | `--json` | same as `-f json` |
   | `--native` | install/run pipx tools on the host instead of in a container (applies to an install triggered by `run`; the installed record decides how it runs) |
-  | `-y`, `--yes` | install without asking if the tool is not installed |
+  | `-y`, `--yes` | install without asking if the tool is not installed; without a terminal, also the consent for a tool that isn't passive (`consent.go`) |
   | `--no-save` | don't save the run (refused with `--all`) |
   | `--all` | run every installed tool that has an input of the given typed-input types; no package argument |
   | `--dry-run` | with `--all`, list what would run (status `would run`); without `--all` → exit 2 |
@@ -173,6 +183,14 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   input fills the tool's single input of that type; zero or several inputs of the type is a usage error (several:
   "pass the one you mean by name"); setting the same input by name and by type is a usage error. The first typed value
   names the results folder; otherwise the first `--<input>` given in manifest order does.
+- Without a terminal (piped stdin, `OT_NONINTERACTIVE=1`, CI), `cliConsent` (`consent.go`) classifies every planned
+  run with the agent policy (`agent.Classify`): a refused tool stops everything with exit 4; tools that aren't passive
+  stop the run with exit 2, code `consent_required`, unless `--yes` was given or `OT_CONSENT=off` is set. Each such
+  run is then written to `<ot home>/agent-audit.jsonl` (consent `policy`, `flag` or `off`).
+- The envelope carries `run_id`, `ot_version` and `client` (`cli`, `ci` when `CI` is set, `mcp` under `ot mcp`). When a
+  text or CSV tool reports no entities, `runner/textentities.go` adds the emails, URLs, IP addresses and domains its
+  output mentions (up to 200, `confidence: low`, `found_in: "text output"`, leaving out the run's own inputs, an
+  email's own domain and file-extension lookalikes).
 - Single run flow: `ensureInstalled` (installed version used if no `@version` or it matches; an installed version
   on the removal list, refreshed at most hourly via `GET /removed`, is refused with exit 4; otherwise prompts
   `Install it now? [Y/n]` on stderr unless `-y`, a non-yes answer is exit 2; local manifest paths are always
@@ -191,7 +209,8 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   - 1: tool exited non-zero ("`<ref> exited with code N`"); with `--all` any row not `complete`/`skipped`; results
     folder cannot be created; other errors.
   - 2: argument errors (`runner.UsageError`), unknown `-f` format, `--dry-run` without `--all`, no package (prints the
-    help and exits 2), `--all` misuse, "no installed tool has a … input", declined install prompt.
+    help and exits 2), `--all` misuse, "no installed tool has a … input", declined install prompt, a tool that isn't
+    installed when there is no terminal to ask (`not_installed`), `consent_required`.
   - 3: a required key is missing (`ot keys set <NAME>` hint, plus the key URL).
   - 4: removed version, or any install trust failure.
   - 5: Docker/Podman (or pipx for native installs) missing.
@@ -235,6 +254,16 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 - Sign-in: no. Exit: as `ot run --all`; also 2 for an unknown playbook, a broken playbook file, a bad list format, or
   when none of the playbook's tools can run with the inputs; install errors propagate their own codes (4, 5, 1).
 
+#### `ot pivot <run-id | saved file>`
+- File: `cli/pivot.go`. Args: `ExactArgs(1)`.
+- Flags: `--registry` (bool): also list tools that aren't installed (asks the registry); `--limit` (int, 25): at most
+  this many pivots.
+- Argument: an existing file (a saved output, or its `.meta.json`), else a run id looked up under the results
+  directory and `<ot home>/results`. Reads the run's entities from the sidecar and, through the embedded
+  `spec/pivots.json`, lists for each entity worth following the input type it fits and the installed tools that take
+  it, with an `ot run` line for each. The run's own inputs are left out. Nothing is run.
+- API: only with `--registry` (`GET /pivots`). Exit: 0; 2 when the run or its sidecar can't be found.
+
 #### `ot extract <tool | path>`
 - File: `cli/saved.go` (`extractCmd`); logic in `results/saved.go`. Args: `MaximumNArgs(1)`.
 - Flags: `--case` (string): scan runs under `<results-dir>/cases/<case>` (with a tool argument, only that tool's
@@ -269,6 +298,26 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 - `ot keys rm <NAME>`: `ExactArgs(1)`. Deletes from the keychain (not-found is fine) and the index. Exit 1 on keychain
   error.
 - No API, no sign-in.
+
+#### `ot mcp`
+- File: `cli/mcp_cmd.go` (the command and its subcommands), `mcp_server.go` (server, consent flow), `mcp_tools.go`
+  (read-only tools), `mcp_run.go` (install, uninstall, run, cancel), `mcp_content.go` (resources and prompts); rules
+  in `internal/agent`.
+- `ot mcp`: `NoArgs`; flag `--results-dir` (string): where runs are saved, else `$OT_RESULTS_DIR`, else
+  `<ot home>/results` (not `./results`, since a client starts the server in an arbitrary folder). Loads the policy (a
+  broken policy file → exit 2), sets `AgentMode`, prints one line on stderr and serves MCP over stdio until the client
+  goes away; then stops running containers (15 s) and records those runs as interrupted.
+- `ot mcp install <claude|claude-desktop|cursor|vscode|codex|gemini>`: `ExactArgs(1)`; `--print` (bool) prints the
+  configuration instead of writing it. `claude` runs `claude mcp add --scope user` (printed when `claude` isn't on the
+  PATH); the others edit `claude_desktop_config.json`, `~/.cursor/mcp.json`, `.vscode/mcp.json` (current folder),
+  `~/.codex/config.toml` or `~/.gemini/settings.json`, pointing at this binary's resolved path.
+- `ot mcp audit`: `--since` (duration, default `24h`). Lists `agent-audit.jsonl` entries (JSON with `--json`), or
+  "Nothing in the last …".
+- `ot mcp policy`: prints the policy file's path and the effective policy (defaults merged in); `ot mcp policy reset`
+  writes the defaults to the file, replacing it.
+- `ot mcp tools`: lists the server's tools, resources and prompts as a client sees them (full definitions with
+  `--json`). The descriptions must match `web/src/pages/docs/mcp-tools.md` (`TestMCPToolsDocsMatch`).
+- No API for the command itself; the tools call the registry as the matching commands do. Sign-in: no.
 
 #### `ot doctor`
 - File: `cli/run.go` (`doctorCmd`). Args: `NoArgs`. No flags.
@@ -459,11 +508,14 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 #### `ot login`
 - File: `cli/login.go`. Args: `NoArgs`.
 - Flags: `--gitlab` (bool): sign in with GitLab; `--osintverse` (bool): sign in with an OSINTverse account (publishing
-  still needs GitHub or GitLab). Both together → exit 2. Default provider `github`.
+  still needs GitHub or GitLab). Both together → exit 2. Default provider `github`. `--scope` (string list: `read`,
+  `publish`, `manage`, `feedback`; default all four; an unknown one → exit 2) limits the token; `--print-token`
+  (bool) prints the token instead of saving it to the keychain (for CI secrets).
 - API: `POST /auth/device/start` `{provider}`; then polls `POST /auth/device/token` `{provider, device_code,
-  token_name: "ot CLI on <hostname>"}` every `interval` s (min 1; +5 s on `slow_down`) until `expires_in` (min 60 s).
+  token_name: "ot CLI on <hostname>", scopes?}` every `interval` s (min 1; +5 s on `slow_down`) until `expires_in`
+  (min 60 s). The OSINTverse path on the server ignores `scopes` (a known gap).
 - Stores the token in the keychain as `OTINSTALLER_TOKEN` (service `osintverse-ot`; the name is also added to
-  `keys.json`).
+  `keys.json`), unless `--print-token`.
 - Exit: 0; 2 for both flags, `expired`, `denied`, or the deadline passing; 1 for registry/network errors (not wrapped)
   or a keychain write failure; Ctrl-C during the wait returns the context error (exit 1).
 
@@ -475,6 +527,17 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 - File: `cli/login.go`. Args: `NoArgs`.
 - API: `GET /me`. Prints `login (provider:login, ...)` and each namespace with role and status.
 - Sign-in: **yes, client-side** (exit 2 "not signed in"). Exit: 0; 2 when not signed in or on 401; 1 otherwise.
+
+#### `ot token` (`token create|list|revoke`)
+- File: `cli/token.go`; client `api/tokens.go`. `ot token` alone prints help.
+- `ot token create <name>`: `ExactArgs(1)`. `--scope` (string list; default `read`, `publish`, `manage`,
+  `feedback`; `staff` tokens are made on the website only), `--expires` (int days, 1–365; 0 means the server default
+  of 90). `POST /me/tokens`. Prints the token once on stdout and its id, scopes and expiry on stderr (all as JSON with
+  `--json`).
+- `ot token list`: `NoArgs`. `GET /me/tokens`: id, name, scopes, last used, expiry; never values.
+- `ot token revoke <id>`: `ExactArgs(1)`. `DELETE /me/tokens/{id}`.
+- Sign-in: **yes, client-side** (exit 2). Registry 4xx go through `requestError` (exit 2), including
+  `insufficient_scope` when the signed-in token can't mint what was asked.
 
 ### 1.7 Other
 
@@ -513,10 +576,18 @@ Not registered by ot, added by cobra v1.10.2 because `Root()` does not disable t
 
 ## 2. Global and persistent flags
 
-`Root()` defines **no persistent flags**. The only root-level flags are cobra's `-h/--help` and `-v/--version`.
-Settings that look global are environment variables or `config.json` (below), not flags. `SilenceUsage` and
-`SilenceErrors` are on: errors are printed once by `Main` as `error: <message>` on stderr (nothing is printed for an
-`ExitError` with a nil or empty error), and usage is never printed on error.
+`Root()` defines one persistent flag, `--json` (bool): commands print JSON, and an error is printed as one line of
+JSON on stderr, `{"error": {code, message, hint?, docs, exit_code, request_id?, problems?}}`
+(`spec/schema/error-v1.json`, the same shape as the API's errors). `OT_OUTPUT=json` turns it on for every command, and
+`ot run`, `auto` and `playbook` (which parse their own arguments) honour `--json` themselves (`jsonRequested`). The
+`code` is the registry's own code, else `ExitError.Reason` (`input_required`, `consent_required`, `needs_terminal`,
+`not_installed`, ...), else one that follows from the exit code (`machine.go`). Otherwise errors are printed once by
+`Execute` as `error: <msg>` on stderr (nothing for an `ExitError` with a nil or empty error). `SilenceUsage` and
+`SilenceErrors` are on, so usage is never printed on error. Cobra adds `-h/--help` and `-v/--version`.
+
+**No prompts without a terminal** (`machine.go`, `interactive()`): when stdin isn't a terminal, `OT_NONINTERACTIVE=1`
+is set, or under `ot mcp`, any question ot would ask (install now?, `init`/`import` confirmations, `guide tools`) is
+an exit 2 `input_required` error naming the flag to pass instead.
 
 ---
 
@@ -570,6 +641,11 @@ Read by the CLI (`os.Getenv` calls in `cli/`, plus the keychain lookup):
 | `OT_RESULTS_DIR` | `results/results.go` `Dir` | results directory when `--results-dir` is not given (`~` expanded) | `./results` |
 | `OTINSTALLER_RESULTS_DIR` | `results/results.go` `Dir` | legacy fallback after `OT_RESULTS_DIR` | `./results` |
 | `OTINSTALLER_TOKEN` | `keys.Get(TokenKey)` in `NewApp` | registry API token; an env var wins over the keychain entry of the same name | keychain entry |
+| `OT_OUTPUT` | `root.go` `jsonMode` | `json` turns on `--json` for every command | off |
+| `OT_NONINTERACTIVE` | `machine.go` `interactive` | `1`: never prompt, as if there were no terminal | prompts at a terminal |
+| `OT_CONSENT` | `consent.go` `cliConsent` | `off`: unattended runs need no `--yes` (still audited) | consent checked |
+| `OT_MAX_RAW` | `run_cmd.go` | default for `--max-raw` (bytes) | no limit |
+| `CI` | `run_cmd.go` `clientKind` | any value: the envelope's and audit log's `client` is `ci`, and the install ping says so | `cli` |
 | `<SECRET_NAME>` (any manifest `secrets[].name`) | `keys.Get` in `loadSecrets` | a tool's key; env wins over the keychain | keychain entry |
 
 Other environment handling:
@@ -609,6 +685,9 @@ Data directory (`state.Home()`): `$OT_HOME` if set; else on Windows `%APPDATA%\o
 | `<home>/cache/removed.json` | pre-run check (24 h), `ot run` (1 h) | `{"fetched_at", "removed": [...]}` from `GET /removed`, mode 0644 |
 | `<home>/guides/<ns>/<name>/<version>/` | `guide get` | every page as Markdown at its nav path, plus `guide.json` (the guide detail); read by `guide read` offline |
 | `<home>/pipx/`, `<home>/bin/` | native pipx installs | ot's own `PIPX_HOME` and `PIPX_BIN_DIR`; native runs execute `<home>/bin/<command>[.exe]` |
+| `<home>/agent-policy.json` | `ot mcp policy reset` (else the user) | the agent policy: `enabled`, `mode`, `allow_tools`, `deny_tools`, `auto_approve`, `consent_ttl_minutes`, `max_runs_per_hour`, `max_parallel`, `max_runs_per_target_per_hour`, `max_output_chars`, `allow_install`, `redact_targets_in_audit`; missing fields keep their defaults, a broken file is an error |
+| `<home>/agent-audit.jsonl` (+ `.1` to `.4`) | `ot mcp`, unattended `ot run`/`--all`/`playbook`/`auto` | one JSON line per install, uninstall or run: time, client, action, tool and digest, inputs (or only their hash), class, consent, outcome, run id; rotated at 10 MiB |
+| `<home>/results/` | `ot mcp` | default results directory under `ot mcp` |
 | `<home>/playbooks/*.yaml|*.yml` | user | user playbooks (read only) |
 | `./playbooks/*.yaml|*.yml` | user | project playbooks (read only; win over home and bundled) |
 | OS keychain, service `osintverse-ot` | `keys set`, `login`, `doctor` (temporary `OT_DOCTOR_CHECK`) | key values and the `OTINSTALLER_TOKEN` token (Windows Credential Manager, macOS Keychain, Secret Service) |
@@ -632,10 +711,11 @@ finished), `status` (`complete`, `failed`, `timeout`, `interrupted`), `output_pa
 `envelope` (1), `entities`, `warnings`. Secrets are never in it. A tool that never started leaves nothing behind.
 Playbook runs default to the case `playbook-<name>`.
 
-Telemetry ping: `POST <api>/installs` with `{"tool": "<ns/name>", "version": "<v>"}` after each successful install of
+Telemetry ping: `POST <api>/installs` with `{"tool": "<ns/name>", "version": "<v>", "client": "cli|ci|mcp"}` after each successful install of
 a registry package (not local manifests), 3 s timeout, errors ignored. Disabled by `OT_NO_TELEMETRY` or `config.json`
-`"telemetry": false`. The code comment calls it anonymous, but `api.Client.do` attaches the `Authorization` header
-whenever a token is loaded, so a signed-in user's ping carries their token.
+`"telemetry": false`. It goes through `anon()`, so it never carries the token, even when signed in. The API counts it
+once per address, version and day (a salted hash of the address and version in `rate_limits`, removed by the nightly purge once the window is over) and keeps only
+per-version and per-client-kind daily counts.
 
 Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-only --tmpfs /tmp:rw,size=256m
 --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --memory 1g --cpus 2 --user 65534:65534 -e HOME=/tmp`,
@@ -651,8 +731,9 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 
 | Package | One line |
 | --- | --- |
-| `api` | Registry HTTP client: `do`, error shape `*api.Error`, search, tool/manifest, install ping, device login, `/me`, guides and docs, imports, sync, removals, reports, claims and transfers, yank/deprecate, feedback |
-| `cli` | Every cobra command, the `App` struct, exit codes, `ExitError`, `Main`, `ExitCodeFor` |
+| `agent` | Consent classes (`Classify`, `Describe`), the policy file (`LoadPolicy`, `DefaultPolicy`), sessions (`DecideRun`, approvals, limits), consent tokens (`CallHash`, `Seal`/`Open`, single use), the audit log (`Record`, `ReadAudit`, rotation) |
+| `api` | Registry HTTP client: `do`, error shape `*api.Error`, search, tool/manifest, install ping, device login, `/me`, tokens, guides and docs, imports, sync, removals, reports, claims and transfers, yank/deprecate, feedback |
+| `cli` | Every cobra command, the `App` struct, exit codes, `ExitError`, `Main`, `ExitCodeFor`, JSON errors (`machine.go`), the MCP server (`mcp_*.go`) |
 | `envelope` | The result envelope (`Version = 1`), `ParseOutput` for json/jsonl/csv/text, `Write` for json/raw/csv/table |
 | `keys` | Keychain storage (service `osintverse-ot`), env-first `Get`, `keys.json` name index |
 | `manifest` | Typed manifest, `Parse`/`ParseJSON`/`LoadFile`, schema + semantic + file validation, content rules, embedded schema (`go generate` from `spec/`) |
@@ -661,12 +742,16 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `runner` | Engine detection, install (docker pull + cosign, mirror and wheel fallbacks, pipx native or sandbox image), run, container args, input resolution, typed inputs, command building, target type detection with embedded `tlds.txt` |
 | `scaffold` | Files `ot init` writes, git remote and kind detection, embedded release templates (`go generate` from `spec/templates`) |
 | `selfupdate` | GitHub release lookup, Ed25519-signed checksums, archive SHA-256, extraction, atomic replace |
+| `specfiles` | Embedded copies of `spec/schema/{envelope,run-all,error}-v1.json`, `spec/pivots.json` and `spec/types.json` (`go generate`) |
 | `state` | Data directory, `state.json` load/atomic save, read-only `config.json` with env overrides |
+
+`cli/cmd/mcpb` (not under `internal/`) packs the release binaries into MCP Bundles and writes the MCP Registry
+`server.json`; the release workflow runs it after GoReleaser.
 
 ### Test files
 
 `api`, `keys`, `state` and `selfupdate` have **no test files** (`selfupdate` is exercised by `TestSelfUpdate` in
-`cli/trust_test.go`).
+`cli/trust_test.go`; `api` through the commands' fake registries).
 
 | File | Covers |
 | --- | --- |
@@ -683,6 +768,15 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `cli/sync_test.go` | `ot sync` and `--log` |
 | `cli/trust_test.go` | report/claim/transfer against a fake registry, removed-package warnings and refusal, `self-update` with a signed fake release |
 | `cli/feedback_test.go` | `ot feedback`: message with `--kind`/`--about`, piped stdin with `--email`, bad kind exits 2 |
+| `cli/machine_test.go` | `--json` detection, error codes, JSON errors on stderr, no prompts without a terminal, envelope provenance, `--all` JSON lines, stdout stays JSON |
+| `cli/mcp_test.go` | `ot mcp`: tool list, passive runs, consent by elicitation and by token, policy and trust, unattended CLI runs need `--yes`, `mcp install`, docs and plugin match the server, policy changes without a restart, shutdown, sandbox mode, batches |
+| `cli/keysetup_test.go` | `ot keys setup` at a terminal, refused without one, `key_setup` never shows values |
+| `cli/token_test.go` | `ot token create|list|revoke` against a fake registry |
+| `cli/info_test.go` | `ot info` prints a runnable command and the key hint |
+| `agent/agent_test.go` | `Classify`, `DecideRun`, policy lists and limits, loading, live policy changes, consent tokens, the audit log, `notifies_target` in descriptions |
+| `specfiles/specfiles_test.go` | Copies equal `spec/`; the pivot map covers every entity type; every schema enum value has a description |
+| `runner/textentities_test.go`, `runner/example_test.go` | Entities from text output; example commands |
+| `cmd/mcpb/main_test.go` | MCP Bundle packing and `server.json` |
 | `envelope/envelope_test.go` | `ParseOutput` per format; `Write` formats |
 | `manifest/validate_test.go` | Every valid fixture passes, every invalid fixture's first code, tag mismatch, file checks, embedded schema equals `spec/schema/v1.json` |
 | `manifest/seed_test.go` | Every `seed/*/*/otinstaller.yaml` validates with its files (at least 50) |
