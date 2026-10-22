@@ -5,7 +5,7 @@
 import { gzipSync } from "node:zlib";
 
 const base = (process.argv[2] ?? "http://localhost:4322").replace(/\/$/, "");
-const pages = ["/", "/search", "/input/email", "/osintverse-community/holehe", "/guides", "/guides/osintverse-community/email-investigation", "/docs/getting-started", "/publish"];
+const pages = ["/", "/search", "/input/email", "/osintverse-community", "/osintverse-community/holehe", "/guides", "/guides/osintverse-community/email-investigation", "/docs/getting-started", "/publish"];
 const BUDGET = { page: 90 * 1024, js: 25 * 1024, fonts: 60 * 1024 };
 
 const gz = (buf) => gzipSync(buf).length;
