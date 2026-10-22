@@ -1,7 +1,8 @@
 // Serving the Markdown twins of tool and guide pages: loads from the API and answers with the right status and caching.
-import { ApiError, apiOrNull, SITE_URL, type GuideDetail, type Page, type ToolDetail } from "./api";
+import { api, ApiError, apiOrNull, SITE_URL, type ActivityEvent, type GuideDetail, type Namespace, type Page, type ToolDetail } from "./api";
 import { cacheControl } from "./page";
 import { guidePageMarkdown, guidePageUrl, problemMarkdown, toolMarkdown } from "./tool-markdown";
+import { profileMarkdown } from "./profile";
 
 /** A namespace or package name (the manifest's slug rule); anything else is not a package URL. */
 export const SLUG = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
@@ -58,4 +59,13 @@ export async function guideTwin(ns: string, name: string, want: string, pinned: 
   if (page instanceof Response) return page;
   if (!page) return md(problemMarkdown(404, `page ${want} in ${ref}`), 404, 60, null, negotiated);
   return md(guidePageMarkdown(page, version), 200, seconds, guidePageUrl(ref, page.path, version), negotiated);
+}
+
+/** /<ns>.md, or /<ns> with `Accept: text/markdown`: a publisher's profile. Cached like the HTML page (300 s). */
+export async function profileTwin(ns: string, negotiated: boolean): Promise<Response> {
+  const n = await load<Namespace>(`/namespaces/${encodeURIComponent(ns)}`, `publisher ${ns}`, negotiated);
+  if (n instanceof Response) return n;
+  if (!n) return md(problemMarkdown(404, `publisher ${ns}`), 404, 60, null, negotiated);
+  const activity = n.status === "pending_review" ? [] : await api<{ events: ActivityEvent[] }>(`/namespaces/${encodeURIComponent(ns)}/activity?limit=10`).then((r) => r.events, () => []);
+  return md(profileMarkdown(n, activity), 200, 300, `${SITE_URL}/${n.name}`, negotiated);
 }

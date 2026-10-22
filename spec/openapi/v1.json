@@ -1302,7 +1302,8 @@
         "tags": [
           "Registry"
         ],
-        "summary": "A publisher and its packages",
+        "summary": "A publisher's profile, stats and packages",
+        "description": "Active namespaces show the profile (synced from GitHub or GitLab, with the owner's overrides), stats and visible packages. Namespaces waiting for review show only their handle and host links. Cached 300 s.",
         "responses": {
           "200": {
             "description": "OK",
@@ -1333,6 +1334,449 @@
           }
         ],
         "security": []
+      }
+    },
+    "/namespaces": {
+      "get": {
+        "operationId": "list_namespaces",
+        "tags": [
+          "Registry"
+        ],
+        "summary": "Publishers with at least one visible package, most installed first",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [],
+        "description": "Up to 500 publishers. Cached 600 s."
+      }
+    },
+    "/namespaces/{ns}/activity": {
+      "get": {
+        "operationId": "get_namespace_activity",
+        "tags": [
+          "Registry"
+        ],
+        "summary": "A publisher's public activity: releases, yanks, deprecations and transfers",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            },
+            "description": "How many events"
+          }
+        ],
+        "security": [],
+        "description": "Cached 300 s."
+      }
+    },
+    "/me/namespaces/{ns}/profile": {
+      "get": {
+        "operationId": "get_profile_settings",
+        "tags": [
+          "Owners"
+        ],
+        "summary": "The namespace's profile settings: host values, overrides, pins, About and sync state",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          }
+        ],
+        "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "description": "Needs a sign-in as an owner of the namespace: the session cookie, or an API token with the read scope. Never cached (private, no-store)."
+      },
+      "patch": {
+        "operationId": "update_profile",
+        "tags": [
+          "Owners"
+        ],
+        "summary": "Override profile fields, write the About section, choose pins or hide details",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          }
+        ],
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "description": "Needs a sign-in as an owner of the namespace: the session cookie, or an API token with the manage scope. Never cached (private, no-store).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "custom": {
+                    "type": "object",
+                    "description": "field: value; null goes back to the host value. Fields: display_name, bio, location, website, company, avatar_url, socials"
+                  },
+                  "about": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Markdown (no raw HTML), at most 20000 characters; null removes it"
+                  },
+                  "pins": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 6
+                  },
+                  "hide_details": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/namespaces/{ns}/profile/preview": {
+      "post": {
+        "operationId": "preview_profile_about",
+        "tags": [
+          "Owners"
+        ],
+        "summary": "Render About Markdown the way the profile will show it",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          }
+        ],
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "description": "Needs a sign-in as an owner of the namespace: the session cookie, or an API token with the manage scope. Never cached (private, no-store)."
+      }
+    },
+    "/me/namespaces/{ns}/profile/sync": {
+      "post": {
+        "operationId": "sync_profile",
+        "tags": [
+          "Owners"
+        ],
+        "summary": "Refresh the profile from GitHub and GitLab now",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          }
+        ],
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "description": "Needs a sign-in as an owner of the namespace: the session cookie, or an API token with the manage scope. Never cached (private, no-store)."
+      }
+    },
+    "/me/namespaces/{ns}/profile/hosts": {
+      "post": {
+        "operationId": "link_profile_host",
+        "tags": [
+          "Owners"
+        ],
+        "summary": "Show a GitHub or GitLab account, org or group you own on the profile",
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          }
+        ],
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "description": "Needs a sign-in as an owner of the namespace: the session cookie, or an API token with the manage scope. Never cached (private, no-store)."
+      }
+    },
+    "/me/namespaces/{ns}/profile/hosts/{provider}": {
+      "delete": {
+        "operationId": "unlink_profile_host",
+        "tags": [
+          "Owners"
+        ],
+        "summary": "Stop showing a linked host on the profile",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "github",
+                "gitlab"
+              ]
+            },
+            "description": "Host"
+          }
+        ],
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "description": "Needs a sign-in as an owner of the namespace: the session cookie, or an API token with the manage scope. Never cached (private, no-store)."
       }
     },
     "/openapi.json": {

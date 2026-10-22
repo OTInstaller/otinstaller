@@ -20,6 +20,8 @@ import { transferRoutes } from "./routes/transfers";
 import { opsRoutes } from "./routes/ops";
 import { betaRoutes } from "./routes/beta";
 import { backupRoutes } from "./routes/backups";
+import { profileRoutes } from "./routes/profiles";
+import { refreshDueProfiles } from "./profiles";
 import { backfillBackups, expireDrills, expireRuns, installFallbacks, purgeBackups, RESTORE_DRILL_CRON, startDrill, WEEKLY_BACKUP_CRON, weeklyBackups } from "./backups";
 import { alertStuckJobs, dailyDigest, purgeRateLimits, reportError } from "./ops";
 import { queueNightlyLinkChecks } from "./guides";
@@ -66,6 +68,7 @@ transferRoutes(app);
 opsRoutes(app);
 betaRoutes(app);
 backupRoutes(app);
+profileRoutes(app);
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
@@ -357,24 +360,6 @@ app.get("/tools/:ns/:name/:version", async (c) => {
   });
 });
 
-app.get("/namespaces/:ns", async (c) => {
-  const ns = c.req.param("ns");
-  const n = await c.env.DB.prepare(
-    `SELECT name, kind, provider, display_name, avatar_url, verified, created_at FROM namespaces WHERE name = ? AND status = 'active'`,
-  )
-    .bind(ns)
-    .first<any>();
-  if (!n) apiError(404, "namespace_not_found", `${ns} is not a registry namespace`);
-  const tools = await c.env.DB.prepare(
-    `SELECT ${SUMMARY_COLUMNS} FROM tools t JOIN namespaces n ON n.id = t.namespace_id
-     JOIN versions v ON v.id = t.latest_version_id WHERE n.name = ? AND ${VISIBLE} ORDER BY t.installs_30d DESC`,
-  )
-    .bind(ns)
-    .all<SummaryRow>();
-  cached(c, 300);
-  return c.json({ ...n, verified: n.verified === 1, tools: tools.results.map(summary) });
-});
-
 // Tools whose inputs accept the given output types, for chaining results into the next lookup.
 // How many visible packages each facet value matches, for the site's filter rail. Counts are over tools (or
 // guides with kind=guide) and ignore other filters, so they describe the catalogue, not the current search.
@@ -488,6 +473,8 @@ export default {
     // Every 15 minutes: close scans that never reported back, and poll sources that are due.
     await expireStaleScans(env);
     await pollDueSources(env);
+    // Publisher profiles from GitHub and GitLab: never synced, or older than 6 hours.
+    await refreshDueProfiles(env);
     await alertStuckJobs(env);
     await expireRuns(env);
     await expireDrills(env);

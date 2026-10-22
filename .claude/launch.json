@@ -40,6 +40,20 @@
         "web/design"
       ],
       "port": 4323
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "api",
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "8787"
+      ],
+      "port": 8787
     }
   ]
 }

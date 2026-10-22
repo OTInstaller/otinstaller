@@ -39,7 +39,7 @@ The repository also holds `otlite/`, the no-Docker edition `otlite` (the Python 
 The launch is **public**: the closed beta planned for week 12 never ran (nobody was invited), and the site is built
 with `PUBLIC_BETA=0`. `ot feedback` and issues on `OTInstaller/feedback` stay as the feedback channels.
 [docs/launch-checklist.md](docs/launch-checklist.md) records what is deployed and what is left; as of 22 Oct 2026 the
-latest `ot` is v0.13.1 on `OTInstaller/ot`, migrations up to 0013 are applied in production, and otlite is on PyPI.
+latest `ot` is v0.13.1 on `OTInstaller/ot`, migrations up to 0014 are applied in production, and otlite is on PyPI.
 Check the checklist for anything newer; don't restate production state here.
 
 Production:
@@ -294,7 +294,7 @@ stderr and returns `ExitCodeFor(err)`. `cli/README.md` ships in the release arch
 Packages: `search`, `info`, `install`, `list`, `uninstall`, `outdated`, `update`. Running: `run`, `auto`, `playbook`,
 `extract`, `diff`, `pivot`, `keys set|setup|list|rm`, `doctor`. Agents: `mcp` (`mcp install|audit|policy [reset]|tools`).
 Guides: `guide search|read|open|get|tools`, `docs`. Publishing: `init`, `validate`, `import`, `sync`, `release`,
-`login` (`--gitlab`, `--osintverse`, `--scope`, `--print-token`), `logout`, `whoami`, `token create|list|revoke`.
+`login` (`--gitlab`, `--osintverse`, `--scope`, `--print-token`), `logout`, `whoami`, `token create|list|revoke`, `profile`.
 Trust: `report`, `claim`, `transfer`, `yank`, `deprecate`. Other: `feedback`, `self-update`. Cobra adds `help`,
 `completion` and `--version`. The root's one persistent flag is `--json` (JSON output, and errors as one JSON line on
 stderr; `OT_OUTPUT=json` turns it on for a session). Its `PersistentPreRun` refreshes `cache/removed.json` (daily) and
@@ -484,7 +484,8 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
 - Public: `GET /health`, `/openapi.json` (`spec/openapi/v1.json`), `/types` (enums, the pivot map and descriptions from
   `spec/types.json`), `/tools` (search: `q`, `input`, `output`, `category`, `runtime`, `kind`, `level`, `format`,
   `lang`, `sort`, `no_keys`, `passive_only`, `limit`, `cursor`; summaries carry ethics and egress), `/facets`,
-  `/guides`, `/tools/:ns/:name[/versions|/:version[/manifest|/scans|/wheel/:file]]`, `/namespaces/:ns`, `/pivots`
+  `/guides`, `/tools/:ns/:name[/versions|/:version[/manifest|/scans|/wheel/:file]]`,
+  `/namespaces[/:ns[/activity]]` (publisher profiles), `/pivots`
   (follows `spec/pivots.json`), `/removed`, guide pages, tool docs, readmes, `/assets/:sha256.ext`; `POST /installs`
   (counted once per address, version and day through a salted hash in `rate_limits`; only per-version and
   per-client-kind daily counts are kept), `POST /feedback`. The manifest response includes
@@ -492,7 +493,8 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
   scanner's smoke test of the latest version produced (first five entities, or the start of stdout), which the tool
   page shows as its sample output.
 - Auth: `/auth/:provider/login|callback` (github, gitlab, osintverse), `/auth/logout`, `/auth/device/start|token`,
-  `/me`, `/me/tokens`, `/me/publish-jobs`, `/me/repos`, `/me/transfers`, `/me/backups`.
+  `/me`, `/me/tokens`, `/me/publish-jobs`, `/me/repos`, `/me/transfers`, `/me/backups`,
+  `/me/namespaces/:ns/profile[/preview|/sync|/hosts[/:provider]]` (an owner's profile settings).
 - Publishing: `POST /webhooks/github` (HMAC), `POST /webhooks/gitlab` (per-source token), `/imports...`,
   `/sources/gitlab`, `/packages/:ns/:name/sync|sync-log|manifest|manifest/pr|source|backups|backups/restore`.
 - Owners: yank/unyank, deprecate, claim, transfer, git-backup opt-out, restore, switch source. Anyone: reports, feedback.
@@ -504,7 +506,7 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
   `POST /internal/drills/:id`, `/internal/health[/targets]`. Scans, backup runs and drills each use their own
   single-use token (scan 1 h, run 3 h or 12 h weekly, drill 6 h); the health endpoints use the static shared
   `HEALTH_TOKEN`.
-- The full route table (101 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
+- The full route table (109 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
   `spec/openapi/v1.json` describes the public and owner routes, each with its token scope as `x-scope`; a test in
   `api.test.ts` fails when a route and the document disagree, so add new routes to both.
 - 429s carry `Retry-After`, `RateLimit-Policy` and `retry_after_s` (`rateLimited` in `lib/errors.ts`).
@@ -563,7 +565,7 @@ migrations add publish intake (0002), scans/review and `notifications` (0003), s
 `page_links` (0007, 0008), trust/takedowns/claims/health and `rate_limits` (0009), OSINTverse login plus `device_logins`
 (0010), backups (`backup_runs`, `backups`, `restore_drills`, tool `git_backups`/`legal_hold`/`legal_hold_reason`, 0011),
 `feedback` (0012), and scoped tokens (`api_tokens.scoped`) plus the `install_clients` daily counts by client kind
-(0013). That is 34 tables plus `tools_fts`; every table, column, CHECK value set and status transition is in
+(0013), and publisher profiles (`namespace_profiles`, `namespace_hosts`, 0014). That is 36 tables plus `tools_fts`; every table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
 
 - IDs are ULIDs (`ulid()`), timestamps are Unix **milliseconds**, booleans are 0/1, JSON columns end in `_json`

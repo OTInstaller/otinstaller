@@ -26,8 +26,10 @@ interface Props {
   jsonHref?: string;
   /** URL of the page's Markdown twin, announced as a rel="alternate" link for agents. */
   markdown?: string;
+  /** A square share image (a publisher's avatar) in place of the site's wide one; shown as a small card. */
+  ogImage?: { url: string; alt: string };
 }
-const { title, description = "Find, install and run OSINT tools and investigation guides with one command.", canonical, jsonLd, noindex, ogType = "website", bleed = false, jsonHref, markdown } = Astro.props;
+const { title, description = "Find, install and run OSINT tools and investigation guides with one command.", canonical, jsonLd, noindex, ogType = "website", bleed = false, jsonHref, markdown, ogImage } = Astro.props;
 const fullTitle = title === "OTInstaller Registry" ? "OTInstaller: free OSINT tools and guides, run with one command" : `${title} · OTInstaller`;
 const canonicalUrl = `${SITE_URL}${canonical ?? Astro.url.pathname}`;
 const path = Astro.url.pathname;
@@ -57,14 +59,14 @@ const isCurrent = (href: string) =>
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonicalUrl} />
     <meta property="og:type" content={ogType} />
-    <meta property="og:image" content={`${SITE_URL}/og.png`} />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="OTInstaller: paste what you have, run the right OSINT tool" />
-    <meta name="twitter:card" content="summary_large_image" />
+    <meta property="og:image" content={ogImage?.url ?? `${SITE_URL}/og.png`} />
+    {!ogImage && <meta property="og:image:width" content="1200" />}
+    {!ogImage && <meta property="og:image:height" content="630" />}
+    <meta property="og:image:alt" content={ogImage?.alt ?? "OTInstaller: paste what you have, run the right OSINT tool"} />
+    <meta name="twitter:card" content={ogImage ? "summary" : "summary_large_image"} />
     <meta name="twitter:title" content={fullTitle} />
     <meta name="twitter:description" content={description} />
-    <meta name="twitter:image" content={`${SITE_URL}/og.png`} />
+    <meta name="twitter:image" content={ogImage?.url ?? `${SITE_URL}/og.png`} />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     {jsonHref && <link rel="alternate" type="application/json" href={jsonHref} />}
     <Font cssVariable="--font-geist" preload />

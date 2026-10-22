@@ -880,7 +880,10 @@ tools:
   - username
   - email
   - domain
-  input_types: {}
+  input_types:
+    u: username
+    e: email
+    d: dns
 - name: crosslinked
   display_name: Crosslinked
   description: LinkedIn enumeration tool to extract valid employee names from an organization through search engine scraping.
@@ -1084,6 +1087,10 @@ tools:
   - ip
   - username
   - email
+  input_types:
+    d: w domain_recon
+    u: w user_hunt
+    e: w user_hunt
 - name: sublist3r
   display_name: Sublist3r
   description: Fast subdomain enumeration tool using multiple search engines and certificate transparency logs.
