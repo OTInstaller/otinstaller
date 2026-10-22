@@ -24,7 +24,9 @@ export default function ClaimFlow({ refName, upstream, back }: { refName: string
 
   if (me === null) return <Loading what="your account" />;
   if (me === false) return <SignIn back={back} why="Sign in with the GitHub or GitLab account that maintains the upstream project." />;
-  const owned = me.namespaces.filter((n) => n.role === "owner" && n.status !== "rejected" && n.status !== "suspended");
+  // Only namespaces the package could move to: the one it is in already would be refused (same_namespace).
+  const current = refName.split("/")[0];
+  const owned = me.namespaces.filter((n) => n.role === "owner" && n.status !== "rejected" && n.status !== "suspended" && n.name !== current);
 
   const run = async (fn: () => Promise<Transfer>) => {
     setBusy(true);
@@ -72,7 +74,7 @@ export default function ClaimFlow({ refName, upstream, back }: { refName: string
     <form class="stack" onSubmit={start}>
       <p>This package wraps <a href={upstream ?? "#"}>{upstream ?? "an upstream project"}</a>. If you maintain that project, you can take the package over with its full history, stars and installs. The old address keeps working.</p>
       {owned.length === 0
-        ? <p class="notice warn">You need a namespace first: install the OTInstaller GitHub App on your account, or <a href="/import">import a repository</a>.</p>
+        ? <p class="notice warn">You need a namespace of your own to move it to: install the OTInstaller GitHub App on your account, or <a href="/import">import a repository</a>.</p>
         : (
           <>
             <label for="to">Move it to</label>

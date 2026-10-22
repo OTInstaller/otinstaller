@@ -16,7 +16,10 @@ const tabs = [
   { key: "versions", href: `/${ref}/versions`, label: "Versions" },
   ...(hasDocs ? [{ key: "docs", href: `/${ref}/docs`, label: "Docs" }] : []),
 ];
-const upstream = t.homepage && t.homepage !== t.repo_url ? t.homepage : t.repo_url;
+// A wrapper's homepage is the project it wraps. When it is the package's own repository there is nothing to credit
+// or claim, whatever the flag says (older rows were flagged by namespace alone).
+const upstream = t.homepage && t.homepage !== t.repo_url ? t.homepage : null;
+const wrapper = t.community_packaged && !!upstream;
 ---
 <header class="tool-head">
   <nav class="small crumbs" aria-label="Breadcrumb">
@@ -33,8 +36,8 @@ const upstream = t.homepage && t.homepage !== t.repo_url ? t.homepage : t.repo_u
   {t.deprecated_message && (
     <p class="notice warn"><b>Deprecated.</b> {t.deprecated_message}{t.deprecated_replacement && <> Use <a href={`/${t.deprecated_replacement}`}>{t.deprecated_replacement}</a> instead.</>}</p>
   )}
-  {t.community_packaged && (
-    <p class="notice small"><b>Community-packaged</b> from <a href={upstream ?? "#"} rel="nofollow noopener">{(upstream ?? "its upstream project").replace(/^https?:\/\//, "")}</a>: the registry's community pins the upstream release; the tool is its authors' work. Maintain that project? <a href={`/${ref}/claim`}>Claim this package</a>.</p>
+  {wrapper && (
+    <p class="notice small"><b>Community-packaged</b> from <a href={upstream!} rel="nofollow noopener">{upstream!.replace(/^https?:\/\//, "")}</a>: the registry's community pins the upstream release; the tool is its authors' work. Maintain that project? <a href={`/${ref}/claim`}>Claim this package</a>.</p>
   )}
   {t.manifest_held_by_registry && <p class="notice small"><b>Manifest held by the registry.</b> The repository has no <code>otinstaller.yaml</code> yet, so releases are unsigned until it is added.</p>}
   {t.source_unavailable && <p class="notice bad"><b>Source unavailable.</b> The repository is gone or private. Installed copies keep working, but no new versions will come.</p>}

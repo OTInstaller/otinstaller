@@ -63,7 +63,9 @@ export default function JobView({ jobId, back }: { jobId: string; back: string }
             {job.problems.map((p) => <li><a href={`/docs/errors#${p.code}`}><code>{p.code}</code></a>{p.path && <> at <code>{p.path}</code></>}: {p.message}{p.hint && <span class="muted"> Fix: {p.hint}</span>}</li>)}
             {job.problems.length === 0 && job.error_code && <li><a href={`/docs/errors#${job.error_code}`}><code>{job.error_code}</code></a></li>}
           </ul>
-          <p class="small">Fix it, then push a new tag (the same version cannot be reused once a job ran for it). The <a href="/docs/errors">error codes</a> page explains each code.</p>
+          {job.problems.length === 0 && job.error_code === "internal_error"
+            ? <p class="small">Something failed on the registry's side; there is nothing to fix in your repository. Push the tag again (delete and recreate it, or tag the next version); if it keeps failing, write to <a href="mailto:support@otinstaller.com">support@otinstaller.com</a> with this page's address.</p>
+            : <p class="small">Fix it, then push a new tag (the same version cannot be reused once a job ran for it). The <a href="/docs/errors">error codes</a> page explains each code.</p>}
         </section>
       )}
       {job.status === "awaiting_review" && <p class="notice warn">Waiting for a reviewer, usually within 3 business days. You get an email either way.</p>}
