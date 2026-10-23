@@ -1,0 +1,8 @@
+name: email-investigation
+description: "Sites an email is registered on; with d:, the domain's DNS"
+inputs: [email, domain]
+tools:
+  - osintverse-community/holehe
+  - osintverse-community/user-scanner
+  - osintverse-community/checkdmarc
+  - osintverse-community/dns-records

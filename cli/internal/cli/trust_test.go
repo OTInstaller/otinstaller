@@ -182,7 +182,13 @@ func release(t *testing.T, version string, bin []byte, key ed25519.PrivateKey, t
 	}
 	var srv *httptest.Server
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// As get.otinstaller.com/ot/latest and github.com's release downloads answer.
+		if file, ok := strings.CutPrefix(r.URL.Path, "/"+selfupdate.Repo+"/releases/download/"+version+"/"); ok {
+			r.URL.Path = map[string]string{"checksums.txt": "/sums", "checksums.txt.sig": "/sig", name: "/archive"}[file]
+		}
 		switch r.URL.Path {
+		case "/ot/latest":
+			json.NewEncoder(w).Encode(map[string]string{"version": version})
 		case "/repos/" + selfupdate.Repo + "/releases/latest":
 			json.NewEncoder(w).Encode(map[string]any{"tag_name": version, "assets": []map[string]string{
 				{"name": "checksums.txt", "browser_download_url": srv.URL + "/sums"},
@@ -239,5 +245,95 @@ func TestSelfUpdate(t *testing.T) {
 	}
 	if !selfupdate.Newer("v1.10.0", "v1.9.9") || selfupdate.Newer("v1.0.0-rc.1", "v1.0.0") || !selfupdate.Newer("v1.0.0", "v1.0.0-rc.1") {
 		t.Error("version ordering")
+	}
+}
+
+// Asked through get.otinstaller.com, the release still has to carry the release key's signature, and an older
+// version is never installed over a newer one.
+func TestSelfUpdateViaLatestURL(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	_, otherPriv, _ := ed25519.GenerateKey(rand.Reader)
+	old := Version
+	Version = "v1.0.0"
+	defer func() { Version = old }()
+	for _, tc := range []struct {
+		name, version string
+		key           ed25519.PrivateKey
+		code          int
+		want          string
+	}{
+		{"updates", "v1.1.0", priv, 0, "Updated ot from v1.0.0 to v1.1.0."},
+		{"no downgrade", "v0.9.0", priv, 0, "ot v1.0.0 is the latest release."},
+		{"wrong key", "v1.1.0", otherPriv, ExitTrust, "not signed by the ot release key"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := release(t, tc.version, []byte("new ot binary"), tc.key, false)
+			defer srv.Close()
+			a, out, errb := newTestApp(t, &fakeExec{}, "")
+			// The GitHub API isn't there: only the latest URL and the downloads are.
+			a.Updater = &selfupdate.Updater{HTTP: srv.Client(), API: "http://127.0.0.1:9", LatestURL: srv.URL + "/ot/latest", Downloads: srv.URL,
+				Key: pub, OS: "linux", Arch: "amd64"}
+			a.SelfPath = filepath.Join(t.TempDir(), "ot")
+			os.WriteFile(a.SelfPath, []byte("old ot binary"), 0o755)
+			if code := run(a, "self-update"); code != tc.code || !strings.Contains(out.String()+errb.String(), tc.want) {
+				t.Fatalf("exit %d, want %d with %q:\n%s%s", code, tc.code, tc.want, out, errb)
+			}
+		})
+	}
+}
+
+// `ot outdated` notes a newer ot, looked up at most once a day, and never for dev builds, agents, CI or
+// OT_NO_UPDATE_CHECK=1.
+func TestNewerOTNote(t *testing.T) {
+	asked := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked++
+		w.Write([]byte(`{"version":"v1.1.0"}`))
+	}))
+	defer srv.Close()
+	old := Version
+	defer func() { Version = old }()
+	a, _, errb := newTestApp(t, &fakeExec{}, "")
+	t.Setenv("CI", "")
+	t.Setenv("OT_NO_UPDATE_CHECK", "")
+	a.Updater = &selfupdate.Updater{HTTP: srv.Client(), API: "http://127.0.0.1:9", LatestURL: srv.URL, Downloads: srv.URL}
+	const note = "note: ot v1.1.0 is out (you have v1.0.0); `ot self-update` installs it"
+
+	for _, c := range []struct {
+		name, version, env string
+		agent              bool
+		want               bool
+		asks               int
+	}{
+		{"dev build", "dev", "", false, false, 0},
+		{"switched off", "v1.0.0", "OT_NO_UPDATE_CHECK", false, false, 0},
+		{"CI", "v1.0.0", "CI", false, false, 0},
+		{"agent", "v1.0.0", "", true, false, 0},
+		{"newer out", "v1.0.0", "", false, true, 1},
+		{"cached for a day", "v1.0.0", "", false, true, 1},
+		{"already the newest", "v1.1.0", "", false, false, 1},
+	} {
+		Version, a.AgentMode = c.version, c.agent
+		if c.env != "" {
+			t.Setenv(c.env, "1")
+		}
+		errb.Reset()
+		if code := run(a, "outdated"); code != 0 {
+			t.Fatalf("%s: exit %d: %s", c.name, code, errb)
+		}
+		if strings.Contains(errb.String(), note) != c.want || asked != c.asks {
+			t.Errorf("%s: asked %d times, stderr: %s", c.name, asked, errb)
+		}
+		if c.env != "" {
+			t.Setenv(c.env, "")
+		}
+	}
+	// The cache is per day: an old one is looked up again.
+	os.WriteFile(state.Path("cache", "ot-latest.json"), []byte(`{"checked_at":"2020-01-01T00:00:00Z","version":"v0.1.0"}`), 0o644)
+	Version = "v1.0.0"
+	errb.Reset()
+	run(a, "outdated")
+	if asked != 2 || !strings.Contains(errb.String(), note) {
+		t.Errorf("stale cache: asked %d times: %s", asked, errb)
 	}
 }

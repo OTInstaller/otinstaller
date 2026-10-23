@@ -16,6 +16,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/otinstaller/otinstaller/cli/internal/runner"
 )
 
 //go:embed bundled/*.yaml
@@ -26,6 +28,9 @@ type Playbook struct {
 	Name        string   `yaml:"name" json:"name"`
 	Description string   `yaml:"description" json:"description"`
 	Tools       []string `yaml:"tools" json:"tools"`
+	// Inputs are the input types it is meant for (username, email, domain, phone, ip, url), the first being the main
+	// one. They are shown in lists and pick the starter playbook for a type; ot runs a playbook with any typed inputs.
+	Inputs []string `yaml:"inputs" json:"inputs"`
 	// Case is the results case its runs are saved under; default playbook-<name>.
 	Case string `yaml:"case" json:"case"`
 	// RequiresTarget is otinstaller's field; ot always needs a typed input, so it is ignored.
@@ -69,6 +74,23 @@ func Parse(data []byte, name, source string) (*Playbook, error) {
 		}
 		seen[t] = true
 	}
+	types := map[string]bool{}
+	for _, t := range runner.TypedPrefixes {
+		types[t] = true
+	}
+	for i, t := range p.Inputs {
+		if !types[t] {
+			return nil, fmt.Errorf("playbook %s: input %q must be username, email, domain, phone, ip or url", p.Name, t)
+		}
+		for _, earlier := range p.Inputs[:i] {
+			if earlier == t {
+				return nil, fmt.Errorf("playbook %s: lists the input %s twice", p.Name, t)
+			}
+		}
+	}
+	if p.Inputs == nil {
+		p.Inputs = []string{}
+	}
 	if p.Case == "" {
 		p.Case = "playbook-" + p.Name
 	}
@@ -80,10 +102,9 @@ func Dirs(home string) []string {
 	return []string{filepath.Join(home, "playbooks"), "playbooks"}
 }
 
-// All loads every playbook, sorted by name. A broken file is an error, so a typo never silently
-// falls back to a bundled playbook of the same name.
-func All(dirs []string) ([]*Playbook, error) {
-	found := map[string]*Playbook{}
+// bundledPlaybooks are the playbooks shipped with ot, sorted by name.
+func bundledPlaybooks() ([]*Playbook, error) {
+	var out []*Playbook
 	entries, _ := fs.ReadDir(bundled, "bundled")
 	for _, e := range entries {
 		data, err := bundled.ReadFile("bundled/" + e.Name())
@@ -94,6 +115,33 @@ func All(dirs []string) ([]*Playbook, error) {
 		if err != nil {
 			return nil, err
 		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+// Starter is the playbook ot offers to install when no installed tool takes an input type, as on a fresh machine:
+// the first bundled one whose main input is that type, or nil. Only bundled playbooks are offered, never one from
+// <ot home>/playbooks or ./playbooks, which could have come with any folder someone downloaded.
+func Starter(typ string) *Playbook {
+	all, _ := bundledPlaybooks()
+	for _, p := range all {
+		if len(p.Inputs) > 0 && p.Inputs[0] == typ {
+			return p
+		}
+	}
+	return nil
+}
+
+// All loads every playbook, sorted by name. A broken file is an error, so a typo never silently
+// falls back to a bundled playbook of the same name.
+func All(dirs []string) ([]*Playbook, error) {
+	found := map[string]*Playbook{}
+	shipped, err := bundledPlaybooks()
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range shipped {
 		found[p.Name] = p
 	}
 	for _, dir := range dirs {

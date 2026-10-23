@@ -50,7 +50,7 @@ Production:
 | Registry API | `https://api.otinstaller.com/v1` (`api/`, Worker `otinstaller-registry-api`) |
 | Image mirror | `https://mirror.otinstaller.com` (`api/src/mirror/`, Worker `otinstaller-mirror`, config `api/wrangler.mirror.jsonc`) |
 | Remote MCP server | `https://api.otinstaller.com/mcp` (`api/src/mcp.ts`, same Worker as the API, read-only) |
-| Install scripts | `get.otinstaller.com/ot` and `/ot.ps1` (the latest `ot` release's scripts), `get.otinstaller.com/otlite` (`otlite/scripts/install.sh` from `main`); all from `ops/get/` |
+| Install scripts | `get.otinstaller.com/ot` and `/ot.ps1` (the latest `ot` release's scripts), `get.otinstaller.com/otlite` (`otlite/scripts/install.sh` from `main`), `/ot/latest` (the latest `ot` version, for `ot` itself); all from `ops/get/` |
 | Manifest schema | `https://otinstaller.com/schema/v1.json` (served from `spec/schema/v1.json`); also `/schema/envelope-v1.json`, `run-all-v1.json`, `error-v1.json` |
 | API reference | `https://api.otinstaller.com/v1/openapi.json` (served from `spec/openapi/v1.json`) |
 | Scanner, backups, drills, health checks | GitHub Actions in the private repo `OTInstaller/registry-ops` (copied from `ops/`) |
@@ -281,18 +281,18 @@ stderr and returns `ExitCodeFor(err)`. `cli/README.md` ships in the release arch
 | `api` | Registry HTTP client. Decodes `{"error":{...}}` into `*api.Error` (`Status`, `Code`, `Message`, `Hint`, `Docs`, `Problems`, `RequestID`) |
 | `manifest` | Typed `Manifest`, `Parse`/`LoadFile`, `Validate(doc, m, Options{Tag, Dir})`, content rules, embedded schema |
 | `runner` | Install and run: engine detection (docker, then podman), `Install` (with backup fallbacks), `Run`, `ContainerArgs`, input resolution, typed inputs, command building, target type detection (`detect.go` + embedded IANA `tlds.txt`) |
-| `playbook` | Named tool sets: bundled `domain-recon` and `username-investigation`, plus `<ot home>/playbooks` and `./playbooks` (later wins) |
+| `playbook` | Named tool sets: bundled `domain-recon`, `username-investigation`, `email-investigation`, `phone-investigation` and `ip-investigation` (none needs a key), plus `<ot home>/playbooks` and `./playbooks` (later wins). `inputs` says which input types a playbook is for; `Starter(type)` picks the bundled one to offer when nothing installed takes a type |
 | `envelope` | The normalized result envelope (`Version = 1`) and `ParseOutput` / `Write` (json, raw, csv, table) |
 | `results` | Saving each run's raw output plus `.meta.json` (and lazy `.stderr.txt`); `saved.go` reads them back for `extract` and `diff` |
 | `keys` | OS keychain (service `osintverse-ot`); an env var of the same name wins; names indexed in `keys.json` |
 | `state` | Data dir (`OT_HOME` → `%APPDATA%\ot` → `~/.ot`), `state.json` (atomic write, 0600, records `from_backup`), read-only `config.json` |
 | `scaffold` | Files written by `ot init` (manifest, Dockerfile, starter tool, READMEs, guide pages) and embedded templates; uses `<<`/`>>` template delimiters |
-| `selfupdate` | `ot self-update`: Ed25519-signed `checksums.txt`, archive SHA-256, atomic replace |
+| `selfupdate` | `ot self-update`: release lookup (`get.otinstaller.com/ot/latest`, else the GitHub API), Ed25519-signed `checksums.txt`, archive SHA-256, atomic replace |
 
 ### Commands
 
 Packages: `search`, `info`, `install`, `list`, `uninstall`, `outdated`, `update`. Running: `run`, `auto`, `playbook`,
-`extract`, `diff`, `pivot`, `keys set|setup|list|rm`, `doctor`. Agents: `mcp` (`mcp install|audit|policy [reset]|tools`).
+`runs`, `extract`, `diff`, `pivot`, `keys set|setup|list|rm`, `doctor`. Agents: `mcp` (`mcp install|audit|policy [reset]|tools`).
 Guides: `guide search|read|open|get|tools`, `docs`. Publishing: `init`, `validate`, `import`, `sync`, `release`,
 `login` (`--gitlab`, `--osintverse`, `--scope`, `--print-token`), `logout`, `whoami`, `token create|list|revoke`, `profile`.
 Trust: `report`, `claim`, `transfer`, `yank`, `deprecate`. Other: `feedback`, `self-update`. Cobra adds `help`,
@@ -302,8 +302,9 @@ warns about installed versions that were removed. Every flag of every command, w
 [docs/dev/cli.md](docs/dev/cli.md).
 
 Each is an `(a *App) xxxCmd() *cobra.Command` method. Files: `packages.go` (search/info/install/list/uninstall),
-`update.go` (outdated/update), `run_cmd.go` + `run_all.go` (run), `auto.go`, `playbook.go`, `saved.go` (extract/diff),
-`pivot.go`, `run.go` (keys/doctor), `keysetup.go` (keys setup), `guide.go` (guide/docs), `init_validate.go`,
+`update.go` (outdated/update), `run_cmd.go` + `run_all.go` (run), `auto.go`, `playbook.go`, `starter.go` (what to
+install when nothing takes a target), `runs.go` (runs), `saved.go` (extract/diff), `pivot.go`, `run.go`
+(keys/doctor), `keysetup.go` (keys setup), `guide.go` (guide/docs), `init_validate.go`,
 `import.go`, `sync.go`, `release.go`, `login.go`, `token.go`, `trust.go` (report/claim/transfer/yank/deprecate),
 `feedback.go`, `selfupdate.go`, `mcp_cmd.go` (mcp and its subcommands), `consent.go` (unattended runs).
 
@@ -325,10 +326,25 @@ Each is an `(a *App) xxxCmd() *cobra.Command` method. Files: `packages.go` (sear
 - `runAll` (`run_all.go`) is shared by `run --all`, `playbook` and `auto`: runs `--parallel` at a time, skips tools that
   can't run unattended, prints `[n/N]` progress on stderr and a summary table or JSON.
 - `ot auto <target>` guesses the type (url, ip, email, phone, domain by IANA TLD, else username; `--type` overrides) and
-  runs every installed tool that takes it. `ot playbook <name> <inputs>` runs a playbook (`--list`, `--dry-run`, `-y` to
-  install missing tools); runs are saved under case `playbook-<name>`.
-- `ot extract` and `ot diff` read saved results (indicators; the two latest runs compared). `ot outdated` / `ot update`
-  compare installed packages with the registry (`update` exits 1 when an update fails).
+  runs every installed tool that takes it. `ot playbook <name> <inputs>` runs a playbook (`--list` with a TAKES column,
+  `--dry-run`; missing tools are offered at a terminal, `-y` installs them without asking); runs are saved under case
+  `playbook-<name>`.
+- When no installed tool takes the typed inputs (`noToolsError`, `starter.go`), as on a fresh machine, `run --all` and
+  `auto` offer the tools of the bundled starter playbook for that type at a terminal (`playbook.Starter`: bundled
+  playbooks only), checked against the registry, and install them on a yes. Without a terminal they exit 2
+  `not_installed` with an `ot playbook <starter> <type>:<value> --yes` hint. `ExitError.Hint` is the JSON error's
+  `hint`, and a second line in text. Don't add flags to `auto` or `run --all`: their unknown `--x` are tool inputs.
+- `ot install a b c` (`installMany` in `packages.go`, shared with `guide tools` and `playbook -y`) parses every
+  reference first, installs one after another, goes on after a failure except a missing container engine (exit 5),
+  and prints `Try it:` and the keys still needed (`missingKeys` in `run.go`).
+- `ot runs [run-id]` lists saved runs newest first from `resultDirs()` (`listSavedRuns`, shared with MCP's
+  `list_runs`), or shows one and points at `ot pivot`. `ot extract` and `ot diff` read saved results (indicators; the
+  two latest runs compared).
+- `ot outdated` / `ot update` compare installed packages with the registry (`GET /tools/:ns/:name` and `/versions`,
+  four at a time); rows carry lifecycle `flags` (`deprecated`, `possibly_broken`, `yanked`, `source_unavailable`,
+  `moved`) and `replacement`, each with a `warning:` line. `update` installs newer versions and moves a renamed package
+  to its new name (`forgetOldName`), and exits 1 when an update fails. `ot outdated` also notes a newer `ot` (looked up
+  at most daily into `cache/ot-latest.json`; never for dev builds, `ot mcp`, CI or `OT_NO_UPDATE_CHECK=1`).
 - `ot feedback [message]` posts to `/v1/feedback` (`--kind bug|idea|question|other`, `--email`, `--about`); with no
   message it reads piped stdin, or opens `<site>/feedback`.
 - `ot release <version> [path]` (`release.go`) releases **guides only**: checks a clean tree and an unused tag, rewrites
@@ -347,8 +363,10 @@ missing · `124` timeout · `130` interrupted. Typed errors map to them: `runner
 `runner.RuntimeMissingError` → 5, `runner.TimeoutError` → 124, `*cli.ExitError` → its `Code` (a nil `Err` exits
 silently). Wrap registry 4xx errors with `a.requestError(err)` so they exit 2 and print problem lists. These codes are
 documented to users; don't repurpose them. Caveats: errors raised by cobra itself (wrong argument count, unknown
-flag) exit 1, not 2; `search`, `info`, `login`, `outdated` and `update` don't wrap registry 4xx errors, so those exit
-1; `doctor` exits 5 when any check fails; `self-update` exits 4 on a failed verification. With `--no-save`, Ctrl-C
+flag) exit 2 too, through `cobraUsage` (`machine.go`); a batch `ot install` (and `guide tools`, `playbook -y`) exits
+with its failures' common code, or 1 when they differ; `search`, `info`, `login`, `outdated` and `update` don't wrap
+registry 4xx errors, so those exit 1; `doctor` exits 5 when any check fails; `self-update` exits 4 on a failed
+verification. With `--no-save`, Ctrl-C
 during a single run exits 1, not 130. With `--json`, the error is `{"error": {code, message, hint?, exit_code, ...}}`
 on stderr (`spec/schema/error-v1.json`, shared with the API); its `code` is the registry's own code, else
 `ExitError.Reason`, else one that follows from the exit code.
@@ -384,7 +402,8 @@ carries the token), `OT_RESULTS_DIR` (legacy
 `OTINSTALLER_RESULTS_DIR`; results default to `./results`, not the data dir), `OTINSTALLER_TOKEN` (overrides the
 keychain token; like every key, an env var of the same name wins), `OT_OUTPUT=json` (as `--json`),
 `OT_NONINTERACTIVE=1` (never prompt), `OT_CONSENT=off` (no `--yes` needed unattended; still audited), `OT_MAX_RAW`
-(leave `raw` out of large envelopes), `CI` (the envelope's `client` becomes `ci`). `config.json` (`api_url`,
+(leave `raw` out of large envelopes), `OT_NO_UPDATE_CHECK=1` (`ot outdated` doesn't look up the latest `ot`), `CI`
+(the envelope's `client` becomes `ci`, and there is no newer-`ot` check). `config.json` (`api_url`,
 `site_url`, `telemetry`, `format`) is read, never written. Install scripts:
 `OT_VERSION`, `OT_RELEASE_REPO`, `OT_INSTALL_DIR`, `OT_DOWNLOAD_BASE` (serve a release from another URL; checks still
 apply), `OT_NO_MODIFY_PATH=1` (Windows). Build-time only: `OT_RELEASE_PUBLIC_KEY`, `OT_RELEASE_KEY_FILE`,
@@ -762,6 +781,8 @@ official Go SDK. Tools run on the person's machine in the same sandbox as `ot ru
   (`ot://schema/...`, `ot://types`, `ot://policy/...`, `ot://runs/{run_id}`, `ot://cases/{case}`, tool manifests,
   guide pages) and prompts (`investigate_*`, `pivot_from_run`, `compare_runs`, `write_playbook`, `publish_tool`) are in
   `mcp_content.go`. Every result that carries tool output starts with a note that it is untrusted data, not instructions.
+  `list_playbooks` and `get_playbook` give each playbook's `inputs`. `run_all` and `run_playbook` never install: with
+  nothing installed for the target, `run_all` answers `not_installed` with the starter playbook's `suggested_tools`.
 - Consent: `agent.Classify` puts each run in the strictest class that applies: passive (offline), networked, target
   (`ethics.touches_target`, or the person's own keys or account) or personal (`collects_personal_data`, or an email,
   phone, name or image input). By default only passive runs go ahead unasked. Otherwise the server asks the person:
@@ -835,8 +856,10 @@ section 10, "MCP bundles and the MCP Registry".
   `/ot.ps1`, `/install.ps1` to the latest release's scripts on `OTInstaller/ot` (`RELEASE_REPO`), and `/otlite`,
   `/otlite.sh` to `otlite/scripts/install.sh` on this repo's `main` (`OTLITE_REPO`; it installs from PyPI, so it needs
   no release). Both are cached 5 minutes; upstream errors get a script that fails loudly, and other paths redirect to
-  the getting-started docs. A change to `otlite/scripts/install.sh` is live as soon as it reaches `main`. Deploy with
-  `npx wrangler deploy` from `ops/get` (only when asked). It has no automated test.
+  the getting-started docs. `/ot/latest` answers `{"version"}` for the latest `OTInstaller/ot` release, read from
+  GitHub's `/releases/latest` redirect (no API limit) and cached an hour; `ot self-update` and `ot outdated` ask it
+  first and fall back to the GitHub API. A change to `otlite/scripts/install.sh` is live as soon as it reaches `main`.
+  Deploy with `npx wrangler deploy` from `ops/get` (only when asked). It has no automated test.
 
 ## Seed (`seed/`)
 
@@ -863,8 +886,9 @@ table, publish order (namespace → tools → guides), what was not converted an
   LICENSE.md. Guides have no release workflow: release them with `ot release X.Y.Z` (or a plain `git tag vX.Y.Z && git
   push`), never through GitHub Actions.
 - `outreach/`: issue and PR texts for upstream maintainers.
-- The bundled playbooks' tools must exist in the seed (`TestBundledToolsAreSeeded`), and every seed manifest must
-  validate (`TestSeedManifests`).
+- The bundled playbooks' tools must exist in the seed (`TestBundledToolsAreSeeded`), take one of the playbook's
+  `inputs` types and need no key (`TestBundledPlaybooksFitSeed`), and every seed manifest must validate
+  (`TestSeedManifests`).
 - Updating a pipx wrapper: change `version`, `package_version` and `wheel_sha256` (from `https://pypi.org/pypi/<pkg>/json`).
 
 ## otlite, the no-Docker edition (`otlite/`)
@@ -1054,8 +1078,8 @@ change. Keep this list current when you fix one or find another.
 - `tools_fts` triggers fire only on `tools`, so renaming a namespace leaves the old name in search.
 - Redelivering a GitHub webhook is a no-op once the first delivery created a job.
 - `ot install` doesn't warn about deprecated packages (the manifest response doesn't carry deprecation).
-- `ot self-update` and the install scripts ask `api.github.com` for the latest release without a token (60 requests an
-  hour per IP).
+- The install scripts ask `api.github.com` for the latest release without a token (60 requests an hour per IP).
+  `ot self-update` and `ot outdated` ask `get.otinstaller.com/ot/latest` first and use the API only as a fallback.
 - The same error code has two statuses in places (`tool_removed` 410/409, `manifest_in_repo` 409/400,
   `unknown_provider` 404/400); `manifest_name_mismatch` exists only in the API.
 - `ot login --osintverse` ignores `--scope` and token expiry: the OSINTverse device poll (`pollOsintverseDevice` in

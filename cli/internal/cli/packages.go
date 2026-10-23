@@ -218,23 +218,155 @@ func yesNo(b bool, y, n string) string {
 func (a *App) installCmd() *cobra.Command {
 	var native bool
 	cmd := &cobra.Command{
-		Use:   "install <namespace/name[@version]>",
-		Short: "Install a tool (pulls its image or installs its Python package)",
-		Args:  cobra.ExactArgs(1),
+		Use:   "install <namespace/name[@version]> ...",
+		Short: "Install tools (pulls their images or installs their Python packages)",
+		Long: "Installs one or more tools, one after another. Every name is checked before anything is installed, so a typo\n" +
+			"installs nothing. When Docker or Podman is missing, ot stops at the first tool and exits 5.",
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ref, err := parseRef(args[0])
-			if err != nil {
+			var refs []pkgRef
+			seen := map[string]bool{}
+			for _, arg := range args {
+				ref, err := parseRef(arg)
+				if err != nil {
+					return err
+				}
+				if !seen[arg] {
+					seen[arg] = true
+					refs = append(refs, ref)
+				}
+			}
+			res, err := a.installMany(cmd.Context(), refs, native)
+			if a.jsonMode() {
+				if len(res) == 1 {
+					if res[0].inst == nil {
+						return err
+					}
+					return writeJSON(a.Out, installOutput{recordOf(res[0].inst), res[0].Example, res[0].MissingKeys})
+				}
+				if werr := writeJSON(a.Out, res); werr != nil {
+					return werr
+				}
 				return err
 			}
-			inst, err := a.install(cmd.Context(), ref, native)
-			if err != nil || !a.jsonMode() {
-				return err
-			}
-			return writeJSON(a.Out, recordOf(inst))
+			a.printInstallHints(res)
+			return err
 		},
 	}
 	cmd.Flags().BoolVar(&native, "native", false, "install pipx tools on the host instead of in a container")
 	return cmd
+}
+
+// printInstallHints says on stderr how to try what was just installed, and which keys to set first.
+func (a *App) printInstallHints(res []*installResult) {
+	var tries, needs []string
+	for _, r := range res {
+		if r.inst == nil || r.Example == "" {
+			continue
+		}
+		tries = append(tries, r.Example)
+		if len(r.MissingKeys) > 0 {
+			needs = append(needs, fmt.Sprintf("Needs %s: run `ot keys setup %s` to set %s",
+				map[bool]string{true: "a key", false: "keys"}[len(r.MissingKeys) == 1], r.Ref, strings.Join(r.MissingKeys, " and ")))
+		}
+	}
+	switch len(tries) {
+	case 0:
+		return
+	case 1:
+		fmt.Fprintf(a.Err, "Try it: %s\n", tries[0])
+	default:
+		fmt.Fprintf(a.Err, "Try them:\n  %s\n", strings.Join(tries, "\n  "))
+	}
+	for _, n := range needs {
+		fmt.Fprintln(a.Err, n)
+	}
+}
+
+// installOutput is `ot install --json` for one package: the install record, a command to try it with, and the
+// required keys it still needs.
+type installOutput struct {
+	installRecord
+	Example     string   `json:"example,omitempty"`
+	MissingKeys []string `json:"missing_keys,omitempty"`
+}
+
+// installResult is one package of a batch install, as `ot install a b --json` lists them.
+type installResult struct {
+	Ref         string   `json:"ref"`
+	Status      string   `json:"status"` // installed, failed, or not_tried after Docker or Podman was found missing
+	Version     string   `json:"version,omitempty"`
+	Example     string   `json:"example,omitempty"`
+	MissingKeys []string `json:"missing_keys,omitempty"`
+	Error       string   `json:"error,omitempty"`
+	ExitCode    int      `json:"exit_code,omitempty"`
+	inst        *state.Installed
+}
+
+// installMany installs packages one after another, for `ot install`, `ot guide tools` and `ot playbook -y`. A
+// failure doesn't stop the rest, except a missing container engine (exit 5), which every other install would hit too.
+// With one package the error is that install's own; with several it says how many failed and exits with their common
+// code, or 1 when the codes differ.
+func (a *App) installMany(ctx context.Context, refs []pkgRef, native bool) ([]*installResult, error) {
+	var res []*installResult
+	var failed []string
+	var first error
+	codes, reasons := map[int]bool{}, map[string]bool{}
+	for i, ref := range refs {
+		name := ref.Ref()
+		if ref.LocalPath != "" {
+			name = ref.LocalPath
+		}
+		r := &installResult{Ref: name}
+		res = append(res, r)
+		inst, err := a.install(ctx, ref, native)
+		if err == nil {
+			r.Status, r.Version, r.inst = "installed", inst.Version, inst
+			if inst.Manifest != nil {
+				r.Ref, r.Example, r.MissingKeys = inst.Ref, runner.ExampleCommand(inst.Manifest), missingKeys(inst.Manifest)
+			}
+			continue
+		}
+		code := ExitCodeFor(err)
+		r.Status, r.Error, r.ExitCode = "failed", err.Error(), code
+		failed = append(failed, name)
+		codes[code], reasons[errorCode(err, code)] = true, true
+		if first == nil {
+			first = err
+		}
+		if len(refs) > 1 && !a.jsonMode() {
+			fmt.Fprintf(a.Err, "error: %s: %v\n", name, err)
+		}
+		var rm *runner.RuntimeMissingError
+		if errors.As(err, &rm) {
+			for _, rest := range refs[i+1:] {
+				n := rest.Ref()
+				if rest.LocalPath != "" {
+					n = rest.LocalPath
+				}
+				res = append(res, &installResult{Ref: n, Status: "not_tried"})
+			}
+			break
+		}
+	}
+	switch {
+	case len(failed) == 0:
+		return res, nil
+	case len(refs) == 1:
+		return res, first
+	}
+	e := &ExitError{Code: ExitToolError, Err: fmt.Errorf("%d of %d failed to install: %s", len(failed), len(refs), strings.Join(failed, ", "))}
+	if len(codes) == 1 {
+		for c := range codes {
+			e.Code = c
+		}
+		if len(reasons) == 1 {
+			for r := range reasons {
+				e.Reason = r
+			}
+		}
+	}
+	return res, e
 }
 
 // install resolves, verifies and installs a package, then records it in state.

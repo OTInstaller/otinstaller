@@ -1,0 +1,6 @@
+name: ip-investigation
+description: "Who holds an IP address, and its ports from passive sources"
+inputs: [ip]
+tools:
+  - osintverse-community/ipwhois
+  - osintverse-community/naabu
