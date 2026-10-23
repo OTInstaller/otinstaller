@@ -46,7 +46,7 @@ anonymous GET.
 
 ## 1. Routes
 
-Total: **109 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
+Total: **110 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
 call; the `for` loop in `routes/trust.ts` registers two (`yank`, `unyank`). The mirror Worker's OCI routes are in
 section 6 and are not in this count. There is no route for stars, although the rate-limit comment in `index.ts`
 mentions stars. Every route under a removed package answers 410 `tool_removed`.
@@ -78,6 +78,7 @@ in code; a Cloudflare rate-limiting rule on the zone covers `/mcp`, `/v1/tools*`
 | GET | `/namespaces/:ns/activity` | none | `cached(c, 300)` | routes/profiles.ts | `?limit` (1–100, 30). Public audit events of visible packages: `version.published`, `version.yank`/`unyank`, `tool.deprecate`/`undeprecate`, `transfer.complete` |
 | GET | `/facets` | none | `cached(c, 600)` | index.ts | How many visible packages match each facet value: `inputs`, `outputs`, `categories`, `runtimes`, `no_keys`. `kind` is tool (default) or guide; counts ignore other filters |
 | GET | `/pivots` | none | `cached(c, 600)` | index.ts | `from=` comma list of entity types; follows `spec/pivots.json` to the input types each can feed (`inputs`, plus `unmapped` for types with none); top 10 non-broken tools per usable type |
+| GET | `/activity` | none | `cached(c, 300)` | index.ts → activity.ts | Public events from `audit_log` (published with `new_package`/`has_notes`, yanked, unyanked, deprecated with `replacement`, undeprecated, transferred) of visible, listed packages; `limit` 1–100 (30), `before` (ms), `kind`, `input`, `namespace`; `next_before` for paging. Never carries reasons or actors |
 | POST | `/installs` | none | - | index.ts | `{tool, version, client?}`; 400 `invalid_body` without tool and version, else always 204 (also for unknown packages). Counts once per `cf-connecting-ip`, version and day (`overLimit` scope `install`: a salted hash of address and version in `rate_limits`, never the address itself), into `install_counts` and `install_clients` (`client` `cli`, `mcp`, `ci`, else `other`) |
 
 ### 1.2 Guides, docs, READMEs, assets, wheel copies, transparency (12)

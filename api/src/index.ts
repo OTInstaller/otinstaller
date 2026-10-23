@@ -43,6 +43,7 @@ import { handleBatch } from "./publish";
 import { edgeCached } from "./edge-cache";
 import { compatManifest } from "./lib/manifest";
 import { renderNotes } from "./changelog";
+import { siteActivity } from "./activity";
 import { mcpEndpoint } from "./mcp";
 import { lockStaleThreads } from "./community";
 
@@ -424,6 +425,22 @@ app.get("/facets", async (c) => {
   const counts = (i: number) => Object.fromEntries(((res[i]?.results ?? []) as { k: string | null; n: number }[]).filter((x) => x.k).map((x) => [x.k as string, x.n]));
   cached(c, 600);
   return c.json({ kind, inputs: counts(0), outputs: counts(1), categories: counts(2), runtimes: counts(3), no_keys: ((res[4]?.results ?? [])[0] as { n: number } | undefined)?.n ?? 0 });
+});
+
+// What changed across the registry, newest first: releases, yanks, deprecations and transfers. The site's feeds and
+// "What's new" page read it with fixed parameters, so a few cache entries serve everyone.
+app.get("/activity", async (c) => {
+  const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 30) || 30, 1), 100);
+  const beforeRaw = c.req.query("before");
+  const before = beforeRaw === undefined ? undefined : Number(beforeRaw);
+  if (before !== undefined && (!Number.isInteger(before) || before <= 0)) apiError(400, "invalid_parameter", "before must be a Unix time in milliseconds");
+  const kind = oneOf(c.req.query("kind"), ["tool", "guide"], "kind") as "tool" | "guide" | undefined;
+  const input = oneOf(c.req.query("input"), INPUT_TYPES, "input");
+  const namespace = c.req.query("namespace") || undefined;
+  if (namespace !== undefined && !/^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$/.test(namespace)) apiError(400, "invalid_parameter", "namespace must be a namespace name");
+  const result = await siteActivity(c.env.DB, { limit, before, kind, input, namespace });
+  cached(c, 300);
+  return c.json(result);
 });
 
 app.get("/pivots", async (c) => {
