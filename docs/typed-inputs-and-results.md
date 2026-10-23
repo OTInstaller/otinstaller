@@ -167,6 +167,20 @@ guess, first match wins: `url` (starts with `http://` or `https://`), `ip` (IPv4
 `ot run --all` with that typed input. A prefixed target (`d:example.com`) is never second-guessed, and bare targets in
 `ot playbook` are guessed the same way.
 
+### Nothing installed for the target
+
+On a fresh machine `ot auto johndoe` used to stop at "no installed tool has a username input". Now, when no installed
+tool takes any of the typed inputs, `ot run --all` and `ot auto` look for a starter: the bundled playbook whose main
+input is that type (`playbook.Starter`; never one from `./playbooks` or the ot home, which could come with any folder
+someone downloaded). At a terminal, ot asks the registry about each of its tools that takes the input, leaves out
+deprecated, possibly broken and removed ones, lists the rest as `ref version: summary (what a run does)`, and asks
+`Install N tools and run? [y/N]`. On yes it installs them with `installMany` and plans again; a tool that fails to
+install is reported and the rest run. Without a terminal, for a dry run, or after a no, it never installs: exit 2,
+`not_installed`, with a hint naming `ot playbook <starter> <type>:<value> --yes`. There is no flag for this on `auto`
+or `run --all`, since their unknown `--x` flags are tool inputs. `ot playbook` without `--yes` asks the same question
+at a terminal for its missing tools; MCP's `run_all` and `run_playbook` never install and answer `not_installed`
+pointing at `install_tool`.
+
 `--dry-run` (with `ot auto`, `ot run --all` or `ot playbook`) lists what would run and what would be skipped, and runs
 nothing. While a batch runs, a line such as `[2/5] osintverse-community/sherlock complete` goes to stderr as each tool
 finishes; otinstaller's `--live` is accepted and changes nothing.

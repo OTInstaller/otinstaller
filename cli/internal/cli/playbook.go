@@ -38,7 +38,7 @@ Flags:
   -l, --list                list the playbooks
       --dry-run             list the tools that would run, without running them
   -f, --format string       summary as table (default) or json
-  -y, --yes                 install the playbook's tools that are not installed yet
+  -y, --yes                 install the playbook's tools that are not installed yet, without asking
       --native              install and run pipx tools on the host instead of in a container
       --parallel int        how many tools run at once (default 4)
       --results-dir string  where runs are saved (default $OT_RESULTS_DIR, else ./results)
@@ -85,44 +85,61 @@ func (a *App) playbookCmd() *cobra.Command {
 			}
 			var selection []*state.Installed
 			var missing []string
-			var todo []pkgRef
 			for _, ref := range p.Tools {
 				if inst := st.Installed[ref]; inst != nil {
 					selection = append(selection, inst)
-					continue
+				} else {
+					missing = append(missing, ref)
 				}
-				pr, err := parseRef(ref)
-				if err != nil {
-					return err
-				}
-				missing, todo = append(missing, ref), append(todo, pr)
 			}
-			if len(missing) > 0 && ra.Yes {
+			// --yes installs every missing tool; at a terminal, ot asks first and leaves out deprecated and broken ones.
+			install := missing
+			if len(missing) > 0 && !ra.Yes {
+				install = nil
+				if a.interactive() {
+					fmt.Fprintf(a.Err, "Playbook %s needs tools that are not installed:\n", p.Name)
+					if install, err = a.offerInstall(cmd.Context(), missing, nil); err != nil {
+						return err
+					}
+				}
+			}
+			if len(install) > 0 {
+				var todo []pkgRef
+				for _, ref := range install {
+					pr, err := parseRef(ref)
+					if err != nil {
+						return err
+					}
+					todo = append(todo, pr)
+				}
 				res, err := a.installMany(cmd.Context(), todo, ra.Native)
 				if err != nil {
 					what := "tools"
 					if len(todo) == 1 {
-						what = missing[0]
+						what = install[0]
 					}
 					return fmt.Errorf("installing %s for playbook %s: %w", what, p.Name, err)
 				}
 				// The playbook's own order is the order of the summary. A package that moved is installed under its new
-				// name, so the results are matched by position.
+				// name, so the results are matched by position. Tools left out at the question stay out.
 				for i, r := range res {
-					st.Installed[missing[i]] = r.inst
+					st.Installed[install[i]] = r.inst
 				}
-				selection, missing = nil, nil
+				selection = nil
 				for _, ref := range p.Tools {
-					selection = append(selection, st.Installed[ref])
+					if inst := st.Installed[ref]; inst != nil {
+						selection = append(selection, inst)
+					}
 				}
-			}
-			if len(missing) > 0 {
-				var how []string
-				for _, ref := range missing {
-					how = append(how, "ot install "+ref)
+			} else if len(missing) > 0 {
+				var inputs []string
+				for _, t := range ra.Typed {
+					inputs = append(inputs, t.Prefix+":"+t.Value)
 				}
-				return exitErr(ExitUsage, "playbook %s needs tools that are not installed: %s\ninstall them with `%s`, or run again with --yes",
-					p.Name, strings.Join(missing, ", "), strings.Join(how, "` and `"))
+				return &ExitError{Code: ExitUsage, Reason: "not_installed",
+					Err: fmt.Errorf("playbook %s needs tools that are not installed: %s", p.Name, strings.Join(missing, ", ")),
+					Hint: fmt.Sprintf("install them with `ot install %s`, or install and run in one go with `ot playbook %s %s --yes`",
+						strings.Join(missing, " "), p.Name, strings.Join(quoteArgs(inputs), " "))}
 			}
 			if ra.Case == "" {
 				ra.Case = p.Case

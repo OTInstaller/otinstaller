@@ -67,11 +67,13 @@ func TestPlaybook(t *testing.T) {
 		t.Fatalf("bare target: %v %+v", err, rows)
 	}
 
+	// Without a terminal, missing tools are an error naming the commands that install them.
+	t.Setenv("OT_NONINTERACTIVE", "1")
 	for _, c := range []struct {
 		args []string
 		want string
 	}{
-		{[]string{"playbook", "missing", "u:x"}, "ot install dheeraj/not-here"},
+		{[]string{"playbook", "missing", "u:x"}, "needs tools that are not installed: dheeraj/not-here\ninstall them with `ot install dheeraj/not-here`, or install and run in one go with `ot playbook missing u:x --yes`"},
 		{[]string{"playbook", "people", "d:example.com"}, "none of the playbook's tools"},
 		{[]string{"playbook", "people"}, "needs at least one typed input"},
 		{[]string{"playbook", "nope", "u:x"}, "no playbook"},

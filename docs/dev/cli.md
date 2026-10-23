@@ -213,6 +213,14 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   tools, P at a time...` and `[n/N] <tool> <status>` on stderr, then a `TOOL STATUS ENTITIES SAVED` table (or JSON
   array of `{tool, version, status, exit_code, entities, output_path, meta_path, reason}`). Parallel runs' stderr goes
   only to the saved `.stderr.txt`.
+- No installed tool takes any typed input (`planAll` returns `*noToolsError`, `starter.go`): for each input type,
+  `playbook.Starter` picks the bundled playbook whose main `inputs` entry is that type (never a user playbook). At a
+  terminal, and not for `--dry-run`, `offerInstall` calls `GET /tools/{ns}/{name}` for each of its tools, leaves out
+  deprecated, `health: broken`, removed and unknown ones (a `note:` each) and those without the input type, prints
+  `ref version: summary (agent.Describe effects)` and asks `Install N tools and run? [y/N]` on stderr. Yes:
+  `installMany`, then `planAll` again (failed installs are reported; the rest run unless none installed or the engine
+  is missing). Otherwise exit 2, `not_installed`, with `ExitError.Hint` naming `ot playbook <starter> <type>:<value>
+  --yes` (or `ot search --input <type>` when no playbook fits, as for `url`). An unreachable registry exits 1.
 - API: `GET /removed` (if the cache is older than 1 h); install calls when installing; none for the run itself.
 - Sign-in: no.
 - Exit codes:
@@ -220,8 +228,8 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   - 1: tool exited non-zero ("`<ref> exited with code N`"); with `--all` any row not `complete`/`skipped`; results
     folder cannot be created; other errors.
   - 2: argument errors (`runner.UsageError`), unknown `-f` format, `--dry-run` without `--all`, no package (prints the
-    help and exits 2), `--all` misuse, "no installed tool has a … input", declined install prompt, a tool that isn't
-    installed when there is no terminal to ask (`not_installed`), `consent_required`.
+    help and exits 2), `--all` misuse, "no installed tool has a … input" (`not_installed`, with a hint), declined
+    install prompt, a tool that isn't installed when there is no terminal to ask (`not_installed`), `consent_required`.
   - 3: a required key is missing (`ot keys set <NAME>` hint, plus the key URL).
   - 4: removed version, or any install trust failure.
   - 5: Docker/Podman (or pipx for native installs) missing.
@@ -265,9 +273,12 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   one of username, email, domain, phone, ip, url, no duplicates; optional), `tools` (`ns/name`, no duplicates,
   namespace required), `case`,
   `requires_target` (ignored). A broken file is an error.
-- Missing tools without `-y`: exit 2 listing `ot install …` commands. With `-y`: installs them all with `installMany`
-  (`GET …/manifest`, `POST /installs`), then runs; a failed install stops the playbook with that install's code (or the
-  failures' common one). Prints `Playbook <name>: <tools>` on stderr (table). Tools with no input of the given types are
+- Missing tools without `-y`: at a terminal, `offerInstall` (`starter.go`) describes them from the registry, leaves out
+  deprecated, broken and removed ones, and asks `Install N tools and run? [y/N]`; on yes the playbook runs with the
+  tools that are installed. Without a terminal, or after a no: exit 2, `not_installed`, hint `ot install <tools>` or
+  `ot playbook <name> <inputs> --yes`. With `-y`: installs them all with `installMany` (`GET …/manifest`,
+  `POST /installs`), then runs; a failed install stops the playbook with that install's code (or the failures' common
+  one). Prints `Playbook <name>: <tools>` on stderr (table). Tools with no input of the given types are
   listed as `skipped`.
 - Sign-in: no. Exit: as `ot run --all`; also 2 for an unknown playbook, a broken playbook file, a bad list format, or
   when none of the playbook's tools can run with the inputs; install errors propagate their own codes (4, 5, 1).
@@ -610,8 +621,9 @@ JSON on stderr, `{"error": {code, message, hint?, docs, exit_code, request_id?, 
 (`spec/schema/error-v1.json`, the same shape as the API's errors). `OT_OUTPUT=json` turns it on for every command, and
 `ot run`, `auto` and `playbook` (which parse their own arguments) honour `--json` themselves (`jsonRequested`). The
 `code` is the registry's own code, else `ExitError.Reason` (`input_required`, `consent_required`, `needs_terminal`,
-`not_installed`, ...), else one that follows from the exit code (`machine.go`). Otherwise errors are printed once by
-`Execute` as `error: <msg>` on stderr (nothing for an `ExitError` with a nil or empty error). `SilenceUsage` and
+`not_installed`, ...), else one that follows from the exit code (`machine.go`); `hint` is the registry's hint or
+`ExitError.Hint`. Otherwise errors are printed once by `Execute` as `error: <msg>` on stderr, followed by
+`ExitError.Hint` on its own line when there is one (nothing for an `ExitError` with a nil or empty error). `SilenceUsage` and
 `SilenceErrors` are on, so usage is never printed on error. Cobra adds `-h/--help` and `-v/--version`.
 
 **No prompts without a terminal** (`machine.go`, `interactive()`): when stdin isn't a terminal, `OT_NONINTERACTIVE=1`
@@ -803,6 +815,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `cli/keysetup_test.go` | `ot keys setup` at a terminal, refused without one, `key_setup` never shows values |
 | `cli/token_test.go` | `ot token create|list|revoke` against a fake registry |
 | `cli/info_test.go` | `ot info` prints a runnable command and the key hint |
+| `cli/starter_test.go` | A fresh machine: `ot auto` offering the starter playbook's tools at a terminal (no, dry run, yes; deprecated tools left out), `not_installed` with the `ot playbook … --yes` hint without one, `ot playbook` asking, MCP `run_all` answering `not_installed` with `suggested_tools` |
 | `cli/install_test.go` | `ot install` with one and several packages: hints, JSON shapes, a bad reference installing nothing, exit codes when installs fail, a missing engine stopping the rest; `playbook -y` installing in one go |
 | `agent/agent_test.go` | `Classify`, `DecideRun`, policy lists and limits, loading, live policy changes, consent tokens, the audit log, `notifies_target` in descriptions |
 | `specfiles/specfiles_test.go` | Copies equal `spec/`; the pivot map covers every entity type; every schema enum value has a description |

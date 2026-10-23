@@ -81,13 +81,15 @@ func TestAuto(t *testing.T) {
 		t.Fatalf("progress: exit %d: %s", code, errb)
 	}
 
+	// Without a terminal nothing is offered; the error names the playbook that would install tools for the input.
+	t.Setenv("OT_NONINTERACTIVE", "1")
 	for _, c := range []struct {
 		args []string
 		want string
 	}{
 		{[]string{"auto", "x", "--type", "planet"}, "--type must be"},
 		{[]string{"auto", "a.com", "b@c.com", "--type", "domain"}, "exactly one"},
-		{[]string{"auto", "+14155552671"}, "no installed tool has a phone input"},
+		{[]string{"auto", "+14155552671"}, "no installed tool has a phone input\ninstall a bundled playbook's tools and run them with `ot playbook phone-investigation p:+14155552671 --yes`"},
 		{[]string{"auto", "x", "--all"}, "--all is for"},
 		{[]string{"run", "dheeraj/user-a", "u:x", "--dry-run"}, "--dry-run goes with --all"},
 	} {

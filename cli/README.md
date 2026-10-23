@@ -15,6 +15,9 @@ ot search email
 ot run osintverse-community/holehe e:someone@example.com
 ```
 
+Or let `ot` pick: `ot auto someone@example.com` runs every installed tool that takes an email address, and on a fresh
+machine offers to install a bundled playbook's tools first. `ot playbook --list` shows the playbooks.
+
 For scripts, CI and AI agents: `--json` (or `OT_OUTPUT=json`) gives JSON output and one-line JSON errors on stderr, and
 `ot` never prompts without a terminal. See https://otinstaller.com/docs/automation.
 
