@@ -3,17 +3,19 @@
 // Each check makes at most three requests through deps.fetch: the repository (archived, gone, renamed, license), its
 // latest release (with an ETag, so an unchanged answer is a free 304) or PyPI, and the Dockerfile only when the
 // package has a new version (or the compare API for commit pins). UPSTREAM_WATCH decides what happens with a
-// difference: "report" (the default) only records it, "issues" also opens and closes outdated issues. Routes live in
-// routes/upstream.ts; the table is in migration 0021.
+// difference: "report" (the default) only records it, "issues" also opens and closes outdated issues, and "prs" also
+// has the community bot open a pull request bumping the pin (bumps.ts). Routes live in routes/upstream.ts; the table
+// is in migration 0021.
 import { deps, requireSecret, type Env } from "./env";
 import * as github from "./hosts/github";
 import { COMMUNITY_NAMESPACE, isRedistributable, parseRepoRef } from "./imports";
 import { closeSystemIssue, fileSystemIssue } from "./community";
 import { notify } from "./inbox";
 import { findPin, isCommitPin, type Pin } from "./upstream-pin";
+import { maybeOpenBump, type BumpRow } from "./bumps";
 
 export type WatchState = "current" | "behind" | "unknown" | "archived" | "gone" | "license_changed" | "renamed" | "error";
-export type WatchMode = "report" | "issues";
+export type WatchMode = "report" | "issues" | "prs";
 
 export type WatchRow = {
   tool_id: string; provider: "github" | "gitlab" | null; upstream_path: string | null; pin_kind: string | null; pinned: string | null;
@@ -22,8 +24,8 @@ export type WatchRow = {
   changed_at: number | null;
 };
 
-/** What the watcher does with what it finds; anything but "issues" means report only. */
-export const watchMode = (env: Env): WatchMode => (env.UPSTREAM_WATCH === "issues" ? "issues" : "report");
+/** What the watcher does with what it finds; anything but "issues" or "prs" means report only. */
+export const watchMode = (env: Env): WatchMode => (env.UPSTREAM_WATCH === "issues" || env.UPSTREAM_WATCH === "prs" ? env.UPSTREAM_WATCH : "report");
 
 /** An outdated issue waits this long after upstream's release, so a wrapper bumped the same week never gets one. */
 export const ISSUE_AFTER = 3 * 86_400_000;
@@ -219,7 +221,9 @@ export async function checkUpstream(env: Env, toolId: string, now = Date.now()):
        commits_behind, state, upstream_license, releases_etag, override_json, error, checked_at, changed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(row.tool_id, row.provider, row.upstream_path, row.pin_kind, row.pinned, row.pin_package, row.pinned_version_id, row.latest, row.latest_at, row.commits_behind, row.state,
     row.upstream_license, row.releases_etag, row.override_json, row.error, row.checked_at, row.changed_at).run();
-  if (watchMode(env) === "issues") await actOn(env, t, row, prev, now);
+  const mode = watchMode(env);
+  const bump = mode === "prs" ? await maybeOpenBump(env, t, row, now).catch((e) => (console.error("the bump pull request failed", e), null)) : null;
+  if (mode !== "report") await actOn(env, t, row, prev, now, bump);
   return row;
 }
 
@@ -235,7 +239,7 @@ const STATE_TITLE: Partial<Record<WatchState, string>> = {
  * catches up), and an issue when the upstream repository is archived, gone, renamed or relicensed. A license that no
  * longer allows redistribution also tells the admins, who decide; nothing is deprecated automatically.
  */
-async function actOn(env: Env, t: Tool, row: WatchRow, prev: WatchRow | null, now: number) {
+async function actOn(env: Env, t: Tool, row: WatchRow, prev: WatchRow | null, now: number, bump: BumpRow | null) {
   const ref = `${t.ns}/${t.name}`;
   const openOutdated = (await env.DB.prepare(
     `SELECT dedupe_key FROM issues WHERE tool_id = ? AND dedupe_key LIKE 'outdated:%' AND status IN ('open', 'confirmed')`,
@@ -245,7 +249,8 @@ async function actOn(env: Env, t: Tool, row: WatchRow, prev: WatchRow | null, no
     const issue = await fileSystemIssue(env, t.id, "outdated", {
       title: `Upstream released ${row.latest}`,
       markdown: `${row.upstream_path} released **${row.latest}**${row.latest_at ? ` on ${new Date(row.latest_at).toISOString().slice(0, 10)}` : ""}; ` +
-        `the package pins ${row.pinned}. A maintainer bumps the pin and releases a new version; this issue closes when one is published.`,
+        `the package pins ${row.pinned}. ${bump ? `[A pull request bumps the pin](${bump.url}); a maintainer merges and releases it from the package page.` : "A maintainer bumps the pin and releases a new version."} ` +
+        `This issue closes when a version pinning ${row.latest} is published.`,
     }, key, "upstream_watch");
     for (const k of openOutdated.filter((k) => k !== key)) await closeSystemIssue(env, t.id, k, "wont_fix", `Upstream has released a newer version since; see #${issue.number}.`);
   } else if (row.state === "current") {

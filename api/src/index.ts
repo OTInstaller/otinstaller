@@ -28,6 +28,7 @@ import { peopleRoutes } from "./routes/people";
 import { submissionRoutes } from "./routes/submissions";
 import { refreshContributorStats } from "./people";
 import { publicWatch, queueUpstreamChecks, type WatchRow } from "./upstream";
+import { openBumpFor } from "./bumps";
 import { upstreamRoutes } from "./routes/upstream";
 import { deliverInbox, purgeInbox } from "./inbox";
 import { refreshDueProfiles } from "./profiles";
@@ -276,10 +277,11 @@ app.get("/tools/:ns/:name", async (c) => {
   ).bind(row.id).all<{ handle: string; reason: string }>()).results;
   // What the upstream watcher last found, for community wrappers.
   const watch = await c.env.DB.prepare(`SELECT * FROM upstream_watch WHERE tool_id = ?`).bind(row.id).first<WatchRow>();
+  const bump = watch ? await openBumpFor(c.env, row.id) : null;
   cached(c, 60);
   return c.json({
     ...summary(row),
-    upstream: watch ? publicWatch(watch) : undefined,
+    upstream: watch ? { ...publicWatch(watch), bump: bump ? { version: bump.version, number: bump.pr_number, url: bump.url } : undefined } : undefined,
     packaged_by: maintainers.find((m) => m.reason === "submitter")?.handle ?? undefined,
     maintainers: maintainers.length ? maintainers.map((m) => m.handle) : undefined,
     sample: sampleJson ? { ...sampleJson, version: row.latest_version, recorded_at: smoke!.ran_at } : undefined,

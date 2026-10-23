@@ -350,3 +350,18 @@ export async function archiveRepo(f: Fetch, token: string, repo: string): Promis
     "archiving the repository",
   );
 }
+
+/** The files a pull request changes, with each one's patch. */
+export async function pullFiles(f: Fetch, token: string, repo: string, number: number): Promise<{ filename: string; status: string; patch?: string; changes: number }[]> {
+  const res = await check(await f(`${GITHUB_API}/repos/${repo}/pulls/${number}/files?per_page=50`, { headers: apiHeaders(token) }), "reading the pull request's files");
+  return (await res.json()) as { filename: string; status: string; patch?: string; changes: number }[];
+}
+
+/** Squash-merges a pull request; the merge commit's SHA. */
+export async function mergePull(f: Fetch, token: string, repo: string, number: number, title: string): Promise<string> {
+  const res = await f(`${GITHUB_API}/repos/${repo}/pulls/${number}/merge`, {
+    method: "PUT", headers: { ...apiHeaders(token), "Content-Type": "application/json" }, body: JSON.stringify({ merge_method: "squash", commit_title: title }),
+  });
+  if (res.status === 405 || res.status === 409) throw new HostError(`the pull request can't be merged (${res.status})`, res.status, false);
+  return ((await (await check(res, "merging the pull request")).json()) as { sha: string }).sha;
+}
