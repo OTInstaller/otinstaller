@@ -4,6 +4,7 @@ import { api, API_URL, SITE_URL, type PublisherList, type SearchResult } from ".
 import { cacheControl } from "../lib/page";
 import { DOC_PAGES, POLICY_PAGES, markdownUrl, type MarkdownPage } from "../lib/markdown";
 import { INPUT_LANDING } from "../lib/landing";
+import { OTLITE_TOOLS, firstSentence, toolPath } from "../lib/otlite";
 
 const START = ["getting-started", "otlite", "agents", "mcp-tools", "cli", "automation", "results", "errors", "api"];
 
@@ -49,6 +50,7 @@ export const GET: APIRoute = async () => {
   ];
   if (tools?.length) sections.push(`## Popular tools\n\n${tools.map((t) => `- [${t.namespace}/${t.name}](${SITE_URL}/${t.namespace}/${t.name}.md): ${t.summary}`).join("\n")}`);
   if (guides?.length) sections.push(`## Guides\n\n${guides.map((g) => `- [${g.namespace}/${g.name}](${SITE_URL}/guides/${g.namespace}/${g.name}.md): ${g.title ? `${g.title}. ` : ""}${g.summary}`).join("\n")}`);
+  sections.push(`## otlite tools\n\notlite installs these with pip or git into per-tool virtualenvs on Linux and macOS, no Docker (${SITE_URL}/otlite). Each page says what the tool takes, the exact command it receives and its caveats.\n\n${OTLITE_TOOLS.map((t) => `- [${t.display_name}](${SITE_URL}${toolPath(t.name)}.md): ${firstSentence(t.description)}`).join("\n")}`);
   if (publishers?.length) sections.push(`## Publishers\n\n${publishers.slice(0, 50).map((p) => `- [${p.display_name}](${SITE_URL}/${p.name}.md): ${p.packages} ${p.packages === 1 ? "package" : "packages"}${p.verified ? ", verified publisher" : ""}`).join("\n")}`);
   sections.push(
     [

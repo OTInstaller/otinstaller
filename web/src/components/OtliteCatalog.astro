@@ -1,8 +1,9 @@
 ---
 // Every tool otlite installs, from data/otlite-catalog.json, with filter buttons by what each takes (they work with
-// JavaScript; without it every tool is listed). Used by /otlite and /otlite/tools.
+// JavaScript; without it every tool is listed). Each card leads to the tool's own page. Used by /otlite and
+// /otlite/tools.
 import CopyCommand from "./CopyCommand.astro";
-import catalog from "../data/otlite-catalog.json";
+import { ACCEPT_LABELS, OTLITE_TOOLS, keysOf, repoUrl, toolPath } from "../lib/otlite";
 
 interface Props {
   /** Heading level for each tool's name: 2 on a page of its own, 3 inside a section. */
@@ -12,15 +13,10 @@ interface Props {
 const { level = 2 } = Astro.props;
 const Heading = level === 3 ? "h3" : "h2";
 
-const OTLITE_LABELS: Record<string, string> = {
-  username: "Username", email: "Email", phone: "Phone", domain: "Domain", ip: "IP address", url: "URL", name: "Name",
-};
-const tools = catalog.tools;
-const counts = Object.keys(OTLITE_LABELS)
-  .map((k) => ({ key: k, label: OTLITE_LABELS[k]!, n: tools.filter((t) => t.accepts.includes(k)).length }))
+const tools = OTLITE_TOOLS;
+const counts = Object.keys(ACCEPT_LABELS)
+  .map((k) => ({ key: k, label: ACCEPT_LABELS[k]!, n: tools.filter((t) => t.accepts.includes(k)).length }))
   .filter((c) => c.n > 0);
-const repoUrl = (repo: string) => (repo.startsWith("http") ? repo : `https://github.com/${repo}`);
-const keysOf = (t: (typeof tools)[number]) => [...t.api_keys.required, ...t.api_keys.optional];
 ---
 <div class="otlite-catalog" data-otlite-catalog>
   <div class="filters" role="group" aria-label="Show tools that take">
@@ -32,18 +28,19 @@ const keysOf = (t: (typeof tools)[number]) => [...t.api_keys.required, ...t.api_
     {tools.map((t) => (
       <li id={`tool-${t.name}`} data-accepts={t.accepts.join(" ")}>
         <div class="head">
-          <Heading><a href={repoUrl(t.repo)} rel="noopener nofollow">{t.display_name}</a></Heading>
+          <Heading><a href={toolPath(t.name)}>{t.display_name}</a></Heading>
           <span class="small muted">{t.license}</span>
         </div>
         <p class="muted">{t.description}</p>
         <p class="small meta">
-          <span>Takes {t.accepts.map((a) => OTLITE_LABELS[a] ?? a).join(", ")}</span>
+          <span>Takes {t.accepts.map((a) => ACCEPT_LABELS[a] ?? a).join(", ")}</span>
           {t.input_types.length > 0 && <span>· typed inputs {t.input_types.map((p) => <code>{p}:</code>)}</span>}
           {keysOf(t).length > 0 && <span>· API keys {t.api_keys.required.length ? "needed" : "optional"}: {keysOf(t).join(", ")}</span>}
           {t.interactive && <span>· asks questions while it runs</span>}
           {t.dual_use && <span>· dual-use: accept the responsible use notice first</span>}
         </p>
         <CopyCommand command={t.example} label={`Try ${t.display_name}`} />
+        <p class="small links"><a href={toolPath(t.name)}>Details, inputs and caveats<span class="sr-only"> for {t.display_name}</span> →</a> <span aria-hidden="true">·</span> <a href={repoUrl(t.repo)} rel="noopener nofollow">Source<span class="sr-only"> of {t.display_name}</span></a></p>
       </li>
     ))}
   </ul>
@@ -79,5 +76,8 @@ const keysOf = (t: (typeof tools)[number]) => [...t.api_keys.required, ...t.api_
   .meta { color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 4px 6px; }
   .meta code { margin-right: 4px; }
   .catalog :global(.cmd) { font-size: var(--fs-1); }
+  .links { color: var(--text-faint); }
+  .links a { color: var(--text-muted); }
+  .links a:hover { color: var(--text); }
   @media (max-width: 820px) { .catalog { grid-template-columns: minmax(0, 1fr); } }
 </style>
