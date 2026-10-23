@@ -33,7 +33,7 @@ const facets = [
   { key: "runtime", label: "Runtime", values: ["docker", "pipx"], name: (v: string) => (v === "docker" ? "Docker" : "Python wheel") },
 ].filter((f) => !fixed.includes(f.key));
 const sorts = browsing
-  ? [["health", "Recently verified working"], ["updated", "Recently updated"], ["installs", "Most installed"], ["stars", "Most starred"]]
+  ? [["health", "Recently verified working"], ["updated", "Recently updated"], ["installs", "Most installed"]]
   : [["relevance", "Best match"], ["health", "Recently verified working"], ["updated", "Recently updated"], ["installs", "Most installed"]];
 const activeSort = current("sort") ?? (browsing ? "health" : "relevance");
 const next = result.next_cursor ? `${url.pathname}?${new URLSearchParams({ ...Object.fromEntries(url.searchParams), cursor: result.next_cursor })}` : null;
