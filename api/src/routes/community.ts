@@ -8,7 +8,7 @@ import { audit, requireUser } from "./auth";
 import { requireAdmin, requireReviewer } from "./review";
 import { toolByRef, type ToolRef } from "../trust";
 import {
-  addComment, canTriage, communityRoles, confirm, createIssue, deletePost, editPost, EDIT_WINDOW, fileSystemIssue, flagPost, FLAG_REASONS,
+  addComment, canTriage, communityRoles, communityStatus, confirm, createIssue, deletePost, editPost, EDIT_WINDOW, fileSystemIssue, flagPost, FLAG_REASONS,
   indexable, ISSUE_KINDS, ISSUE_STATUSES, issueByNumber, issueInput, moderate, OPEN_STATUSES, renderPost, requireModerator, requireTriage,
   setLocked, setStatus, timeout, type IssueRow, type IssueStatus, type ModerationAction,
 } from "../community";
@@ -104,7 +104,7 @@ export function communityRoutes(app: App) {
     return c.json({
       ref: `${t.namespace}/${t.name}`,
       issue: {
-        ...summaryOf(i), engine: i.engine, exit_code: i.exit_code, fixed_in: i.fixed_in, duplicate_of: i.duplicate_of, edited_at: i.edited_at,
+        id: i.id, ...summaryOf(i), engine: i.engine, exit_code: i.exit_code, fixed_in: i.fixed_in, duplicate_of: i.duplicate_of, edited_at: i.edited_at,
         deleted: !!i.deleted_at, body_html: i.deleted_at ? "" : html(i.body_md, i, null),
       },
       comments: comments.map((cm) => ({
@@ -112,6 +112,14 @@ export function communityRoutes(app: App) {
         body_html: cm.author_kind === "system" ? renderPost(cm.body_md) : html(cm.body_md, cm, cm.role_badge),
       })),
     });
+  });
+
+  // How a package is doing: the health check and its history, confirmations and open issues, in one line.
+  app.get("/tools/:ns/:name/status", async (c) => {
+    const t = await tool(c);
+    const status = await communityStatus(c.env, t);
+    cached(c, 300);
+    return c.json({ ref: `${t.namespace}/${t.name}`, ...status });
   });
 
   // Open broken and outdated issues across the registry, for people who want to help.
