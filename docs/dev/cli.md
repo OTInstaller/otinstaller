@@ -71,9 +71,19 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   Deprecated message, License, then Inputs/Outputs/Key/Ethics and a `Run:` example (tools) or Level/Tools (guides).
 - Sign-in: no. Exit: 0; 2 for a bad reference; 1 for registry errors (4xx not wrapped) or manifest parse errors.
 
-#### `ot install <namespace/name[@version]>`
-- File: `cli/packages.go` (`installCmd`, `install`). Args: `ExactArgs(1)`. Also accepts a local manifest path.
+#### `ot install <namespace/name[@version]> ...`
+- File: `cli/packages.go` (`installCmd`, `installMany`, `install`). Args: `MinimumNArgs(1)`; each may also be a local
+  manifest path. Every reference is parsed first, so a bad one exits 2 before anything installs; repeated arguments
+  install once.
 - Flags: `--native` (bool, false): install pipx tools on the host instead of in a container.
+- Several packages: `installMany` installs them one after another and goes on after a failure (printing
+  `error: <ref>: <message>` on stderr in text mode), except a missing container engine (`RuntimeMissingError`), which
+  stops it: the rest are `not_tried`. `guide tools` and `playbook -y` use it too.
+- After installing, text mode prints `Try it: <runner.ExampleCommand>` (or `Try them:` and one command per line) and
+  ``Needs a key: run `ot keys setup <ref>` to set <NAME>`` for required keys not set (`missingKeys` in `run.go`), on
+  stderr.
+- JSON: one package prints its install record plus `example` and `missing_keys` (omitted when none); several print
+  `[{ref, status (installed, failed, not_tried), version, example, missing_keys, error, exit_code}]`, then the error.
 - API: `GET /tools/{ns}/{name}/{version|latest}/manifest`; then, after a successful install of a registry package and
   if telemetry is enabled, `POST /installs` `{"tool": ref, "version": v}` (3 s timeout, errors ignored). Local
   manifests: no API calls, no ping, and a `note:` that signatures are not checked.
@@ -86,7 +96,8 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   the manifest is a guide (`UsageError`: "use `ot guide get`"); **4** when the error code is `tool_removed`, the
   response status is `removed`, the manifest fails validation, the image is not digest-pinned, cosign verification
   fails, or a wheel hash mismatches; **5** when Docker/Podman (or, for native pipx, pipx) is missing; 1 otherwise
-  (other registry errors, pull or build failures).
+  (other registry errors, pull or build failures). With several packages: 5 when the engine is missing; otherwise the
+  code every failed install shares ("N of M failed to install: …", and their common JSON code), or 1 when they differ.
 
 #### `ot list`
 - File: `cli/packages.go` (`listCmd`). Args: `NoArgs`. No flags. No API call (other than the pre-run removal check).
@@ -248,8 +259,9 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   maigret, all `osintverse-community/`), `<ot home>/playbooks/*.yaml|*.yml`, `./playbooks/*.yaml|*.yml`. YAML keys:
   `name` (defaults to the file stem), `description`, `tools` (`ns/name`, no duplicates, namespace required), `case`,
   `requires_target` (ignored). A broken file is an error.
-- Missing tools without `-y`: exit 2 listing `ot install …` commands. With `-y`: installs them (`GET …/manifest`,
-  `POST /installs`). Prints `Playbook <name>: <tools>` on stderr (table). Tools with no input of the given types are
+- Missing tools without `-y`: exit 2 listing `ot install …` commands. With `-y`: installs them all with `installMany`
+  (`GET …/manifest`, `POST /installs`), then runs; a failed install stops the playbook with that install's code (or the
+  failures' common one). Prints `Playbook <name>: <tools>` on stderr (table). Tools with no input of the given types are
   listed as `skipped`.
 - Sign-in: no. Exit: as `ot run --all`; also 2 for an unknown playbook, a broken playbook file, a bad list format, or
   when none of the playbook's tools can run with the inputs; install errors propagate their own codes (4, 5, 1).
@@ -375,7 +387,9 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 - Flags: `-y`, `--yes` (bool): install without asking; `--native` (bool): install pipx tools on the host.
 - API: `GET /guides/{ns}/{name}[/{version}]`, then the install calls for each tool not installed and still available.
 - Prompt `Install N tool(s)? [y/N]:` (default no; "no" is exit 0 with "Nothing installed.").
-- Exit: 0; 1 when any install failed ("N of M tool(s) failed to install"); 2 for registry 4xx on the guide.
+- Installs through `installMany`, so it stops when Docker or Podman is missing (the rest are `not_tried` in JSON).
+- Exit: 0; as `ot install` with several packages when any install failed (5 for a missing engine, else the failures'
+  common code or 1; with one tool to install, that install's own code); 2 for registry 4xx on the guide.
 
 #### `ot docs <namespace/tool> [page]`
 - File: `cli/guide.go` (`docsCmd`). Args: `RangeArgs(1, 2)`; `@version` is refused (exit 2): docs are always latest.
@@ -783,6 +797,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `cli/keysetup_test.go` | `ot keys setup` at a terminal, refused without one, `key_setup` never shows values |
 | `cli/token_test.go` | `ot token create|list|revoke` against a fake registry |
 | `cli/info_test.go` | `ot info` prints a runnable command and the key hint |
+| `cli/install_test.go` | `ot install` with one and several packages: hints, JSON shapes, a bad reference installing nothing, exit codes when installs fail, a missing engine stopping the rest; `playbook -y` installing in one go |
 | `agent/agent_test.go` | `Classify`, `DecideRun`, policy lists and limits, loading, live policy changes, consent tokens, the audit log, `notifies_target` in descriptions |
 | `specfiles/specfiles_test.go` | Copies equal `spec/`; the pivot map covers every entity type; every schema enum value has a description |
 | `runner/textentities_test.go`, `runner/example_test.go` | Entities from text output; example commands |
