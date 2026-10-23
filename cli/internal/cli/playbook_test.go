@@ -29,6 +29,14 @@ func TestPlaybook(t *testing.T) {
 	if code := run(a, "playbook", "--list"); code != 0 || !strings.Contains(out.String(), "people") || !strings.Contains(out.String(), "domain-recon") {
 		t.Fatalf("list: exit %d: %s %s", code, out, errb)
 	}
+	for _, line := range strings.Split(out.String(), "\n") {
+		f := strings.Fields(line)
+		switch {
+		case len(f) < 2:
+		case f[0] == "NAME" && f[1] != "TAKES", f[0] == "email-investigation" && f[1]+f[2] != "email,domain", f[0] == "people" && f[1] != "-":
+			t.Errorf("TAKES column: %q", line)
+		}
+	}
 
 	out.Reset()
 	if code := run(a, "playbook", "people", "u:johndoe", "--format", "json"); code != 0 {

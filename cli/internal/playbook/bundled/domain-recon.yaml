@@ -1,5 +1,6 @@
 name: domain-recon
 description: "Domain reconnaissance: lookalike domains and subdomains"
+inputs: [domain]
 tools:
   - osintverse-community/dnstwist
   - osintverse-community/crtsh-subdomains

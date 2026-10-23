@@ -29,6 +29,7 @@ Playbooks are bundled with ot, or are YAML files in <ot home>/playbooks or ./pla
 
   name: my-recon
   description: "What it is for"
+  inputs: [domain]          # optional: the input types it is meant for
   tools:
     - osintverse-community/dnstwist
     - osintverse-community/crtsh-subdomains
@@ -147,9 +148,9 @@ func (a *App) listPlaybooks(dirs []string, format string) error {
 		return exitErr(ExitUsage, "playbooks are listed as table or json, not %q", format)
 	}
 	tw := tabwriter.NewWriter(a.Out, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tDESCRIPTION\tTOOLS\tSOURCE")
+	fmt.Fprintln(tw, "NAME\tTAKES\tDESCRIPTION\tTOOLS\tSOURCE")
 	for _, p := range all {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", p.Name, truncate(p.Description, 60), strings.Join(p.Tools, ", "), p.Source)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", p.Name, orDefault(strings.Join(p.Inputs, ", "), "-"), truncate(p.Description, 60), strings.Join(p.Tools, ", "), p.Source)
 	}
 	return tw.Flush()
 }
