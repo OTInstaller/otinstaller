@@ -36,7 +36,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0020 | `0020_community_wrappers.sql` | `tools` + `needs_first_review` (default 0), `submitted_by`, `upstream_url` (backfilled for community-packaged tools from the latest manifest's `homepage`); new tables `tool_maintainers` and `wrapper_submissions`; indexes `tool_maintainers_user`, `wrapper_submissions_status`, `wrapper_submissions_upstream`, `wrapper_submissions_repo`, `wrapper_submissions_user`. |
 | 0021 | `0021_upstream_watch.sql` | New table `upstream_watch` (per community wrapper: the pin and how it was read, upstream's latest release, state, license, the releases ETag, a staff override, the last error) and index `upstream_watch_state`. |
 | 0022 | `0022_bump_prs.sql` | New table `bump_prs` (one per community package and upstream release: the pull request's number, URL and branch, `open`/`merged`/`closed`, the version the merge released, who merged it) and index `bump_prs_open`. |
-| 0024 | `0024_change_proposals.sql` | New table `change_proposals` (a maintainer's change to a community package beyond its pin: the pull request, the proposer's title and note, the files it writes, the version, whether it builds, the reviewer's checks, status, decision and released version); indexes `change_proposals_status`, `change_proposals_tool`, `change_proposals_proposer`. 0023 is request threads, on its own branch. |
+| 0027 | `0027_change_proposals.sql` | New table `change_proposals` (a maintainer's change to a community package beyond its pin: the pull request, the proposer's title and note, the files it writes, the version, whether it builds, the reviewer's checks, status, decision and released version); indexes `change_proposals_status`, `change_proposals_tool`, `change_proposals_proposer`. 0023 to 0026 are on other branches (direct publishing, request threads). |
 
 ---
 
@@ -426,7 +426,7 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
   closed), `released_version`, `merged_by`, `created_at`, `updated_at`. Written by `bumps.ts:maybeOpenBump` and
   `releaseBump`.
 
-### 2.12g Change proposals (0024)
+### 2.12g Change proposals (0027)
 
 - `change_proposals`: PK `id` (ULID), `tool_id` → `tools(id)` (cascade), `pr_number` NN (the pull request in the
   wrapper repository; UNIQUE with `tool_id`), `url`, `branch` (`otinstaller/proposal-<id>`), `proposer_id` → `users`
