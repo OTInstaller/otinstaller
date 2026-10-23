@@ -4,7 +4,7 @@
 import Base from "../../layouts/Base.astro";
 import PageHead from "../../components/PageHead.astro";
 import IssueRow from "../../components/IssueRow.astro";
-import { api, type IssueSummary } from "../../lib/api";
+import { api, apiOrNull, type IssueSummary, type UpstreamSummary } from "../../lib/api";
 import { cacheFor } from "../../lib/page";
 
 const views = [
@@ -17,7 +17,10 @@ const views = [
 const view = views.find((v) => v.key === (Astro.url.searchParams.get("view") ?? "")) ?? views[0]!;
 const before = /^\d{1,15}$/.test(Astro.url.searchParams.get("before") ?? "") ? Astro.url.searchParams.get("before") : null;
 const params = [view.query, before ? `before=${before}` : ""].filter(Boolean).join("&");
-const board = await api<{ issues: (IssueSummary & { ref: string })[]; next_before: number | null }>(`/issues${params ? `?${params}` : ""}`);
+const [board, upstream] = await Promise.all([
+  api<{ issues: (IssueSummary & { ref: string })[]; next_before: number | null }>(`/issues${params ? `?${params}` : ""}`),
+  apiOrNull<UpstreamSummary>("/upstream/summary").catch(() => null),
+]);
 cacheFor(Astro, 120);
 const link = (key: string) => (key ? `/community?view=${key}` : "/community");
 ---
@@ -46,6 +49,15 @@ const link = (key: string) => (key ? `/community?view=${key}` : "/community");
         <li><b>Ask for a missing tool.</b> <a href="/requests">Tool requests</a> lists what people want packaged; vote for the ones you'd use.</li>
         <li><b>From the terminal.</b> When <code>ot run</code> fails it asks whether to report it, and <code>ot report &lt;tool&gt; --works</code> says a version works for you. <code>ot issues &lt;tool&gt;</code> lists what others found.</li>
       </ul>
+      {upstream && upstream.behind.length > 0 && (
+        <>
+          <h3 class="behind-h">Behind upstream</h3>
+          <ul class="behind">
+            {upstream.behind.slice(0, 8).map((b) => <li><a href={`/${b.ref}`}>{b.ref}</a> <span class="muted">pins {b.pinned}; upstream {b.latest}</span></li>)}
+          </ul>
+          {upstream.behind.length > 8 && <p class="small muted">And {upstream.behind.length - 8} more.</p>}
+        </>
+      )}
       <p class="small">Read the <a href="/policy/community">community guidelines</a> first, especially: never post personal data about the people you investigate.</p>
       <p class="small muted"><a href="/docs/community">How the community works</a> · <a href="/community/moderation">Moderation</a> (triagers)</p>
     </aside>
@@ -60,6 +72,8 @@ const link = (key: string) => (key ? `/community?view=${key}` : "/community");
   .how { position: sticky; top: 80px; }
   .how ul { margin: 0 0 10px; padding-left: 18px; display: grid; gap: 8px; font-size: var(--fs-2); }
   .how p { margin: 0 0 6px; }
+  .behind-h { font-size: var(--fs-2); margin: 14px 0 6px; }
+  .behind { margin: 0 0 10px; padding-left: 18px; display: grid; gap: 4px; font-size: var(--fs-1); overflow-wrap: anywhere; }
   @media (max-width: 820px) {
     .grid { grid-template-columns: minmax(0, 1fr); }
     .how { position: static; order: -1; }
