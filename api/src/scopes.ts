@@ -15,7 +15,7 @@ export type TokenInfo = { id: string; scopes: Set<string>; scoped: boolean };
 /** What each scope allows, for messages and docs. */
 export const SCOPE_HELP: Record<string, string> = {
   read: "your account, tokens and publish history (/me)",
-  publish: "imports, manifest edits, syncs and sources",
+  publish: "uploads (`ot publish`), imports, manifest edits, syncs and sources",
   manage: "yanks, deprecations, claims, transfers, backup settings and tokens",
   feedback: "reports, feedback, issues and comments",
   staff: "the review queue and admin actions (reviewers and admins only)",
@@ -45,7 +45,7 @@ export function requiredScope(method: string, path: string): string | null {
   if (p === "/feedback" || p === "/flags" || /^\/comments\/[^/]+$/.test(p)) return "feedback";
   if (p === "/requests" || /^\/requests\/\d+\/vote$/.test(p)) return "feedback";
   if (/^\/tools\/[^/]+\/[^/]+\/(reports|confirmations|run-reports|issues(\/\d+(\/(comments|subscription))?)?)$/.test(p)) return "feedback";
-  if (/^\/(imports|sources)(\/|$)/.test(p) || /^\/packages\/[^/]+\/[^/]+\/(manifest|sync|source|pulls)(\/|$)/.test(p)) return "publish";
+  if (p === "/publish" || /^\/(imports|sources)(\/|$)/.test(p) || /^\/packages\/[^/]+\/[^/]+\/(manifest|sync|source|pulls)(\/|$)/.test(p)) return "publish";
   // A submitter changing their submission publishes; withdrawing it and reviewers' decisions are "manage".
   if (method === "PUT" && /^\/submissions\/\d+$/.test(p)) return "publish";
   // So do proposing and editing a change to a community package; withdrawing and reviewing it are "manage".

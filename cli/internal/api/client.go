@@ -148,10 +148,21 @@ type ManifestResponse struct {
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {
-	var r io.Reader
+	var raw []byte
+	contentType := ""
 	if body != nil {
-		b, _ := json.Marshal(body)
-		r = bytes.NewReader(b)
+		raw, _ = json.Marshal(body)
+		contentType = "application/json"
+	}
+	return c.send(ctx, c.HTTP, method, path, contentType, raw, out)
+}
+
+// send makes one request with a body of the given type (none when contentType is empty) and decodes the answer
+// into out, or the registry's error.
+func (c *Client) send(ctx context.Context, hc *http.Client, method, path, contentType string, body []byte, out any) error {
+	var r io.Reader
+	if contentType != "" {
+		r = bytes.NewReader(body)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.Base+path, r)
 	if err != nil {
@@ -162,10 +173,10 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
 	}
-	resp, err := c.HTTP.Do(req)
+	resp, err := hc.Do(req)
 	if err != nil {
 		return &UnreachableError{Base: c.Base, Err: err}
 	}

@@ -26,10 +26,10 @@ Conventions used here:
 
 Registered in `Root()` (`cli/root.go`) in this order: init, validate, search, info, changelog, install, run, playbook,
 auto, runs, issues, request, extract, diff, list, outdated, update, uninstall, keys, doctor, login, logout, whoami, import,
-sync, guide, docs, report, feedback, claim, transfer, yank, deprecate, self-update, release, mcp, pivot, token, profile.
-39 top-level commands,
+publish, namespace, sync, guide, docs, report, feedback, claim, transfer, yank, deprecate, self-update, release, mcp,
+pivot, token, profile. 41 top-level commands,
 plus subcommands `keys set|setup|list|rm`, `guide search|read|open|get|tools`, `mcp install|audit|policy|tools`
-(with `mcp policy reset`) and `token create|list|revoke`.
+(with `mcp policy reset`), `token create|list|revoke` and `namespace create`.
 
 Commands that print data also print JSON with the global `--json` flag (or `OT_OUTPUT=json`); the per-command
 `--json` rows below are that flag. Nothing prompts without a terminal: see [section 2](#2-global-and-persistent-flags).
@@ -559,6 +559,30 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 - Exit: 0; 2 for no token, no URL/`--id`, registry 4xx, draft problems, `--yes` with missing fields, undetectable kind
   with `--yes`, bad finish answer; **1** when the import is still `detecting` or detection `failed`.
 
+#### `ot publish [path]`
+- File: `cli/publish.go`. Args: `MaximumNArgs(1)`, default `.` (a directory means its `otinstaller.yaml`).
+- Flags: `--wait` (bool): follow the job until `published`, `rejected`, `error` or `awaiting_review`; `--timeout`
+  (duration, default 5m, 90m with `--wait`); `--dry-run` (bool): validate and list the files, upload nothing (no sign-in
+  needed); `--json` (bool): print the final job.
+- Validates like `ot validate` (problems printed on stderr, exit 2, nothing uploaded), then `manifest.BundleFiles`
+  picks the files (`cli/internal/manifest/bundle.go`). These are the manifest (always as `otinstaller.yaml`), the
+  README and docs/content pages, and every PNG/JPEG/WebP/SVG of at most 2 MB under the folder, skipping dot folders,
+  `node_modules`, `vendor`, `dist`, `build` and `__pycache__`. Over 24 MiB or 300 files it keeps only images the pages
+  show (Markdown or `<img>`), and errors if still over.
+- API: `POST /publish?namespace=&name=&version=` as `multipart/form-data`, one part per file named by its path (a
+  10-minute HTTP timeout; `api.(*Client).Publish`), then `GET /me/publish-jobs/{id}` every 3 s (`publishPoll`, through
+  `pollSleep`), printing each new status on stderr.
+- Sign-in: **yes, client-side** except `--dry-run` (exit 2 "sign in first with `ot login`, or set OTINSTALLER_TOKEN").
+- Exit: 0 when queued, scanning, awaiting review or published (a timeout also exits 0 with where to follow it); **2**
+  for local problems, registry 4xx (`a.requestError`) or a release rejected with problems; **1** when a check refused it
+  (`signature_mismatch`, `smoke_test_failed`, ...), with the code as the JSON error's `code`.
+
+#### `ot namespace create <name>`
+- File: `cli/namespace.go`. Args: `ExactArgs(1)`.
+- Flags: `--org` (bool): `kind: org` instead of `user`; `--json`.
+- API: `POST /namespaces` `{name, kind}`. Sign-in: **yes, client-side** (exit 2). Exit: 0; 2 for registry 4xx
+  (`namespace_taken`, `namespace_reserved`, `namespace_account_required`, `namespace_limit`, `insufficient_scope`).
+
 #### `ot sync <namespace/name>`
 - File: `cli/sync.go`. Args: `ExactArgs(1)`; local paths and `@version` refused (exit 2).
 - Flags: `--log` (bool): show sync status and the last 50 events instead; `--json` (bool).
@@ -907,6 +931,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `cli/login_test.go` | Device-flow login (GitHub) and `--osintverse` |
 | `cli/release_test.go` | `ot release` with real git: happy path, refusals (dirty tree, existing tag), tools refused, `--no-push` |
 | `cli/sync_test.go` | `ot sync` and `--log` |
+| `cli/publish_test.go` | `ot publish` against a fake registry: the files uploaded (and the part names), the query, stopping after validation, `--wait` to the outcome, rejections with problems (exit 2) and by a check (exit 1, JSON code), `--dry-run` without a token, nothing uploaded for an invalid manifest; `ot namespace create` with `--org` and a taken name |
 | `cli/profile_test.go` | `ot profile`: show, `--set`/`--unset`, `--sync`, rate limit, `--json` |
 | `cli/trust_test.go` | report/claim/transfer against a fake registry, removed-package warnings and refusal, `self-update` with a signed fake release (through the GitHub API, and through `/ot/latest` with no downgrade), the newer-ot note in `ot outdated` (daily cache, and never for dev builds, agents, CI or `OT_NO_UPDATE_CHECK=1`) |
 | `cli/changelog_test.go` | `ot changelog` newest first without removed versions, only what's newer than the installed one, JSON, control characters stripped, a local manifest refused; `ot info`'s "What's new" |
@@ -926,6 +951,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `envelope/envelope_test.go` | `ParseOutput` per format; `Write` formats |
 | `manifest/validate_test.go` | Every valid fixture passes, every invalid fixture's first code, tag mismatch, file checks, embedded schema equals `spec/schema/v1.json` |
 | `manifest/seed_test.go` | Every `seed/*/*/otinstaller.yaml` validates with its files (at least 50) |
+| `manifest/bundle_test.go` | `BundleFiles`: the manifest uploaded as `otinstaller.yaml`, images under the folder (skipping dot and build folders and images over 2 MB), only referenced images when over the limit, a missing README |
 | `playbook/playbook_test.go` | Bundled playbooks, bundled tools exist in the seed (`TestBundledPlaybooksFitSeed`: each takes one of its playbook's input types and needs no key), later dirs win, parse errors, a broken file is an error |
 | `results/results_test.go` | `Sanitize`, `Dir` precedence (flag, `OT_RESULTS_DIR`, `OTINSTALLER_RESULTS_DIR`), start/finish sidecar, stderr file only when written |
 | `results/saved_test.go` | `Outputs` and `Extract`; `Diff` |

@@ -23,8 +23,8 @@ The roadmap's phase 1 ([roadmap.md](roadmap.md)) is built as pull requests: #58 
 #63 (activity and feeds), #66 (learn hub), and the community stack #68 → #74 → #76 → #78 → #79 → #80 → #81 → #82 → #83,
 with the close-out (#84) on top. The stack is merged into `main` (23 Oct) but not deployed. Two follow-ups are open
 against `main`: request threads and flags (`claude/phase1-gaps`, migration 0026) and change proposals with the
-first-week counts (`claude/change-proposals`, migration 0027); 0023 to 0025 are left for the direct-publishing stack
-(#86 → #88). In order, the owner's steps:
+first-week counts (#90, migration 0027). 0023 is direct publishing (#86, merged); 0024 and 0025 are left for #87 and
+#88. In order, the owner's steps:
 
 - [ ] **(you)** Review and merge the follow-ups and any side pull requests still open.
 - [ ] **(you)** Apply migrations 0015 to 0027 remotely before deploying the API

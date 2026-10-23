@@ -138,6 +138,8 @@ func (a *App) Root() *cobra.Command {
 		a.logoutCmd(),
 		a.whoamiCmd(),
 		a.importCmd(),
+		a.publishCmd(),
+		a.namespaceCmd(),
 		a.syncCmd(),
 		a.guideCmd(),
 		a.docsCmd(),

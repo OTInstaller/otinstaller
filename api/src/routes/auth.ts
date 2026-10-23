@@ -365,17 +365,41 @@ export function authRoutes(app: App) {
   });
 
   // ---------- publish history ----------
-  // Jobs for every namespace the user belongs to: GitHub jobs through the installation, GitLab jobs through the source.
+  // Jobs for every namespace the user belongs to: uploads name theirs, GitHub jobs are found through the installation,
+  // GitLab jobs through the source. `method` says how the release came in: a tag, an upload from CI, or a direct upload.
+  const jobs = (where: string) =>
+    `SELECT j.id, j.provider, j.repo, j.tag, j.status, j.error_code, j.error_detail, j.problems_json, j.created_at, j.updated_at,
+       CASE WHEN j.provider = 'direct' THEN 'direct' WHEN j.bundle_key IS NOT NULL THEN 'ci' ELSE 'tag' END AS method,
+       n.name AS namespace, t.name AS name, v.version, v.status AS version_status, v.scan_status
+     FROM publish_jobs j
+     LEFT JOIN installations i ON i.github_installation_id = j.installation_id
+     LEFT JOIN sources s ON s.id = j.source_id
+     JOIN namespace_members m ON m.namespace_id = COALESCE(j.namespace_id, i.namespace_id, s.namespace_id)
+     JOIN namespaces n ON n.id = m.namespace_id
+     LEFT JOIN tools t ON t.id = j.tool_id
+     LEFT JOIN versions v ON v.id = j.version_id
+     WHERE m.user_id = ? ${where}`;
+  const jobView = (env: Env, j: any) => ({
+    ...j,
+    ref: j.name ? `${j.namespace}/${j.name}` : null,
+    problems: j.problems_json ? JSON.parse(j.problems_json) : [],
+    problems_json: undefined,
+    url: `${env.SITE_URL}/dashboard/publish/${j.id}`,
+  });
+
   app.get("/me/publish-jobs", async (c) => {
     const u = requireUser(c);
-    const rows = await c.env.DB.prepare(
-      `SELECT j.id, j.provider, j.repo, j.tag, j.status, j.error_code, j.problems_json, j.created_at, j.updated_at
-       FROM publish_jobs j
-       LEFT JOIN installations i ON i.github_installation_id = j.installation_id
-       LEFT JOIN sources s ON s.id = j.source_id
-       JOIN namespace_members m ON m.namespace_id = COALESCE(i.namespace_id, s.namespace_id)
-       WHERE m.user_id = ? ORDER BY j.created_at DESC LIMIT 50`,
-    ).bind(u.id).all<any>();
-    return c.json({ jobs: rows.results.map((j) => ({ ...j, problems: j.problems_json ? JSON.parse(j.problems_json) : [], problems_json: undefined })) });
+    const rows = await c.env.DB.prepare(`${jobs("")} ORDER BY j.created_at DESC LIMIT 50`).bind(u.id).all<any>();
+    c.header("Cache-Control", "private, no-store");
+    return c.json({ jobs: rows.results.map((j) => jobView(c.env, j)) });
+  });
+
+  // One job, for `ot publish --wait` and the job page. Someone else's job is "not found", not "forbidden".
+  app.get("/me/publish-jobs/:id", async (c) => {
+    const u = requireUser(c);
+    const j = await c.env.DB.prepare(`${jobs("AND j.id = ?")} LIMIT 1`).bind(u.id, c.req.param("id")).first<any>();
+    if (!j) apiError(404, "not_found", "no such publish job in your namespaces");
+    c.header("Cache-Control", "private, no-store");
+    return c.json(jobView(c.env, j));
   });
 }

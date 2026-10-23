@@ -46,7 +46,7 @@ A Python tool replaces `runtime` with `kind: pipx`, `package`, `package_version`
 | `schema` | Yes | `1` |
 | `kind` | No | `tool` (default) or `guide` |
 | `name` | Yes | 3–40 lowercase letters, digits and hyphens; unique in the namespace |
-| `namespace` | Yes | The GitHub or GitLab owner of the repository |
+| `namespace` | Yes | The GitHub or GitLab owner of the repository, or a namespace made with `ot namespace create` for [publishing directly](/docs/publishing#publish-directly) |
 | `version` | Yes | Semver, equal to the release tag without the `v` |
 | `summary` | Yes | 10–140 characters |
 | `readme` | Tools | Path to a Markdown file in the repository |
@@ -58,7 +58,7 @@ A Python tool replaces `runtime` with `kind: pipx`, `package`, `package_version`
 | `outputs` | Tools | At least one entity type |
 | `outputs[].description`, `attrs` | No | What the entities are, and the attributes the tool sets on them: `name`, `type` (`string`, `number`, `boolean`, `url` or `datetime`), `description` |
 | `runtime.kind` | Tools | `docker` or `pipx` |
-| `runtime.image` | Docker | Pinned by digest (`@sha256:…`); the release workflow fills it in |
+| `runtime.image` | Docker | Pinned by digest (`@sha256:…`) on a public registry; the release workflow fills it in |
 | `runtime.platforms` | Docker | Must include `linux/amd64` |
 | `runtime.package`, `package_version`, `wheel_sha256` | pipx | The exact PyPI release and its wheel hash |
 | `runtime.command` | Tools | An array (never a shell string); every `{placeholder}` must be an input |

@@ -23,8 +23,8 @@ same commit.
 ## What this is
 
 **OTInstaller Registry** is a free, public registry of OSINT tools and guides, plus `ot`, the CLI that installs and runs
-them. Publishers add an `otinstaller.yaml` manifest to a GitHub or GitLab repository and push a `vX.Y.Z` tag. The registry
-validates the release, has it security-scanned (tools) or content-checked (guides), sends new publishers to human review,
+them. Publishers add an `otinstaller.yaml` manifest to a GitHub or GitLab repository and push a `vX.Y.Z` tag, or upload
+the release straight to the registry with `ot publish` (no repository needed). The registry validates the release, has it security-scanned (tools) or content-checked (guides), sends new publishers to human review,
 publishes it, and backs it up. Users then run `ot install <ns>/<name>` and `ot run <ns>/<name> ...`, which pull a
 digest-pinned, cosign-verified Docker image (or a hash-pinned PyPI wheel) and run it in a locked-down container. If the
 original host later refuses the artifact, `ot` falls back to the registry's own mirror or wheel copy.
@@ -180,7 +180,7 @@ heavy work (pulling, scanning and copying images). Step-by-step flows with file 
 
 | Flow | In one line |
 | --- | --- |
-| Publish | tag → webhook/poll/import → `publish_jobs` row → queue → `processJob` validates, checks the artifact, renders pages → scan dispatch (tools) or content checks (guides) |
+| Publish | tag → webhook/poll/import (or an `ot publish` upload → `POST /v1/publish`, files in R2) → `publish_jobs` row → queue → `processJob` validates, checks the artifact, renders pages → scan dispatch (tools) or content checks (guides) |
 | Scan | registry-ops runs `scan.py` → `POST /internal/scans` → `verdict` → published (active namespace) or `awaiting_review` → backup plan in the answer |
 | Backup | plan with signed upload URLs → `backup.py` copies image/wheel/bundle → `POST /internal/backups/:run` → `completeRun` checks what arrived |
 | Install | `GET /tools/:ns/:name/:version/manifest` → pull by digest + `cosign verify` (or wheel by hash) → mirror or wheel copy only when the original host refuses |
@@ -300,7 +300,8 @@ stderr and returns `ExitCodeFor(err)`. `cli/README.md` ships in the release arch
 
 Packages: `search`, `info`, `changelog`, `install`, `list`, `uninstall`, `outdated`, `update`. Running: `run`, `auto`, `playbook`,
 `runs`, `extract`, `diff`, `pivot`, `keys set|setup|list|rm`, `doctor`. Agents: `mcp` (`mcp install|audit|policy [reset]|tools`).
-Guides: `guide search|read|open|get|tools`, `docs`. Publishing: `init`, `validate`, `import`, `sync`, `release`,
+Guides: `guide search|read|open|get|tools`, `docs`. Publishing: `init`, `validate`, `import`, `publish`,
+`namespace create`, `sync`, `release`,
 `login` (`--gitlab`, `--osintverse`, `--scope`, `--print-token`), `logout`, `whoami`, `token create|list|revoke`, `profile`.
 Trust: `report` (`--works`/`--broken` too), `claim`, `transfer`, `yank`, `deprecate`. Community: `issues`, `request`.
 Other: `feedback`, `self-update`. Cobra adds `help`,
@@ -313,10 +314,10 @@ Each is an `(a *App) xxxCmd() *cobra.Command` method. Files: `packages.go` (sear
 `update.go` (outdated/update), `run_cmd.go` + `run_all.go` (run), `auto.go`, `playbook.go`, `starter.go` (what to
 install when nothing takes a target), `runs.go` (runs), `saved.go` (extract/diff), `pivot.go`, `run.go`
 (keys/doctor), `keysetup.go` (keys setup), `guide.go` (guide/docs), `init_validate.go`,
-`import.go`, `sync.go`, `release.go`, `login.go`, `token.go`, `trust.go` (report/claim/transfer/yank/deprecate),
-`issues.go` (issues, and `report --works|--broken`), `request.go` (request), `changelog.go` (changelog, and `info`'s
-"What's new"), `report_prompt.go` (the failure prompt), `feedback.go`, `selfupdate.go`, `mcp_cmd.go` (mcp and its
-subcommands), `consent.go` (unattended runs).
+`import.go`, `publish.go`, `namespace.go`, `sync.go`, `release.go`, `login.go`, `token.go`, `trust.go`
+(report/claim/transfer/yank/deprecate), `issues.go` (issues, and `report --works|--broken`), `request.go` (request),
+`changelog.go` (changelog, and `info`'s "What's new"), `report_prompt.go` (the failure prompt), `feedback.go`,
+`selfupdate.go`, `mcp_cmd.go` (mcp and its subcommands), `consent.go` (unattended runs).
 
 - `ot run` disables cobra flag parsing and parses its own args (`run_cmd.go`): ot flags (`-f/--format`, `--json`, `-o`,
   `--out-dir`, `--native`, `-y`, `--results-dir`, `--case`, `--no-save`, `--max-raw`, `--all`, `--parallel`,
@@ -369,8 +370,12 @@ subcommands), `consent.go` (unattended runs).
 - `ot release <version> [path]` (`release.go`) releases **guides only**: checks a clean tree and an unused tag, rewrites
   `version:`, validates, commits `Release X` if changed, creates an annotated tag and runs `git push --atomic`.
   Tools are released by their release workflow, which builds and signs the artifact.
-- Commands that need a sign-in (`whoami`, `import`, `sync`, `claim`, `transfer`, `token`) fail with exit 2 when there
-  is no token.
+- `ot publish [path]` (`publish.go`) releases without a tag. It validates, uploads the manifest, README, pages and
+  images (`manifest.BundleFiles`) to `POST /v1/publish`, then polls `GET /v1/me/publish-jobs/:id` until validation
+  ends (`--wait`: the outcome). `--dry-run` lists the files. `ot namespace create <name>` (`namespace.go`) makes a
+  registry namespace to publish into.
+- Commands that need a sign-in (`whoami`, `import`, `publish`, `namespace create`, `sync`, `claim`, `transfer`, `token`)
+  fail with exit 2 when there is no token.
 - [docs/typed-inputs-and-results.md](docs/typed-inputs-and-results.md) is the design note for typed inputs, saved
   results, `--all`, playbooks, auto, extract/diff and outdated/update; [docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md)
   maps `otinstaller` commands to `ot`. Keep both in step with behaviour changes.
@@ -491,6 +496,7 @@ and beta work, so `R2_*`, `ISSUES_REPO`/`ISSUES_TOKEN` and `EDGE_CACHE` are only
 | `guides.ts` / `content.ts` | Guide and docs rendering (marked + sanitizer), R2 storage, link checks, URL Scanner, PII heuristics |
 | `sync.ts` | Keeping packages in sync with repos: 6-hourly poll, tag queuing, renames/archives/deletes |
 | `imports.ts` | Import wizard: detection, draft manifests, finishing as PR/MR, registry-held manifests, community wrappers, bulk (≤50), the `REDISTRIBUTABLE` license list |
+| `direct.ts` | Direct publishing: registry namespaces (`createNamespace`, reserved names, GitHub/GitLab names left to their owners, `purgeIdleNamespaces`), uploads (`acceptUpload`: checks before the body is read, files to R2 `uploads/<jobId>/`), and `bundleHost`, the `RepoHost` `processJob` reads an upload through |
 | `trust.ts` / `transfers.ts` | Yank, deprecate, removal, reports, transparency, rate limits; claims and transfers |
 | `notify.ts` | Resend email with idempotency keys (`notifications` table); skipped when `RESEND_API_KEY` is unset |
 | `ops.ts` | Health targets/results, stuck-job alerts, daily digest, rate-limit purge, Sentry `reportError` |
@@ -507,8 +513,8 @@ and beta work, so `R2_*`, `ISSUES_REPO`/`ISSUES_TOKEN` and `EDGE_CACHE` are only
 | `known-repos.ts` | **Generated** from otlite's catalog and `seed/candidates.md`; don't edit |
 | `mirror/` | The mirror Worker: `index.ts` (entry) and `registry.ts` (OCI API, `imageExists`, `hideImage`, `deleteImage`) |
 | `hosts/` | External services: `github.ts`, `gitlab.ts`, `osintverse.ts` (OIDC), `repo.ts` (`RepoHost` over both), `artifacts.ts` (OCI digest and PyPI wheel checks) |
-| `lib/` | `errors.ts` (`apiError`), `crypto.ts` (hashing, AES-GCM, RS256 JWT, `ulid()`), `manifest.ts` (validator), `images.ts` (metadata stripping, SVG sanitizing), `presign.ts` (R2 SigV4 URLs), `reserved.ts` (namespace names the site's sections take) |
-| `routes/` | One `xxxRoutes(app)` registrar per area: auth, device, webhooks, review, sources, imports, guides, trust, transfers, backups, beta, ops, profiles, community, inbox, requests, people, submissions, upstream, proposals |
+| `lib/` | `errors.ts` (`apiError`), `crypto.ts` (hashing, AES-GCM, RS256 JWT, `ulid()`), `manifest.ts` (validator), `images.ts` (metadata stripping, SVG sanitizing), `presign.ts` (R2 SigV4 URLs), `reserved.ts` (namespace names the site's sections take, and the few more a registry namespace can't) |
+| `routes/` | One `xxxRoutes(app)` registrar per area: auth, device, webhooks, review, sources, imports, guides, trust, transfers, backups, beta, ops, profiles, community, inbox, requests, people, submissions, upstream, direct, proposals |
 | `release-templates.ts` | **Generated** from `spec/templates`; don't edit |
 
 Routes only parse input, check permissions and shape responses; domain logic lives in the top-level modules. Route
@@ -542,10 +548,11 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
   scanner's smoke test of the latest version produced (first five entities, or the start of stdout), which the tool
   page shows as its sample output.
 - Auth: `/auth/:provider/login|callback` (github, gitlab, osintverse), `/auth/logout`, `/auth/device/start|token`,
-  `/me`, `/me/tokens`, `/me/publish-jobs`, `/me/repos`, `/me/transfers`, `/me/backups`,
+  `/me`, `/me/tokens`, `/me/publish-jobs[/:id]`, `/me/repos`, `/me/transfers`, `/me/backups`,
   `/me/namespaces/:ns/profile[/preview|/sync|/hosts[/:provider]]` (an owner's profile settings).
 - Publishing: `POST /webhooks/github` (HMAC), `POST /webhooks/gitlab` (per-source token), `/imports...`,
-  `/sources/gitlab`, `/packages/:ns/:name/sync|sync-log|manifest|manifest/pr|source|backups|backups/restore`.
+  `/sources/gitlab`, `/packages/:ns/:name/sync|sync-log|manifest|manifest/pr|source|backups|backups/restore`,
+  `POST /namespaces` (a registry namespace) and `POST /publish` (an upload from `ot publish`).
 - Owners: yank/unyank, deprecate, claim, transfer, git-backup opt-out, restore, switch source. Anyone: reports, feedback.
 - Community (public reads cached, writes scope `feedback`, triage `manage`): `/tools/:ns/:name/issues[/:n[/comments|
   /status|/lock|/subscription|/viewer]]`, `/tools/:ns/:name/status`, `/tools/:ns/:name/confirmations`,
@@ -563,15 +570,22 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
   `POST /internal/drills/:id`, `/internal/health[/targets]`. Scans, backup runs and drills each use their own
   single-use token (scan 1 h, run 3 h or 12 h weekly, drill 6 h); the health endpoints use the static shared
   `HEALTH_TOKEN`.
-- The full route table (174 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
+- The full route table (177 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
   `spec/openapi/v1.json` describes the public and owner routes, each with its token scope as `x-scope`; a test in
   `api.test.ts` fails when a route and the document disagree, so add new routes to both.
 - 429s carry `Retry-After`, `RateLimit-Policy` and `retry_after_s` (`rateLimited` in `lib/errors.ts`).
 
 ### Publish pipeline
 
-1. A tag webhook (or the poller, or an import) creates a `publish_jobs` row and queues `{ jobId }`.
-2. `processJob` reads `otinstaller.yaml` at the tagged commit (or the registry-held manifest), validates it, checks
+1. A tag webhook (or the poller, or an import) creates a `publish_jobs` row and queues `{ jobId }`. So does an upload
+   (`POST /v1/publish`, `direct.ts`): its files go to R2 `uploads/<jobId>/`, and the job has `provider = 'direct'`, a
+   `namespace_id` and a `bundle_key`.
+   - **Bundle jobs.** Code branches on `bundle_key` ("is this an upload"), never on `provider`.
+   - **Direct packages.** They have no `sources` row and `tools.repo_url` is NULL: the namespace owns the name until a
+     repository in it releases the package.
+   - **Signers.** They are pinned on first use (`scans.ts:pinSigner`); see
+     [docs/dev/architecture.md](docs/dev/architecture.md), flow a2.
+2. `processJob` reads `otinstaller.yaml` at the tagged commit (or the registry-held manifest, or the upload), validates it, checks
    release rules (`manifest_tag_mismatch`, `manifest_version_exists`, `manifest_name_taken`, `namespace_not_allowed`, ...),
    checks the artifact exists (`hosts/artifacts.ts`), renders README/docs/guide pages to R2, and sets a pending
    `otinstaller/publish` commit status.
@@ -633,8 +647,9 @@ migrations add publish intake (0002), scans/review and `notifications` (0003), s
 `issue_subscriptions`, 0016), notifications (`email_prefs`, `inbox`, 0017), tool requests (`tool_requests`,
 `request_votes`, 0018), `contributor_stats` (0019), community submissions (`tools.needs_first_review`,
 `tool_maintainers`, `wrapper_submissions`, 0020), the upstream watcher (`upstream_watch`, 0021), bump pull requests
-(`bump_prs`, 0022) and change proposals (`change_proposals`, 0027; 0023 to 0026 are on other branches). That
-is 53 tables plus `tools_fts`; every table, column, CHECK value set and status transition is in
+(`bump_prs`, 0022), direct publishing (`publish_jobs` `namespace_id`/`bundle_key`/`submitted_by`,
+`namespaces.created_by`, 0023) and change proposals (`change_proposals`, 0027; 0024 to 0026 are on other branches).
+That is 53 tables plus `tools_fts`; every table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
 
 - IDs are ULIDs (`ulid()`), timestamps are Unix **milliseconds**, booleans are 0/1, JSON columns end in `_json`
@@ -1198,8 +1213,11 @@ change. Keep this list current when you fix one or find another.
 - `expireStaleScans` leaves the commit status pending and sends no email.
 - `sendEmail` records `sent` before calling Resend, so a thrown fetch loses the email silently; failed emails are never
   retried.
-- Review: request-changes and reject leave the waiting jobs at `awaiting_review`; nothing moves a namespace out of
-  `rejected` or `suspended`; a report can be resolved twice.
+- Review: nothing moves a namespace out of `rejected` or `suspended`; a report can be resolved twice.
+- A pinned signer of a package published directly can't be changed by its owner (a reviewer has to clear
+  `signer_identity` on its versions by hand), and only keyless signatures count.
+- `ot publish` and the upload route take no GitHub Actions or GitLab CI identity yet: an upload from CI is a direct
+  upload with a token, so its package has no repository and its signer is pinned on first use.
 - `tools_fts` triggers fire only on `tools`, so renaming a namespace leaves the old name in search.
 - Redelivering a GitHub webhook is a no-op once the first delivery created a job.
 - `ot install` doesn't warn about deprecated packages (the manifest response doesn't carry deprecation).
@@ -1248,7 +1266,8 @@ change. Keep this list current when you fix one or find another.
 | --- | --- |
 | Package | Anything in the registry: a tool or a guide, addressed as `<namespace>/<name>` (rows in `tools`) |
 | Tool / guide | `kind: tool` (runnable, Docker or pipx) or `kind: guide` (Markdown pages, no runtime) |
-| Namespace | The publisher's slug (a GitHub user or org, a GitLab group, or `osintverse-community`). `pending_review` until a reviewer approves it, then `active` (or `rejected`, `suspended`); `verified` is a separate badge |
+| Namespace | The publisher's slug (a GitHub user or org, a GitLab group, `osintverse-community`, or a registry namespace made with `ot namespace create`). `pending_review` until a reviewer approves it, then `active` (or `rejected`, `suspended`); `verified` is a separate badge |
+| Direct upload / bundle job | A release uploaded with `ot publish` (`POST /v1/publish`) instead of tagged: a `publish_jobs` row with a `bundle_key`, whose files come from R2. A package published this way has no repository (`tools.repo_url` NULL) and its signer is pinned on first use |
 | Manifest | `otinstaller.yaml`, validated against `spec/schema/v1.json` |
 | Registry-held manifest | A manifest stored in D1 for a repo that doesn't have one (import wizard, community wrappers); `PUT /packages/:ns/:name/manifest` edits it |
 | First-party / community wrapper | Tools written by the project (`seed/first-party`) vs third-party tools packaged under `osintverse-community` (`seed/community`), which their authors can claim |

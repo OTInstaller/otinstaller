@@ -1073,6 +1073,60 @@
         "description": "Needs a sign-in: the session cookie, or an API token with the read scope."
       }
     },
+    "/me/publish-jobs/{id}": {
+      "get": {
+        "operationId": "get_publish_job",
+        "tags": [
+          "Publishing"
+        ],
+        "summary": "One publish attempt: its status, problems and version",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Publish job ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "description": "Needs a sign-in: the session cookie, or an API token with the read scope. Only jobs of namespaces you belong to; ot publish --wait polls this."
+      }
+    },
     "/me/repos": {
       "get": {
         "operationId": "list_repos",
@@ -1384,6 +1438,63 @@
         },
         "security": [],
         "description": "Up to 500 publishers. Cached 600 s."
+      },
+      "post": {
+        "operationId": "create_namespace",
+        "tags": [
+          "Publishing"
+        ],
+        "summary": "Create a registry namespace to publish into with ot publish",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "description": "Needs a sign-in: the session cookie, or an API token with the manage scope. Body {name, kind?: user | org}. The namespace waits for review like any new publisher. A name that is a GitHub or GitLab user needs that account linked; organisations and groups get their namespace from the GitHub App or a connected GitLab project. At most 3 per account."
       }
     },
     "/namespaces/{ns}/activity": {
@@ -2428,6 +2539,106 @@
           }
         ],
         "security": []
+      }
+    },
+    "/publish": {
+      "post": {
+        "operationId": "publish_package",
+        "tags": [
+          "Publishing"
+        ],
+        "summary": "Upload a release (ot publish): the manifest, its README and pages, and their images",
+        "parameters": [
+          {
+            "name": "namespace",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The manifest's namespace"
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The manifest's name"
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The manifest's version"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted: the job is queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-scope": "publish",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "description": "Needs a sign-in: the session cookie, or an API token with the publish scope, as an owner or publisher of the namespace. One file part per file, named by its path relative to otinstaller.yaml; at most 25 MB and 300 files. The release is then validated, scanned and reviewed as a tag is. At most 20 uploads an hour per namespace."
       }
     },
     "/tools/{ns}/{name}/run-reports": {
