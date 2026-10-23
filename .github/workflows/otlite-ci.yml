@@ -174,16 +174,46 @@ jobs:
           otlite run sherlock -- --version
           otlite results --json
 
-  test-installer-debian:
-    # The one-line installer on a bare Debian: no pipx, so it installs pipx with apt, then otlite from this checkout
+  test-installer-no-python:
+    # The one-line installer on a machine with no Python at all: it fetches uv, which brings a Python 3.12, then
+    # installs otlite from this checkout and a tool with it, as a non-root user so sudo is never an option
     runs-on: ubuntu-24.04
     container: debian:12
     env:
       DO_NOT_TRACK: "1"
     steps:
       - uses: actions/checkout@v4
-      - name: Python only
-        run: apt-get update && apt-get install -y --no-install-recommends python3 ca-certificates
+      - name: curl and git only
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends curl ca-certificates git
+          if command -v python3; then echo 'python3 should not be here'; exit 1; fi
+          useradd -m tester
+          chown -R tester "$PWD"
+      - name: Run the installer
+        run: su tester -c 'OTLITE_PACKAGE="$PWD" sh scripts/install.sh'
+      - name: otlite works on uv's Python
+        run: |
+          su tester -c '
+            set -e
+            export PATH="$HOME/.local/bin:$PATH"
+            otlite --version
+            otlite doctor | tee doctor.txt
+            grep -q "installed with uv" doctor.txt
+            otlite init --yes
+            otlite install sherlock -y
+            otlite run sherlock -- --version
+          '
+
+  test-installer-debian:
+    # The one-line installer on a Debian with Python but no pipx: it installs otlite with uv on uv's own Python
+    runs-on: ubuntu-24.04
+    container: debian:12
+    env:
+      DO_NOT_TRACK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python and curl only
+        run: apt-get update && apt-get install -y --no-install-recommends python3 curl ca-certificates
       - name: Run the installer
         run: OTLITE_PACKAGE="$PWD" sh scripts/install.sh
       - name: otlite works

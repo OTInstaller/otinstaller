@@ -190,6 +190,16 @@ _GENERIC_HINTS = {
 }
 
 
+def installed_with() -> str | None:
+    """Return "uv" or "pipx" when otlite runs from an environment one of them made."""
+    prefix = Path(sys.prefix)
+    if (prefix / "uv-receipt.toml").exists():
+        return "uv"
+    if (prefix / "pipx_metadata.json").exists():
+        return "pipx"
+    return None
+
+
 def install_hint(what: str, python_version: str = "") -> str:
     """Return the command that installs `what` (git, venv, python or pipx) on this machine."""
     hint = _INSTALL_HINTS[what].get(get_distro_family(), _GENERIC_HINTS[what])
