@@ -17,7 +17,7 @@ export const SCOPE_HELP: Record<string, string> = {
   read: "your account, tokens and publish history (/me)",
   publish: "imports, manifest edits, syncs and sources",
   manage: "yanks, deprecations, claims, transfers, backup settings and tokens",
-  feedback: "reports and feedback",
+  feedback: "reports, feedback, issues and comments",
   staff: "the review queue and admin actions (reviewers and admins only)",
 };
 
@@ -40,7 +40,9 @@ export function requiredScope(method: string, path: string): string | null {
   if (/^\/(auth|internal|webhooks)\//.test(p) || p === "/installs" || p === "/health") return null;
   if (p.startsWith("/admin")) return "staff";
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") return "read";
-  if (p === "/feedback" || /^\/tools\/[^/]+\/[^/]+\/reports$/.test(p)) return "feedback";
+  // Taking part: reports, feedback, issues, comments, confirmations, subscriptions and flags. Triage is "manage".
+  if (p === "/feedback" || p === "/flags" || /^\/comments\/[^/]+$/.test(p)) return "feedback";
+  if (/^\/tools\/[^/]+\/[^/]+\/(reports|confirmations|issues(\/\d+(\/(comments|subscription))?)?)$/.test(p)) return "feedback";
   if (/^\/(imports|sources)(\/|$)/.test(p) || /^\/packages\/[^/]+\/[^/]+\/(manifest|sync|source)(\/|$)/.test(p)) return "publish";
   return "manage";
 }
