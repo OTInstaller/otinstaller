@@ -261,7 +261,7 @@ describe("change proposals", () => {
     expect(Object.keys(viewer.body.files).sort()).toEqual(["README.md", "otinstaller.yaml"]);
     expect((await req(stranger, "PATCH", `/packages/${w.ref}/proposals/9`, { title: "Mine now" })).body.error.code).toBe("forbidden");
     const edited = await req(maintainer, "PATCH", `/packages/${w.ref}/proposals/9`, {
-      files: { ...files, "README.md": `${files["README.md"]}\nIt skips sites that need a login.\n`, Dockerfile: w.files.Dockerfile.replace("USER 65534", "USER root") },
+      files: { ...files, "README.md": `${files["README.md"]}\nIt skips sites that need a login.\n`, Dockerfile: w.files.Dockerfile!.replace("USER 65534", "USER root") },
     });
     expect(edited.body.proposal).toMatchObject({ status: "open", files: ["otinstaller.yaml", "Dockerfile", "README.md"] });
     expect(edited.body.proposal.checks.map((c: any) => c.code)).toEqual(["fields_changed", "dockerfile_root"]);
