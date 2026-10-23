@@ -121,14 +121,14 @@ After a successful dispatch it sets `scan_dispatched_at`. A failed dispatch leav
 | --- | --- |
 | `version_id` | The `versions` row being scanned. Also used by `scan.yml`'s concurrency group. |
 | `ref` | `<namespace>/<name>@<version>`, for logs and the scanner's image tag (`ot-scan/<slug>:latest` for pipx). |
-| `source_repo` | `<provider>.com/<repo>` (`github.com/...` or `gitlab.com/...`). Used for PyPI provenance matching. |
+| `source_repo` | `<provider>.com/<repo>` (`github.com/...` or `gitlab.com/...`). Used for PyPI provenance matching. Empty for a direct upload (`ot publish`), which has no repository. |
 | `upstream_repo` | Only present for community wrappers: the upstream project whose own PyPI provenance is also accepted. |
 | `kind` | `m.kind ?? "tool"`. The scanner returns empty results for `guide` or a missing runtime. |
 | `runtime` | The manifest's `runtime` object verbatim, or `null`. Docker: `image` (digest-pinned), `command`, ... pipx: `package`, `package_version`, `entrypoint`, `wheel_sha256`, `command`, ... |
 | `test_input` | `m.test.input` or `null`. `null` means the smoke test is skipped. |
 | `expect_exit_code` | `m.test.expect_exit_code ?? 0`. Smoke passes when the exit code equals this (tools that need a key can declare the code they give without one; the scan has no secrets). |
 | `network_egress` | `true` only when `m.network.egress === true`; the smoke container then gets `--network bridge`, otherwise `none`. |
-| `expected_signer` | `identityRegexp` + `issuer` that a valid cosign signature must match (see 3.3). |
+| `expected_signer` | `identityRegexp` + `issuer` that a valid cosign signature must match (see 3.3). `null` for a direct upload: any keyless signature counts, and the API holds the package to its first signer (3.6). |
 | `callback_url` | `${API_URL}/v1/internal/scans`. |
 | `callback_token` | The plaintext single-use token; only its hash is stored. |
 
@@ -157,17 +157,20 @@ Per runtime:
 
 - **Guide or no runtime**: returns `empty_results()` (signature `absent`, vulnerabilities `null`, counts 0, smoke
   `skipped`) plus `scanner_version`.
-- **docker**: `docker pull <image>` (exception if it fails), `cosign verify --certificate-identity-regexp ...
-  --certificate-oidc-issuer ...`. On success it reads identities with `cosign download signature` and the
-  certificate (via `cryptography`) to report `identity` and `issuer`. If strict verify fails, a loose verify
-  (`.*` identity and issuer) tells "signed by someone else" (`fail`, detail lists the identities) from "unsigned"
-  (`absent`). Then `trivy image --scanners vuln,secret --format json` and `trivy image --format cyclonedx` (SBOM
+- **docker**: `docker pull <image>` (exception if it fails), `cosign verify --output json
+  --certificate-identity-regexp ... --certificate-oidc-issuer ...`. On success it reads the verified identities from
+  that JSON (`optional.Subject` / `optional.Issuer`; `verified_identities`), falling back to `cosign download
+  signature` and the certificate (via `cryptography`), to report `identity` and `issuer`. If strict verify fails, a
+  loose verify (`.*` identity and issuer) tells "signed by someone else" (`fail`, detail lists the identities) from
+  "unsigned" (`absent`). With `expected_signer: null` (`check_any_signature`) only the loose verify runs: `pass` with
+  `identities: [{identity, issuer}]` (every distinct verified signer, at most 20), else `absent`. Then `trivy image --scanners vuln,secret --format json` and `trivy image --format cyclonedx` (SBOM
   package count). Malware is always `{count: 0, note: "not applicable to images"}`. Then the smoke test.
 - **pipx**: fetches `https://pypi.org/pypi/<package>/<package_version>/json`, picks the `bdist_wheel` whose sha256
   equals `wheel_sha256` (none → signature `fail` "no wheel matches the manifest's sha256"), downloads it and re-hashes
   (mismatch → signature `fail`). Provenance: `https://pypi.org/integrity/<pkg>/<ver>/<file>/provenance` (PEP 740);
   pass when an attestation publisher's repository equals `source_repo` or `upstream_repo` (host prefix stripped,
-  lowercase); none → `absent`; others → `fail`. Builds a `python:3.12-slim` image with the wheel installed
+  lowercase); none → `absent`; others → `fail`. With neither (a direct upload) any publisher passes, reported as
+  `identities` (`pypi:<kind>:<repo>/<workflow>`, issuer `https://pypi.org`). Builds a `python:3.12-slim` image with the wheel installed
   (uid 10001) and runs Trivy on it with `--pkg-types library`. GuardDog (`guarddog pypi scan <wheel>
   --output-format json`) restricted to code-behaviour rules: code-execution, cmd-overwrite, download-executable,
   exec-base64, exfiltrate-sensitive-data, obfuscation, silent-process-execution, steganography, dll-hijacking,
@@ -217,6 +220,7 @@ Body (`ScanResults`):
 | Field | Values | Notes |
 | --- | --- | --- |
 | `signature.status` | `pass` \| `fail` \| `absent` | `identity`/`issuer` stored on the version only when `pass`. For pipx, identity is `pypi:<kind>:<repo>/<workflow>` and issuer `https://pypi.org`. |
+| `signature.identities` | optional, at most 20 `{identity, issuer}` strings | Sent when there was no expected signer (a direct upload): every signer that verified. The API picks the one equal to the package's pin (3.6). |
 | `vulnerabilities` | `null` or an object of six non-negative integer counts | `fixable_*` = critical/high findings with a `FixedVersion`. |
 | `secrets.count` | non-negative integer | `findings` capped at 20 by the scanner. |
 | `malware.count` | non-negative integer | |
@@ -226,7 +230,8 @@ Body (`ScanResults`):
 | `scanner_version` | optional string | |
 
 `parseResults` checks (400 `invalid_scan_results`, message `scan results: <what>`), in this order: body is an
-object; `signature.status` in the set; `secrets.count` is a count; `malware.count` is a count; `smoke.status` in the
+object; `signature.status` in the set; `signature.identities`, when present, is at most 20 `{identity ≤ 500, issuer
+≤ 200}` strings; `secrets.count` is a count; `malware.count` is a count; `smoke.status` in the
 set; `vulnerabilities` is `null` or has all six keys as counts. A count is an integer ≥ 0. Extra fields are kept
 (stored in `summary_json`).
 
@@ -241,7 +246,7 @@ Other errors:
 Handling (`applyScanResults`):
 
 1. `previouslySigned` = another version of the tool that is `published` or `yanked` has `signer_identity`.
-2. Computes the verdict (3.6).
+2. A direct upload (`publish_jobs.provider = 'direct'`) goes through `pinSigner` first (3.6), then the verdict (3.6).
 3. Inserts `scans` rows: `signature` (fail/pass/warn for absent), `vuln` (warn if fixable critical+high > 0 else
    pass), `malware` (fail if malware+secrets > 0; summary holds both), `smoke` (fail/pass/warn for skipped), and
    `sbom` (pass) if present.
@@ -270,12 +275,22 @@ Response:
 
 ### 3.6 Verdict rules (`verdict`), exactly
 
-Checked in this order; the first match wins:
+For a direct upload, `pinSigner` (`scans.ts`) runs first when the signature passed:
+
+- **The pin.** It is the `signer_identity` and `signer_issuer` of the tool's earliest non-rejected signed version, compared
+  by `signerKey`, which drops a trailing `@refs/...`.
+- **With a pin.** A reported identity (from `identities`, else `identity`) equal to the pin is recorded. If none
+  matches, the signature becomes `fail` with detail `signed by <identities>, not by <pin>, which signed this package's
+  earlier versions` (rule 1 below).
+- **Without a pin.** More than one distinct identity fails before the table, with `signature_ambiguous`. Otherwise the
+  first identity is recorded and becomes the pin.
+
+Then, checked in this order; the first match wins:
 
 | # | Condition | Result | Code | Message |
 | --- | --- | --- | --- | --- |
 | 1 | `signature.status === "fail"` | fail | `signature_mismatch` | `signature did not verify: <detail ?? "identity mismatch">` |
-| 2 | `signature.status === "absent"` and an earlier published/yanked version was signed | fail | `signature_dropped` | `earlier versions were signed but this one is not; sign it with the release workflow` |
+| 2 | `signature.status === "absent"` and an earlier published/yanked version was signed | fail | `signature_dropped` | `earlier versions were signed but this one is not; sign it with the release workflow` (for a direct upload: `sign it with the same identity as before`) |
 | 3 | `malware.count > 0` | fail | `malware_suspected` | `<n> malicious-code heuristic(s) matched; a reviewer will look at the report` |
 | 4 | `secrets.count > 0` | fail | `secrets_found` | `<n> embedded secret(s) found in the artifact; rotate them and rebuild` |
 | 5 | `smoke.status === "fail"` | fail | `smoke_test_failed` | `the test input exited with code <exit_code ?? "?">: <output_excerpt, first 200 chars>` |

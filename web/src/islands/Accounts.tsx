@@ -70,7 +70,7 @@ export default function Accounts({ back }: { back: string }) {
                     <td>{log ? <Status value={log.source.sync_status} /> : "—"}{log?.source.last_error && <div class="small muted">{log.source.last_error}</div>}</td>
                     <td>{when(log?.source.last_event_at)}</td>
                     <td>{when(log?.source.last_poll_at)}</td>
-                    <td><button class="btn" type="button" onClick={() => syncNow(ref)}>Sync now</button></td>
+                    <td>{log ? <button class="btn" type="button" onClick={() => syncNow(ref)}>Sync now</button> : <span class="small muted">no repository to sync</span>}</td>
                   </tr>
                 ))}
               </tbody>

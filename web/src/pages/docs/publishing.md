@@ -1,24 +1,33 @@
 ---
 layout: ../../layouts/Docs.astro
 title: Publishing
-description: How a tag on GitHub or GitLab becomes a published package on the registry.
+description: How a release, tagged on GitHub or GitLab or uploaded with ot publish, becomes a published package on the registry.
 ---
 
-You publish by pushing a git tag. There is no upload step: the registry reads your repository.
+Every package has an `otinstaller.yaml` manifest. You release it in one of three ways:
 
-## 1. Connect the repository
+| From | How | When it fits |
+| --- | --- | --- |
+| GitHub | the OTInstaller GitHub App and a `vX.Y.Z` tag | the tool lives in a GitHub repository |
+| GitLab | a connected project and a `vX.Y.Z` tag | the tool lives in a GitLab project |
+| Directly | `ot publish` from your computer | there is no repository, or you would rather not connect one |
 
-The easiest way is the [import wizard](/import) (or `ot import <repository URL>`). It detects whether the repository is a Docker tool, a Python tool or a guide, drafts `otinstaller.yaml`, and either opens a pull or merge request with it or keeps the manifest on the registry for you.
+Whichever way a release comes in, the registry checks it the same way ([below](#what-the-registry-does-with-a-release)).
 
-To do it by hand:
+## Write the manifest
 
-1. Run `ot init` in the repository. It writes `otinstaller.yaml`, a README if you have none, and a release workflow for GitHub Actions or GitLab CI.
-2. Fill in the inputs, outputs, command and ethics answers, then run `ot validate`.
-3. On GitHub, install the **OTInstaller** GitHub App on the repository. On GitLab, connect the project from the import wizard.
+The easiest way is the [import wizard](/import) (or `ot import <repository URL>`). It detects whether a GitHub or GitLab repository is a Docker tool, a Python tool or a guide. It then drafts `otinstaller.yaml`, and either opens a pull or merge request with it or keeps the manifest on the registry for you.
 
-## 2. Release
+To write it by hand, run `ot init`. It writes `otinstaller.yaml`, a README if you have none, and a release workflow for GitHub Actions or GitLab CI. Fill in the inputs, outputs, command and ethics answers, then run `ot validate`.
 
-**Tools:** run the **otinstaller release** workflow with the version you want to publish. For a Docker tool it builds the image for amd64 and arm64, signs it with your repository's identity, writes the image digest into `otinstaller.yaml` and pushes the tag `vX.Y.Z`. For a Python tool it publishes to PyPI with trusted publishing and pins the wheel hash.
+## Release from GitHub or GitLab
+
+Connect the repository first: on GitHub, install the **OTInstaller** GitHub App on it; on GitLab, connect the project from the import wizard.
+
+**Tools:** run the **otinstaller release** workflow with the version you want to publish.
+
+- **Docker tool:** it builds the image for amd64 and arm64, signs it with your repository's identity, writes the image digest into `otinstaller.yaml` and pushes the tag `vX.Y.Z`.
+- **Python tool:** it publishes to PyPI with trusted publishing and pins the wheel hash.
 
 **Guides:** nothing needs building, so release from your own computer:
 
@@ -26,16 +35,52 @@ To do it by hand:
 ot release 1.2.0
 ```
 
-It sets `version`, checks the guide as the registry will, commits, and pushes the commit and the tag `v1.2.0` together, in a few seconds and without a CI run. The workflow `ot init --guide` writes does the same from the Actions tab if you prefer; you can also delete it.
+It sets `version`, checks the guide as the registry will, commits, and pushes the commit and the tag `v1.2.0` together. It takes a few seconds and needs no CI run. The workflow `ot init --guide` writes does the same from the Actions tab if you prefer; you can also delete it.
 
-## 3. What the registry does with the tag
+## Publish directly
 
-1. **Validation**, within a minute: the manifest, the files it names, the image or wheel. The tagged commit gets an `otinstaller/publish` status, *Validating*, then either *Valid* or a failure naming the [error code](/docs/errors).
+`ot publish` uploads a release from your computer: the manifest, its README and pages, and the images they show. It needs no repository, GitHub App or GitLab connection.
+
+1. **A namespace.** Publish into a namespace you own or publish to, or create one:
+
+   ```
+   ot namespace create acme-osint
+   ```
+
+   Any signed-in account can create up to three, including one that signs in with OSINTverse.
+   - A name that is a GitHub or GitLab user's needs that account linked to yours (Settings → Accounts).
+   - Organisations and groups get their namespace by installing the GitHub App or connecting a GitLab project.
+   - A new namespace waits for review with its first release, like any new publisher.
+   - One nobody publishes into within 30 days is removed.
+2. **The artifact.** Make it public and pin it in the manifest:
+   - **Docker:** push the image to a public registry such as GHCR, Docker Hub or Quay, and set `runtime.image` to its digest (`docker.io/acme/tool@sha256:...`). It must include `linux/amd64`.
+   - **Python:** publish the wheel to PyPI and set `package_version` and `wheel_sha256`.
+3. **Upload.**
+
+   ```
+   ot publish --dry-run   # what would be uploaded
+   ot publish             # upload, and wait for validation
+   ot publish --wait      # wait until it is published, rejected or held for review
+   ```
+
+`ot publish` validates the manifest first and uploads nothing if it has problems. Problems found by the registry exit 2; a release a check refuses exits 1. It signs in with your `ot login` token, or `OTINSTALLER_TOKEN` in scripts (a token with the `publish` scope: `ot token create ci --scope publish`). Uploads are limited to 25 MB, 300 files and 20 an hour per namespace.
+
+**Signing.** A package published directly has no repository CI to sign it, so signing is optional. Unsigned packages are labelled as such, and agents (`ot mcp`) won't install an unsigned Docker image.
+
+To sign, use keyless cosign, for example `cosign sign <image>@<digest>` before you publish. The first version that is signed pins its signer. Every later version must be signed by the same identity: the same email or account, or the same CI workflow on any branch or tag. A later version without a signature is refused. Only keyless (Sigstore) signatures count.
+
+**Repositories later.** A package published directly can move to a repository: the first tag from a repository in the namespace claims it. From then on it is released from that repository, and uploads are refused with `manifest_name_taken`.
+
+**Owners are told.** Uploads skip the repository, so each one into a namespace that belongs to a GitHub or GitLab account emails the namespace's owners.
+
+## What the registry does with a release
+
+1. **Validation**, within a minute: the manifest, the files it names, the image or wheel. A tagged commit gets an `otinstaller/publish` status, *Validating*, then either *Valid* or a failure naming the [error code](/docs/errors); `ot publish` prints the same.
 2. **Checks**: tools are scanned (signature, vulnerabilities, malware heuristics, embedded secrets, a smoke test with the test input and no network). Guides get [content checks](/docs/guides) instead.
 3. **Review**, for a new publisher only: a reviewer looks at your first release, usually within 3 business days. Later releases go live as soon as their checks pass.
-4. **Published**: the commit status turns green, you get an email, and `ot install` works.
+4. **Published**: a tagged commit's status turns green, you get an email, and `ot install` works.
 
-Your [dashboard](/dashboard) shows every release and why any failed.
+Your [dashboard](/dashboard) shows every release, how it came in, and why any failed.
 
 ## Your publisher profile
 
@@ -60,9 +105,9 @@ From the terminal: `ot profile` shows yours, `ot profile --sync` refreshes it, a
 
 ## Versions
 
-- Versions are immutable. A rejected version can be tagged again after you fix it; a published one cannot change.
+- Versions are immutable. A rejected version can be tagged or uploaded again after you fix it; a published one cannot change.
 - `@latest` is the highest version that is not a prerelease or yanked.
-- `ot sync <ns/name>` checks your repository for missed tags right away; the registry also polls every 6 hours.
+- `ot sync <ns/name>` checks your repository for missed tags right away; the registry also polls every 6 hours. Packages published directly have nothing to sync.
 
 ## Backups
 
@@ -70,7 +115,7 @@ The registry keeps its own copy of every published package, so a mistaken ban or
 
 - **Images**: after the scan passes, the image is copied with its signatures to `mirror.otinstaller.com/<namespace>/<name>`, with the same digest. If `ot` cannot pull an image by digest from its registry (403, 404, "denied"), it pulls the same digest from the mirror and cosign verifies the same signature.
 - **Wheels**: the verified wheel is kept by the registry; if PyPI no longer serves it, `ot` uses the copy, with the same SHA-256 check.
-- **Your repository**: a git bundle of all branches and tags at every release and every week. The last 4 weekly bundles and every release bundle are kept.
+- **Your repository**: a git bundle of all branches and tags at every release and every week. The last 4 weekly bundles and every release bundle are kept. A package published directly has no repository to bundle; its image or wheel is still backed up.
 
 The rules: only public repositories of published packages are backed up. Bundles over 500 MB and images over 2 GB are skipped (you get an email; the rest is still backed up). Mirrors are public only for OSI-approved licenses; other packages are kept privately, for your restores. When a package is removed for policy or legal reasons, including DMCA requests, its backups are deleted 14 days later unless a legal hold applies. You can turn off git backups from the dashboard; images and wheels stay mirrored because installs depend on them.
 

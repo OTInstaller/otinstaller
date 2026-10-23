@@ -77,12 +77,12 @@ export default function PackageDetail({ refName, back }: { refName: string; back
           <dt>Status</dt><dd><Status value={tool.status} />{tool.deprecated_message && <span class="small muted"> · {tool.deprecated_message}{tool.deprecated_replacement && <> → <a href={`/${tool.deprecated_replacement}`}>{tool.deprecated_replacement}</a></>}</span>}</dd>
           <dt>Latest</dt><dd>v{tool.latest_version}</dd>
           <dt>Health</dt><dd>{tool.kind === "guide" ? "—" : tool.health === "healthy" ? <span class="status ok">nightly check passing</span> : tool.health === "broken" ? <span class="status warn">possibly broken: three nightly checks failed</span> : <span class="status none">not checked{tool.manifest.test ? "" : " (no test input in the manifest)"}</span>}</dd>
-          <dt>Source</dt><dd>{log === undefined ? "…" : log === null ? <span class="muted">no source record</span> : <><a href={log.source.url}>{log.source.url.replace(/^https?:\/\//, "")}</a> · <Status value={log.source.sync_status} />{log.source.last_error && <div class="small muted">{log.source.last_error}</div>}</>}</dd>
+          <dt>Source</dt><dd>{log === undefined ? "…" : log === null ? <span class="muted">{tool.repo_url ? "no source record" : "none: published directly with ot publish"}</span> : <><a href={log.source.url}>{log.source.url.replace(/^https?:\/\//, "")}</a> · <Status value={log.source.sync_status} />{log.source.last_error && <div class="small muted">{log.source.last_error}</div>}</>}</dd>
           {log && <><dt>Last event</dt><dd>{when(log.source.last_event_at)} · polled {when(log.source.last_poll_at)}</dd></>}
           {tool.manifest_held_by_registry && <><dt>Manifest</dt><dd>held by the registry (releases are unsigned until it moves into the repository)</dd></>}
         </dl>
         <p class="row">
-          <button class="btn" type="button" disabled={busy} onClick={syncNow}>Sync now</button>
+          {log && <button class="btn" type="button" disabled={busy} onClick={syncNow}>Sync now</button>}
           {tool.manifest_held_by_registry && <button class="btn" type="button" disabled={busy} onClick={movePr}>Move the manifest into the repository (pull request)</button>}
           {log && log.events.length > 0 && <button class="btn btn-ghost btn-sm" type="button" onClick={() => setShowLog(!showLog)} aria-expanded={showLog}>{showLog ? "Hide" : "Show"} sync log ({log.events.length})</button>}
         </p>

@@ -14,7 +14,11 @@ const CATEGORIES = ["malware", "policy", "impersonation", "license", "legal", "o
 
 interface Scan { kind: string; result: string; summary: any }
 interface QueueVersion { version_id: string; ref: string; version: string; repo_url: string | null; summary: string; license: string; ethics: Record<string, boolean> | null; kind: string; scan_status: string; signed?: boolean; scans: Scan[] }
-interface QueueNs { namespace: string; provider: string; members: string[]; profile_url: string | null; waiting_since: number; previous_notes: string | null; versions: QueueVersion[] }
+interface QueueNs {
+  namespace: string; provider: string; members: string[]; profile_url: string | null; waiting_since: number; previous_notes: string | null; versions: QueueVersion[];
+  // Registry namespaces (made with ot namespace create) have no host account: who made them, and how they sign in.
+  creator?: { login: string; accounts: { provider: string; login: string }[] };
+}
 interface Queue { queue: QueueNs[]; content_review: QueueVersion[] }
 interface Report { id: string; ref: string; version: string | null; reason: string; details: string; status: string; action: string | null; reporter: string | null; created_at: number; resolution_note: string | null }
 interface Transfer { id: string; kind: string; status: string; ref: string; from: string; to: string; requested_by: string; verification?: string; upstream_url?: string }
@@ -270,6 +274,7 @@ function PublisherCard({ n, reload, notify, onError }: { n: QueueNs; reload: () 
           <p class="small muted">
             {n.provider} · {n.members.length ? `members ${n.members.join(", ")}` : "no members yet"} · waiting <Ago ms={n.waiting_since} />
             {n.profile_url && <> · <a href={n.profile_url} rel="nofollow noopener">profile</a></>}
+            {n.creator && <> · created by {n.creator.login}{n.creator.accounts.length ? ` (${n.creator.accounts.map((a) => `${a.provider}: ${a.login}`).join(", ")})` : " (no linked accounts)"}</>}
           </p>
         </div>
         <div class="row admin-card-actions">

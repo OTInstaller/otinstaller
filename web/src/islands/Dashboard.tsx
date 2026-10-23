@@ -7,8 +7,11 @@ import Backups from "./Backups";
 
 interface Job {
   id: string;
+  // tag: a vX.Y.Z tag on GitHub or GitLab; ci: an upload from a trusted workflow; direct: an upload with `ot publish`.
+  method: "tag" | "ci" | "direct";
   repo: string;
   tag: string;
+  ref: string | null;
   status: string;
   error_code: string | null;
   problems: { code: string; path?: string; message: string; hint?: string }[];
@@ -40,6 +43,8 @@ export default function Dashboard({ back }: { back: string }) {
   const [newToken, setNewToken] = useState<string | null>(null);
   const [tokenName, setTokenName] = useState("");
   const [revoking, setRevoking] = useState<string | null>(null);
+  const [nsName, setNsName] = useState("");
+  const [nsError, setNsError] = useState<unknown>(null);
   const loadTokens = () => api<{ tokens: Token[] }>("/me/tokens").then((r) => setTokens(r.tokens), setError);
   useEffect(() => {
     if (!me) return;
@@ -62,6 +67,17 @@ export default function Dashboard({ back }: { back: string }) {
       loadTokens();
     } catch (err) {
       setError(err);
+    }
+  }
+  async function createNamespace(e: Event) {
+    e.preventDefault();
+    setNsError(null);
+    try {
+      await api("/namespaces", { method: "POST", body: JSON.stringify({ name: nsName.trim().toLowerCase() }) });
+      // The new namespace comes back with /me.
+      window.location.reload();
+    } catch (err) {
+      setNsError(err);
     }
   }
   async function revoke(id: string) {
@@ -106,7 +122,7 @@ export default function Dashboard({ back }: { back: string }) {
       <section aria-labelledby="pk">
         <div class="section-head"><h2 id="pk">Packages</h2><a class="btn btn-strong btn-sm" href="/import">Import a repository</a></div>
         {pkgs === null ? <Loading what="packages" /> : pkgs.length === 0 ? (
-          <p class="muted">None yet. <a href="/import">Import a repository</a>, or push a <code>vX.Y.Z</code> tag on a repository that has <code>otinstaller.yaml</code> and the GitHub App.</p>
+          <p class="muted">None yet. <a href="/import">Import a repository</a>, push a <code>vX.Y.Z</code> tag on a repository that has <code>otinstaller.yaml</code> and the GitHub App, or <a href="/docs/publishing#publish-directly">publish directly</a> with <code>ot publish</code>.</p>
         ) : (
           <div class="table-wrap">
             <table class="data">
@@ -135,7 +151,7 @@ export default function Dashboard({ back }: { back: string }) {
 
       <section aria-labelledby="ns">
         <h2 id="ns">Namespaces and profiles</h2>
-        {me.namespaces.length === 0 ? <p class="muted">None yet; importing a repository creates one.</p> : (
+        {me.namespaces.length === 0 ? <p class="muted">None yet. Importing a repository creates one, or create one below to publish directly.</p> : (
           <ul class="list-plain">
             {me.namespaces.map((n) => (
               <li class="row">
@@ -145,19 +161,26 @@ export default function Dashboard({ back }: { back: string }) {
             ))}
           </ul>
         )}
-        <p class="small muted">Each namespace has a public profile, synced from GitHub or GitLab. Owners can change any detail, pin packages and write an About section.</p>
+        <p class="small muted">Each namespace has a public profile, synced from GitHub or GitLab when it has an account there. Owners can change any detail, pin packages and write an About section.</p>
+        <form class="row" onSubmit={createNamespace}>
+          <label for="nsname">New namespace</label>
+          <input id="nsname" type="text" value={nsName} onInput={(e) => setNsName((e.target as HTMLInputElement).value)} placeholder="acme-osint" minLength={3} maxLength={40} pattern="[a-z0-9][a-z0-9-]{1,38}[a-z0-9]" required />
+          <button class="btn" type="submit">Create</button>
+        </form>
+        <p class="small muted">For publishing without GitHub or GitLab: create it here or with <code>ot namespace create</code>, then release into it with <code>ot publish</code>. A GitHub or GitLab user's name needs that account linked; at most three per account.</p>
+        <ErrorNote error={nsError} />
       </section>
 
       <section aria-labelledby="jobs">
         <h2 id="jobs">Publish history</h2>
-        {jobs === null ? <Loading what="publish jobs" /> : jobs.length === 0 ? <p class="muted">No releases yet. Push a <code>vX.Y.Z</code> tag to publish.</p> : (
+        {jobs === null ? <Loading what="publish jobs" /> : jobs.length === 0 ? <p class="muted">No releases yet. Push a <code>vX.Y.Z</code> tag, or run <code>ot publish</code>.</p> : (
           <div class="table-wrap">
             <table class="data">
-              <thead><tr><th scope="col">Repository</th><th scope="col">Tag</th><th scope="col">Status</th><th scope="col">When</th><th scope="col">Problem</th></tr></thead>
+              <thead><tr><th scope="col">From</th><th scope="col">Tag</th><th scope="col">Status</th><th scope="col">When</th><th scope="col">Problem</th></tr></thead>
               <tbody>
                 {jobs.map((j) => (
                   <tr id={j.id}>
-                    <td>{j.repo}</td>
+                    <td>{j.method === "direct" ? <>{j.ref ?? j.repo} <span class="small muted">· uploaded</span></> : j.repo}</td>
                     <td><a href={`/dashboard/publish/${j.id}`}><code>{j.tag}</code></a></td>
                     <td><Status value={j.status} /></td>
                     <td>{when(j.created_at)}</td>
@@ -170,7 +193,6 @@ export default function Dashboard({ back }: { back: string }) {
             </table>
           </div>
         )}
-        <p class="small muted">GitLab releases are not listed here yet; their state is on each package's page.</p>
       </section>
 
       <Backups />
