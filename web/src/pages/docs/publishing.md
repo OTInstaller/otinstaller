@@ -1,15 +1,15 @@
 ---
 layout: ../../layouts/Docs.astro
 title: Publishing
-description: How a release, tagged on GitHub or GitLab or uploaded with ot publish, becomes a published package on the registry.
+description: How a release, tagged on GitHub or GitLab, uploaded from their CI as a trusted publisher, or uploaded with ot publish, becomes a published package on the registry.
 ---
 
 Every package has an `otinstaller.yaml` manifest. You release it in one of three ways:
 
 | From | How | When it fits |
 | --- | --- | --- |
-| GitHub | the OTInstaller GitHub App and a `vX.Y.Z` tag | the tool lives in a GitHub repository |
-| GitLab | a connected project and a `vX.Y.Z` tag | the tool lives in a GitLab project |
+| GitHub | the OTInstaller GitHub App and a `vX.Y.Z` tag, or the release workflow as a [trusted publisher](#publish-from-ci) | the tool lives in a GitHub repository |
+| GitLab | a connected project and a `vX.Y.Z` tag, or the release pipeline as a [trusted publisher](#publish-from-ci) | the tool lives in a GitLab project |
 | Directly | `ot publish` from your computer | there is no repository, or you would rather not connect one |
 
 Whichever way a release comes in, the registry checks it the same way ([below](#what-the-registry-does-with-a-release)).
@@ -37,6 +37,36 @@ ot release 1.2.0
 
 It sets `version`, checks the guide as the registry will, commits, and pushes the commit and the tag `v1.2.0` together. It takes a few seconds and needs no CI run. The workflow `ot init --guide` writes does the same from the Actions tab if you prefer; you can also delete it.
 
+## Publish from CI
+
+The release workflow can publish its release itself, with no GitHub App, GitLab connection or stored token. This is trusted publishing: the workflow runs `ot publish --oidc`, and the CI's OIDC ID token proves which repository and workflow it runs in.
+
+1. **Trust the repository** from a namespace you own, on the [dashboard](/dashboard#tp) or with:
+
+   ```
+   ot namespace trust acme-osint github:acme/whois-plus --workflow otinstaller-release.yml
+   ot namespace trust acme-osint gitlab:acme/whois-plus
+   ```
+
+   - `--workflow` limits it to one workflow file (on GitLab, the CI configuration's path), `--environment` to jobs in one deployment environment, and `--package` to one package.
+   - The repository must be public.
+   - The first run pins the repository's id and its owner's, so a repository that is deleted and created again under the same name can't publish.
+   - `ot namespace trusted acme-osint` lists them; `ot namespace untrust acme-osint <id>` removes one.
+2. **Turn on the step.** The release workflow `ot init` writes ends with a step that runs `ot publish --oidc` when the variable `OTINSTALLER_PUBLISH` is `oidc`.
+   - On GitHub, set it as a repository variable (Settings → Secrets and variables → Actions → Variables). The job needs `permissions: id-token: write`, which the template has.
+   - On GitLab, set it as a CI/CD variable. The job needs `id_tokens: {OTINSTALLER_ID_TOKEN: {aud: otinstaller}}`, which the template has.
+3. **Run the workflow** as usual. It builds, signs and tags the release, then uploads it.
+
+What happens next:
+
+- **A short-lived token.** The run trades its ID token for a registry token. It lasts an hour and only publishes that package into that namespace.
+  - It acts for the owner who added the trusted publisher. If they leave the namespace, another owner must add it again.
+  - Each ID token is exchanged once.
+- **The repository owns the release**, as with a tag. The package's name belongs to the repository, links in its pages point to the tag, and its image must be signed by the repository's own workflow.
+- **With the App as well**, whichever arrives first wins. The other is recognised as the same release, and `ot publish` follows the App's job.
+- **Risky triggers.** Runs triggered by `pull_request_target`, or by merge-request pipelines, publish only through a publisher that requires an environment.
+- **No token needed.** In CI, `ot publish` uses `--oidc` by itself when no token is set.
+
 ## Publish directly
 
 `ot publish` uploads a release from your computer: the manifest, its README and pages, and the images they show. It needs no repository, GitHub App or GitLab connection.
@@ -63,7 +93,7 @@ It sets `version`, checks the guide as the registry will, commits, and pushes th
    ot publish --wait      # wait until it is published, rejected or held for review
    ```
 
-`ot publish` validates the manifest first and uploads nothing if it has problems. Problems found by the registry exit 2; a release a check refuses exits 1. It signs in with your `ot login` token, or `OTINSTALLER_TOKEN` in scripts (a token with the `publish` scope: `ot token create ci --scope publish`). Uploads are limited to 25 MB, 300 files and 20 an hour per namespace.
+`ot publish` validates the manifest first and uploads nothing if it has problems. Problems found by the registry exit 2; a release a check refuses exits 1. It signs in with your `ot login` token, or `OTINSTALLER_TOKEN` in scripts (a token with the `publish` scope: `ot token create ci --scope publish`). In GitHub Actions and GitLab CI, a [trusted publisher](#publish-from-ci) needs no token. Uploads are limited to 25 MB, 300 files and 20 an hour per namespace.
 
 ### Host the image on the registry
 
@@ -89,7 +119,7 @@ ot publish --build --sign                   # and sign it with cosign (keyless)
 
 To sign, use `ot publish --sign` with an image `ot publish` pushes, or keyless cosign yourself (`cosign sign <image>@<digest>`) before you publish. The first version that is signed pins its signer. Every later version must be signed by the same identity: the same email or account, or the same CI workflow on any branch or tag. A later version without a signature is refused. Only keyless (Sigstore) signatures count.
 
-**Repositories later.** A package published directly can move to a repository: the first tag from a repository in the namespace claims it. From then on it is released from that repository, and uploads are refused with `manifest_name_taken`.
+**Repositories later.** A package published directly can move to a repository: the first tag, or trusted CI upload, from a repository in the namespace claims it. From then on it is released from that repository, and uploads are refused with `manifest_name_taken`.
 
 **Owners are told.** Uploads skip the repository, so each one into a namespace that belongs to a GitHub or GitLab account emails the namespace's owners.
 

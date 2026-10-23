@@ -1,5 +1,6 @@
-// /dashboard/publish/{jobId}: one publish job (a tag or an upload) as a timeline (validate → scan → review → publish),
-// with every problem and its fix. The commit status "Details" link on a tag, and `ot publish`, point here.
+// /dashboard/publish/{jobId}: one publish job (a tag, an upload from CI or a direct upload) as a timeline (validate →
+// scan → review → publish), with the CI run it came from and every problem and its fix. The commit status "Details"
+// link on a tag, and `ot publish`, point here.
 import { useEffect, useState } from "preact/hooks";
 import { api, ApiError } from "../lib/api";
 import { ErrorNote, Loading, SignIn, Status, useMe, when } from "./shared";
@@ -15,8 +16,19 @@ interface Job {
   error_code: string | null;
   error_detail: string | null;
   problems: { code: string; path?: string; message: string; hint?: string }[];
+  // The CI run an upload came from (trusted publishing).
+  ci: { workflow: string; ref: string; sha: string; run: string } | null;
+  provider: string;
+  commit_sha: string | null;
   created_at: number;
   updated_at: number;
+}
+
+/** A link to the CI run, where the host's URLs allow one. */
+function runUrl(job: Job): string | null {
+  const [id] = (job.ci?.run ?? "").split("/");
+  if (!id) return null;
+  return job.provider === "github" ? `https://github.com/${job.repo}/actions/runs/${id}` : `https://gitlab.com/${job.repo}/-/pipelines/${id}`;
 }
 
 const STAGES = [
@@ -41,7 +53,8 @@ export default function JobView({ jobId, back }: { jobId: string; back: string }
   if (job === null) return <p class="notice">No publish job {jobId} in your namespaces. <a href="/dashboard">Back to the dashboard</a>.</p>;
 
   const uploaded = job.method !== "tag";
-  const again = job.method === "direct" ? "run ot publish again" : "push a new tag";
+  const again = job.method === "direct" ? "run ot publish again" : job.method === "ci" ? "run the release workflow again" : "push a new tag";
+  const run = runUrl(job);
   const failed = ["error", "rejected", "failed"].includes(job.status);
   const stageIndex = job.status === "queued" ? -1 : Math.max(0, STAGES.findIndex((s) => s.key === job.status));
   const reached = (i: number) => (job.status === "published" ? true : failed ? i <= stageIndex : i < stageIndex);
@@ -53,6 +66,16 @@ export default function JobView({ jobId, back }: { jobId: string; back: string }
         {job.method === "direct"
           ? <><dt>Package</dt><dd>{job.ref ?? job.repo}</dd><dt>From</dt><dd>an upload with <code>ot publish</code></dd></>
           : <><dt>Repository</dt><dd>{job.repo}</dd></>}
+        {job.ci && (
+          <>
+            <dt>From</dt>
+            <dd>
+              {job.provider === "github" ? "GitHub Actions" : "GitLab CI"}, <code>{job.ci.workflow}</code> on <code>{job.ci.ref.replace(/^refs\/(heads|tags)\//, "")}</code>
+              {run && <> (<a href={run} rel="nofollow noopener">run {job.ci.run.split("/")[0]}</a>)</>}
+            </dd>
+            <dt>Commit</dt><dd><code>{(job.commit_sha ?? job.ci.sha).slice(0, 12)}</code>{!job.commit_sha && <span class="small muted"> (the run's commit, before the release commit)</span>}</dd>
+          </>
+        )}
         <dt>{uploaded ? "Version" : "Tag"}</dt><dd><code>{uploaded ? job.version ?? job.tag.replace(/^v/, "") : job.tag}</code></dd>
         <dt>Status</dt><dd><Status value={job.status} /></dd>
         <dt>Started</dt><dd>{when(job.created_at)} · updated {when(job.updated_at)}</dd>
@@ -73,7 +96,7 @@ export default function JobView({ jobId, back }: { jobId: string; back: string }
             {job.problems.length === 0 && job.error_code && <li><a href={`/docs/errors#${job.error_code}`}><code>{job.error_code}</code></a>{job.error_detail && <>: {job.error_detail}</>}</li>}
           </ul>
           {job.problems.length === 0 && job.error_code === "internal_error"
-            ? <p class="small">Something failed on the registry's side; there is nothing to fix in your {job.method === "direct" ? "package" : "repository"}. {job.method === "direct" ? "Run ot publish again" : "Push the tag again (delete and recreate it, or tag the next version)"}; if it keeps failing, write to <a href="mailto:support@otinstaller.com">support@otinstaller.com</a> with this page's address.</p>
+            ? <p class="small">Something failed on the registry's side; there is nothing to fix in your {job.method === "direct" ? "package" : "repository"}. {job.method === "direct" ? "Run ot publish again" : job.method === "ci" ? "Run the release workflow again" : "Push the tag again (delete and recreate it, or tag the next version)"}; if it keeps failing, write to <a href="mailto:support@otinstaller.com">support@otinstaller.com</a> with this page's address.</p>
             : <p class="small">Fix it, then {again}. The <a href="/docs/errors">error codes</a> page explains each code.</p>}
         </section>
       )}
