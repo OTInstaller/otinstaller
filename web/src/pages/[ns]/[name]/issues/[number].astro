@@ -1,0 +1,125 @@
+---
+// One issue: what was reported, on which version and platform, and the replies, server-rendered for everyone. The
+// island below adds what a signed-in person can do (reply, me too, follow, triage), and a bundled script handles
+// flagging a post. Pages stay out of search results until a maintainer has answered or the issue is settled.
+import Base from "../../../../layouts/Base.astro";
+import ToolHeader from "../../../../components/ToolHeader.astro";
+import IssueThread from "../../../../islands/IssueThread";
+import FlagChoices from "../../../../components/FlagChoices.astro";
+import { apiOrNull, type IssueThread as Thread } from "../../../../lib/api";
+import { formatDate } from "../../../../lib/format";
+import { demoteHeadings } from "../../../../lib/html";
+import { issueHref, KIND_LABEL, STATUS_LABEL, STATUS_TONE } from "../../../../lib/community";
+import { loadTool } from "../../../../lib/tool";
+import { cacheFor } from "../../../../lib/page";
+
+const loaded = await loadTool(Astro, `/issues/${Astro.params.number}`);
+if ("response" in loaded) return loaded.response;
+const { tool: t, hasDocs } = loaded;
+const ref = `${t.namespace}/${t.name}`;
+const number = Number(Astro.params.number);
+const thread = Number.isInteger(number) && number > 0 ? await apiOrNull<Thread>(`/tools/${ref}/issues/${number}`) : null;
+if (!thread) return Astro.rewrite("/404");
+const i = thread.issue;
+cacheFor(Astro, 60);
+const roleLabel = { maintainer: "Maintainer", triager: "Triager", staff: "Staff" } as const;
+const facts = [
+  i.version && ["Version", i.version],
+  i.platform && ["Platform", i.platform],
+  i.engine && ["Engine", i.engine],
+  i.exit_code !== null && ["Exit code", String(i.exit_code)],
+  i.fixed_in && ["Fixed in", i.fixed_in],
+].filter(Boolean) as [string, string][];
+---
+<Base title={`${i.title} · ${ref} #${i.number}`} description={`${KIND_LABEL[i.kind]} issue on ${ref}: ${i.title}`} noindex={!i.indexable} jsonHref={`https://api.otinstaller.com/v1/tools/${ref}/issues/${i.number}`}>
+  <ToolHeader tool={t} active="issues" hasDocs={hasDocs} />
+  <p class="small back"><a href={`/${ref}/issues`}>← All issues</a></p>
+
+  <article class="issue">
+    <header>
+      <h2 class="title">{i.title} <span class="num">#{i.number}</span></h2>
+      <p class="tags">
+        <span class={`badge ${STATUS_TONE[i.status]}`}>{STATUS_LABEL[i.status]}</span>
+        <span class="badge plain">{KIND_LABEL[i.kind]}</span>
+        {i.locked && <span class="badge plain">Locked</span>}
+        {i.me_too > 0 && <span class="small muted">{i.me_too} {i.me_too === 1 ? "person has" : "people have"} the same problem</span>}
+      </p>
+      {i.status === "duplicate" && i.duplicate_of && <p class="notice small">Duplicate of <a href={issueHref(ref, i.duplicate_of)}>#{i.duplicate_of}</a>.</p>}
+    </header>
+
+    <div class="post">
+      <p class="small muted who">{i.author.system ? <b>The registry</b> : <b>{i.author.handle}</b>} opened this on {formatDate(i.created_at)}{i.edited_at && " (edited)"}</p>
+      {facts.length > 0 && <dl class="facts small">{facts.map(([k, v]) => <><dt>{k}</dt><dd><code>{v}</code></dd></>)}</dl>}
+      {i.deleted ? <p class="muted">The author withdrew this issue.</p> : <div class="prose body"><Fragment set:html={demoteHeadings(i.body_html)} /></div>}
+      {!i.author.system && !i.deleted && (
+        <details class="flag small" data-flag-target={`issue:${i.id}`}>
+          <summary>Flag</summary>
+          <FlagChoices />
+        </details>
+      )}
+    </div>
+
+    <ol class="comments">
+      {thread.comments.map((c) => (
+        <li class:list={["post", { system: c.author.system }]} id={`c-${c.id}`}>
+          <p class="small muted who">
+            {c.author.system ? <b>The registry</b> : <b>{c.author.handle}</b>}
+            {c.role && <span class="badge plain role">{roleLabel[c.role]}</span>}
+            {" "}on {formatDate(c.created_at)}{c.edited_at && " (edited)"}
+          </p>
+          <div class="prose body"><Fragment set:html={demoteHeadings(c.body_html)} /></div>
+          {!c.author.system && (
+            <details class="flag small" data-flag-target={`comment:${c.id}`}>
+              <summary>Flag</summary>
+              <FlagChoices />
+            </details>
+          )}
+        </li>
+      ))}
+    </ol>
+  </article>
+
+  <IssueThread client:load refName={ref} number={i.number} kind={i.kind} status={i.status} locked={i.locked} version={i.version ?? t.latest_version}
+    back={`${Astro.site}${ref}/issues/${i.number}`} />
+</Base>
+
+<script>
+  // Flagging a post for a moderator: signed-in people only; the API answers 401 otherwise.
+  import { api, ApiError } from "../../../../lib/api";
+  for (const box of document.querySelectorAll<HTMLDetailsElement>("[data-flag-target]")) {
+    box.addEventListener("click", async (ev) => {
+      const button = (ev.target as Element).closest<HTMLButtonElement>("button[data-reason]");
+      if (!button) return;
+      const [kind, id] = box.dataset.flagTarget!.split(":");
+      const out = box.querySelector<HTMLElement>("[data-flag-out]")!;
+      button.disabled = true;
+      try {
+        await api("/flags", { method: "POST", body: JSON.stringify({ target_kind: kind, target_id: id, reason: button.dataset.reason }) });
+        out.textContent = "Thanks. A moderator will look at it.";
+      } catch (e) {
+        out.textContent = e instanceof ApiError && e.status === 401 ? "Sign in to flag posts." : e instanceof Error ? e.message : "That didn't work.";
+        button.disabled = false;
+      }
+    });
+  }
+</script>
+
+<style>
+  .back { margin: 0 0 12px; }
+  .issue { max-width: 820px; }
+  .title { margin: 0; font-size: var(--fs-5); overflow-wrap: anywhere; }
+  .num { color: var(--text-faint); font-weight: 400; }
+  .tags { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0 16px; }
+  .post { border: 1px solid var(--border); padding: 14px 16px; margin: 0 0 12px; background: var(--bg-raised); }
+  .post.system { background: var(--bg-subtle); }
+  .who { margin: 0 0 8px; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+  .role { font-size: var(--fs-0); }
+  .facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0 0 10px; }
+  .facts dt { color: var(--text-muted); }
+  .facts dd { margin: 0; }
+  .body { overflow-wrap: anywhere; }
+  .body :global(> :last-child) { margin-bottom: 0; }
+  .comments { list-style: none; margin: 0; padding: 0; }
+  .flag { margin-top: 8px; color: var(--text-muted); }
+  .flag summary { cursor: pointer; }
+</style>

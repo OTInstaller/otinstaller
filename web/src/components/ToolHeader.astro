@@ -5,7 +5,7 @@ import type { ToolDetail } from "../lib/api";
 
 interface Props {
   tool: ToolDetail;
-  active: "overview" | "docs" | "versions" | "security";
+  active: "overview" | "docs" | "versions" | "security" | "issues";
   hasDocs: boolean;
 }
 const { tool: t, active, hasDocs } = Astro.props;
@@ -15,6 +15,7 @@ const tabs = [
   { key: "security", href: `/${ref}/security`, label: "Security" },
   { key: "versions", href: `/${ref}/versions`, label: "Versions" },
   ...(hasDocs ? [{ key: "docs", href: `/${ref}/docs`, label: "Docs" }] : []),
+  { key: "issues", href: `/${ref}/issues`, label: t.community?.open_broken ? `Issues (${t.community.open_broken} broken)` : "Issues" },
 ];
 // A wrapper's homepage is the project it wraps. When it is the package's own repository there is nothing to credit
 // or claim, whatever the flag says (older rows were flagged by namespace alone).

@@ -89,6 +89,8 @@ Every public page type, what it emits, and whether it is meant to be indexed. "C
 | `/agents` | AI agents | Connecting an AI client, consent, no Docker on the agent side | none | yes | 1 h |
 | `/otlite`, `/otlite/tools` | otlite / otlite tools | What otlite is; all N tools by what they take | none | yes | 1 h |
 | `/otlite/tools/{name}` | {display name} with otlite: {first sentence, cut to fit about 60} | First sentence; install and run on Linux or macOS, no Docker; what it takes; keys or no key | `SoftwareApplication` (version, licence, repository, requirements, keywords), `BreadcrumbList` | yes | 1 h |
+| `/community` | Community | What needs a hand: broken, outdated and wrong-information issues | none | yes (view and `?before=` forms `noindex`, filter links `nofollow`) | 2 min |
+| `/{ns}/{name}/issues`, `/{ns}/{name}/issues/{n}` | {ref} issues / {title} · {ref} #{n} | The issue's kind and title | none | only once a maintainer answered or the issue was confirmed or fixed (`indexable` from the API); filter links `nofollow`; not in the sitemap | 1 min |
 | `/feedback`, `/import`, `/dashboard…`, `/settings…`, `/admin…`, `/transfers/…`, claim and report pages, 404, 410, 500 | — | — | — | `noindex` | — |
 
 Every docs, policy, tool and guide page also has a Markdown twin (`.md` suffix or `Accept: text/markdown`) announced
@@ -108,7 +110,8 @@ Tool titles put the name first, then the summary cut at a word; landing-page tit
 - **No FAQ rich-result markup outside `/docs/faq`.** The input landing pages show their questions and answers in the
   page, but Google only shows FAQ rich results for government and health sites now, and marking up marketing copy as
   FAQ is the kind of thing that gets a site a manual action. The FAQ doc is a real FAQ.
-- **No ratings, review counts or "aggregateRating".** The registry does not collect them.
+- **No ratings, review counts or "aggregateRating".** The registry does not collect them. "Works for me" answers are
+  factual counts by version and platform, shown in words in the status line, never as a score or rating markup.
 - **No blog or changelog.** The release notes on `OTInstaller/ot` and the guides are the content that can be kept
   current; a blog that goes quiet after launch hurts more than it helps. If a changelog is wanted later, generate it
   from the `ot` releases rather than writing it by hand.

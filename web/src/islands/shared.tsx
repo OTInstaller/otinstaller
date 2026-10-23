@@ -5,8 +5,12 @@ import { hintParts } from "../lib/format";
 
 export interface Me {
   login: string;
+  /** The public name on issues and comments; older API answers omit it. */
+  handle?: string;
   admin: boolean;
   reviewer: boolean;
+  /** triager and reviewer roles staff granted (staff hold both); older API answers omit it. */
+  community_roles?: ("triager" | "reviewer")[];
   accounts: { provider: "github" | "gitlab" | "osintverse"; login: string }[];
   namespaces: { name: string; status: string; verified: number; role: string }[];
 }

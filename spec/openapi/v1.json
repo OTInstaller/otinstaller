@@ -2407,6 +2407,91 @@
         "security": []
       }
     },
+    "/tools/{ns}/{name}/status": {
+      "get": {
+        "operationId": "get_package_status",
+        "tags": [
+          "Community"
+        ],
+        "summary": "How a package is doing: health check, confirmations and open issues",
+        "description": "One line built from facts (the nightly health check, what signed-in people said about the latest version in the last 30 days, open broken issues), plus the last 30 health checks with their failure class. Error excerpts are never included. Cached for 5 minutes.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "line": {
+                      "type": "object",
+                      "properties": {
+                        "state": {
+                          "enum": [
+                            "working",
+                            "mixed",
+                            "failing",
+                            "unknown"
+                          ]
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "health": {
+                      "type": "object"
+                    },
+                    "confirmations": {
+                      "type": "object"
+                    },
+                    "issues": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error"
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          }
+        ],
+        "security": []
+      }
+    },
     "/tools/{ns}/{name}/issues": {
       "get": {
         "operationId": "list_issues",
