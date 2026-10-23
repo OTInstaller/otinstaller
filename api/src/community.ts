@@ -130,7 +130,8 @@ export function renderPost(md: string, linksAsText = false): string {
   const html = imagesToAlt(r.html);
   return linksAsText
     ? html.replace(LINK, (_: string, href: string, text: string) => (href.startsWith("#") || text === href ? text : `${text} (${href})`))
-    : html.replace(/<a href="(https?:[^"]*)"/g, '<a rel="nofollow ugc noopener" href="$1"');
+    // The page renderer already marks external links nofollow; posts are user content too, and one rel attribute holds both.
+    : html.replace(/<a href="(https?:[^"]*)"((?:\s+(?!rel=)[a-z-]+="[^"]*")*)(?:\s+rel="[^"]*")?/g, '<a href="$1"$2 rel="nofollow ugc noopener noreferrer"');
 }
 
 /** Why a new post should wait for a moderator, or null to show it at once. */

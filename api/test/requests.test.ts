@@ -268,7 +268,7 @@ describe("the discussion", () => {
     expect(page.body.comments).toHaveLength(1);
     expect(page.body.comments[0]).toMatchObject({ id: posted.body.id, author: { handle: replier.handle }, role: null });
     // Links from established accounts render, marked as user content.
-    expect(page.body.comments[0].body_html).toContain('<a rel="nofollow ugc noopener" href="https://example.com/docs"');
+    expect(page.body.comments[0].body_html).toContain('<a href="https://example.com/docs" rel="nofollow ugc noopener noreferrer">');
     expect((await inbox(asker)).some((i) => i.kind === "comment" && i.summary.includes(`replied on the request`) && i.path === `/requests/${number}`)).toBe(true);
     expect((await req(replier, "GET", `/requests/${number}/viewer`)).body).toMatchObject({ subscribed: true, can_reply: true, editable_comments: [posted.body.id] });
 
