@@ -561,9 +561,26 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 
 #### `ot publish [path]`
 - File: `cli/publish.go`. Args: `MaximumNArgs(1)`, default `.` (a directory means its `otinstaller.yaml`).
-- Flags: `--wait` (bool): follow the job until `published`, `rejected`, `error` or `awaiting_review`; `--timeout`
-  (duration, default 5m, 90m with `--wait`); `--dry-run` (bool): validate and list the files, upload nothing (no sign-in
-  needed); `--json` (bool): print the final job.
+- Flags:
+  - `--wait` (bool): follow the job until `published`, `rejected`, `error` or `awaiting_review`.
+  - `--timeout` (duration, default 5m, 90m with `--wait`).
+  - `--dry-run` (bool): validate and list the files, upload nothing (no sign-in needed).
+  - `--json` (bool): print the final job.
+  - Image flags, mutually exclusive, for Docker tools only:
+    - `--image <ref>`: `docker save -o` or `podman save --format oci-archive -o`.
+    - `--image-archive <tar>`.
+    - `--build`: `docker buildx build --platform <--platform> --output type=oci,dest=…`; `--platform` defaults to
+      `linux/amd64`.
+  - `--sign` (bool, only with an image flag).
+- With an image flag, before the upload:
+  1. `oci.Read` unpacks the archive into a temp folder. Without linux/amd64 it exits 2 with `artifact_platform_missing`.
+  2. `oci.Registry.Push` sends it to `<OT_MIRROR_URL or https://mirror.otinstaller.com>/<ns>/<name>`, tagged
+     `<version>`. A `DENIED` from the mirror exits 2; other mirror errors exit 1.
+  3. The `  image:` line of the manifest file is rewritten to `<host>/<ns>/<name>@<digest>` (`imageLine`) and the
+     manifest is validated again.
+  4. `--sign` runs `cosign sign --yes [--allow-http-registry] <ref>` with `DOCKER_CONFIG` pointing at a temporary
+     `config.json` holding `ot:<token>` for the mirror host. A missing cosign exits 5; a failed sign exits 1 before
+     anything is uploaded.
 - Validates like `ot validate` (problems printed on stderr, exit 2, nothing uploaded), then `manifest.BundleFiles`
   picks the files (`cli/internal/manifest/bundle.go`). These are the manifest (always as `otinstaller.yaml`), the
   README and docs/content pages, and every PNG/JPEG/WebP/SVG of at most 2 MB under the folder, skipping dot folders,
@@ -792,6 +809,7 @@ Read by the CLI (`os.Getenv` calls in `cli/`, plus the keychain lookup):
 | `OT_HOME` | `state/state.go` `Home()` | ot's data directory | `%APPDATA%\ot` on Windows, else `~/.ot` |
 | `APPDATA` | `state/state.go` `Home()` | Windows only: base of the default data dir | if unset on Windows, `~/.ot` is used |
 | `OT_API_URL` | `state/state.go` `LoadConfig` | registry API base; overrides `config.json` `api_url` | `https://api.otinstaller.com/v1` |
+| `OT_MIRROR_URL` | `cli/publish.go` `mirrorURL` | the mirror `ot publish --image` pushes to (and whose host it pins); `http://` adds `--allow-http-registry` to `cosign sign` | `https://mirror.otinstaller.com` |
 | `OT_SITE_URL` | `state/state.go` `LoadConfig` | website base for `guide open`, `report` (form), `feedback` (form); overrides `site_url` | `https://otinstaller.com` |
 | `OT_NO_TELEMETRY` | `state/state.go` `LoadConfig` | any non-empty value (even `0`) disables the `POST /installs` ping; overrides `telemetry` | telemetry on |
 | `OT_RESULTS_DIR` | `results/results.go` `Dir` | results directory when `--results-dir` is not given (`~` expanded) | `./results` |
@@ -904,6 +922,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `results` | Saving runs (output, `.meta.json`, lazy `.stderr.txt`), `Dir`, `Sanitize`; `saved.go` reads them back for `extract` and `diff` |
 | `runner` | Engine detection, install (docker pull + cosign, mirror and wheel fallbacks, pipx native or sandbox image), run, container args, input resolution, typed inputs, command building, target type detection with embedded `tlds.txt` |
 | `scaffold` | Files `ot init` writes, git remote and kind detection, embedded release templates (`go generate` from `spec/templates`) |
+| `oci` | `ot publish --image`: `Read` unpacks an OCI layout or docker-archive tar (gzipping docker-archive layers, dropping index platforms whose blobs are missing); `Registry.Push` uploads blobs in `ChunkSize` (50 MiB) PATCHes with a token from the registry's `/token`, then platform manifests and the tag. Standard library only |
 | `selfupdate` | Release lookup (get.otinstaller.com, else the GitHub API), Ed25519-signed checksums, archive SHA-256, extraction, atomic replace |
 | `specfiles` | Embedded copies of `spec/schema/{envelope,run-all,error}-v1.json`, `spec/pivots.json` and `spec/types.json` (`go generate`) |
 | `state` | Data directory, `state.json` load/atomic save, read-only `config.json` with env overrides |
@@ -931,7 +950,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `cli/login_test.go` | Device-flow login (GitHub) and `--osintverse` |
 | `cli/release_test.go` | `ot release` with real git: happy path, refusals (dirty tree, existing tag), tools refused, `--no-push` |
 | `cli/sync_test.go` | `ot sync` and `--log` |
-| `cli/publish_test.go` | `ot publish` against a fake registry: the files uploaded (and the part names), the query, stopping after validation, `--wait` to the outcome, rejections with problems (exit 2) and by a check (exit 1, JSON code), `--dry-run` without a token, nothing uploaded for an invalid manifest; `ot namespace create` with `--org` and a taken name |
+| `cli/publish_test.go` | `ot publish` against a fake registry: the files uploaded (and the part names), the query, stopping after validation, `--wait` to the outcome, rejections with problems (exit 2) and by a check (exit 1, JSON code), `--dry-run` without a token, nothing uploaded for an invalid manifest; `--image-archive` pushing to a fake mirror and pinning `runtime.image` (uploaded and on disk), an arm64-only image refused, `--sign` alone refused, `--sign` running cosign with the token only in `DOCKER_CONFIG`; `ot namespace create` with `--org` and a taken name |
 | `cli/profile_test.go` | `ot profile`: show, `--set`/`--unset`, `--sync`, rate limit, `--json` |
 | `cli/trust_test.go` | report/claim/transfer against a fake registry, removed-package warnings and refusal, `self-update` with a signed fake release (through the GitHub API, and through `/ot/latest` with no downgrade), the newer-ot note in `ot outdated` (daily cache, and never for dev builds, agents, CI or `OT_NO_UPDATE_CHECK=1`) |
 | `cli/changelog_test.go` | `ot changelog` newest first without removed versions, only what's newer than the installed one, JSON, control characters stripped, a local manifest refused; `ot info`'s "What's new" |
@@ -951,6 +970,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `envelope/envelope_test.go` | `ParseOutput` per format; `Write` formats |
 | `manifest/validate_test.go` | Every valid fixture passes, every invalid fixture's first code, tag mismatch, file checks, embedded schema equals `spec/schema/v1.json` |
 | `manifest/seed_test.go` | Every `seed/*/*/otinstaller.yaml` validates with its files (at least 50) |
+| `oci/oci_test.go` | Reading a multi-platform layout, one missing a platform (index rewritten), an arm64-only image, a docker-archive (layers gzipped, entries that escape the folder skipped); pushing in chunks to a fake registry, skipping blobs it has, signing in again on an expired token, wrong credentials |
 | `manifest/bundle_test.go` | `BundleFiles`: the manifest uploaded as `otinstaller.yaml`, images under the folder (skipping dot and build folders and images over 2 MB), only referenced images when over the limit, a missing README |
 | `playbook/playbook_test.go` | Bundled playbooks, bundled tools exist in the seed (`TestBundledPlaybooksFitSeed`: each takes one of its playbook's input types and needs no key), later dirs win, parse errors, a broken file is an error |
 | `results/results_test.go` | `Sanitize`, `Dir` precedence (flag, `OT_RESULTS_DIR`, `OTINSTALLER_RESULTS_DIR`), start/finish sidecar, stderr file only when written |

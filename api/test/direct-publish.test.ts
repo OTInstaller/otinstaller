@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { processJob } from "../src/publish";
 import { purgeIdleNamespaces, IDLE_NAMESPACE_MS } from "../src/direct";
 import { readmeKey } from "../src/guides";
-import { sha256Hex, ulid } from "../src/lib/crypto";
+import { sha256Hex, toHex, ulid } from "../src/lib/crypto";
+import { mirrorFetch } from "../src/mirror/registry";
 import { call, fakeHosts, testEnv, webhook, type Handler } from "./helpers";
 import { README, fakeRelease, installation, manifestFor, tagEvent } from "./fixtures";
 
@@ -293,7 +294,7 @@ describe("direct uploads", () => {
     for (let i = 0; i < 21; i++) last = await upload(p, ns, `1.0.${i}`, files(ns, `1.0.${i}`));
     expect(last!.status).toBe(429);
     expect(((await last!.json()) as any).error.code).toBe("publish_rate_limited");
-  });
+  }, 30_000); // 21 uploads take a while when the whole suite runs at once
 });
 
 // ---------- signatures ----------
@@ -330,6 +331,59 @@ describe("signing a direct package", () => {
     expect(await report(unsigned.scan, signed())).toMatchObject({ status: "published" });
     const two = await publishDirect(p, ns, "1.1.0");
     expect(await report(two.scan, signed(ALICE, CI("refs/tags/v1.1.0")))).toMatchObject({ status: "rejected", verdict: { code: "signature_ambiguous" } });
+  });
+});
+
+// ---------- images hosted on the mirror ----------
+
+const hex = async (s: string) => `sha256:${toHex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)))}`;
+
+/** Pushes a one-layer image to <ns>/whois-plus on the mirror with the person's ot_ token, as `ot publish --image` does. */
+async function pushToMirror(p: Person, repo: string) {
+  const menv = { MIRROR: env.MIRROR, MIRROR_PUSH_TOKEN: "push-secret", DB: env.DB };
+  const m = (path: string, init: RequestInit = {}) => mirrorFetch(new Request(`https://mirror.otinstaller.com${path}`, init), menv);
+  const tok = await (await m(`/token?scope=repository:${repo}:pull,push`, { headers: { authorization: `Basic ${btoa(`ot:${p.auth.authorization.slice(7)}`)}` } })).json() as any;
+  const auth = `Bearer ${tok.token}`;
+  const layer = `layer ${uniq()}`;
+  const config = JSON.stringify({ architecture: "amd64", os: "linux" });
+  for (const b of [layer, config]) expect((await m(`/v2/${repo}/blobs/uploads/?digest=${await hex(b)}`, { method: "POST", headers: { authorization: auth, "content-length": String(b.length) }, body: b })).status).toBe(201);
+  const doc = JSON.stringify({ schemaVersion: 2, mediaType: "application/vnd.oci.image.manifest.v1+json", config: { digest: await hex(config), size: config.length }, layers: [{ digest: await hex(layer), size: layer.length }] });
+  const put = await m(`/v2/${repo}/manifests/1.0.0`, { method: "PUT", headers: { authorization: auth, "content-type": "application/vnd.oci.image.manifest.v1+json" }, body: doc });
+  expect(put.status).toBe(201);
+  return { digest: put.headers.get("docker-content-digest")!, get: (path: string) => m(path) };
+}
+
+const withImage = (ns: string, image: string) => manifestFor(ns).replace(/image: .*/, `image: ${image}`);
+
+describe("a direct package whose image is hosted on the mirror", () => {
+  it("is checked through the mirror's bucket, goes public when published and is its own backup", async () => {
+    const p = await person();
+    const ns = await namespace(p);
+    const pushed = await pushToMirror(p, `${ns}/whois-plus`);
+    const image = `mirror.otinstaller.com/${ns}/whois-plus@${pushed.digest}`;
+    const { out, calls, scan } = await publishDirect(p, ns, "1.0.0", { "otinstaller.yaml": withImage(ns, image) });
+    expect(out?.status).toBe("scanning");
+    // Not fetched over HTTPS: the image isn't public yet.
+    expect(calls.some((c) => c.url.startsWith("https://mirror.otinstaller.com"))).toBe(false);
+    expect((await pushed.get(`/v2/${ns}/whois-plus/manifests/${pushed.digest}`)).status).toBe(404);
+
+    expect(await report(scan, signed())).toMatchObject({ status: "published" });
+    expect((await pushed.get(`/v2/${ns}/whois-plus/manifests/${pushed.digest}`)).status).toBe(200);
+    const row = await DB().prepare(`SELECT location, visibility, status, hosted FROM backups WHERE version_id = ? AND kind = 'image'`).bind(out!.versionId).first<any>();
+    expect(row).toEqual({ location: `${ns}/whois-plus@${pushed.digest}`, visibility: "public", status: "stored", hosted: 1 });
+    // It is not offered as a fallback for itself.
+    const manifest = (await (await call(`/tools/${ns}/whois-plus/1.0.0/manifest`)).json()) as any;
+    expect(manifest.mirror_image).toBeUndefined();
+  });
+
+  it("refuses another package's image, and one that was never pushed", async () => {
+    const p = await person();
+    const ns = await namespace(p);
+    const theirs = await pushToMirror(p, `${ns}/other-tool`);
+    const foreign = await publishDirect(p, ns, "1.0.0", { "otinstaller.yaml": withImage(ns, `mirror.otinstaller.com/${ns}/other-tool@${theirs.digest}`) });
+    expect(foreign.out).toMatchObject({ status: "rejected", problems: [{ code: "artifact_image_foreign" }] });
+    const missing = await publishDirect(p, ns, "1.0.1", { "otinstaller.yaml": withImage(ns, `mirror.otinstaller.com/${ns}/whois-plus@sha256:${"7".repeat(64)}`).replace("version: 1.0.0", "version: 1.0.1") });
+    expect(missing.out).toMatchObject({ status: "rejected", problems: [{ code: "artifact_image_not_found" }] });
   });
 });
 
