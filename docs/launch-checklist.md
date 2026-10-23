@@ -26,10 +26,10 @@ Items marked **(you)** need the owner of the GitHub, GitLab, Cloudflare, Resend,
 - [ ] **(you)** Resubmit the sitemap in Google Search Console.
 - [ ] **(you)** Submit the plugin to Anthropic's directory and the Cursor marketplace (texts in
       [launch/agent-listings.md](launch/agent-listings.md)); try `ot mcp` and the plugin in a real client first.
-- [ ] **(you)** Deploy `ops/get` (`npx wrangler deploy` from `ops/get`) so `get.otinstaller.com/ot/latest` answers
-      `{"version"}`. It is on `main` since 23 Oct (CLI usability, PRs #59 to #69) but not deployed; until then
-      `ot self-update` and `ot outdated` fall back to the GitHub API. Check with
-      `curl -s https://get.otinstaller.com/ot/latest`.
+- [x] Deploy `ops/get` so `get.otinstaller.com/ot/latest` answers `{"version"}`. Done 23 Oct from `main` (`0afa4b2`,
+      `npx wrangler deploy --config ops/get/wrangler.jsonc` from the repository root, version
+      `d2d55f10-9903-4a21-bb7d-8b7b9c0ed93b`); `/ot/latest` answers `{"version":"v0.14.0"}` with
+      `cache-control: public, max-age=3600`.
 - [ ] **(you)** List `ot` 0.14.0 in the MCP Registry: download the release's `server.json` and run
       `mcp-publisher publish server.json` with the `otinstaller.com` key (publishing-setup.md section 10). It still
       lists 0.13.1.
