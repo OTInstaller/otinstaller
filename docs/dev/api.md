@@ -223,6 +223,23 @@ people (`feedback` scope) go through `poster()`: a timed-out account gets 403 `p
 | GET / POST / DELETE | `/admin/community/roles[/:handle/:role]` | admin | no-store | routes/community.ts | Grant (`{handle, role: triager|reviewer, note}`, note required) and revoke; audited `role.grant`/`role.revoke` |
 | POST | `/admin/reports/:id/publish-issue` | reviewer | - | routes/community.ts | A private `broken` report becomes a system issue written by the reviewer (no reporter attached); the report is actioned |
 
+Notifications (`routes/inbox.ts`, logic in `inbox.ts`, 6 routes):
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/me/inbox` | user | no-store | routes/inbox.ts | 50 newest items with `unread` and `before` paging |
+| POST | `/me/inbox/read` | user | - | routes/inbox.ts | `{ids?}`; all when none are given |
+| GET / PUT | `/me/email-prefs` | user | no-store | routes/inbox.ts | `community` and `owner_issues`: `immediate` / `daily` / `off` |
+| POST | `/unsubscribe` | none (signed link) | no-store | routes/inbox.ts | `u`, `s`, `t` from the query or a JSON body (RFC 8058 one-click); 400 `invalid_unsubscribe_link` |
+| GET | `/unsubscribe` | none | - | routes/inbox.ts | 302 to the site's `/unsubscribe` page, which asks before posting |
+
+Items are written by `inbox.ts:notify` with each event: new issues (to the namespace's members, scope `owner_issues`),
+replies and status changes (to the thread's unmuted subscribers, scope `community`), moderation of a post and role
+grants (to the person, scope `account`, always sent). The person who acted never gets one. `deliverInbox` runs on
+every 15-minute cron (`immediate`, items older than 2 minutes grouped into one email per person, at most 12 a day) and
+nightly (`daily` digests and anything held back); emails carry `List-Unsubscribe` and `List-Unsubscribe-Post`, and items
+are marked emailed only after a send that did not fail. `purgeInbox` (nightly) drops read items after 90 days.
+
 Internal: `fileSystemIssue(env, toolId, kind, body, dedupeKey, source)` (one issue per dedupe key; updated while open),
 `closeSystemIssue`, `announceVersion` (called by `publishVersion`: "does vX fix this?" on open broken and outdated
 issues) and `versionConfirmations`.

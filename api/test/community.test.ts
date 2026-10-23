@@ -311,3 +311,71 @@ describe("community status", () => {
     expect(statusLine({ ...base, health: "unknown", checked_at: null }, now)).toEqual({ state: "unknown", text: "Not health-checked yet." });
   });
 });
+
+describe("notifications", () => {
+  const inbox = async (who: Who) => (await req(who, "GET", "/me/inbox")).body;
+  const withEmail = async (opts: Parameters<typeof person>[0] = {}) => {
+    const p = await person(opts);
+    await DB().prepare(`UPDATE users SET email = ? WHERE id = ?`).bind(`${p.handle}@example.com`, p.id).run();
+    return p;
+  };
+
+  it("tells maintainers about new issues and followers about replies, never the person who acted", async () => {
+    const maintainer = await withEmail({ member: "ns_dheeraj" });
+    const author = await withEmail();
+    const number = (await newIssue(author, { title: "Notifies maintainers when opened" })).body.number;
+    expect((await inbox(maintainer)).items[0]).toMatchObject({ kind: "issue_opened", summary: expect.stringContaining("New broken issue on dheeraj/holehe-lite"), path: `/${TOOL}/issues/${number}` });
+    expect((await inbox(author)).items.some((i: any) => i.path === `/${TOOL}/issues/${number}`)).toBe(false);
+    await req(maintainer, "POST", `/tools/${TOOL}/issues/${number}/comments`, { body: "Looking into it now." });
+    const a = await inbox(author);
+    expect(a.items[0]).toMatchObject({ kind: "comment", summary: expect.stringContaining(`${maintainer.handle} replied`) });
+    expect((await req(author, "GET", "/me")).body.unread).toBeGreaterThan(0);
+    await req(author, "POST", "/me/inbox/read", {});
+    expect((await inbox(author)).unread).toBe(0);
+  });
+
+  it("emails what is waiting once per person, with a one-click unsubscribe, and respects preferences", async () => {
+    const { deliverInbox, unsubscribeUrl } = await import("../src/inbox");
+    const { fakeHosts } = await import("./helpers");
+    const calls = fakeHosts({ "POST https://api.resend.com/emails": { id: "email" } });
+    const maintainer = await withEmail({ member: "ns_dheeraj" });
+    const quiet = await withEmail({ member: "ns_dheeraj" });
+    expect((await req(quiet, "PUT", "/me/email-prefs", { owner_issues: "off" })).body).toEqual({ community: "immediate", owner_issues: "off" });
+    expect((await req(quiet, "PUT", "/me/email-prefs", { owner_issues: "sometimes" })).res.status).toBe(400);
+    const author = await person();
+    await newIssue(author, { title: "First of two for the email" });
+    await newIssue(author, { title: "Second of two for the email" });
+    await deliverInbox(env as any, "immediate", Date.now() + 5 * 60_000);
+    const mails = calls.filter((c) => c.url === "https://api.resend.com/emails").map((c) => JSON.parse(c.body));
+    const mine = mails.filter((m) => m.to.includes(`${maintainer.handle}@example.com`));
+    expect(mine).toHaveLength(1);
+    expect(mine[0].subject).toMatch(/updates on OTInstaller/);
+    expect(mine[0].text).toContain("Second of two for the email");
+    expect(mine[0].headers["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
+    expect(mails.some((m) => m.to.includes(`${quiet.handle}@example.com`))).toBe(false);
+    // Nothing is sent twice.
+    const before = calls.length;
+    await deliverInbox(env as any, "immediate", Date.now() + 6 * 60_000);
+    expect(calls.filter((c, i) => i >= before && c.url === "https://api.resend.com/emails" && JSON.parse(c.body).to.includes(`${maintainer.handle}@example.com`))).toHaveLength(0);
+
+    // The link in the header turns the preference off; a wrong signature is refused, a GET only shows the page.
+    const url = new URL(await unsubscribeUrl(env as any, maintainer.id, "owner_issues"));
+    expect((await call(`/unsubscribe${url.search.replace(/t=[^&]+/, "t=wrong")}`, { method: "POST" })).status).toBe(400);
+    const get = await call(`/unsubscribe${url.search}`);
+    expect(get.status).toBe(302);
+    expect((await call(`/unsubscribe${url.search}`, { method: "POST", body: "List-Unsubscribe=One-Click", headers: { "content-type": "application/x-www-form-urlencoded" } })).status).toBe(200);
+    expect((await req(maintainer, "GET", "/me/email-prefs")).body.owner_issues).toBe("off");
+  });
+
+  it("tells authors what moderators decided, and roles when granted", async () => {
+    const author = await person();
+    const number = (await newIssue(author, { title: "Will be hidden by a moderator" })).body.number;
+    const id = (await DB().prepare(`SELECT id FROM issues WHERE tool_id = ? AND number = ?`).bind(TOOL_ID, number).first<{ id: string }>())!.id;
+    const staff = await person({ reviewer: true });
+    await req(staff, "POST", `/moderation/issue/${id}`, { action: "hide", reason: "test" });
+    expect((await inbox(author)).items[0]).toMatchObject({ kind: "moderation", summary: expect.stringContaining("hid your issue") });
+    const admin = await person({ admin: true });
+    await req(admin, "POST", "/admin/community/roles", { handle: author.handle, role: "triager", note: "thanks" });
+    expect((await inbox(author)).items[0]).toMatchObject({ kind: "role", summary: expect.stringContaining("triager") });
+  });
+});
