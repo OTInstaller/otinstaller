@@ -1,7 +1,9 @@
-// Queue consumer: validates a tagged release (from GitHub or GitLab) and records it as a version.
+// Queue consumer: validates a release and records it as a version. A release is a tag on GitHub or GitLab, or an
+// upload from `ot publish` (a bundle job: direct.ts), whose files are read from R2 instead of a commit.
 // Valid releases move to `scanning` (a security scan for tools, content checks for guides); invalid ones
-// are `rejected`, and the author sees why as a failed commit status on the tagged commit. The same queue
-// runs bulk-import detection, guide content checks and nightly link checks.
+// are `rejected`, and the author sees why as a failed commit status on the tagged commit (for an upload, in
+// `ot publish` and on the dashboard). The same queue runs bulk-import detection, guide content checks and nightly
+// link checks.
 import { syncProfile } from "./profiles";
 import { deps, type Env, type PublishMessage } from "./env";
 import { ulid } from "./lib/crypto";
@@ -10,33 +12,47 @@ import * as github from "./hosts/github";
 import { githubRepo, gitlabRepo, repoUrl, type RepoHost } from "./hosts/repo";
 import { checkImage, checkWheel } from "./hosts/artifacts";
 import { audit } from "./routes/auth";
-import { commitStatus, dispatchScan, loadVersion, publishVersion } from "./scans";
+import { commitStatus, dispatchScan, expectedSigner, loadVersion, publishVersion, retryHint } from "./scans";
 import { backupVersion } from "./backups";
-import { copyImages, queueContentChecks, recheckLinks, relatedToolProblems, renderRelease, runContentChecks, storeContent, type RenderedRelease } from "./guides";
+import { copyImages, queueContentChecks, rawFileUrl, recheckLinks, relatedToolProblems, renderRelease, runContentChecks, storeContent, type RenderedRelease } from "./guides";
 import { ownerEmails, sendEmail, templates } from "./notify";
 import { COMMUNITY_NAMESPACE, detectQueued, failImport, heldManifestFor, parseRepoRef } from "./imports";
 import { markSubmittedTool } from "./submissions";
 import { checkUpstream } from "./upstream";
 import { captureNotes } from "./changelog";
+import { bundleHost, deleteBundle } from "./direct";
 
 export const MANIFEST_FILE = "otinstaller.yaml";
 
 type Job = {
   id: string;
-  provider: "github" | "gitlab";
-  repo: string; // owner/name on GitHub, group/project path on GitLab
+  // "direct" for an upload with no repository behind it.
+  provider: "github" | "gitlab" | "direct";
+  repo: string; // owner/name on GitHub, group/project path on GitLab, <namespace>/<name> for a direct upload
   repo_id: string;
   tag: string;
   installation_id: number | null;
   source_id: string | null;
   status: string;
   attempts: number;
+  // Bundle jobs (uploads) name their namespace and keep their files in R2; tag jobs have neither.
+  namespace_id: string | null;
+  bundle_key: string | null;
+  commit_sha: string | null;
+  submitted_by: string | null;
 };
+
+const JOB_COLUMNS = `id, provider, repo, repo_id, tag, installation_id, source_id, status, attempts, namespace_id, bundle_key, commit_sha, submitted_by`;
 
 type Namespace = { id: string; name: string; status: string };
 
-/** The repository host for a job, and the namespace it publishes into. */
+/** The repository host for a job (or its upload), and the namespace it publishes into. */
 async function jobContext(env: Env, job: Job): Promise<{ host: RepoHost; ns: Namespace }> {
+  if (job.bundle_key) {
+    const ns = await env.DB.prepare(`SELECT id, name, status FROM namespaces WHERE id = ?`).bind(job.namespace_id).first<Namespace>();
+    if (!ns) throw new Error(`job ${job.id} has no namespace`);
+    return { host: bundleHost(env, job.bundle_key, job.provider), ns };
+  }
   if (job.provider === "github") {
     const ns = await env.DB.prepare(
       `SELECT n.id, n.name, n.status FROM installations i JOIN namespaces n ON n.id = i.namespace_id WHERE i.github_installation_id = ?`,
@@ -53,32 +69,69 @@ async function jobContext(env: Env, job: Job): Promise<{ host: RepoHost; ns: Nam
 
 type Outcome = { status: "scanning" | "rejected"; problems: Problem[]; versionId?: string };
 
+/** Where links into the repository point on a job's pages. An upload has no repository, so they stay plain text. */
+function fileUrlFor(job: Job, sha: string): (path: string) => string | null {
+  if (job.provider === "direct") return () => null;
+  const provider = job.provider;
+  return (p) => rawFileUrl(provider, job.repo, sha || job.tag, p);
+}
+
+/** Reads the files a valid manifest refers to and renders its README and pages, with their images copied to the registry. */
+async function prepareContent(env: Env, job: Job, host: RepoHost, sha: string, manifest: Manifest): Promise<{ problems: Problem[]; readme: string; content?: RenderedRelease }> {
+  const problems: Problem[] = [];
+  const files = new Map<string, string>();
+  const where = job.bundle_key ? "in the upload" : `at ${job.tag}`;
+  for (const file of referencedFiles(manifest)) {
+    const text = await host.fileAt(file.path, sha);
+    if (text === null) problems.push({ code: "manifest_file_missing", path: file.field, message: `${file.path} does not exist ${where}` });
+    else files.set(file.path, text);
+  }
+  const readme = manifest.readme ? (files.get(manifest.readme) ?? "") : "";
+  if (problems.length) return { problems, readme };
+  const fileUrl = fileUrlFor(job, sha);
+  const first = renderRelease(env, manifest, files, fileUrl);
+  if (first.problems.length) return { problems: first.problems, readme };
+  // Render again with the images' registry URLs once they are copied.
+  const copied = await copyImages(env, host, sha, first);
+  if (copied.problems.length) return { problems: copied.problems, readme };
+  return { problems: [], readme, content: { ...renderRelease(env, manifest, files, fileUrl, copied.assets), images: copied.images } };
+}
+
 export async function processJob(env: Env, jobId: string): Promise<Outcome | null> {
   const db = env.DB;
-  const job = await db.prepare(
-    `SELECT id, provider, repo, repo_id, tag, installation_id, source_id, status, attempts FROM publish_jobs WHERE id = ?`,
-  ).bind(jobId).first<Job>();
+  const job = await db.prepare(`SELECT ${JOB_COLUMNS} FROM publish_jobs WHERE id = ?`).bind(jobId).first<Job>();
   if (!job) return null;
   if (job.status === "scanning") {
-    // Validation finished but the scan dispatch failed last time: dispatch again.
+    // Validation finished but storing the pages or dispatching the checks failed last time: finish that.
     const v = await db.prepare(
-      `SELECT v.id, v.manifest_json FROM publish_jobs j JOIN versions v ON v.id = j.version_id WHERE j.id = ? AND v.status = 'scanning' AND v.scan_dispatched_at IS NULL`,
-    ).bind(jobId).first<{ id: string; manifest_json: string }>();
-    if (v) await startChecks(env, v.id, job, JSON.parse(v.manifest_json));
+      `SELECT v.id, v.manifest_json, v.search_text IS NULL AS unstored FROM publish_jobs j JOIN versions v ON v.id = j.version_id
+       WHERE j.id = ? AND v.status = 'scanning' AND v.scan_dispatched_at IS NULL`,
+    ).bind(jobId).first<{ id: string; manifest_json: string; unstored: number }>();
+    if (v) {
+      const m = JSON.parse(v.manifest_json) as Manifest;
+      if (v.unstored) {
+        const { host } = await jobContext(env, job);
+        const prepared = await prepareContent(env, job, host, job.commit_sha ?? "", m);
+        if (prepared.content) await storeContent(env, v.id, m, prepared.content);
+      }
+      await startChecks(env, v.id, job, m);
+      await deleteBundle(env, job.bundle_key);
+    }
     return null;
   }
   if (!["queued", "validating"].includes(job.status)) return null; // already handled
   await db.prepare(`UPDATE publish_jobs SET status = 'validating', attempts = attempts + 1, updated_at = ? WHERE id = ?`).bind(Date.now(), jobId).run();
 
   const { host, ns } = await jobContext(env, job);
-  const sha = await host.tagCommit(job.tag);
-  await db.prepare(`UPDATE publish_jobs SET commit_sha = ? WHERE id = ?`).bind(sha, jobId).run();
+  // A tag is resolved to its commit; an upload has none to resolve.
+  const sha = job.bundle_key ? (job.commit_sha ?? "") : await host.tagCommit(job.tag);
+  if (!job.bundle_key) await db.prepare(`UPDATE publish_jobs SET commit_sha = ? WHERE id = ?`).bind(sha, jobId).run();
   const target = `${env.SITE_URL}/dashboard/publish/${jobId}`;
   await host.setStatus(sha, "pending", "Validating otinstaller.yaml", target);
 
   const text = await host.fileAt(MANIFEST_FILE, sha);
-  // A manifest in the repository always wins; otherwise the registry may hold one for this package.
-  const held = await env.DB.prepare(`SELECT manifest_mode, registry_manifest_json FROM sources WHERE provider = ? AND project_id = ?`)
+  // A manifest in the repository always wins; otherwise the registry may hold one for this package. Uploads carry their own.
+  const held = job.bundle_key ? null : await env.DB.prepare(`SELECT manifest_mode, registry_manifest_json FROM sources WHERE provider = ? AND project_id = ?`)
     .bind(job.provider, job.repo_id).first<{ manifest_mode: string; registry_manifest_json: string | null }>();
   const fromRegistry = text === null && held?.manifest_mode === "registry" && !!held.registry_manifest_json;
   let manifest: Manifest | undefined;
@@ -88,32 +141,13 @@ export async function processJob(env: Env, jobId: string): Promise<Outcome | nul
   if (fromRegistry) {
     ({ manifest, problems } = await heldManifestFor(held!.registry_manifest_json!, job.tag));
   } else if (text === null) {
-    problems = [{ code: "manifest_file_missing", path: "/", message: `${MANIFEST_FILE} was not found at ${job.tag}`, hint: "run `ot init` and commit the file" }];
+    problems = [{ code: "manifest_file_missing", path: "/", message: `${MANIFEST_FILE} was not found ${job.bundle_key ? "in the upload" : `at ${job.tag}`}`, hint: "run `ot init` and commit the file" }];
   } else {
     ({ manifest, problems } = parseManifest(text));
   }
   if (manifest && problems.length === 0) {
     problems = await releaseProblems(env, manifest, job, ns.name, ns.status);
-    if (problems.length === 0) {
-      const files = new Map<string, string>();
-      for (const file of referencedFiles(manifest)) {
-        const text = await host.fileAt(file.path, sha);
-        if (text === null) problems.push({ code: "manifest_file_missing", path: file.field, message: `${file.path} does not exist at ${job.tag}` });
-        else files.set(file.path, text);
-      }
-      if (manifest.readme) readme = files.get(manifest.readme) ?? "";
-      if (problems.length === 0) {
-        const src = { provider: job.provider, repo: job.repo, sha };
-        content = renderRelease(env, manifest, files, src);
-        problems = content.problems;
-        if (problems.length === 0) {
-          // Render again with the images' registry URLs once they are copied.
-          const copied = await copyImages(env, host, sha, content);
-          problems = copied.problems;
-          content = { ...renderRelease(env, manifest, files, src, copied.assets), images: copied.images };
-        }
-      }
-    }
+    if (problems.length === 0) ({ problems, readme, content } = await prepareContent(env, job, host, sha, manifest));
     if (problems.length === 0) problems = manifest.kind === "guide" ? await relatedToolProblems(env, manifest) : await artifactProblems(manifest);
   }
 
@@ -131,20 +165,30 @@ export async function processJob(env: Env, jobId: string): Promise<Outcome | nul
     // The status moves on before dispatch, so a dispatch that keeps failing never leaves "Validating" behind.
     await host.setStatus(sha, "pending", manifest!.kind === "guide" ? "Valid; content checks running" : "Valid; security scans running", target);
     await startChecks(env, outcome.versionId!, job, manifest!);
+    await deleteBundle(env, job.bundle_key);
     return outcome;
   }
-  const first = problems[0]!;
+  const first = outcome.problems[0]!;
   if (manifest && outcome.versionId) {
-    await sendEmail(env, { to: await ownerEmails(env, ns.id), kind: "rejected", key: `rejected:${job.id}`, ...templates.rejected(env, `${manifest.namespace}/${manifest.name}`, manifest.version, first.code, first.message) });
+    await sendEmail(env, {
+      to: await ownerEmails(env, ns.id), kind: "rejected", key: `rejected:${job.id}`,
+      ...templates.rejected(env, `${manifest.namespace}/${manifest.name}`, manifest.version, first.code, first.message, retryHint(job)),
+    });
   }
   await host.setStatus(sha, "failure", `${first.code}: ${first.message}`, target);
+  await deleteBundle(env, job.bundle_key);
   return outcome;
 }
 
 /** Tools go to the security scanner; guides get content checks in the Worker. */
 async function startChecks(env: Env, versionId: string, job: Job, m: Manifest) {
-  if (m.kind === "guide") await queueContentChecks(env, versionId);
-  else await dispatchScan(env, { versionId, provider: job.provider, repo: job.repo, tag: job.tag, manifest: m, upstream: upstreamOf(job, m) });
+  if (m.kind === "guide") return queueContentChecks(env, versionId);
+  // An upload with no repository has no CI to have signed it: any signer passes, and the first is pinned (scans.ts).
+  await dispatchScan(env, {
+    versionId, manifest: m, upstream: upstreamOf(job, m),
+    signer: job.provider === "direct" ? null : expectedSigner(job.provider, job.repo, job.tag),
+    sourceRepo: job.provider === "direct" ? "" : `${job.provider}.com/${job.repo}`,
+  });
 }
 
 /**
@@ -168,19 +212,23 @@ async function releaseProblems(env: Env, m: Manifest, job: Job, namespace: strin
     ps.push({ code: "manifest_tag_mismatch", path: "/version", message: `tag ${job.tag} does not match version ${m.version}`, hint: "tag releases as v<version>" });
   }
   if (m.namespace !== namespace) {
-    ps.push({ code: "manifest_namespace_mismatch", path: "/namespace", message: `this repository publishes to "${namespace}", not "${m.namespace}"` });
+    ps.push({ code: "manifest_namespace_mismatch", path: "/namespace", message: `this ${job.bundle_key ? "upload" : "repository"} publishes to "${namespace}", not "${m.namespace}"` });
   }
   const exists = await env.DB.prepare(
     `SELECT 1 FROM versions v JOIN tools t ON t.id = v.tool_id JOIN namespaces n ON n.id = t.namespace_id
      WHERE n.name = ? AND t.name = ? AND v.version = ? AND v.status != 'rejected'`,
   ).bind(namespace, m.name, m.version).first();
   if (exists) ps.push({ code: "manifest_version_exists", path: "/version", message: `${m.name} ${m.version} is already published; versions are immutable`, hint: "bump the version" });
-  // A package's name belongs to the repository that first published it.
+  // A package's name belongs to the repository that first published it. A package without one (uploaded directly)
+  // belongs to its namespace, until a repository in it releases the package and claims it (record).
   const owner = await env.DB.prepare(
     `SELECT t.repo_url FROM tools t JOIN namespaces n ON n.id = t.namespace_id WHERE n.name = ? AND t.name = ?`,
   ).bind(namespace, m.name).first<{ repo_url: string | null }>();
-  if (owner?.repo_url && owner.repo_url !== repoUrl(job.provider, job.repo)) {
-    ps.push({ code: "manifest_name_taken", path: "/name", message: `${namespace}/${m.name} is published from ${owner.repo_url}` });
+  if (owner?.repo_url && (job.provider === "direct" || owner.repo_url !== repoUrl(job.provider, job.repo))) {
+    ps.push({
+      code: "manifest_name_taken", path: "/name", message: `${namespace}/${m.name} is published from ${owner.repo_url}`,
+      hint: job.provider === "direct" ? "release it from that repository; uploads are for packages without one" : undefined,
+    });
   }
   return ps;
 }
@@ -200,6 +248,8 @@ async function record(env: Env, job: Job, sha: string, ns: Namespace, m: Manifes
   const stmts: D1PreparedStatement[] = [];
   let versionId: string | undefined;
   let toolId: string | null = null;
+  let versionStmt = -1;
+  const repo = job.provider === "direct" ? null : repoUrl(job.provider, job.repo);
 
   // A version row needs a well-formed name and version that belong to this namespace.
   const identifiable = m && !problems.some((p) => ["manifest_namespace_mismatch", "manifest_version_exists", "manifest_name_taken"].includes(p.code));
@@ -210,43 +260,55 @@ async function record(env: Env, job: Job, sha: string, ns: Namespace, m: Manifes
       stmts.push(db.prepare(
         `INSERT INTO tools (id, namespace_id, kind, name, summary, categories, tags, repo_url, readme_text, community_packaged, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).bind(toolId, ns.id, m.kind ?? "tool", m.name, m.summary, JSON.stringify(m.categories), JSON.stringify(m.tags ?? []), repoUrl(job.provider, job.repo), readme.slice(0, 20000),
+      ).bind(toolId, ns.id, m.kind ?? "tool", m.name, m.summary, JSON.stringify(m.categories), JSON.stringify(m.tags ?? []), repo, readme.slice(0, 20000),
         // A package in the community namespace whose homepage is another repository wraps someone else's tool and is
         // labelled so; the namespace's own tools (homepage is the source repository, or none) are first-party.
         upstreamOf(job, m) ? 1 : 0, now, now));
       if (upstreamOf(job, m)) stmts.push(db.prepare(`UPDATE tools SET upstream_url = ? WHERE id = ?`).bind(m.homepage, toolId));
       // A community submission's first release waits for a reviewer, and remembers who submitted it.
       if (job.provider === "github") stmts.push(...markSubmittedTool(db, toolId, job.repo_id));
+    } else if (repo) {
+      // The first repository to release a package that was uploaded directly claims its name from now on.
+      stmts.push(db.prepare(`UPDATE tools SET repo_url = ? WHERE id = ? AND repo_url IS NULL`).bind(repo, toolId));
     }
-    // Link the package to its source repository, which sync keeps up to date from now on.
-    if (job.provider === "github") {
+    // Link the package to its source repository, which sync keeps up to date from now on. Uploads have no source to sync.
+    if (!job.bundle_key && job.provider === "github") {
       stmts.push(db.prepare(
         `INSERT INTO sources (id, tool_id, namespace_id, provider, project_id, path, url, installation_id, created_at)
          VALUES (?, ?, ?, 'github', ?, ?, ?, ?, ?)
          ON CONFLICT (provider, project_id) DO UPDATE SET tool_id = COALESCE(sources.tool_id, excluded.tool_id),
            path = excluded.path, url = excluded.url, installation_id = excluded.installation_id`,
       ).bind(ulid(now), toolId, ns.id, job.repo_id, job.repo, repoUrl("github", job.repo), job.installation_id, now));
-    } else {
+    } else if (!job.bundle_key) {
       stmts.push(db.prepare(`UPDATE sources SET tool_id = COALESCE(tool_id, ?) WHERE id = ?`).bind(toolId, job.source_id));
     }
     const sv = semverParts(m.version);
-    // Re-tagging a version that was rejected reuses its row.
+    // Re-tagging a version that was rejected reuses its row. Only a rejected row is ever reused: a release of the
+    // same version still being checked (two uploads at once) is left alone, and this one stops below.
     const prior = tool ? await db.prepare(`SELECT id FROM versions WHERE tool_id = ? AND version = ?`).bind(toolId, m.version).first<{ id: string }>() : null;
     versionId = prior?.id ?? ulid(now);
+    versionStmt = stmts.length;
     stmts.push(db.prepare(
       `INSERT INTO versions (id, tool_id, version, semver_major, semver_minor, semver_patch, semver_pre, manifest_json, runtime_kind, artifact_ref, git_sha, status, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (tool_id, version) DO UPDATE SET manifest_json = excluded.manifest_json, git_sha = excluded.git_sha, status = excluded.status,
-         scan_status = 'pending', rejected_reason = NULL, created_at = excluded.created_at`,
+         scan_status = 'pending', rejected_reason = NULL, search_text = NULL, created_at = excluded.created_at
+       WHERE versions.status = 'rejected'`,
     ).bind(versionId, toolId, m.version, sv.major, sv.minor, sv.patch, sv.pre, JSON.stringify(m), m.runtime?.kind ?? null,
-      m.runtime?.image ?? (m.runtime?.wheel_sha256 ? `sha256:${m.runtime.wheel_sha256}` : null), sha, status, now));
+      m.runtime?.image ?? (m.runtime?.wheel_sha256 ? `sha256:${m.runtime.wheel_sha256}` : null), sha || null, status, now));
   }
   stmts.push(
     db.prepare(`UPDATE publish_jobs SET status = ?, tool_id = ?, version_id = ?, error_code = ?, error_detail = ?, problems_json = ?, updated_at = ? WHERE id = ?`)
       .bind(status, toolId, versionId ?? null, problems[0]?.code ?? null, problems[0]?.message ?? null, JSON.stringify(problems), now, job.id),
-    audit(db, null, "system", `publish.${status}`, "publish_job", job.id, { repo: job.repo, tag: job.tag, codes: problems.map((p) => p.code) }),
+    audit(db, job.submitted_by, job.submitted_by ? "user" : "system", `publish.${status}`, "publish_job", job.id, { repo: job.repo, tag: job.tag, codes: problems.map((p) => p.code) }),
   );
-  await db.batch(stmts);
+  const results = await db.batch(stmts);
+  if (versionStmt >= 0 && !results[versionStmt]?.meta.changes) {
+    const taken: Problem = { code: "manifest_version_exists", path: "/version", message: `${m!.name} ${m!.version} is already being published; versions are immutable`, hint: "bump the version" };
+    await db.prepare(`UPDATE publish_jobs SET status = 'rejected', version_id = NULL, error_code = ?, error_detail = ?, problems_json = ?, updated_at = ? WHERE id = ?`)
+      .bind(taken.code, taken.message, JSON.stringify([taken]), Date.now(), job.id).run();
+    return { status: "rejected", problems: [taken] };
+  }
   return { status, problems, versionId };
 }
 
@@ -259,11 +321,12 @@ export async function failJob(env: Env, jobId: string, error: string) {
   const db = env.DB;
   const now = Date.now();
   const job = await db.prepare(
-    `SELECT j.status, j.version_id, v.scan_dispatched_at FROM publish_jobs j LEFT JOIN versions v ON v.id = j.version_id WHERE j.id = ?`,
-  ).bind(jobId).first<{ status: string; version_id: string | null; scan_dispatched_at: number | null }>();
+    `SELECT j.status, j.version_id, j.bundle_key, v.scan_dispatched_at FROM publish_jobs j LEFT JOIN versions v ON v.id = j.version_id WHERE j.id = ?`,
+  ).bind(jobId).first<{ status: string; version_id: string | null; bundle_key: string | null; scan_dispatched_at: number | null }>();
   if (!job) return;
   const undispatched = job.status === "scanning" && job.version_id !== null && job.scan_dispatched_at === null;
   if (!["queued", "validating"].includes(job.status) && !undispatched) return;
+  await deleteBundle(env, job.bundle_key).catch((e) => console.error("deleting the upload failed", e));
   const stmts = [
     db.prepare(`UPDATE publish_jobs SET status = 'error', error_code = 'internal_error', error_detail = ?, updated_at = ? WHERE id = ?`).bind(error.slice(0, 500), now, jobId),
   ];

@@ -15,8 +15,11 @@ export interface RenderContext {
   pages: Set<string>;
   /** Where another page of the same guide or docs is shown. */
   pageUrl: (path: string) => string;
-  /** Where a file in the repository (an image, a script) can be fetched at this release. */
-  fileUrl: (repoPath: string) => string;
+  /**
+   * Where a file in the repository (an image, a script) can be fetched at this release, or null when there is no
+   * repository (a direct upload): the link is then rendered as its text, and an image that wasn't copied as its alt text.
+   */
+  fileUrl: (repoPath: string) => string | null;
   /** Links to Markdown files outside the navigation count as missing pages (not for READMEs). */
   strict?: boolean;
   /** Where a repository image is served from once copied to the registry; null falls back to fileUrl. */

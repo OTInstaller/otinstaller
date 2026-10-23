@@ -6,7 +6,7 @@ import pivotMap from "../../spec/pivots.json";
 import typeDescriptions from "../../spec/types.json";
 import openapi from "../../spec/openapi/v1.json";
 import { rank } from "./ranking";
-import { cached, findTool, findVersion, notFound, LISTED, rankInput, summary, SUMMARY_COLUMNS, VISIBLE, type SummaryRow } from "./catalog";
+import { cached, findTool, findVersion, notFound, LISTED, publishedVia, rankInput, summary, SUMMARY_COLUMNS, VISIBLE, type SummaryRow } from "./catalog";
 import type { AppEnv, Env, PublishMessage } from "./env";
 import { apiError, errorDocs, rateLimited, windowRetry } from "./lib/errors";
 import { authRoutes } from "./routes/auth";
@@ -32,6 +32,8 @@ import { openBumpFor } from "./bumps";
 import { upstreamRoutes } from "./routes/upstream";
 import { proposalRoutes } from "./routes/proposals";
 import { deliverInbox, purgeInbox } from "./inbox";
+import { directRoutes } from "./routes/direct";
+import { purgeIdleNamespaces } from "./direct";
 import { refreshDueProfiles } from "./profiles";
 import { backfillBackups, expireDrills, expireRuns, installFallbacks, purgeBackups, RESTORE_DRILL_CRON, startDrill, WEEKLY_BACKUP_CRON, weeklyBackups } from "./backups";
 import { alertStuckJobs, dailyDigest, purgeRateLimits, reportError } from "./ops";
@@ -90,6 +92,7 @@ requestRoutes(app);
 peopleRoutes(app);
 submissionRoutes(app);
 upstreamRoutes(app);
+directRoutes(app);
 proposalRoutes(app);
 
 app.onError((err, c) => {
@@ -292,6 +295,8 @@ app.get("/tools/:ns/:name", async (c) => {
     sample: sampleJson ? { ...sampleJson, version: row.latest_version, recorded_at: smoke!.ran_at } : undefined,
     deprecated_replacement: row.deprecated_replacement ?? undefined,
     repo_url: row.repo_url,
+    // How the latest version came in; "direct" packages have no repository (repo_url is null).
+    published_via: await publishedVia(c.env.DB, row.latest_version_id),
     homepage: JSON.parse(row.manifest_json).homepage ?? null,
     license: JSON.parse(row.manifest_json).license,
     deprecated_message: row.deprecated_message ?? undefined,
@@ -410,6 +415,7 @@ app.get("/tools/:ns/:name/:version", async (c) => {
     published_at: v.published_at,
     scan_status: v.scan_status,
     signed: !!v.signer_identity && row.manifest_mode !== "registry",
+    published_via: await publishedVia(c.env.DB, v.id),
     manifest: JSON.parse(v.manifest_json),
     ...releaseNotes(notes?.changelog ?? null, notes?.changelog_source ?? null, row.repo_url, notes?.git_sha ?? null),
   });
@@ -569,6 +575,7 @@ export default {
       await purgeInbox(env);
       await refreshContributorStats(env);
       await queueUpstreamChecks(env);
+      await purgeIdleNamespaces(env);
       await env.DB.prepare(
         `UPDATE tools SET installs_30d = COALESCE((SELECT SUM(count) FROM install_counts
            WHERE tool_id = tools.id AND day >= date('now', '-30 days')), 0)`,
