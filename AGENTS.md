@@ -662,7 +662,8 @@ Astro 7 with `output: "server"` on `@astrojs/cloudflare`, Preact islands, no CSS
   `Accept: text/markdown` on `/agents`) is built from the same content in `lib/agents.ts`, which `agents.test.ts`
   keeps in step with `docs/agents.md` and `docs/mcp-tools.md`. `agents` must stay in the middleware's `RESERVED`,
   or `/agents.md` is taken for a publisher's twin.
-- `/otlite` and `/otlite/tools`: the no-Docker edition and its tool catalog, read at build time from
+- `/otlite` and `/otlite/tools`: the no-Docker edition and its tool catalog (both list every tool through
+  `components/OtliteCatalog.astro`, and `/otlite` computes its counts from it), read at build time from
   `src/data/otlite-catalog.json`, which `otlite/scripts/web_catalog.py` generates from otlite's registry (a test in
   `otlite/tests/test_web_catalog.py` fails when it is stale; regenerate it, don't edit it).
 - Tool pages show sample output: the envelope the scanner's smoke test recorded (`sample` from the API,
