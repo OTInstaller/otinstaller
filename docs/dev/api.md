@@ -535,10 +535,11 @@ Queue `otinstaller-publish`, producer binding `PUBLISH_QUEUE`. Consumer settings
 | `{ publishVersionId }` | `publishApproved(env, publishVersionId)` (publish.ts): publishes only if the version is `awaiting_review` and the namespace is `active` | `POST /admin/namespaces/:ns/approve` (batches of 100) |
 | `{ backupVersionId }` | `backupVersion(env, backupVersionId)` (backups.ts) | versions published without a scanner run (approvals, guides) |
 | `{ profileNamespaceId }` | `syncProfile(env, id)` (profiles.ts); never throws, failures are recorded on the profile | a new namespace (GitHub App installation, GitLab connect); GitHub `organization` and `membership` webhooks |
-| `{ jobId }` (the `else` branch) | `processJob(env, jobId)` (publish.ts) | GitHub `create` webhook, GitLab `tag_push`, poller, imports |
+| `{ mirrorSweepRepo }` | `sweepMirrorRepo(env, repo)` (backups.ts): `sweepRepo` keeping the package's non-rejected versions' digests and its backups, then drops push records older than a week | `queueMirrorSweeps`, nightly (50 repositories) |
+| `{ jobId }` (the `else` branch) | `processJob(env, jobId)` (publish.ts) | GitHub `create` webhook, GitLab `tag_push`, poller, imports, uploads (`POST /publish`) |
 
 Dispatch is by `"key" in body`, in the order `importId`, `checkVersionId`, `linkCheckToolId`, `publishVersionId`,
-`backupVersionId`, else `jobId`. Messages are processed one after another and acked individually.
+`backupVersionId`, `profileNamespaceId`, `mirrorSweepRepo`, else `jobId`. Messages are processed one after another and acked individually.
 
 **Retry**: on an exception, `transient = !(e instanceof HostError) || e.transient`. If transient and
 `msg.attempts < 5`, `msg.retry({ delaySeconds: 30 * msg.attempts })` (30, 60, 90, 120 s). Otherwise (non-transient
@@ -575,12 +576,13 @@ Then, by `event.cron`:
 | `*/15 * * * *` | | none beyond the block above |
 | `41 4 * * 1` (Mondays 04:41 UTC) | `WEEKLY_BACKUP_CRON` (backups.ts) | `weeklyBackups(env)`: a git backup of every active source, dispatched 20 per call (`WEEKLY_PER_DISPATCH`) |
 | `23 5 1 * *` (1st of the month 05:23 UTC) | `RESTORE_DRILL_CRON` (backups.ts) | `startDrill(env)`: restore a random git bundle and pull a random public mirrored image |
-| `17 3 * * *` (daily 03:17 UTC) | literal string in index.ts | `queueNightlyLinkChecks(env)`, `dailyDigest(env)` (namespaces waiting > 2 business days, reports > 48 h), `purgeRateLimits(env)` (windows older than a day), `purgeBackups(env)` (due deletions, except legal holds), `purgeIdleNamespaces(env)` (direct.ts: registry namespaces still pending with no package 30 days after creation, 50 a night), `lockStaleThreads(env)` (closed issues quiet for 30 days), `deliverInbox(env, "daily")` (digests), `purgeInbox(env)` (read items after 90 days, all after a year), `refreshContributorStats(env)`, `queueUpstreamChecks(env)` (`{upstreamCheckToolId}` per community wrapper), then the SQL `UPDATE tools SET installs_30d = ...` over the last 30 days of `install_counts` |
+| `17 3 * * *` (daily 03:17 UTC) | literal string in index.ts | `queueNightlyLinkChecks(env)`, `dailyDigest(env)` (namespaces waiting > 2 business days, reports > 48 h), `purgeRateLimits(env)` (windows older than a day), `purgeBackups(env)` (due deletions, except legal holds), `purgeIdleNamespaces(env)` (direct.ts: registry namespaces still pending with no package 30 days after creation, 50 a night), `lockStaleThreads(env)` (closed issues quiet for 30 days), `deliverInbox(env, "daily")` (digests), `purgeInbox(env)` (read items after 90 days, all after a year), `refreshContributorStats(env)`, `queueUpstreamChecks(env)` (`{upstreamCheckToolId}` per community wrapper), `queueMirrorSweeps(env)` (backups.ts: `{mirrorSweepRepo}` for up to 50 mirror repositories with publisher pushes older than a week, and `purgeUploads` for blob uploads idle a day), then the SQL `UPDATE tools SET installs_30d = ...` over the last 30 days of `install_counts` |
 
 ## 6. Mirror Worker (`otinstaller-mirror`)
 
 Config `wrangler.mirror.jsonc`: `main: src/mirror/index.ts`, custom domain `mirror.otinstaller.com`, R2 binding
-`MIRROR` (`otinstaller-mirror`, also bound by the API), `limits.cpu_ms: 300000`. Secret: `MIRROR_PUSH_TOKEN`. The
+`MIRROR` (`otinstaller-mirror`, also bound by the API), D1 binding `DB` (the API's `otinstaller`: publishers' tokens,
+namespaces and `mirror_pushes`), `limits.cpu_ms: 300000`. Secret: `MIRROR_PUSH_TOKEN`. The
 entry (`index.ts`) wraps `mirrorFetch` (`registry.ts`) and turns any throw into
 `500 {errors: [{code: "UNKNOWN", message: "internal error"}]}`. Errors use the OCI shape
 `{errors: [{code, message}]}` with `Docker-Distribution-API-Version: registry/2.0`. No `/v1` base path here.
@@ -590,16 +592,16 @@ entry (`index.ts`) wraps `mirrorFetch` (`registry.ts`) and turns any throw into
 | Method | Path | Notes |
 | --- | --- | --- |
 | GET | `/` | Plain-text banner |
-| any | `/token` | Issues a token: Basic credential matching `MIRROR_PUSH_TOKEN` → push (admin) token; no Basic header → pull token; wrong Basic → 401 `UNAUTHORIZED` "wrong credential". Answers `{token, access_token, expires_in: 300, issued_at}` |
+| GET, POST | `/token` | Issues a token (`tokenEndpoint`): the scanner credential → admin; a publisher's `ot_` token → push rights to the scopes `canPush` allows; no credential → pull token; wrong credential → 401 `UNAUTHORIZED`. POST takes the OAuth2 password grant (other grants 400). Answers `{token, access_token, expires_in: 300, issued_at}` |
 | any | `/v2/` or `/v2` | 200 `{}` if the request carries any valid credential or token (including an anonymous pull token), else the 401 Bearer challenge |
-| GET, HEAD | `/v2/<name>/manifests/<tag|digest>` | Pull; hidden repos or hidden `name@digest` answer 404 `MANIFEST_UNKNOWN` to non-admins |
-| PUT | `/v2/<name>/manifests/<tag|digest>` | Push; ≤4 MB (`MAX_MANIFEST`, 413 `SIZE_INVALID`); digest must match; every referenced blob/manifest must already exist (400 `MANIFEST_BLOB_UNKNOWN` / `MANIFEST_UNKNOWN`); tag ref also writes `tags/<tag>` |
+| GET, HEAD | `/v2/<name>/manifests/<tag|digest>` | Pull; hidden repos or hidden `name@digest` answer 404 `MANIFEST_UNKNOWN` to non-admins, and pending images (a publisher's push no published version uses) to everyone but admin and the repository's publishers |
+| PUT | `/v2/<name>/manifests/<tag|digest>` | Push; ≤4 MB (`MAX_MANIFEST`, 413 `SIZE_INVALID`); digest must match; every referenced blob/manifest must already exist (400 `MANIFEST_BLOB_UNKNOWN` / `MANIFEST_UNKNOWN`); tag ref also writes `tags/<tag>`. A publisher's push also passes `publisherManifestProblem` (attached tags, 30 an hour, 2 GiB) and is marked pending and recorded |
 | DELETE | `/v2/<name>/manifests/<digest>` | By digest only (400 `UNSUPPORTED` for tags); `deleteImage`; 202 |
 | GET, HEAD | `/v2/<name>/blobs/<digest>` | Streams chunks; repo-level hidden check only for non-admins (404 `BLOB_UNKNOWN`) |
 | DELETE | `/v2/<name>/blobs/<digest>` | 405 `UNSUPPORTED` (blobs go with their manifests) |
 | POST | `/v2/<name>/blobs/uploads/` | Start upload. `?mount=<digest>` only short-circuits when this same repository already has the blob (201); `?digest=` does a monolithic upload; else 202 with `Location` |
 | GET | `/v2/<name>/blobs/uploads/<id>` | Upload status, 204 with `Range` |
-| PATCH | `/v2/<name>/blobs/uploads/<id>` | Append a chunk (checks `Content-Range` start = offset, else 416 `BLOB_UPLOAD_INVALID`) |
+| PATCH | `/v2/<name>/blobs/uploads/<id>` | Append a chunk (checks `Content-Range` start = offset, else 416 `BLOB_UPLOAD_INVALID`); a body without `Content-Length` is stored in 16 MiB parts; the session stops at 2 GiB (413 `SIZE_INVALID`) |
 | PUT | `/v2/<name>/blobs/uploads/<id>?digest=` | Final chunk and finish; content re-hashed, mismatch → 400 `DIGEST_INVALID` and chunks discarded |
 | DELETE | `/v2/<name>/blobs/uploads/<id>` | Cancel; 204 |
 | GET | `/v2/<name>/tags/list` | `?n`, `?last`; no hidden check |
@@ -611,19 +613,69 @@ entry (`index.ts`) wraps `mirrorFetch` (`registry.ts`) and turns any throw into
 
 ### Auth rules and token flow
 
-- `caller()` decides `{admin, authed}`: a `Basic` header is checked against `MIRROR_PUSH_TOKEN` (password part, any
-  user name, constant-time digest comparison); a `Bearer` token is verified (HMAC-SHA256 of the base64url body
-  `{adm, exp}`, keyed by `MIRROR_PUSH_TOKEN`, or by the fixed string `"anonymous-pull"` when the secret is unset;
-  `exp` = now + 300 s; `adm` only counts when `MIRROR_PUSH_TOKEN` is set).
-- Any method other than `GET`/`HEAD` (push, delete, uploads), and any request (including GET) on a repository named
-  `private` or starting with `private/`, requires `admin`; otherwise the answer is 401 with
+**`caller(req, env, repo)` decides `{admin, authed, push, publisher}`:**
+- **Basic header.** The password part (any user name) is checked against `MIRROR_PUSH_TOKEN` in constant time, which
+  makes the caller admin. Otherwise it may be a publisher's `ot_` token (`publisherFor`).
+  - A publisher token is looked up in D1 with `lib/tokens.ts:findToken`, as `authenticate` does, and needs the
+    `publish` scope.
+  - It is only honoured when the Worker has `DB` and `MIRROR_PUSH_TOKEN`.
+  - Its push rights to the request's repository come from `canPush`.
+- **Bearer token.** Verified by HMAC-SHA256 of the base64url body `{adm, push, sub, tid, exp}`, keyed by
+  `MIRROR_PUSH_TOKEN`, or by the fixed string `"anonymous-pull"` when the secret is unset; `exp` is now + 300 s.
+  Without the secret, neither `adm` nor `push` counts, so a grant can't be forged.
+
+**`canPush`.** The repository is `<namespace>/<name>` (two manifest slugs, not `private`). The user is an owner or
+publisher of that namespace, which is not `rejected` or `suspended`, and there is no `hidden/<repo>` marker.
+
+**`/token` (`tokenEndpoint`).**
+- **Who gets what.**
+  - With no credential, a pull token.
+  - With the scanner credential, an admin token.
+  - With a publisher token, push rights to each `scope=repository:<repo>:...push` that `canPush` allows. A wrong
+    credential answers 401.
+- **How to ask.** GET takes the credential as HTTP Basic. POST takes the OAuth2 password grant
+  (`grant_type=password&username&password&scope`), which containerd, buildx and nerdctl try first. Other grants answer
+  400 `UNSUPPORTED`, so those clients fall back to GET.
+
+**Who may do what.**
+- Writes need admin, except a publisher's pushes to a repository in its `push` set: blob uploads, and manifest PUTs.
+  DELETE stays admin-only.
+- Any request on `private` or `private/...` needs admin.
+- A publisher without the right gets 403 `DENIED`; anyone else gets 401 with
   `WWW-Authenticate: Bearer realm="<origin>/token",service="<host>",scope="repository:<name>:pull,push"` (or `:pull`).
-- Public `GET`/`HEAD` need no credential at all (a wrong Basic credential on a public pull is ignored).
-- Flow for the scanner: `crane auth login mirror.otinstaller.com -u scanner -p "$MIRROR_PUSH_TOKEN"`; the client
-  receives the 401 challenge, calls `/token` with the Basic credential, gets an admin token valid 300 s, and retries
-  with `Bearer`.
-- Takedowns: the API writes `hidden/<name>` or `hidden/<name>@<digest>` markers (`hideImage`) and later calls
-  `deleteImage`; both functions live in `registry.ts` and are shared through the `MIRROR` bucket.
+
+**Public reads.**
+- Public `GET`/`HEAD` need no credential.
+- A manifest with a `hidden/` marker answers 404 to everyone but admin.
+- One with a `pending/<repo>@<digest>` marker answers 404 to everyone but admin and the repository's publishers.
+
+**A publisher's manifest PUT.** It also must:
+- for a tag `sha256-<hex>[.suffix]` (a signature, attestation or SBOM), name a digest some publisher pushed to this
+  repository (`mirror_pushes`) or a hosted backup row, so a backup copy's signatures can't be replaced;
+- stay within 30 version-tag pushes per namespace per hour (`TAG_PUSHES_PER_HOUR`, counted from `mirror_pushes`);
+- keep the referenced blobs, index children included, within 2 GiB (`MAX_HOSTED_IMAGE_BYTES`, from the blob pointers'
+  sizes).
+
+The PUT writes a `pending/` marker (except for `sha256-*` tags) and a `mirror_pushes` row.
+
+**Uploads.**
+- An upload session holds at most 2 GiB (`MAX_UPLOAD_BYTES`; 413 `SIZE_INVALID`).
+- A body without `Content-Length` is stored in parts of 16 MiB (`PART_SIZE`) instead of being buffered whole.
+- A publisher's finished blobs count toward 10 GiB per namespace per day (`DAILY_PUSH_BYTES`; key
+  `mirror_bytes|<namespace>` in `rate_limits`; 429 `TOOMANYREQUESTS`).
+
+**Flows.**
+- **The scanner.** `crane auth login mirror.otinstaller.com -u scanner -p "$MIRROR_PUSH_TOKEN"`, plus `docker login`
+  for pulls of pending images. The client gets the 401 challenge, calls `/token` with the Basic credential, gets an
+  admin token valid 300 s, and retries with `Bearer`.
+- **A publisher.** `ot publish --image` does the same with Basic `ot:<ot_ token>` (`cli/internal/oci`).
+
+**Functions shared with the API** (all in `registry.ts`, shared through the `MIRROR` bucket):
+- `hideImage`: writes `hidden/<name>` or `hidden/<name>@<digest>` markers for takedowns.
+- `deleteImage`: the takedown purge passes `minAgeMs` of a day, so blobs of a push in progress survive.
+- `releaseImage`: clears `pending/` markers when a version is published.
+- `imageExists` and `imagePlatforms`: the release checks.
+- `sweepRepo` and `purgeUploads`: the nightly clean-up.
 
 ## 7. Errors
 

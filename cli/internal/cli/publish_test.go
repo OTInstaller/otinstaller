@@ -1,13 +1,18 @@
 package cli
 
 import (
+	"archive/tar"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -203,6 +208,167 @@ func TestPublishChecksBeforeUploading(t *testing.T) {
 	}
 	if f.files != nil {
 		t.Errorf("uploaded despite problems: %v", f.files)
+	}
+}
+
+// ociArchive writes a one-platform OCI image layout tar, as `docker buildx build --output type=oci` does.
+func ociArchive(t *testing.T, arch string) string {
+	t.Helper()
+	files := map[string][]byte{}
+	put := func(b []byte) (string, int) {
+		sum := sha256.Sum256(b)
+		d := "sha256:" + hex.EncodeToString(sum[:])
+		files["blobs/sha256/"+hex.EncodeToString(sum[:])] = b
+		return d, len(b)
+	}
+	cfgD, cfgN := put([]byte(`{"os":"linux","architecture":"` + arch + `"}`))
+	layD, layN := put([]byte("a layer"))
+	man, _ := json.Marshal(map[string]any{"schemaVersion": 2, "mediaType": "application/vnd.oci.image.manifest.v1+json",
+		"config": map[string]any{"mediaType": "application/vnd.oci.image.config.v1+json", "digest": cfgD, "size": cfgN},
+		"layers": []any{map[string]any{"mediaType": "application/vnd.oci.image.layer.v1.tar", "digest": layD, "size": layN}}})
+	manD, manN := put(man)
+	files["index.json"], _ = json.Marshal(map[string]any{"schemaVersion": 2, "manifests": []any{
+		map[string]any{"mediaType": "application/vnd.oci.image.manifest.v1+json", "digest": manD, "size": manN}}})
+	p := filepath.Join(t.TempDir(), "image.tar")
+	f, _ := os.Create(p)
+	tw := tar.NewWriter(f)
+	for name, b := range files {
+		tw.WriteHeader(&tar.Header{Name: name, Mode: 0o644, Size: int64(len(b)), Typeflag: tar.TypeReg})
+		tw.Write(b)
+	}
+	tw.Close()
+	f.Close()
+	return p
+}
+
+// mirrorPaths adds a minimal OCI registry to a fake registry server: /token, blob uploads and manifests.
+func mirrorPaths(t *testing.T, next http.Handler) (http.Handler, *map[string][]byte) {
+	manifests := map[string][]byte{}
+	uploads := map[string][]byte{}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/token":
+			if u, p, _ := r.BasicAuth(); u != "ot" || p != "ot_t" {
+				w.WriteHeader(401)
+				return
+			}
+			w.Write([]byte(`{"token":"pt"}`))
+		case strings.HasPrefix(r.URL.Path, "/v2/"):
+			if r.Header.Get("Authorization") != "Bearer pt" {
+				w.WriteHeader(401)
+				return
+			}
+			rest := strings.TrimPrefix(r.URL.Path, "/v2/alice/whois-plus/")
+			switch {
+			case r.Method == "HEAD":
+				w.WriteHeader(404)
+			case r.Method == "POST":
+				w.Header().Set("Location", "/v2/alice/whois-plus/blobs/uploads/u1")
+				w.WriteHeader(202)
+			case r.Method == "PATCH":
+				b, _ := io.ReadAll(r.Body)
+				uploads["u1"] = append(uploads["u1"], b...)
+				w.Header().Set("Location", r.URL.Path)
+				w.WriteHeader(202)
+			case r.Method == "PUT" && strings.HasPrefix(rest, "blobs/"):
+				uploads["u1"] = nil
+				w.WriteHeader(201)
+			case r.Method == "PUT":
+				b, _ := io.ReadAll(r.Body)
+				manifests[strings.TrimPrefix(rest, "manifests/")] = b
+				w.WriteHeader(201)
+			}
+		default:
+			next.ServeHTTP(w, r)
+		}
+	}), &manifests
+}
+
+func TestPublishHostsTheImageOnTheMirror(t *testing.T) {
+	dir := publishDir(t)
+	f := &fakePublish{statuses: []string{"scanning"}}
+	a, out, errb := publishApp(t, f)
+	apiSrv := f.server(t)
+	defer apiSrv.Close()
+	handler, manifests := mirrorPaths(t, apiSrv.Config.Handler)
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+	a.API.Base = srv.URL + "/v1"
+	t.Setenv("OT_MIRROR_URL", srv.URL)
+
+	if code := run(a, "publish", "--image-archive", ociArchive(t, "amd64"), dir); code != 0 {
+		t.Fatalf("exit %d: %s %s", code, out, errb)
+	}
+	host := strings.TrimPrefix(srv.URL, "http://")
+	pinned := regexp.MustCompile(`image: ` + regexp.QuoteMeta(host) + `/alice/whois-plus@sha256:[0-9a-f]{64}`)
+	if !pinned.MatchString(f.files["otinstaller.yaml"]) {
+		t.Errorf("uploaded manifest:\n%s", f.files["otinstaller.yaml"])
+	}
+	if disk, _ := os.ReadFile(filepath.Join(dir, "otinstaller.yaml")); !pinned.Match(disk) {
+		t.Errorf("otinstaller.yaml was not pinned:\n%s", disk)
+	}
+	if _, ok := (*manifests)["1.2.0"]; !ok {
+		t.Errorf("the image was not tagged with the version: %v", *manifests)
+	}
+	if !strings.Contains(errb.String(), "not signed") {
+		t.Errorf("no unsigned note: %s", errb)
+	}
+
+	// An arm64-only image is refused before anything is pushed or uploaded.
+	f.files = nil
+	if code := run(a, "publish", "--image-archive", ociArchive(t, "arm64"), publishDir(t)); code != ExitUsage || !strings.Contains(errb.String(), "linux/amd64") {
+		t.Fatalf("arm64: exit %d: %s", code, errb)
+	}
+	if f.files != nil {
+		t.Error("uploaded an arm64-only release")
+	}
+	// The flags are for Docker tools, and --sign signs only what ot pushes.
+	if code := run(a, "publish", "--sign", publishDir(t)); code != ExitUsage {
+		t.Errorf("--sign alone: exit %d", code)
+	}
+}
+
+// cosignExec records how cosign is run, and what DOCKER_CONFIG it was given.
+type cosignExec struct {
+	fakeExec
+	args   []string
+	config string
+}
+
+func (c *cosignExec) Run(ctx context.Context, name string, args, env []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
+	if name == "cosign" {
+		c.args = args
+		for _, e := range env {
+			if dir, ok := strings.CutPrefix(e, "DOCKER_CONFIG="); ok {
+				b, _ := os.ReadFile(filepath.Join(dir, "config.json"))
+				c.config = string(b)
+			}
+		}
+		return 0, nil
+	}
+	return c.fakeExec.Run(ctx, name, args, env, stdin, stdout, stderr)
+}
+
+func TestPublishSignsWithoutPuttingTheTokenInArgv(t *testing.T) {
+	f := &fakePublish{statuses: []string{"scanning"}}
+	a, out, errb := publishApp(t, f)
+	ce := &cosignExec{}
+	a.Runner.Exec = ce
+	apiSrv := f.server(t)
+	defer apiSrv.Close()
+	handler, _ := mirrorPaths(t, apiSrv.Config.Handler)
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+	a.API.Base = srv.URL + "/v1"
+	t.Setenv("OT_MIRROR_URL", srv.URL)
+	if code := run(a, "publish", "--image-archive", ociArchive(t, "amd64"), "--sign", publishDir(t)); code != 0 {
+		t.Fatalf("exit %d: %s %s", code, out, errb)
+	}
+	if len(ce.args) < 3 || ce.args[0] != "sign" || !strings.Contains(strings.Join(ce.args, " "), "--allow-http-registry") || strings.Contains(strings.Join(ce.args, " "), "ot_t") {
+		t.Errorf("cosign args %v", ce.args)
+	}
+	if !strings.Contains(ce.config, base64.StdEncoding.EncodeToString([]byte("ot:ot_t"))) {
+		t.Errorf("DOCKER_CONFIG %s", ce.config)
 	}
 }
 

@@ -33,6 +33,9 @@ export function scanRuns(scans: Scans | null): { ran_at: number; rows: Scans["sc
   return runs.reverse();
 }
 
+/** An image a publisher pushed to the registry's own mirror (`ot publish --image`): it has no other host to lose. */
+export const isHostedImage = (image: string | undefined) => !!image?.startsWith("mirror.otinstaller.com/");
+
 export function shortDigest(d: string): string {
   const hex = d.replace(/^sha256:/, "");
   return hex.length > 16 ? `sha256:${hex.slice(0, 8)}…${hex.slice(-6)}` : d;
@@ -98,7 +101,9 @@ export function evidence(t: ToolDetail, scans: Scans | null, manifest: ManifestR
   }
 
   // Backed up.
-  if (manifest?.mirror_image) {
+  if (isHostedImage(image)) {
+    out.push({ key: "backup", label: "Hosted by the registry", met: true, href: "/docs/security", parts: ["this image lives on the registry's own mirror, so there is no other registry that could remove it. Takedowns and backups apply to it as to any copy."] });
+  } else if (manifest?.mirror_image) {
     out.push({ key: "backup", label: "Backed up", met: true, href: "/docs/security", parts: ["a copy of this image is on the registry's mirror. If the original registry refuses it, ", { code: "ot" }, " pulls the same digest from the mirror and checks the same signature."] });
   } else if (manifest?.wheel_url) {
     out.push({ key: "backup", label: "Backed up", met: true, href: "/docs/security", parts: ["a copy of this wheel is kept by the registry. If PyPI removes it, ", { code: "ot" }, " downloads the copy and checks the same hash."] });

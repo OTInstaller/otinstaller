@@ -85,6 +85,9 @@ The PyPI package or version in `runtime` does not exist.
 ### artifact_wheel_mismatch
 The wheel on PyPI does not match `runtime.wheel_sha256`.
 
+### artifact_image_foreign
+`runtime.image` is on the registry's mirror (`mirror.otinstaller.com`) but in another package's repository. An image there must be `mirror.otinstaller.com/<namespace>/<name>@sha256:…` for this package; `ot publish --image` pushes it there.
+
 ## Guides and docs
 
 ### content_raw_html

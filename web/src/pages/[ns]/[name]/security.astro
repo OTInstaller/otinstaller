@@ -5,7 +5,7 @@ import Base from "../../../layouts/Base.astro";
 import ToolHeader from "../../../components/ToolHeader.astro";
 import { apiOrNull, type ManifestResponse, type Scans } from "../../../lib/api";
 import { formatDate } from "../../../lib/format";
-import { scanRuns } from "../../../lib/evidence";
+import { isHostedImage, scanRuns } from "../../../lib/evidence";
 import { loadTool } from "../../../lib/tool";
 import { cacheFor } from "../../../lib/page";
 
@@ -56,7 +56,7 @@ function describe(kind: string, s: any): string {
             {wheel && <><dt>Wheel</dt><dd><code>{m.runtime?.package}{m.runtime?.package_version ? ` ${m.runtime.package_version}` : ""}</code> from PyPI</dd><dt>SHA-256</dt><dd><code class="digest">{wheel}</code> <button class="btn btn-sm copy" type="button" data-copy={wheel} aria-label="Copy the hash"><span class="label">Copy</span></button></dd></>}
             {!image && !wheel && <><dt>Pinned</dt><dd class="muted">No digest or hash is recorded for this version.</dd></>}
             <dt>Registry copy</dt>
-            <dd>{manifest?.mirror_image ? <>Mirror image <code>{manifest.mirror_image}</code>, same digest.</> : manifest?.wheel_url ? <>Wheel copy served by the registry, same hash.</> : <span class="muted">None public. Copies of non-OSI licences are private; new releases are copied after their scan.</span>}</dd>
+            <dd>{isHostedImage(image) ? <>Hosted on the registry's own mirror: the image above is the registry's copy.</> : manifest?.mirror_image ? <>Mirror image <code>{manifest.mirror_image}</code>, same digest.</> : manifest?.wheel_url ? <>Wheel copy served by the registry, same hash.</> : <span class="muted">None public. Copies of non-OSI licences are private; new releases are copied after their scan.</span>}</dd>
           </dl>
         </section>
 
@@ -68,7 +68,7 @@ function describe(kind: string, s: any): string {
                 <dt>Identity</dt><dd><code>{scans.signer_identity}</code></dd>
                 <dt>Issuer</dt><dd><code>{scans.signer_issuer}</code></dd>
               </dl>
-              <p class="small muted">Signed by the repository's own release workflow (cosign keyless, or a PyPI attestation for wheels). <code>ot</code> verifies this identity before every install and refuses a mismatch, including from the registry's mirror.</p>
+              <p class="small muted">{t.repo_url ? "Signed by the repository's own release workflow" : "Published directly, so the registry holds every version to the signer of its first signed one"} (cosign keyless, or a PyPI attestation for wheels). <code>ot</code> verifies this identity before every install and refuses a mismatch, including from the registry's mirror.</p>
             </>
           ) : (
             <p class="small muted">{t.manifest_held_by_registry ? "The manifest is held by the registry, so no release workflow signs this artifact." : "This version carries no signature the registry could verify."} <code>ot</code> installs it after a warning.</p>
