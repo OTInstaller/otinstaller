@@ -2,7 +2,7 @@
 layout: ../../layouts/Policy.astro
 title: Terms of service
 description: The terms for using and publishing on the OTInstaller Registry.
-updated: 2026-10-20
+updated: 2026-10-24
 ---
 
 The OTInstaller Registry is run by OSINTverse. By using the website, the API or `ot`, you agree to these terms and to the [acceptable use policy](/policy/acceptable-use).
@@ -13,11 +13,11 @@ Tools, images and packages stay where their authors publish them (GitHub, GitLab
 
 ## Publishing
 
-You may publish only what you have the right to publish, under its license. You keep ownership of your work. You allow the registry to index your releases, render your README and guides, keep backup copies of your releases, and show them publicly. You are responsible for your packages' descriptions, ethics answers and test inputs being honest.
+You may publish only what you have the right to publish, under its license. You keep ownership of your work. You allow the registry to index your releases, render your README and guides, host and serve the images you push to its mirror, keep backup copies of your releases, and show them publicly. You are responsible for your packages' descriptions, ethics answers and test inputs being honest.
 
 ## Accounts and namespaces
 
-Namespaces belong to the GitHub or GitLab owner they are linked to; a namespace created on the registry belongs to the account that created it and the owners it adds. We may review, yank or remove packages, suspend namespaces and ban accounts that break these terms or the acceptable use policy, as described in [reports and takedowns](/policy/takedown).
+Namespaces belong to the GitHub or GitLab owner they are linked to; a namespace created on the registry belongs to the account that created it and the owners it adds, and is deleted if it has published nothing 30 days after it was created and is still waiting for review. We may review, yank or remove packages, suspend namespaces and ban accounts that break these terms or the acceptable use policy, as described in [reports and takedowns](/policy/takedown).
 
 ## No warranty
 
