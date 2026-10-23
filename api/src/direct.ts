@@ -198,7 +198,7 @@ async function readBundle(c: Context<AppEnv>): Promise<Map<string, File>> {
   const tooLarge = () => apiError(413, "bundle_too_large", `the upload is over ${MAX_BUNDLE_BYTES / 1048576} MB`, "leave large files out: only the manifest, its README and pages, and their images are needed");
   if (length > MAX_BUNDLE_BYTES) tooLarge();
   const type = c.req.header("content-type") ?? "";
-  if (!type.startsWith("multipart/form-data")) apiError(400, "bundle_invalid", "send the files as multipart/form-data, one `file` part each");
+  if (!type.startsWith("multipart/form-data")) apiError(400, "bundle_invalid", "send the files as multipart/form-data, one part each, named by its path");
   const body = await c.req.arrayBuffer();
   if (body.byteLength > MAX_BUNDLE_BYTES) tooLarge();
   let form: FormData;
@@ -207,11 +207,12 @@ async function readBundle(c: Context<AppEnv>): Promise<Map<string, File>> {
   } catch {
     apiError(400, "bundle_invalid", "the upload is not valid multipart/form-data");
   }
+  // Each part is named by its file's path. The name, unlike a part's filename, is never cut down to its last segment.
   const files = new Map<string, File>();
-  for (const part of form.getAll("file")) {
-    if (typeof part === "string") apiError(400, "bundle_invalid", "each `file` part needs a filename: the file's path in the package");
-    const path = bundlePath(part.name);
-    if (!path) apiError(400, "bundle_invalid", `"${part.name}" is not a relative path inside the package`);
+  for (const [name, part] of form.entries()) {
+    if (typeof part === "string") apiError(400, "bundle_invalid", `part "${name}" is not a file`);
+    const path = bundlePath(name);
+    if (!path) apiError(400, "bundle_invalid", `"${name}" is not a relative path inside the package`);
     if (files.has(path)) apiError(400, "bundle_invalid", `${path} is in the upload twice`);
     files.set(path, part);
   }
