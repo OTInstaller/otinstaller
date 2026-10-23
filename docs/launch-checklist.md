@@ -5,17 +5,17 @@ The launch is **public and direct**. The closed beta planned for week 12 never r
 readiness audit, the production dry run and the beta preparation on 21 Oct; they describe what was true then.
 Items marked **(you)** need the owner of the GitHub, GitLab, Cloudflare, Resend, PyPI or osintverse.com accounts.
 
-## Current state (22 October 2026)
+## Current state (23 October 2026)
 
 | Thing | State |
 |-------|-------|
 | `ot` | v0.13.1 is the latest release on `OTInstaller/ot` (22 Oct), with archives, `.deb`/`.rpm`, signed checksums, six `.mcpb` bundles and `server.json`; `get.otinstaller.com/ot` and `/ot.ps1` serve its install scripts |
-| API and site | Deployed from `main` with `PUBLIC_BETA=0` (no beta strip); migrations up to 0013 applied in production |
+| API and site | Deployed from `main` with `PUBLIC_BETA=0` (no beta strip); migrations up to 0014 applied in production. The site was last deployed on 23 Oct ("Homepage for AI agents" below) |
 | Agents | `ot mcp` (since v0.13.0), the remote MCP server at `https://api.otinstaller.com/mcp`, the plugin `OTInstaller/agent-plugin` v0.1.0; MCP Registry entries `com.otinstaller/ot` 0.13.1 and `com.otinstaller/registry` 1.0.0 |
-| otlite | 1.0.0, 1.1.0 and 1.2.0 released to PyPI on 22 Oct (09:23, 09:39 and 10:51 UTC) by `release-otlite.yml`, each with a GitHub release `otlite-vX.Y.Z` on `OTInstaller/otinstaller`. [PR #48](https://github.com/OTInstaller/otinstaller/pull/48) (1.2.1) was still open on 22 Oct |
+| otlite | 1.0.0, 1.1.0 and 1.2.0 released to PyPI on 22 Oct (09:23, 09:39 and 10:51 UTC) by `release-otlite.yml`, each with a GitHub release `otlite-vX.Y.Z` on `OTInstaller/otinstaller`. 1.2.1 ([PR #48](https://github.com/OTInstaller/otinstaller/pull/48)) followed on 22 Oct at 18:54 UTC and is the latest on PyPI |
 | `otinstaller` shim | 0.2.0 is on PyPI (22 Oct, 11:23 UTC), and its files are on the `otlite-v1.2.0` GitHub release. The workflow publishes it from its own environment `pypi-otinstaller` ([PR #44](https://github.com/OTInstaller/otinstaller/pull/44)), but in the `otlite-v1.2.0` run that job failed with `invalid-publisher` (10:52 UTC), so the Actions history doesn't show how 0.2.0 was uploaded. **(you)** Check that PyPI's trusted publisher for `otinstaller` names the environment `pypi-otinstaller` before the next release |
 | otlite installer | `curl -fsSL https://get.otinstaller.com/otlite \| sh` answers 200 (`otlite/scripts/install.sh` from `main`, through `ops/get`) |
-| Site pages | `/otlite` and `/otlite/tools` (the catalog from `web/src/data/otlite-catalog.json`); tool pages show the sample output recorded by the scanner's smoke test |
+| Site pages | `/agents`, the homepage for AI agents, with its Markdown twin `/agents.md`; `/otlite` and `/otlite/tools` (the catalog from `web/src/data/otlite-catalog.json`); tool pages show the sample output recorded by the scanner's smoke test |
 
 ## Left before announcing
 
@@ -57,6 +57,20 @@ These would have stopped testers on day one. **All done as of 21 Oct.** The beta
 | PR #2 (Python package manager merge) | Merged into main on 20 Oct (`6b8f6a6`). Deployed with this branch. | Nothing. |
 | Site docs that went live "at the next deploy" | Live since today's deploy. | Nothing. |
 | API `total` on `/v1/tools` and `/v1/guides` | Live (`/v1/tools?kind=tool` total 38, `/v1/guides` total 10). | Nothing. |
+
+## Homepage for AI agents (23 October 2026)
+
+[PR #52](https://github.com/OTInstaller/otinstaller/pull/52), merged as `95af735`, is live. `/agents` brings together
+connecting an AI client to `ot mcp` or the remote MCP server, what an agent can do, consent, and the entry points for
+programs; `/agents.md` is its Markdown twin, written for agents. The same PR put otlite and Agents in the top nav and
+stopped the home page scrolling sideways on phones.
+
+| Step | Result |
+|------|--------|
+| Site | Deployed from `main` (`95af735`) with `PUBLIC_BETA=0` as version `7c4ed6de-df20-483e-88a7-706e0a79ce54`. Roll back to `18f73b89-250e-4c7a-a8e3-0d94df16d821`. |
+| API | Not deployed; nothing changed there. |
+| Checks | `/`, `/agents`, `/tour`, `/otlite`, `/otlite/tools`, `/osintverse-community` and `/docs/agents` answer 200. `/agents.md`, and `Accept: text/markdown` on `/agents` (private, with `Vary: Accept`), return the Markdown; `/osintverse-community.md` still works. `llms.txt`, `robots.txt` and the sitemap name `/agents`. No beta strip, no console errors on `/agents`, and `/` and `/agents` fit a 375px phone. |
+| Still to do | Nothing for the page. The agent plugin's manifests and the `.mcpb` bundles still link to `/docs/agents`; pointing them at `/agents` needs new releases of both. |
 
 ## Publisher profiles (22 October 2026)
 
