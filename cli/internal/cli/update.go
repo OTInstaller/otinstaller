@@ -29,6 +29,8 @@ type updateRow struct {
 	Replacement string `json:"replacement,omitempty"`
 	// warnings are the flags as sentences, printed on stderr.
 	warnings []string
+	// movedTo is the package's new name when it moved; `ot update` installs it there.
+	movedTo string
 }
 
 // checkConcurrency is how many packages are checked at once.
@@ -110,11 +112,11 @@ func (a *App) checkUpdate(ctx context.Context, row *updateRow) {
 		row.flag("source_unavailable", "the source repository of "+row.Ref+" is no longer available; it will get no new versions")
 	}
 	if t.MovedTo != "" {
-		row.Note = "moved to " + t.MovedTo
+		row.Note, row.movedTo = "moved to "+t.MovedTo, t.MovedTo
 		if row.Replacement == "" {
 			row.Replacement = t.MovedTo
 		}
-		row.flag("moved", fmt.Sprintf("%s has moved to %s; install it there with `ot install %s`, then `ot uninstall %s`", row.Ref, t.MovedTo, t.MovedTo, row.Ref))
+		row.flag("moved", fmt.Sprintf("%s has moved to %s; `ot update %s` installs it under its new name", row.Ref, t.MovedTo, row.Ref))
 	}
 }
 
@@ -122,6 +124,28 @@ func (a *App) checkUpdate(ctx context.Context, row *updateRow) {
 func (r *updateRow) flag(name, warning string) {
 	r.Flags = append(r.Flags, name)
 	r.warnings = append(r.warnings, warning)
+}
+
+// forgetOldName drops a moved package's entry under its old name once it is installed under the new one. Its image is
+// removed too, unless the new install uses the same one; a native pipx install shares its package with the new one, so
+// it is left alone.
+func (a *App) forgetOldName(ctx context.Context, old, cur *state.Installed) error {
+	if old.Ref == cur.Ref {
+		return nil
+	}
+	st, err := state.Load()
+	if err != nil {
+		return err
+	}
+	delete(st.Installed, old.Ref)
+	if err := st.Save(); err != nil {
+		return err
+	}
+	image := func(i *state.Installed) string { return orDefault(i.LocalImage, i.Artifact) }
+	if !old.Native && image(old) != image(cur) {
+		_ = a.Runner.Uninstall(ctx, old)
+	}
+	return nil
 }
 
 // unflag drops a flag that no longer holds, such as yanked once a newer version is installed.
@@ -213,16 +237,31 @@ func (a *App) updateCmd() *cobra.Command {
 			rows := a.checkUpdates(cmd.Context(), insts)
 			failed := false
 			for i, row := range rows {
-				if row.Status != "update available" {
+				// A package that moved is installed under its new name even when its version hasn't changed.
+				moved := row.movedTo != "" && (row.Status == "up to date" || row.Status == "update available")
+				if row.Status != "update available" && !moved {
 					continue
 				}
-				ns, name, _ := strings.Cut(row.Ref, "/")
+				target := row.Ref
+				if moved {
+					target = row.movedTo
+				}
+				ns, name, _ := strings.Cut(target, "/")
 				inst, err := a.install(cmd.Context(), pkgRef{NS: ns, Name: name}, insts[i].Native)
 				if err != nil {
 					row.Status, row.Note, failed = "error", err.Error(), true
 					continue
 				}
 				row.Status, row.Note = "updated", "from "+row.Installed
+				if moved {
+					if err := a.forgetOldName(cmd.Context(), insts[i], inst); err != nil {
+						row.Status, row.Note, failed = "error", err.Error(), true
+						continue
+					}
+					row.Note = "from " + row.Ref + " " + row.Installed
+					row.Ref = inst.Ref
+					row.unflag("moved")
+				}
 				row.Installed = inst.Version
 				row.unflag("yanked")
 			}
