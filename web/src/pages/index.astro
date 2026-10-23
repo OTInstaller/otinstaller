@@ -178,12 +178,14 @@ cacheFor(Astro, 300);
   .type-row .more:hover { color: var(--text); text-decoration: underline; }
   .after { margin: 12px 0 0; }
   @media (max-width: 820px) {
-    .hero-grid { grid-template-columns: 1fr; gap: 24px; }
+    /* minmax(0, 1fr), not 1fr: a plain 1fr track grows to its longest line (the terminal's, the install command),
+       which made the whole page scroll sideways on phones. */
+    .hero-grid { grid-template-columns: minmax(0, 1fr); gap: 24px; }
     .stats { grid-template-columns: 1fr 1fr; }
     .stats > div:nth-child(2n) { border-right: 0; }
     .stats > div:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
-    .install-grid { grid-template-columns: 1fr; gap: 16px; }
-    .type-row { grid-template-columns: 1fr; gap: 6px; }
+    .install-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+    .type-row { grid-template-columns: minmax(0, 1fr); gap: 6px; }
     .type-row .more { justify-self: start; }
   }
 </style>
