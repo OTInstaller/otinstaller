@@ -8,8 +8,12 @@
   // The registry API binds the same bucket (MIRROR) to hide and delete taken-down images.
   // Create with `wrangler r2 bucket create otinstaller-mirror`.
   "r2_buckets": [{ "binding": "MIRROR", "bucket_name": "otinstaller-mirror" }],
+  // The registry's database, the API's: publishers push their own images with their ot_ tokens (`ot publish --image`),
+  // so the mirror checks tokens and namespace membership, and records each push (mirror_pushes).
+  "d1_databases": [{ "binding": "DB", "database_name": "otinstaller", "database_id": "77c26f27-5605-4e1f-a3e1-616acd3129d1" }],
   // Blob uploads are joined and hashed in the Worker; big layers need more than the default CPU time.
   "limits": { "cpu_ms": 300000 }
   // Secret (wrangler secret put MIRROR_PUSH_TOKEN -c wrangler.mirror.jsonc): MIRROR_PUSH_TOKEN, the scanner credential.
-  // The scanner logs in with `crane auth login mirror.otinstaller.com -u scanner -p "$MIRROR_PUSH_TOKEN"`.
+  // The scanner logs in with `crane auth login mirror.otinstaller.com -u scanner -p "$MIRROR_PUSH_TOKEN"`. It also
+  // signs the mirror's own tokens: without it, nobody (publishers included) can push.
 }
