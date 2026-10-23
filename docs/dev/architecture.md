@@ -703,5 +703,16 @@ The remote server is separate and runs nothing:
    findPin, upstream's own image) --> latestRelease (releases/latest with If-None-Match | PyPI | compare for commits)
    --> upstream_watch row; UPSTREAM_WATCH=issues: outdated issue 3 days after a release, closed when caught up;
    =prs: maybeOpenBump (pin-only PR) --> POST /packages/:ns/:name/pulls/:n/release (maintainer) --> merge + release
+
+ GET /packages/:ns/:name/files (maintainer: main's otinstaller.yaml, Dockerfile, README.md via the community bot)
+   --> POST /packages/:ns/:name/proposals {title, note, files}: createProposal --> checkProposal (only what changed;
+       validate, protected_field, version past every version, dockerfileChecks, screen) --> community bot:
+       openPullRequest otinstaller/proposal-<id> --> updatePull (links the page) --> change_proposals row, inbox
+   --> POST .../proposals/:n/review (reviewer, not the proposer): changes_requested (proposer PATCHes: branch rebuilt)
+       | reject (closePull) | approve: mergePull --> dispatch otinstaller-release.yml (builds) | createTag v<version>
+   --> tag webhook --> processJob --> scan --> published like any release
+
+ GET /tools/:ns/:name/status | /versions | /activity --> first-week.ts: versions published under 7 days ago carry
+   their confirmations since (works, broken); the status line says when it came out; ot outdated adds a note
 ```
 

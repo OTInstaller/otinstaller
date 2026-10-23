@@ -27,8 +27,12 @@ type updateRow struct {
 	Flags []string `json:"flags"`
 	// Replacement is the package to move to: the deprecation's replacement, or where the package moved.
 	Replacement string `json:"replacement,omitempty"`
+	// LatestFirstWeek is what people said about the latest version while it is under a week old, when it is an update.
+	LatestFirstWeek *api.FirstWeek `json:"latest_first_week,omitempty"`
 	// warnings are the flags as sentences, printed on stderr.
 	warnings []string
+	// notes are worth knowing but not warnings (an update's first week), printed on stderr after them.
+	notes []string
 	// movedTo is the package's new name when it moved; `ot update` installs it there.
 	movedTo string
 }
@@ -78,9 +82,14 @@ func (a *App) checkUpdate(ctx context.Context, row *updateRow) {
 	if semverLess(row.Installed, t.LatestVersion) {
 		row.Status = "update available"
 	}
-	// The installed version may have been yanked or removed since, even when it is still the latest.
+	// The installed version may have been yanked or removed since, even when it is still the latest. An update still in
+	// its first week comes with what people said about it so far.
 	if versions, err := a.API.Versions(ctx, ns, name); err == nil {
 		for _, v := range versions {
+			if v.Version == t.LatestVersion && row.Status == "update available" && v.FirstWeek != nil {
+				row.LatestFirstWeek = v.FirstWeek
+				row.notes = append(row.notes, firstWeekNote(row.Ref, v.Version, *v.FirstWeek))
+			}
 			switch {
 			case v.Version != row.Installed:
 			case v.Status == "removed":
@@ -118,6 +127,28 @@ func (a *App) checkUpdate(ctx context.Context, row *updateRow) {
 		}
 		row.flag("moved", fmt.Sprintf("%s has moved to %s; `ot update %s` installs it under its new name", row.Ref, t.MovedTo, row.Ref))
 	}
+}
+
+// firstWeekNote says what signed-in people said about a version under a week old, so a person can wait for an update
+// others found broken.
+func firstWeekNote(ref, version string, fw api.FirstWeek) string {
+	people := func(n int) string {
+		if n == 1 {
+			return "1 person"
+		}
+		return fmt.Sprintf("%d people", n)
+	}
+	var said []string
+	if fw.Works > 0 {
+		said = append(said, "works for "+people(fw.Works))
+	}
+	if fw.Broken > 0 {
+		said = append(said, "broken for "+people(fw.Broken))
+	}
+	if len(said) == 0 {
+		return fmt.Sprintf("%s %s is under a week old; nobody has said yet whether it works", ref, version)
+	}
+	return fmt.Sprintf("%s %s is under a week old: %s so far", ref, version, strings.Join(said, ", "))
 }
 
 // flag adds a lifecycle flag and the warning that explains it.
@@ -160,11 +191,16 @@ func (r *updateRow) unflag(name string) {
 }
 
 func (a *App) printUpdateRows(rows []*updateRow) error {
-	// One warning per flag, on stderr in both modes, so a person sees them under JSON too.
+	// One warning per flag, then the notes, on stderr in both modes, so a person sees them under JSON too.
 	defer func() {
 		for _, r := range rows {
 			for _, w := range r.warnings {
 				fmt.Fprintln(a.Err, "warning:", w)
+			}
+		}
+		for _, r := range rows {
+			for _, n := range r.notes {
+				fmt.Fprintln(a.Err, "note:", n)
 			}
 		}
 	}()

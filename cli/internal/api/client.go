@@ -248,6 +248,16 @@ type Version struct {
 	// the registry has none, or answered before it kept them.
 	Changelog       *string `json:"changelog"`
 	ChangelogSource string  `json:"changelog_source,omitempty"`
+	// FirstWeek is what signed-in people said about the version since it came out; nil once it is a week old.
+	FirstWeek *FirstWeek `json:"first_week,omitempty"`
+}
+
+// FirstWeek counts "works for me" and "broken for me" for a version under a week old: counts, never a score.
+type FirstWeek struct {
+	Works  int `json:"works"`
+	Broken int `json:"broken"`
+	// EndsAt is when the first week ends (Unix milliseconds).
+	EndsAt int64 `json:"ends_at"`
 }
 
 func (c *Client) Versions(ctx context.Context, ns, name string) ([]Version, error) {

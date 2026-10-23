@@ -179,7 +179,8 @@ async function startRelease(env: Env, token: string, sub: SubmissionRow, actor: 
   ]);
 }
 
-async function reviewers(env: Env): Promise<string[]> {
+/** Staff and community reviewers, who hear about work waiting for them. */
+export async function reviewers(env: Env): Promise<string[]> {
   return (await env.DB.prepare(`SELECT id AS user_id FROM users WHERE (is_admin = 1 OR is_reviewer = 1) AND banned_at IS NULL UNION SELECT user_id FROM community_roles WHERE role = 'reviewer'`)
     .all<{ user_id: string }>()).results.map((r) => r.user_id);
 }

@@ -183,12 +183,13 @@ else changes.
    repositories the bot creates (the publish webhook and the 6-hourly poller both use it).
 2. Create a GitHub App called "OTInstaller Community", owned by the `osintverse-community` organisation, with no
    webhook. Repository permissions: Administration, Contents, Workflows, Actions and Pull requests **read and
-   write** (pull requests for the upstream watcher's bumps); Metadata read. Install it on `osintverse-community`
-   only (all repositories).
+   write** (pull requests for the upstream watcher's bumps and maintainers' change proposals); Metadata read. Install
+   it on `osintverse-community` only (all repositories).
 3. Set the secrets on the API Worker (owner's step: `wrangler secret put` changes production):
    `COMMUNITY_APP_ID`, `COMMUNITY_APP_PRIVATE_KEY` (the App's key converted to PKCS#8, like `GITHUB_APP_PRIVATE_KEY`)
    and `COMMUNITY_INSTALLATION_ID`.
-4. Grant the reviewer role to the community members who approve first releases (Admin console, Community tab).
+4. Grant the reviewer role to the community members who approve first releases and change proposals (Admin console,
+   Community tab).
 5. Check it with a throwaway submission of a small MIT tool: the bot creates `osintverse-community/<name>`, the release
    tags or builds, the version waits on `/submissions/<n>`, a reviewer approves it, and it publishes. Turn the test down
    afterwards: the repository is archived, not deleted; delete it by hand if you want it gone.

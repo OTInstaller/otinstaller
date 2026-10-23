@@ -32,7 +32,10 @@ func fakeUpdateRegistry(t *testing.T) *httptest.Server {
 		case "/v1/tools/dheeraj/holehe-lite":
 			json.NewEncoder(w).Encode(map[string]any{"namespace": "dheeraj", "name": "holehe-lite", "latest_version": "1.3.0", "status": "active", "health": "healthy", "manifest": doc})
 		case "/v1/tools/dheeraj/holehe-lite/versions":
-			json.NewEncoder(w).Encode(map[string]any{"versions": []map[string]any{{"version": "1.3.0", "status": "published"}, {"version": "1.2.0", "status": "yanked"}}})
+			json.NewEncoder(w).Encode(map[string]any{"versions": []map[string]any{
+				{"version": "1.3.0", "status": "published", "first_week": map[string]any{"works": 1, "broken": 2, "ends_at": 1}},
+				{"version": "1.2.0", "status": "yanked"},
+			}})
 		case "/v1/tools/dheeraj/holehe-lite/latest/manifest":
 			json.NewEncoder(w).Encode(map[string]any{"ref": "dheeraj/holehe-lite", "version": "1.3.0", "status": "published", "manifest": doc})
 		case "/v1/tools/dheeraj/flagged":
@@ -82,6 +85,13 @@ func TestOutdatedFlags(t *testing.T) {
 	}
 	if r := list[1]; r.Status != "update available" || strings.Join(r.Flags, ",") != "yanked" {
 		t.Errorf("holehe-lite: %+v", r)
+	}
+	// The update is in its first week, so what people said about it comes along; an up-to-date package has none.
+	if fw := list[1].LatestFirstWeek; fw == nil || fw.Works != 1 || fw.Broken != 2 || list[0].LatestFirstWeek != nil {
+		t.Errorf("first week: %+v %+v", list[1].LatestFirstWeek, list[0].LatestFirstWeek)
+	}
+	if !strings.Contains(errb.String(), "note: dheeraj/holehe-lite 1.3.0 is under a week old: works for 1 person, broken for 2 people so far") {
+		t.Errorf("stderr lacks the first-week note:\n%s", errb)
 	}
 	for _, want := range []string{
 		"warning: dheeraj/flagged is deprecated: No longer maintained; its publisher suggests dheeraj/better (`ot install dheeraj/better`)",
