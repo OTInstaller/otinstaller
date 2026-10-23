@@ -115,6 +115,11 @@ CI machines and containers usually have no OS keychain. `ot` doesn't need one:
   and `ot keys list --json` shows where each key a tool needs is set.
 - **The registry token:** run `ot login --print-token` once on any machine, then pass the token in
   `OTINSTALLER_TOKEN`. Keep it secret.
+- **Publishing from GitHub Actions or GitLab CI needs no token.** A namespace's owner trusts the repository
+  ([trusted publishing](/docs/publishing#publish-from-ci)), and `ot publish --oidc` trades the job's OIDC ID token for an
+  hour-long token that only publishes that package. In GitHub Actions the job needs `permissions: id-token: write`; in
+  GitLab CI it declares `id_tokens: {OTINSTALLER_ID_TOKEN: {aud: otinstaller}}`. With no token set, `ot publish` does
+  this by itself when the job offers an ID token.
 - **`ot doctor`** reports a missing keychain as a warning, not a failure.
 
 Reading the registry needs no token at all, and `ot` only sends one where a command needs it. Reads then stay fast and

@@ -1,9 +1,10 @@
-// /dashboard: my packages first (state, health, sync, what needs me), then namespaces, publish history, backups
-// and CLI tokens. Signed-in data only; the page is never cached.
+// /dashboard: my packages first (state, health, sync, what needs me), then namespaces, trusted publishers, publish
+// history, backups and CLI tokens. Signed-in data only; the page is never cached.
 import { useEffect, useState } from "preact/hooks";
 import { api, type Namespace, type ToolSummary } from "../lib/api";
 import { Confirm, ErrorNote, Loading, rememberStaff, SignIn, Status, useMe, when } from "./shared";
 import Backups from "./Backups";
+import TrustedPublishers from "./TrustedPublishers";
 
 interface Job {
   id: string;
@@ -171,6 +172,8 @@ export default function Dashboard({ back }: { back: string }) {
         <ErrorNote error={nsError} />
       </section>
 
+      <TrustedPublishers namespaces={me.namespaces.filter((n) => n.role === "owner").map((n) => n.name)} />
+
       <section aria-labelledby="jobs">
         <h2 id="jobs">Publish history</h2>
         {jobs === null ? <Loading what="publish jobs" /> : jobs.length === 0 ? <p class="muted">No releases yet. Push a <code>vX.Y.Z</code> tag, or run <code>ot publish</code>.</p> : (
@@ -180,7 +183,7 @@ export default function Dashboard({ back }: { back: string }) {
               <tbody>
                 {jobs.map((j) => (
                   <tr id={j.id}>
-                    <td>{j.method === "direct" ? <>{j.ref ?? j.repo} <span class="small muted">· uploaded</span></> : j.repo}</td>
+                    <td>{j.method === "direct" ? <>{j.ref ?? j.repo} <span class="small muted">· uploaded</span></> : j.method === "ci" ? <>{j.repo} <span class="small muted">· from CI</span></> : j.repo}</td>
                     <td><a href={`/dashboard/publish/${j.id}`}><code>{j.tag}</code></a></td>
                     <td><Status value={j.status} /></td>
                     <td>{when(j.created_at)}</td>
@@ -199,7 +202,7 @@ export default function Dashboard({ back }: { back: string }) {
 
       <section aria-labelledby="tokens">
         <h2 id="tokens">CLI tokens</h2>
-        <p class="small muted"><code>ot login</code> creates one for you. Create one here for CI or another machine.</p>
+        <p class="small muted"><code>ot login</code> creates one for you. Create one here for another machine. GitHub Actions and GitLab CI need none: add a <a href="#tp">trusted publisher</a> instead.</p>
         {newToken && (
           <div class="notice warn" role="status">
             <p>Copy this token now; it is not shown again.</p>

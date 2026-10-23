@@ -45,7 +45,7 @@ func (s imageSource) set() bool { return s.ref != "" || s.archive != "" || s.bui
 // how a package without a GitHub or GitLab repository is published. The registry then validates, scans and reviews the
 // release as it does a tagged one, so `ot publish` follows the job and reports how it ended.
 func (a *App) publishCmd() *cobra.Command {
-	var wait, dryRun, sign bool
+	var wait, dryRun, sign, oidc bool
 	var timeout time.Duration
 	var src imageSource
 	cmd := &cobra.Command{
@@ -58,7 +58,10 @@ func (a *App) publishCmd() *cobra.Command {
 			"pushes it to mirror.otinstaller.com/<namespace>/<name> and pins its digest in otinstaller.yaml. --sign signs it\n" +
 			"with cosign (keyless); the first signer is then pinned for later versions.\n\n" +
 			"You publish into a namespace you own or publish to; create one with `ot namespace create`. By default ot waits until\n" +
-			"validation ends; --wait waits until the release is published, rejected or held for review.",
+			"validation ends; --wait waits until the release is published, rejected or held for review.\n\n" +
+			"In GitHub Actions or GitLab CI, --oidc publishes as a trusted publisher: the job's OIDC ID token proves its\n" +
+			"repository, which an owner trusted with `ot namespace trust`, and no token is needed. The release then belongs to\n" +
+			"that repository as a tag does. ot uses --oidc by itself in CI when no token is set.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := "."
@@ -98,11 +101,18 @@ func (a *App) publishCmd() *cobra.Command {
 				}
 				return a.printBundle(m, files)
 			}
+			ctx := cmd.Context()
+			// In CI a trusted publisher stands in for a token: the run's ID token is traded for one that publishes this package.
+			if oidc || (a.API.Token == "" && ciIDTokenOffered()) {
+				if err := a.useCIToken(ctx, m.Namespace, m.Name); err != nil {
+					return err
+				}
+			}
 			if a.API.Token == "" {
-				return errNotSignedIn("sign in first with `ot login`, or set OTINSTALLER_TOKEN to an API token with the publish scope")
+				return errNotSignedIn("sign in first with `ot login`, set OTINSTALLER_TOKEN to an API token with the publish scope, or publish from CI with --oidc")
 			}
 			if src.set() {
-				ref, err := a.hostImage(cmd.Context(), m, path, dir, src)
+				ref, err := a.hostImage(ctx, m, path, dir, src)
 				if err != nil {
 					return err
 				}
@@ -114,7 +124,7 @@ func (a *App) publishCmd() *cobra.Command {
 					return a.manifestProblems(path, problems)
 				}
 				if sign {
-					if err := a.signImage(cmd.Context(), ref); err != nil {
+					if err := a.signImage(ctx, ref); err != nil {
 						return err
 					}
 				} else {
@@ -133,12 +143,15 @@ func (a *App) publishCmd() *cobra.Command {
 				}
 				uploads = append(uploads, api.UploadFile{Path: f.Path, Data: data})
 			}
-			ctx := cmd.Context()
 			up, err := a.API.Publish(ctx, m.Namespace, m.Name, m.Version, uploads)
 			if err != nil {
 				return a.requestError(err)
 			}
-			fmt.Fprintf(a.Err, "Uploaded %s %s (%d files). Following the release at %s\n", up.Ref, up.Version, len(files), up.URL)
+			if up.AlreadyReceived {
+				fmt.Fprintf(a.Err, "The registry already has %s %s from this repository (the GitHub App's webhook, or an earlier run). Following it at %s\n", up.Ref, up.Version, up.URL)
+			} else {
+				fmt.Fprintf(a.Err, "Uploaded %s %s (%d files). Following the release at %s\n", up.Ref, up.Version, len(files), up.URL)
+			}
 			if timeout == 0 {
 				timeout = 5 * time.Minute
 				if wait {
@@ -160,6 +173,7 @@ func (a *App) publishCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&src.build, "build", false, "build the folder's Dockerfile with docker buildx, push it to the mirror and pin it")
 	cmd.Flags().StringVar(&src.platforms, "platform", "linux/amd64", "platforms to --build, comma-separated; linux/amd64 is required")
 	cmd.Flags().BoolVar(&sign, "sign", false, "sign the pushed image with cosign (keyless) before publishing")
+	cmd.Flags().BoolVar(&oidc, "oidc", false, "publish from GitHub Actions or GitLab CI as a trusted publisher, with the job's ID token instead of a token (the default in CI when no token is set)")
 	cmd.MarkFlagsMutuallyExclusive("image", "image-archive", "build")
 	return cmd
 }

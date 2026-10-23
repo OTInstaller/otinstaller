@@ -95,7 +95,8 @@ async function isScanner(env: MirrorEnv, pass: string): Promise<boolean> {
   return !!secret && !!pass && (await sameSecret(pass, secret));
 }
 
-type Publisher = { userId: string; tokenId: string };
+// A CI run's token (trusted publishing) pushes only into the namespace, and the package, it was issued for.
+type Publisher = { userId: string; tokenId: string; restriction?: { namespaceId: string; pkg: string | null } | null };
 
 /**
  * A publisher's `ot_` token, looked up as the API does (lib/tokens.ts): it needs the publish scope. Pushes by
@@ -104,7 +105,8 @@ type Publisher = { userId: string; tokenId: string };
 async function publisherFor(env: MirrorEnv, pass: string): Promise<Publisher | null> {
   if (!env.DB || !env.MIRROR_PUSH_TOKEN || !pass.startsWith(TOKEN_PREFIX)) return null;
   const t = await findToken(env.DB, pass);
-  return t && hasScope(t, "publish") ? { userId: t.user.id, tokenId: t.tokenId } : null;
+  if (!t || !hasScope(t, "publish")) return null;
+  return { userId: t.user.id, tokenId: t.tokenId, restriction: t.restriction && { namespaceId: t.restriction.namespaceId, pkg: t.restriction.pkg } };
 }
 
 /**
@@ -114,10 +116,12 @@ async function publisherFor(env: MirrorEnv, pass: string): Promise<Publisher | n
 export async function canPush(env: MirrorEnv, p: Publisher, name: string): Promise<boolean> {
   const m = PUBLISHER_REPO.exec(name);
   if (!m || m[1] === "private" || !env.DB) return false;
+  if (p.restriction?.pkg && p.restriction.pkg !== m[2]) return false;
   const ns = await env.DB.prepare(
-    `SELECT n.status FROM namespaces n JOIN namespace_members m ON m.namespace_id = n.id WHERE n.name = ? AND m.user_id = ?`,
-  ).bind(m[1], p.userId).first<{ status: string }>();
+    `SELECT n.id, n.status FROM namespaces n JOIN namespace_members m ON m.namespace_id = n.id WHERE n.name = ? AND m.user_id = ?`,
+  ).bind(m[1], p.userId).first<{ id: string; status: string }>();
   if (!ns || ns.status === "rejected" || ns.status === "suspended") return false;
+  if (p.restriction && p.restriction.namespaceId !== ns.id) return false;
   return !(await env.MIRROR.head(keys.hiddenRepo(name)));
 }
 

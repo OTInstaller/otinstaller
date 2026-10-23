@@ -135,7 +135,7 @@ The tool failed on its `test.input` (run without network unless `network.egress`
 The scan or content checks did not finish within an hour. Push the tag again (or run `ot publish` again).
 
 ### internal_error
-Something failed on the registry's side. Push the tag again (or run `ot publish` again); if it keeps failing, write to support@otinstaller.com with the request ID from the message.
+Something failed on the registry's side. Push the tag again (or run `ot publish`, or the release workflow, again); if it keeps failing, write to support@otinstaller.com with the request ID from the message.
 
 ## Uploading with ot publish
 
@@ -168,6 +168,28 @@ The same version is already being validated. Wait for it (`ot publish --wait`, o
 
 ### publish_rate_limited
 A namespace can upload at most 20 releases an hour. Wait and try again.
+
+## Publishing from CI
+
+These come from [trusted publishing](/docs/publishing#publish-from-ci): `ot publish --oidc` in GitHub Actions or GitLab CI.
+
+### publisher_not_trusted
+No trusted publisher of the namespace covers this run. The message says why: the namespace trusts no publisher for this repository; or the run's workflow, environment or package isn't the one the publisher names; or the repository isn't public; or it was deleted and created again (its id changed); or the owner who added the publisher has left. An owner can see them with `ot namespace trusted <namespace>` and add one with `ot namespace trust`. Runs triggered by `pull_request_target` or merge-request pipelines need a publisher that requires an environment.
+
+### oidc_token_invalid
+The ID token isn't one the registry accepts. It must come from GitHub Actions or GitLab.com CI, be signed by them, be for the audience `otinstaller`, be valid now and for at most a day, and come from a workflow (or CI configuration) in the repository itself, not one borrowed from another repository. On GitHub, give the job `permissions: id-token: write`; on GitLab, add `id_tokens: {OTINSTALLER_ID_TOKEN: {aud: otinstaller}}` to the job.
+
+### oidc_token_reused
+That ID token was already exchanged. Each works once: run the job again for a new one. (A GitLab job has one ID token, so `ot publish --oidc` can run once per job.)
+
+### oidc_provider_unavailable
+The registry could not fetch GitHub's or GitLab's signing keys to check the ID token. Run the job again in a minute.
+
+### trusted_publisher_exists
+The namespace already trusts that repository with the same workflow, environment and package.
+
+### trusted_publisher_limit
+A namespace can trust at most 20 publishers. Remove one you no longer use (`ot namespace untrust`).
 
 ## Review
 

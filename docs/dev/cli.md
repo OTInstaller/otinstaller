@@ -572,6 +572,18 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
     - `--build`: `docker buildx build --platform <--platform> --output type=oci,dest=…`; `--platform` defaults to
       `linux/amd64`.
   - `--sign` (bool, only with an image flag).
+  - `--oidc` (bool): publish as a trusted publisher from GitHub Actions or GitLab CI. Also on by itself when no token
+    is set and `ACTIONS_ID_TOKEN_REQUEST_URL` or `OTINSTALLER_ID_TOKEN` is (`ciIDTokenOffered`).
+- With `--oidc`, after validation and before anything is pushed (`cli/oidc.go`):
+  1. `ciIDToken`: `OTINSTALLER_ID_TOKEN` (GitLab), else `GET $ACTIONS_ID_TOKEN_REQUEST_URL` with `audience=otinstaller`
+     added and `Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN` (GitHub; the answer's `value`). Neither: exit 2,
+     reason `oidc_token_invalid`, with a hint for `permissions: id-token: write` (when `GITHUB_ACTIONS=true`) or
+     GitLab's `id_tokens:`.
+  2. `api.(*Client).ExchangeIDToken`: anonymous `POST /auth/oidc/token {id_token, namespace, package}` (registry 4xx
+     through `a.requestError`, exit 2). The minted token replaces `a.API.Token` for the rest of the command, and a
+     line on stderr names the repository and workflow.
+  3. An answer with `already_received` (the registry has this release from the repository already) is followed like a
+     new upload.
 - With an image flag, before the upload:
   1. `oci.Read` unpacks the archive into a temp folder. Without linux/amd64 it exits 2 with `artifact_platform_missing`.
   2. `oci.Registry.Push` sends it to `<OT_MIRROR_URL or https://mirror.otinstaller.com>/<ns>/<name>`, tagged
@@ -599,6 +611,16 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 - Flags: `--org` (bool): `kind: org` instead of `user`; `--json`.
 - API: `POST /namespaces` `{name, kind}`. Sign-in: **yes, client-side** (exit 2). Exit: 0; 2 for registry 4xx
   (`namespace_taken`, `namespace_reserved`, `namespace_account_required`, `namespace_limit`, `insufficient_scope`).
+
+#### `ot namespace trust <namespace> <github:owner/repo | gitlab:group/project>` · `trusted <namespace>` · `untrust <namespace> <id>`
+- File: `cli/namespace.go`. Args: `ExactArgs(2)`, `ExactArgs(1)`, `ExactArgs(2)`.
+- `trust` flags: `--workflow`, `--environment`, `--package` (strings); a repository not written `github:…` or
+  `gitlab:…` exits 2 before any request. Prints what to put in the workflow (`permissions: id-token: write`, or
+  GitLab's `id_tokens:`) and the `OTINSTALLER_PUBLISH` variable.
+- API: `POST /me/namespaces/{ns}/trusted-publishers`; `trusted`: `GET` (a table: ID, repository, workflow,
+  environment, package, last used); `untrust`: `DELETE …/{id}`. All take `--json`.
+- Sign-in: **yes, client-side** (exit 2). Exit: 0; 2 for registry 4xx (`forbidden` for a non-owner,
+  `trusted_publisher_exists`, `trusted_publisher_limit`, `not_found`).
 
 #### `ot sync <namespace/name>`
 - File: `cli/sync.go`. Args: `ExactArgs(1)`; local paths and `@version` refused (exit 2).
@@ -810,6 +832,8 @@ Read by the CLI (`os.Getenv` calls in `cli/`, plus the keychain lookup):
 | `APPDATA` | `state/state.go` `Home()` | Windows only: base of the default data dir | if unset on Windows, `~/.ot` is used |
 | `OT_API_URL` | `state/state.go` `LoadConfig` | registry API base; overrides `config.json` `api_url` | `https://api.otinstaller.com/v1` |
 | `OT_MIRROR_URL` | `cli/publish.go` `mirrorURL` | the mirror `ot publish --image` pushes to (and whose host it pins); `http://` adds `--allow-http-registry` to `cosign sign` | `https://mirror.otinstaller.com` |
+| `OTINSTALLER_ID_TOKEN` | `cli/oidc.go` `ciIDToken` | a GitLab CI job's ID token (`id_tokens:` with `aud: otinstaller`) for `ot publish --oidc`; set, it also turns `--oidc` on when no token is | unset |
+| `ACTIONS_ID_TOKEN_REQUEST_URL`, `ACTIONS_ID_TOKEN_REQUEST_TOKEN` | `cli/oidc.go` `ciIDToken` | set by GitHub Actions for jobs with `id-token: write`; `ot publish --oidc` asks it for an ID token with the audience `otinstaller`. `GITHUB_ACTIONS=true` without them makes the error hint name the permission | unset |
 | `OT_SITE_URL` | `state/state.go` `LoadConfig` | website base for `guide open`, `report` (form), `feedback` (form); overrides `site_url` | `https://otinstaller.com` |
 | `OT_NO_TELEMETRY` | `state/state.go` `LoadConfig` | any non-empty value (even `0`) disables the `POST /installs` ping; overrides `telemetry` | telemetry on |
 | `OT_RESULTS_DIR` | `results/results.go` `Dir` | results directory when `--results-dir` is not given (`~` expanded) | `./results` |
@@ -950,7 +974,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `cli/login_test.go` | Device-flow login (GitHub) and `--osintverse` |
 | `cli/release_test.go` | `ot release` with real git: happy path, refusals (dirty tree, existing tag), tools refused, `--no-push` |
 | `cli/sync_test.go` | `ot sync` and `--log` |
-| `cli/publish_test.go` | `ot publish` against a fake registry: the files uploaded (and the part names), the query, stopping after validation, `--wait` to the outcome, rejections with problems (exit 2) and by a check (exit 1, JSON code), `--dry-run` without a token, nothing uploaded for an invalid manifest; `--image-archive` pushing to a fake mirror and pinning `runtime.image` (uploaded and on disk), an arm64-only image refused, `--sign` alone refused, `--sign` running cosign with the token only in `DOCKER_CONFIG`; `ot namespace create` with `--org` and a taken name |
+| `cli/publish_test.go` | `ot publish` against a fake registry: the files uploaded (and the part names), the query, stopping after validation, `--wait` to the outcome, rejections with problems (exit 2) and by a check (exit 1, JSON code), `--dry-run` without a token, nothing uploaded for an invalid manifest; `--image-archive` pushing to a fake mirror and pinning `runtime.image` (uploaded and on disk), an arm64-only image refused, `--sign` alone refused, `--sign` running cosign with the token only in `DOCKER_CONFIG`; `--oidc` by itself in GitHub Actions (a fake ID token endpoint checking the audience), with GitLab's `OTINSTALLER_ID_TOKEN` over a stored token, `already_received`, and its refusals (no ID token, an untrusted one); `ot namespace create` with `--org` and a taken name; `ot namespace trust`, `trusted` and `untrust` |
 | `cli/profile_test.go` | `ot profile`: show, `--set`/`--unset`, `--sync`, rate limit, `--json` |
 | `cli/trust_test.go` | report/claim/transfer against a fake registry, removed-package warnings and refusal, `self-update` with a signed fake release (through the GitHub API, and through `/ot/latest` with no downgrade), the newer-ot note in `ot outdated` (daily cache, and never for dev builds, agents, CI or `OT_NO_UPDATE_CHECK=1`) |
 | `cli/changelog_test.go` | `ot changelog` newest first without removed versions, only what's newer than the installed one, JSON, control characters stripped, a local manifest refused; `ot info`'s "What's new" |

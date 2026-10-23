@@ -5,6 +5,9 @@
 # It pushes the release commit and tag with the job token: turn on Settings > CI/CD > Job token permissions >
 # "Allow Git push requests to the repository". Or set RELEASE_TOKEN to a token with write_repository (a project
 # access token on paid plans, or a personal access token).
+# A connected project is published from its tag. Without connecting it, trust this project
+# (`ot namespace trust <namespace> gitlab:<group>/<project>`) and set the CI/CD variable OTINSTALLER_PUBLISH to oidc,
+# and the last line publishes the release itself.
 otinstaller-release:
   image: python:3.12
   rules:
@@ -12,6 +15,8 @@ otinstaller-release:
   id_tokens:
     PYPI_ID_TOKEN:
       aud: pypi
+    OTINSTALLER_ID_TOKEN:
+      aud: otinstaller
   script:
     - |-
       VERSION="${VERSION:-$(sed -n 's/^version: *//p' otinstaller.yaml | tr -d '"\r ')}"; VERSION="${VERSION#v}"
@@ -33,3 +38,5 @@ otinstaller-release:
     - git diff --quiet || git commit -qam "Release $VERSION"
     - git tag "v$VERSION"
     - git push --atomic "$REMOTE" HEAD:$CI_DEFAULT_BRANCH "v$VERSION"
+    - |-
+      if [ "$OTINSTALLER_PUBLISH" = oidc ]; then curl -fsSL https://get.otinstaller.com/ot | OT_INSTALL_DIR=/usr/local/bin sh && ot publish --oidc; fi
