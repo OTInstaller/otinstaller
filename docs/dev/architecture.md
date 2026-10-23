@@ -511,7 +511,9 @@ Step by step:
 3. `signIn` linking rules: an existing `accounts` row for `(provider, provider_user_id)` signs in as its user, but
    409 `account_already_linked` when a different user is signed in. A new provider account is linked to the signed-in
    user (409 `provider_already_linked` if they already have one for that provider) or creates a new user. No linking
-   by email. Device logins pass `currentUserId = null` and never link. Provider tokens are stored AES-GCM encrypted
+   by email. Only a session cookie counts as signed in here (`linkingUserId` in `routes/auth.ts`): a callback that
+   carries an `ot_` API token links nothing, or any token holder could attach their own account to the token's owner.
+   Device logins pass `currentUserId = null` and never link. Provider tokens are stored AES-GCM encrypted
    with `TOKEN_ENC_KEY` (OSINTverse stores none).
 4. CLI device flow: `cli/internal/cli/login.go:(*App).loginCmd` → `api.(*Client).StartDeviceLogin` /
    `PollDeviceLogin`. OSINTverse uses the registry's own flow (`routes/device.ts`): the user opens
