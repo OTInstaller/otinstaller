@@ -9,6 +9,8 @@ export interface Email {
   text: string;
   kind: string;
   key: string; // unique per logical message, e.g. "published:<versionId>"
+  /** Extra headers, such as List-Unsubscribe on community emails. */
+  headers?: Record<string, string>;
 }
 
 export async function sendEmail(env: Env, msg: Email): Promise<"sent" | "skipped" | "failed" | "duplicate"> {
@@ -25,7 +27,7 @@ export async function sendEmail(env: Env, msg: Email): Promise<"sent" | "skipped
   const res = await deps.fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json", "Idempotency-Key": msg.key },
-    body: JSON.stringify({ from: env.EMAIL_FROM ?? "OTInstaller Registry <registry@otinstaller.com>", to, subject: msg.subject, text: msg.text }),
+    body: JSON.stringify({ from: env.EMAIL_FROM ?? "OTInstaller Registry <registry@otinstaller.com>", to, subject: msg.subject, text: msg.text, ...(msg.headers ? { headers: msg.headers } : {}) }),
   });
   if (!res.ok) {
     const err = `${res.status} ${(await res.text()).slice(0, 300)}`;

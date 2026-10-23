@@ -22,6 +22,8 @@ import { betaRoutes } from "./routes/beta";
 import { backupRoutes } from "./routes/backups";
 import { profileRoutes } from "./routes/profiles";
 import { communityRoutes } from "./routes/community";
+import { inboxRoutes } from "./routes/inbox";
+import { deliverInbox, purgeInbox } from "./inbox";
 import { refreshDueProfiles } from "./profiles";
 import { backfillBackups, expireDrills, expireRuns, installFallbacks, purgeBackups, RESTORE_DRILL_CRON, startDrill, WEEKLY_BACKUP_CRON, weeklyBackups } from "./backups";
 import { alertStuckJobs, dailyDigest, purgeRateLimits, reportError } from "./ops";
@@ -72,6 +74,7 @@ betaRoutes(app);
 backupRoutes(app);
 profileRoutes(app);
 communityRoutes(app);
+inboxRoutes(app);
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
@@ -485,6 +488,8 @@ export default {
     await expireDrills(env);
     // Published versions without an image or wheel backup (older than backups, or failed) get one.
     await backfillBackups(env);
+    // Community emails people asked to get at once (grouped per person since the last run).
+    await deliverInbox(env, "immediate");
     // Weekly (Mondays): a git backup of every active source, for code pushed between releases.
     if (event.cron === WEEKLY_BACKUP_CRON) await weeklyBackups(env);
     // Monthly: restore a random bundle into an empty repository and pull a mirrored image by digest.
@@ -496,6 +501,8 @@ export default {
       await purgeRateLimits(env);
       await purgeBackups(env);
       await lockStaleThreads(env);
+      await deliverInbox(env, "daily");
+      await purgeInbox(env);
       await env.DB.prepare(
         `UPDATE tools SET installs_30d = COALESCE((SELECT SUM(count) FROM install_counts
            WHERE tool_id = tools.id AND day >= date('now', '-30 days')), 0)`,

@@ -307,12 +307,13 @@ export function authRoutes(app: App) {
       c.env.DB.prepare(
         `SELECT n.name, n.status, n.verified, m.role FROM namespace_members m JOIN namespaces n ON n.id = m.namespace_id WHERE m.user_id = ? ORDER BY n.name`,
       ).bind(u.id).all(),
-      c.env.DB.prepare(`SELECT handle FROM users WHERE id = ?`).bind(u.id).first<{ handle: string | null }>(),
+      c.env.DB.prepare(`SELECT handle, (SELECT COUNT(*) FROM inbox WHERE user_id = users.id AND read_at IS NULL) AS unread FROM users WHERE id = ?`).bind(u.id)
+        .first<{ handle: string | null; unread: number }>(),
       communityRoles(c.env, u),
     ]);
     return c.json({
       login: u.login, handle: me?.handle ?? u.login.toLowerCase(), admin: u.is_admin === 1, reviewer: u.is_reviewer === 1,
-      community_roles: [...roles].sort(), accounts: accounts.results, namespaces: namespaces.results,
+      community_roles: [...roles].sort(), unread: me?.unread ?? 0, accounts: accounts.results, namespaces: namespaces.results,
     });
   });
 
