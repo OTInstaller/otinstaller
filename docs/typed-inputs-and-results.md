@@ -185,6 +185,16 @@ pointing at `install_tool`.
 nothing. While a batch runs, a line such as `[2/5] osintverse-community/sherlock complete` goes to stderr as each tool
 finishes; otinstaller's `--live` is accepted and changes nothing.
 
+## `ot runs`
+
+`ot runs` lists saved runs, newest first, from the results folder (`--results-dir`, `$OT_RESULTS_DIR` or `./results`)
+and `<ot home>/results`, where `ot mcp` saves: by default the last 20 started in the past week. `--tool`, `--target`,
+`--case` and `--status` narrow it; `--since 0` and `--limit 0` lift the defaults. The rows are the ones MCP's
+`list_runs` returns (both use `listSavedRuns`), and `--json` prints them as an array. `ot runs <run-id>` shows one
+run (tool and version, target, status and exit code, duration, case, where it is saved and the first ten entities)
+and suggests `ot pivot <run-id>`; with `--json` it prints the run's sidecar. Nothing found is not an error (exit 0);
+an unknown run id is (exit 2, `run_not_found`).
+
 ## `ot extract` and `ot diff`
 
 `ot extract <tool | path>` (or `--case <name>`) reads every saved output under the tool's results folder, a file or a
@@ -201,6 +211,12 @@ output was written.
 `ot outdated` compares each installed package with the registry's latest version and changes nothing. `ot update
 <namespace/name>...` or `ot update --all` installs the newer versions, through the same checks as `ot install`.
 Packages installed from a local manifest show as "not in registry".
+
+Beside the status, each row carries lifecycle `flags`: `deprecated` (with the publisher's `replacement` when there is
+one), `possibly_broken` (failed recent health checks), `yanked` (the installed version, even when it is the latest),
+`source_unavailable` (no new versions will come) and `moved` (the package has a new name, which `replacement` gives).
+Each flag is also one `warning:` line on stderr saying what to do. The statuses, and exit 0, are unchanged, and
+`ot update` still picks what to update by status alone. The registry is asked about four packages at a time.
 
 ## `ot pivot`
 
