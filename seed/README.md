@@ -10,7 +10,7 @@ content checks → review → published). Never seed production from `api/script
 | --- | --- | --- |
 | [`first-party/`](first-party) | Tools written for the registry, on the result envelope, namespace `osintverse-community` | 11 |
 | [`community/`](community) | Wrapper repositories for third-party tools, namespace `osintverse-community` (27 for launch, 26 published and `instaloader-profile` dropped; 11 converted from `otinstaller`; 65 open-source tools with more than 100 stars added in October 2026) | 103 |
-| [`guides/`](guides) | Launch guides, namespace `osintverse-community` | 10 |
+| [`guides/`](guides) | Launch guides, namespace `osintverse-community` (10 published; `osint-fundamentals` is a draft primer for `/learn`, not published yet) | 11 |
 | [`outreach/`](outreach) | Issue and pull request texts for maintainer outreach | 2 |
 
 Two more tools are **outreach only**: `p1ngul1n0/blackbird` (now `antoniaci/blackbird`), whose author removed its
@@ -301,6 +301,13 @@ The exit criterion is that every seeded package is healthy in the nightly check,
 
 Change `version` (and for pipx wrappers `package_version` and `wheel_sha256`, from
 `https://pypi.org/pypi/<package>/json`), then tag, or run the release workflow for Docker wrappers.
+
+The upstream watcher (`api/src/upstream.ts`) checks every wrapper nightly against its project's latest release, from
+the pin in its Dockerfile (`api/src/upstream-pin.ts` reads `go install …@v1.2.3`, `pip install tool==1.2.3`,
+`git+…@ref`, `git checkout`, `cargo install --tag`, release and raw URLs, or `ARG UPSTREAM_VERSION`). Every Dockerfile
+here parses, which `api/test/upstream.test.ts` checks. With `UPSTREAM_WATCH=issues` a wrapper behind a release gets an
+outdated issue; with `prs` the community bot also opens a pull request that changes only the pin, and the package's
+maintainers merge and release it from its page. Keep pins on one line so a bump stays a one-line change.
 
 ## notifies_target and key pricing (22 Oct 2026)
 

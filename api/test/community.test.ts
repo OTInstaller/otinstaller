@@ -422,3 +422,25 @@ describe("failed runs reported from ot", () => {
     expect(requiredScope("POST", `/v1/tools/${TOOL}/run-reports`)).toBe("feedback");
   });
 });
+
+describe("community events in the activity feed", () => {
+  it("lists confirmed and fixed issues worded from fields, and only when asked for", async () => {
+    const p = await person();
+    const title = `Fails with a secret word ${uniq()}`;
+    const { body } = await newIssue(p, { title });
+    const staff = await person({ reviewer: true });
+    await req(staff, "POST", `/tools/${TOOL}/issues/${body.number}/status`, { status: "confirmed" });
+    await req(staff, "POST", `/tools/${TOOL}/issues/${body.number}/status`, { status: "fixed", fixed_in: "1.2.1" });
+
+    const plain = (await req(null, "GET", "/activity?limit=100")).body;
+    expect(plain.events.some((e: any) => String(e.type).startsWith("issue_"))).toBe(false);
+    const community = (await req(null, "GET", "/activity?events=community&limit=100")).body;
+    const mine = community.events.filter((e: any) => e.number === body.number && e.ref === TOOL);
+    expect(mine.map((e: any) => e.type)).toEqual(["issue_fixed", "issue_confirmed"]);
+    expect(mine[0]).toMatchObject({ kind: "tool", issue_kind: "broken" });
+    expect(JSON.stringify(community)).not.toContain(title);
+    expect((await req(null, "GET", "/activity?events=everything")).res.status).toBe(400);
+    // Publisher filters still apply to community events.
+    expect((await req(null, "GET", "/activity?events=all&namespace=osintverse&limit=100")).body.events.some((e: any) => e.number === body.number && e.ref === TOOL)).toBe(false);
+  });
+});

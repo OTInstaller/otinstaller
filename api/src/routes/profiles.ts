@@ -5,6 +5,7 @@ import { deps, type App, type AppEnv } from "../env";
 import { apiError, rateLimited, windowRetry } from "../lib/errors";
 import { cached, LISTED, summary, SUMMARY_COLUMNS, VISIBLE, type SummaryRow } from "../catalog";
 import { overLimit } from "../trust";
+import { ACTIVITY } from "../activity";
 import { audit, requireUser } from "./auth";
 import * as github from "../hosts/github";
 import { GITLAB, OWNER } from "../hosts/gitlab";
@@ -15,16 +16,6 @@ import {
 } from "../profiles";
 
 const PUBLIC_STATUSES = ["active", "pending_review"];
-
-/** Activity the profile shows: only what the package pages already say in public. */
-const ACTIVITY: Record<string, string> = {
-  "version.published": "published",
-  "version.yank": "yanked",
-  "version.unyank": "unyanked",
-  "tool.deprecate": "deprecated",
-  "tool.undeprecate": "undeprecated",
-  "transfer.complete": "transferred",
-};
 
 /** The namespace, for its owners (or an admin). Pending namespaces can be edited before review. */
 async function ownedNamespace(c: Context<AppEnv>): Promise<{ ns: NamespaceRow; userId: string }> {

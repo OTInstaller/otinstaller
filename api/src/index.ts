@@ -42,6 +42,8 @@ import { expireStaleScans } from "./scans";
 import { handleBatch } from "./publish";
 import { edgeCached } from "./edge-cache";
 import { compatManifest } from "./lib/manifest";
+import { renderNotes } from "./changelog";
+import { siteActivity } from "./activity";
 import { mcpEndpoint } from "./mcp";
 import { lockStaleThreads } from "./community";
 
@@ -302,15 +304,28 @@ app.get("/tools/:ns/:name/versions", async (c) => {
   const { row } = await findTool(c.env.DB, ns, name);
   if (!row) return notFound(c.env.DB, ns, name);
   const versions = await c.env.DB.prepare(
-    `SELECT version, status, scan_status, published_at, yanked_at, signer_identity IS NOT NULL AS signed
+    `SELECT version, status, scan_status, published_at, yanked_at, signer_identity IS NOT NULL AS signed, changelog, changelog_source, git_sha
      FROM versions WHERE tool_id = ? AND status IN ('published', 'yanked', 'removed')
      ORDER BY semver_major DESC, semver_minor DESC, semver_patch DESC, semver_pre = '' DESC, semver_pre DESC`,
   )
     .bind(row.id)
     .all();
   cached(c, 60);
-  return c.json({ versions: versions.results.map((v: any) => ({ ...v, signed: v.signed === 1 && row.manifest_mode !== "registry" })) });
+  return c.json({
+    versions: versions.results.map(({ git_sha, changelog, changelog_source, ...v }: any) => ({
+      ...v,
+      signed: v.signed === 1 && row.manifest_mode !== "registry",
+      // A removed version's notes go with it.
+      ...releaseNotes(v.status === "removed" ? null : changelog, changelog_source, row.repo_url, git_sha),
+    })),
+  });
 });
+
+/** A version's release notes as served: the Markdown (untrusted text: show it as text), sanitized HTML, and where they came from. */
+function releaseNotes(changelog: string | null, source: string | null, repoUrl: string | null, sha: string | null) {
+  if (!changelog) return { changelog: null, changelog_html: null, changelog_source: null };
+  return { changelog, changelog_html: renderNotes(changelog, repoUrl, sha), changelog_source: source ?? "release" };
+}
 
 // What the install endpoint serves: a manifest every released ot accepts, and the whole one when that leaves fields out.
 function installManifest(m: Record<string, any>) {
@@ -378,6 +393,9 @@ app.get("/tools/:ns/:name/:version", async (c) => {
   if (!row) return notFound(c.env.DB, ns, name);
   const v = await findVersion(c.env.DB, row.id, version);
   if (!v || v.status === "removed") apiError(404, "version_not_found", `${ns}/${name} has no version ${version}`);
+  // Notes are read separately so findVersion, which installs use, stays lean.
+  const notes = await c.env.DB.prepare(`SELECT changelog, changelog_source, git_sha FROM versions WHERE id = ?`)
+    .bind(v.id).first<{ changelog: string | null; changelog_source: string | null; git_sha: string | null }>();
   cached(c, 3600);
   return c.json({
     ref: `${row.namespace}/${row.name}`,
@@ -387,6 +405,7 @@ app.get("/tools/:ns/:name/:version", async (c) => {
     scan_status: v.scan_status,
     signed: !!v.signer_identity && row.manifest_mode !== "registry",
     manifest: JSON.parse(v.manifest_json),
+    ...releaseNotes(notes?.changelog ?? null, notes?.changelog_source ?? null, row.repo_url, notes?.git_sha ?? null),
   });
 });
 
@@ -406,6 +425,23 @@ app.get("/facets", async (c) => {
   const counts = (i: number) => Object.fromEntries(((res[i]?.results ?? []) as { k: string | null; n: number }[]).filter((x) => x.k).map((x) => [x.k as string, x.n]));
   cached(c, 600);
   return c.json({ kind, inputs: counts(0), outputs: counts(1), categories: counts(2), runtimes: counts(3), no_keys: ((res[4]?.results ?? [])[0] as { n: number } | undefined)?.n ?? 0 });
+});
+
+// What changed across the registry, newest first: releases, yanks, deprecations and transfers. The site's feeds and
+// "What's new" page read it with fixed parameters, so a few cache entries serve everyone.
+app.get("/activity", async (c) => {
+  const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 30) || 30, 1), 100);
+  const beforeRaw = c.req.query("before");
+  const before = beforeRaw === undefined ? undefined : Number(beforeRaw);
+  if (before !== undefined && (!Number.isInteger(before) || before <= 0)) apiError(400, "invalid_parameter", "before must be a Unix time in milliseconds");
+  const kind = oneOf(c.req.query("kind"), ["tool", "guide"], "kind") as "tool" | "guide" | undefined;
+  const input = oneOf(c.req.query("input"), INPUT_TYPES, "input");
+  const namespace = c.req.query("namespace") || undefined;
+  if (namespace !== undefined && !/^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$/.test(namespace)) apiError(400, "invalid_parameter", "namespace must be a namespace name");
+  const events = oneOf(c.req.query("events"), ["registry", "community", "all"], "events") as "registry" | "community" | "all" | undefined;
+  const result = await siteActivity(c.env.DB, { limit, before, kind, input, namespace, events });
+  cached(c, 300);
+  return c.json(result);
 });
 
 app.get("/pivots", async (c) => {
