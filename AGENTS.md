@@ -698,7 +698,9 @@ files are named by plan week (`week4` publish intake, `week5` scans/review, `wee
 `api.test.ts` (search, pivots, types, facets, OpenAPI, old-`ot` manifests, the remote MCP server), `edge-cache.test.ts`,
 `osintverse.test.ts`, `community-provenance.test.ts`, `community.test.ts` (issues, moderation, notifications, failed runs,
 community activity), `requests.test.ts`, `people.test.ts` and `upstream.test.ts` (pins, the watcher, bumps); community
-submissions are in `week7` with the imports. Add tests to the file for that area. The rate-limit test in `week10` waits for the start of a minute, so a slow run is expected.
+submissions are in `week7` with the imports. Add tests to the file for that area. Every file migrates and seeds its own D1 and they all run at once, so tests get
+30 seconds (`testTimeout`) and hooks 60: on a busy machine a test can pass Vitest's 5-second default without anything
+being wrong.
 
 ### Seed data
 
@@ -1223,7 +1225,6 @@ change. Keep this list current when you fix one or find another.
 - `api/src/env.ts` and `index.ts` miss their opening purpose comment.
 - Schema: `versions.status` allows `received`/`validating`, which nothing writes; `tools.latest_version_id` and
   `audit_log.actor_id` have no foreign key.
-- The `week10` write-limit test is flaky under load.
 
 ## Glossary
 
