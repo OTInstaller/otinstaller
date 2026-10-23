@@ -47,6 +47,7 @@ A network error never makes `ot` fall back to the mirror; only an explicit refus
 | --- | --- | --- |
 | Browsing the site or API | Cloudflare's cookieless analytics; the edge cache keys anonymous reads by URL | No IP addresses, no cookies without a sign-in |
 | `ot install` (the install ping) | A per-day counter per package version | No IP, user, token or machine identifier; `OT_NO_TELEMETRY=1` turns the ping off |
+| `ot outdated` (at most once a day) and `ot self-update` ask `get.otinstaller.com/ot/latest` which `ot` release is newest | Cloudflare's request logs for `get.otinstaller.com`, as for the install scripts | No token, list of installed tools or machine identifier is sent; `OT_NO_UPDATE_CHECK=1` turns the daily check off |
 | Signing in | Your login and a hashed session or API token; provider tokens encrypted at rest | Your email address is never shown publicly and accounts are never linked by email |
 | Publishing | The manifest, scan results, backups of public artifacts, and an audit log of staff actions | Private repositories are never read |
 | Reporting a tool | The report text and your reporter identity if signed in | Anonymous reports are allowed and rate-limited by IP, which is not stored |

@@ -1,0 +1,7 @@
+name: phone-investigation
+description: "Parse a phone number: country, carrier and line type"
+inputs: [phone]
+tools:
+  - osintverse-community/phone-parse
+  - osintverse-community/phoneinfoga
+  - osintverse-community/numint

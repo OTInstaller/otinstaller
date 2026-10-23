@@ -138,6 +138,7 @@ type playbookInfo struct {
 	Description string         `json:"description"`
 	Case        string         `json:"case"`
 	Source      string         `json:"source"`
+	Inputs      []string       `json:"inputs" jsonschema:"the input types it is meant for, the main one first; empty when the playbook doesn't say"`
 	Tools       []playbookTool `json:"tools"`
 }
 
@@ -308,7 +309,7 @@ func (s *mcpServer) addReadTools() {
 			t := runner.DetectTyped(strings.TrimSpace(in.Target))
 			return &detectOut{InputType: runner.TypedPrefixes[t.Prefix], Prefix: t.Prefix + ":"}, nil
 		})
-	readTool(s, "list_playbooks", "List playbooks", "Named sets of tools run together against one target, bundled or the person's own, and which of their tools are installed.",
+	readTool(s, "list_playbooks", "List playbooks", "Named sets of tools run together against one target, bundled or the person's own: the input types each is for, and which of their tools are installed.",
 		func(ctx context.Context, _ struct{}) (*playbooksOut, error) {
 			all, err := playbook.All(playbook.Dirs(state.Home()))
 			if err != nil {
@@ -320,7 +321,7 @@ func (s *mcpServer) addReadTools() {
 			}
 			return out, nil
 		})
-	readTool(s, "get_playbook", "Get a playbook", "One playbook: its tools and which are installed.",
+	readTool(s, "get_playbook", "Get a playbook", "One playbook: the input types it is for, its tools and which are installed.",
 		func(ctx context.Context, in nameIn) (*playbookInfo, error) {
 			p, err := playbook.Find(playbook.Dirs(state.Home()), in.Name)
 			if err != nil {
@@ -477,7 +478,7 @@ func orInt(v, def int) int {
 
 func playbookOf(p *playbook.Playbook) playbookInfo {
 	st, _ := state.Load()
-	info := playbookInfo{Name: p.Name, Description: p.Description, Case: p.Case, Source: p.Source, Tools: []playbookTool{}}
+	info := playbookInfo{Name: p.Name, Description: p.Description, Case: p.Case, Source: p.Source, Inputs: p.Inputs, Tools: []playbookTool{}}
 	for _, ref := range p.Tools {
 		info.Tools = append(info.Tools, playbookTool{Ref: ref, Installed: st != nil && st.Installed[ref] != nil})
 	}
@@ -713,11 +714,15 @@ func idFromPath(p string) string {
 
 // findSavedRun looks a run up by id among the saved runs.
 func findSavedRun(id string) (*savedRun, error) {
+	return findSavedRunIn(resultDirs(), id)
+}
+
+// findSavedRunIn looks a run up by id among the runs saved under dirs.
+func findSavedRunIn(dirs []string, id string) (*savedRun, error) {
 	id = strings.TrimSpace(id)
 	if len(id) != 8 {
 		return nil, &toolError{Code: "run_not_found", Message: fmt.Sprintf("%q is not a run id", id)}
 	}
-	dirs := resultDirs()
 	for _, dir := range dirs {
 		files, _ := results.Outputs(dir)
 		for i := len(files) - 1; i >= 0; i-- {
@@ -742,31 +747,8 @@ func resultDirs() []string {
 }
 
 func (s *mcpServer) listRuns(ctx context.Context, in runsIn) (*runsOut, error) {
-	dir := results.Dir("")
-	if in.Case != "" {
-		dir = filepath.Join(dir, "cases", results.Sanitize(in.Case))
-	}
-	files, _ := results.Outputs(dir)
-	out := &runsOut{Runs: []runSummary{}}
-	limit := orInt(in.Limit, 20)
-	tool := ""
-	if in.Tool != "" {
-		tool = toolDir(in.Tool)
-	}
-	for i := len(files) - 1; i >= 0 && len(out.Runs) < limit; i-- {
-		m := results.MetaFor(files[i])
-		if m == nil {
-			continue
-		}
-		if tool != "" && results.Sanitize(m.Tool) != tool {
-			continue
-		}
-		if in.Target != "" && results.Sanitize(m.Target) != results.Sanitize(in.Target) {
-			continue
-		}
-		out.Runs = append(out.Runs, summaryOf(files[i], m))
-	}
-	return out, nil
+	f := runFilter{Tool: in.Tool, Target: in.Target, Case: in.Case, Limit: orInt(in.Limit, 20)}
+	return &runsOut{Runs: listSavedRuns([]string{results.Dir("")}, f)}, nil
 }
 
 func (s *mcpServer) getRun(ctx context.Context, in getRunIn) (*getRunOut, error) {

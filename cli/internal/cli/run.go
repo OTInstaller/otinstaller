@@ -70,25 +70,50 @@ func (a *App) ensureInstalled(cmd *cobra.Command, ref pkgRef, ra *runArgs) (*sta
 
 // loadSecrets reads declared secrets from the environment or keychain.
 func loadSecrets(m *manifest.Manifest) (map[string]string, error) {
+	out, missing, err := readSecrets(m)
+	if len(missing) > 0 {
+		s := missing[0]
+		msg := fmt.Sprintf("%s needs the key %s; set it with `ot keys setup %s` (or `ot keys set %s`)", m.Ref(), s.Name, m.Ref(), s.Name)
+		if s.URL != "" {
+			msg += " (get one at " + s.URL + ")"
+		}
+		return nil, &ExitError{Code: ExitMissingKey, Err: errors.New(msg)}
+	}
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// missingKeys names the required keys of m that are set neither in the environment nor in the keychain.
+func missingKeys(m *manifest.Manifest) []string {
+	_, missing, _ := readSecrets(m)
+	var names []string
+	for _, s := range missing {
+		names = append(names, s.Name)
+	}
+	return names
+}
+
+// readSecrets reads the keys m declares, and lists the required ones that aren't set. It stops at the first key the
+// keychain fails to read; the missing keys found before it are still listed.
+func readSecrets(m *manifest.Manifest) (map[string]string, []manifest.Secret, error) {
 	out := map[string]string{}
+	var missing []manifest.Secret
 	for _, s := range m.Secrets {
 		v, err := keys.Get(s.Name)
 		if errors.Is(err, keys.ErrNotFound) {
 			if s.Required {
-				msg := fmt.Sprintf("%s needs the key %s; set it with `ot keys setup %s` (or `ot keys set %s`)", m.Ref(), s.Name, m.Ref(), s.Name)
-				if s.URL != "" {
-					msg += " (get one at " + s.URL + ")"
-				}
-				return nil, &ExitError{Code: ExitMissingKey, Err: errors.New(msg)}
+				missing = append(missing, s)
 			}
 			continue
 		}
 		if err != nil {
-			return nil, fmt.Errorf("reading %s from the keychain: %w", s.Name, err)
+			return nil, missing, fmt.Errorf("reading %s from the keychain: %w", s.Name, err)
 		}
 		out[s.Name] = v
 	}
-	return out, nil
+	return out, missing, nil
 }
 
 // smokeTest installs the manifest locally and runs its test input, as the registry's scanner does.

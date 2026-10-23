@@ -88,7 +88,7 @@ func (a *App) autoCmd() *cobra.Command {
 			}
 			if orDefault(ra.Format, "table") == "table" {
 				for _, t := range ra.Typed {
-					fmt.Fprintf(a.Err, "%s is a %s\n", t.Value, runner.TypedPrefixes[t.Prefix])
+					fmt.Fprintf(a.Err, "%s is %s\n", t.Value, withArticle(runner.TypedPrefixes[t.Prefix]))
 				}
 			}
 			return a.runAll(cmd.Context(), ra, "auto", nil)

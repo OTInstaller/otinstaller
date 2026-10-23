@@ -66,7 +66,8 @@ Contents
  Install: curl get.otinstaller.com/ot | sh -> otinstaller-get Worker (ops/get/worker.js)
           -> github.com/OTInstaller/ot/releases/latest/download/install.sh (cached 300 s)
           -> script fetches ot_<ver>_<os>_<arch> + checksums.txt(.sig) from OTInstaller/ot releases
- Self-update: ot -> api.github.com/repos/otinstaller/ot/releases/latest (not get.otinstaller.com)
+ Self-update: ot -> get.otinstaller.com/ot/latest -> assets from github.com/<Repo>/releases/download/<tag>/
+              (fallback: api.github.com/repos/otinstaller/ot/releases/latest); ot outdated: the same lookup, daily
 ```
 
 Bindings (`api/wrangler.jsonc`): D1 `DB` (`otinstaller`), R2 `CONTENT`, `BACKUPS`, `MIRROR`, queue `PUBLISH_QUEUE`
@@ -607,6 +608,8 @@ and daily for the warning (`cli/internal/cli/trust.go:removedList`).
    ops/get/worker.js: /ot|/ot.sh|/install.sh -> install.sh ; /ot.ps1|/install.ps1 -> install.ps1
      fetch github.com/<RELEASE_REPO|OTInstaller/ot>/releases/latest/download/<file> (cacheTtl 300)
      upstream error -> 502 with a script that prints an error and exits 1 (ps1: throw)
+     /ot/latest -> github.com/<RELEASE_REPO>/releases/latest (redirect: manual) -> tag from Location
+       ^vX.Y.Z$ -> {"version": tag}, max-age 3600 ; else 502 latest_unknown
      other paths -> 302 https://otinstaller.com/docs/getting-started
    install.sh: tag = OT_VERSION or api.github.com/repos/<OT_RELEASE_REPO>/releases/latest
      download ot_<ver>_<os>_<arch>.tar.gz, checksums.txt, checksums.txt.sig
@@ -615,11 +618,17 @@ and daily for the warning (`cli/internal/cli/trust.go:removedList`).
 
  ot self-update [--check]
    cli/selfupdate.go -> selfupdate.New (needs build-time PublicKey, else exit 2)
-     Updater.Latest -> api.github.com/repos/<Repo>/releases/latest
-     Newer(tag, Version)? -> Download: checksums.txt + .sig -> VerifyChecksums (Ed25519)
+     Updater.Latest -> LatestVersion(get.otinstaller.com/ot/latest) -> assets named under
+                       github.com/<Repo>/releases/download/<tag>/ ; on any failure api.github.com/repos/<Repo>/releases/latest
+     Newer(tag, Version)? (so never a downgrade) -> Download: checksums.txt + .sig -> VerifyChecksums (Ed25519)
         -> ChecksumFor(archive) -> sha256 of archive -> extract
         any mismatch -> exit 4 "update refused: ..."
      selfupdate.Replace(exe): temp file next to exe; on Windows exe -> exe.old first
+
+ ot outdated (after the table)
+   latestOT: <ot home>/cache/ot-latest.json younger than 24 h? use it : selfupdate.Checker().Latest (3 s), saved
+     either way (a failure waits a day too); skipped for dev builds, ot mcp, CI and OT_NO_UPDATE_CHECK=1
+   Newer(latest, Version) -> "note: ot vX is out (you have vY); `ot self-update` installs it" on stderr
 ```
 
 ### k. Agents: `ot mcp`, unattended runs and the remote MCP server

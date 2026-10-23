@@ -80,6 +80,15 @@ func (a *App) runAll(ctx context.Context, ra *runArgs, what string, selection []
 		return exitErr(ExitUsage, "%s prints a summary as table, json or jsonl, not %q", what, format)
 	}
 	rows, jobs, err := a.planAll(ra, what, selection)
+	var nt *noToolsError
+	if errors.As(err, &nt) {
+		// Nothing installed takes the inputs, as on a fresh machine: offer a bundled playbook's tools, then plan again.
+		if err = a.offerStarters(ctx, ra, nt); err == nil {
+			if rows, jobs, err = a.planAll(ra, what, selection); errors.As(err, &nt) {
+				err = notInstalledError(nt)
+			}
+		}
+	}
 	if err != nil {
 		return err
 	}
@@ -283,13 +292,13 @@ func (a *App) planAll(ra *runArgs, what string, selection []*state.Installed) ([
 		jobs = append(jobs, allJob{inst, values, secrets, target, row})
 	}
 	if len(rows) == 0 {
-		return nil, nil, exitErr(ExitUsage, "no installed tool has a %s input; find some with `ot search`", typedTypes(ra.Typed))
+		return nil, nil, &noToolsError{ra.Typed}
 	}
 	if len(jobs) == 0 && selection != nil {
 		for _, r := range rows {
 			fmt.Fprintf(a.Err, "%s: %s\n", r.Tool, r.Reason)
 		}
-		return nil, nil, exitErr(ExitUsage, "none of the playbook's tools can run with a %s input", typedTypes(ra.Typed))
+		return nil, nil, exitErr(ExitUsage, "none of the playbook's tools can run with %s input", withArticle(typedTypes(ra.Typed)))
 	}
 	return rows, jobs, nil
 }
