@@ -149,6 +149,7 @@ only via the shell for a build). The API must also list the site in its `SITE_UR
 | Name | Kind | Default | Purpose |
 | --- | --- | --- | --- |
 | `RELEASE_REPO` | var | `OTInstaller/ot` (set in config; code falls back to the same) | repo whose latest release's scripts are served |
+| `OTLITE_REPO` | var | `OTInstaller/otinstaller` (set in config; code falls back to the same) | repo whose `main` branch serves `otlite/scripts/install.sh` |
 
 Behaviour (`worker.js`):
 
@@ -156,11 +157,13 @@ Behaviour (`worker.js`):
 | --- | --- |
 | `/ot`, `/ot.sh`, `/install.sh` | `https://github.com/<RELEASE_REPO>/releases/latest/download/install.sh` |
 | `/ot.ps1`, `/install.ps1` | `.../install.ps1` |
+| `/otlite`, `/otlite.sh` | `https://raw.githubusercontent.com/<OTLITE_REPO>/main/otlite/scripts/install.sh` (pipx from PyPI, so no release is involved) |
 | anything else | 302 to `https://otinstaller.com/docs/getting-started` |
 
 Upstream fetches use `cf: { cacheTtl: 300, cacheEverything: true }`; responses are `text/plain; charset=utf-8`
 with `cache-control: public, max-age=300`. A non-OK upstream answers 502 with a script that fails loudly (`throw
-'...'` for PowerShell, `echo 'error: ...' >&2; exit 1` for sh), `cache-control: no-store`. No secrets, no bindings.
+'...'` for PowerShell, `echo 'error: ...' >&2; exit 1` for sh; for otlite it points at `/docs/otlite`),
+`cache-control: no-store`. No secrets, no bindings.
 
 ---
 
@@ -193,6 +196,24 @@ Trigger: push of a tag `v*.*.*`. Permissions: `contents: read`, `id-token: write
 | `OT_RELEASE_PUBLIC_KEY` | variable | base64 raw public key: filled into `dist/install/install.sh` and `install.ps1` (job fails if the placeholder remains) and linked into `ot` as `selfupdate.PublicKey` |
 | `RELEASE_OWNER` / `RELEASE_NAME` | variables, optional | release repo; the workflow defaults them to `OTInstaller` / `ot` (GoReleaser's own fallback is `otinstaller` / `ot`); also linked into `selfupdate.Repo` |
 | cosign keyless | OIDC (`id-token: write`) | `cosign sign-blob` of `checksums.txt` → `checksums.txt.cosign.sig` + `.pem` |
+
+After GoReleaser, the workflow runs `go run ./cmd/mcpb -version <ver> -dist dist -out dist/mcpb -release-url ...` in
+`cli/` and uploads the six `ot_<ver>_<os>_<arch>.mcpb` bundles and `server.json` with `gh release upload` (using
+`RELEASE_GITHUB_TOKEN`). Publishing `server.json` to the MCP Registry is manual: `mcp-publisher` signed in with
+`login http --domain otinstaller.com` and the private key matching `web/public/.well-known/mcp-registry-auth`, which
+lives outside the repository (`~/.mcp-registry/otinstaller.com.ed25519.hex` on the owner's machine).
+
+## 6a. otlite release (`.github/workflows/release-otlite.yml`)
+
+Trigger: a tag `otlite-v*.*.*`, or `workflow_dispatch` choosing `testpypi` or `pypi`. PyPI trusted publishing, no
+tokens. Each project has its own GitHub environment, because PyPI picks one publisher per token exchange:
+
+| Project | pypi.org | test.pypi.org |
+| --- | --- | --- |
+| `otlite` | `pypi` | `testpypi` |
+| `otinstaller` (the shim) | `pypi-otinstaller` | `testpypi-otinstaller` |
+
+otlite is uploaded first, then the shim; a GitHub release is created for the tag.
 
 ---
 

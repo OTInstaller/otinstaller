@@ -53,7 +53,8 @@ export type PublishMessage =
   | { checkVersionId: string; attempt?: number }
   | { linkCheckToolId: string }
   | { publishVersionId: string }
-  | { backupVersionId: string };
+  | { backupVersionId: string }
+  | { profileNamespaceId: string };
 
 export interface User {
   id: string;

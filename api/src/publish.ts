@@ -2,6 +2,7 @@
 // Valid releases move to `scanning` (a security scan for tools, content checks for guides); invalid ones
 // are `rejected`, and the author sees why as a failed commit status on the tagged commit. The same queue
 // runs bulk-import detection, guide content checks and nightly link checks.
+import { syncProfile } from "./profiles";
 import { deps, type Env, type PublishMessage } from "./env";
 import { ulid } from "./lib/crypto";
 import { parseManifest, referencedFiles, semverParts, type Manifest, type Problem } from "./lib/manifest";
@@ -284,6 +285,7 @@ export async function handleBatch(batch: MessageBatch<PublishMessage>, env: Env)
       else if ("linkCheckToolId" in body) await recheckLinks(env, body.linkCheckToolId);
       else if ("publishVersionId" in body) await publishApproved(env, body.publishVersionId);
       else if ("backupVersionId" in body) await backupVersion(env, body.backupVersionId);
+      else if ("profileNamespaceId" in body) await syncProfile(env, body.profileNamespaceId);
       else await processJob(env, body.jobId);
       msg.ack();
     } catch (e) {

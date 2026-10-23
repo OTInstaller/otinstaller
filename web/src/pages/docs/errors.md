@@ -326,6 +326,23 @@ That repository is already the source of another package. A repository publishes
 ### already_connected
 Someone else connected that GitLab project to the registry; only they, or an admin, can change its connection.
 
+## Publisher profiles
+
+### profile_sync_rate_limited
+At most 10 profile syncs per namespace per hour. The registry also refreshes every profile from GitHub and GitLab every 6 hours.
+
+### host_account_not_linked
+To show a GitHub or GitLab account, org or group on your profile, first link that host to your OTInstaller account: sign in with it from [Accounts and sync](https://otinstaller.com/settings/accounts) while signed in.
+
+### host_not_found
+The org or group does not exist, is not public, or your account cannot see it. Check the spelling (GitLab subgroups are paths such as `acme/osint`).
+
+### host_not_owned
+Only an owner of a GitHub organization, or an Owner of a GitLab group, can show it on a profile. Ask one of them to link it.
+
+### host_already_primary
+The namespace already belongs to that host. A profile can link the other host (GitLab for a GitHub namespace, GitHub for a GitLab one).
+
 ## Transfers and claims
 
 ### namespace_not_found

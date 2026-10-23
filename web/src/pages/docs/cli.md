@@ -68,6 +68,7 @@ and `--no-save` skips saving. The result envelope still goes to stdout.
 | `ot token create <name> [--scope …] [--expires 90]` · `ot token list` · `ot token revoke <id>` | Registry API tokens with [scopes](/docs/api#signing-in-tokens-and-scopes), for scripts, CI and agents |
 | `ot import <repository URL …> [--registry] [--community --wrapper URL] [--draft] [--save FILE] [--file FILE] [--id ID] [-y\|--yes]` · `ot import --list` | The import wizard in the terminal: detect the repository, fill in a draft manifest and finish as a pull or merge request (or keep the manifest on the registry with `--registry`). Several URLs import in bulk; `--draft` stops after saving, `--id` continues it later; `--community` packages someone else's tool as a wrapper (admins only) |
 | `ot sync <ns/name> [--log]` | Check the source repository now, or show recent sync events |
+| `ot profile [namespace] [--sync] [--set key=value] [--unset key]` | Show a publisher's profile; owners refresh it from GitHub and GitLab, override fields (name, bio, location, website, company, avatar, socials, about, pins, hide) or go back to the host value |
 | `ot yank <ns/name@version> [--undo]` | Hide a version from search and `@latest` (still installable by exact version) |
 | `ot deprecate <ns/name> --message … [--replacement ns/name] [--undo]` | Mark a package deprecated |
 | `ot claim <ns/name> [--to ns]` · `ot claim <ns/name> --verify <id>` | Take over a community wrapper of your own project |

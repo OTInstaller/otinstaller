@@ -227,13 +227,92 @@ export interface SearchResult {
   next_cursor?: string;
 }
 
+export interface Social {
+  /** x, linkedin, mastodon, bluesky, youtube, github, gitlab, other… */
+  provider: string;
+  url: string;
+}
+
+export interface ProfileHost {
+  provider: "github" | "gitlab";
+  login: string;
+  url: string;
+  /** The account the namespace is bound to; the others were linked by an owner. */
+  primary: boolean;
+}
+
+export interface Profile {
+  bio: string | null;
+  location: string | null;
+  website: string | null;
+  company: string | null;
+  socials: Social[];
+  members: { login: string; avatar_url: string | null; url: string }[];
+  hosts: ProfileHost[];
+  /** The owner's About section, sanitized by the registry. */
+  about_html: string | null;
+  pins: string[];
+  details_hidden: boolean;
+  /** When the account was created on its host. */
+  host_since: number | null;
+}
+
+export interface NamespaceStats {
+  packages: number;
+  tools: number;
+  guides: number;
+  installs_30d: number;
+  installs_total: number;
+  stars: number;
+  healthy: number;
+  broken: number;
+  last_published_at: number | null;
+}
+
 export interface Namespace {
   name: string;
   kind: string;
   provider: string;
+  /** active, or pending_review (no packages and nothing the owner wrote are shown). Older API responses omit it. */
+  status?: string;
   display_name: string | null;
   avatar_url: string | null;
   verified: boolean;
   created_at: number;
-  tools: ToolSummary[];
+  /** Older API responses omit the profile and stats. */
+  profile?: Profile;
+  stats?: NamespaceStats;
+  tools: (ToolSummary & { published_at?: number | null })[];
 }
+
+export interface ActivityEvent {
+  type: "published" | "yanked" | "unyanked" | "deprecated" | "undeprecated" | "transferred";
+  ref: string;
+  kind: "tool" | "guide";
+  at: number;
+  version?: string;
+  from?: string;
+  to?: string;
+}
+
+export interface PublisherList {
+  namespaces: { name: string; kind: string; verified: boolean; display_name: string; packages: number; installs_30d: number }[];
+}
+
+/** GET /me/namespaces/:ns/profile: what the owner's Profile tab edits. */
+export interface ProfileSettings {
+  namespace: { name: string; kind: string; provider: string; status: string; verified: boolean };
+  host: { display_name: string | null; bio: string | null; location: string | null; website: string | null; company: string | null; avatar_url: string | null; socials: Social[]; members: number };
+  custom: Partial<Record<ProfileField, unknown>>;
+  fields: ProfileField[];
+  effective: Profile & { display_name: string; avatar_url: string | null; synced_at: number | null };
+  about_md: string | null;
+  pins: string[];
+  hide_details: boolean;
+  sync: { status: "never" | "ok" | "error"; error: string | null; synced_at: number | null };
+  hosts: ProfileHost[];
+  accounts: { provider: "github" | "gitlab"; login: string }[];
+  packages: { name: string; kind: string; summary: string }[];
+}
+
+export type ProfileField = "display_name" | "bio" | "location" | "website" | "company" | "avatar_url" | "socials";

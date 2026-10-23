@@ -302,11 +302,14 @@ The exit criterion is that every seeded package is healthy in the nightly check,
 Change `version` (and for pipx wrappers `package_version` and `wheel_sha256`, from
 `https://pypi.org/pypi/<package>/json`), then tag, or run the release workflow for Docker wrappers.
 
-## Not yet released: notifies_target and key pricing (22 Oct 2026)
+## notifies_target and key pricing (22 Oct 2026)
 
-These folders gained the optional fields agents read (`ethics.notifies_target` and `ethics.notes`, or a key's
-`pricing`), but their published versions don't have them yet. Each needs a new release from its own repository, which
-needs the owner's go-ahead: dnsrecon, fierce, finalrecon, httpx, tlsx, holehe and shodan-host (community), exif-meta
-and image-hash (first-party). Until then, agents describe the seven that touch the target (all but holehe and shodan-host)
-as "may notify the target (the publisher doesn't say)". A manifest change alone can't be published under the same version: the release
-must bump it (Docker wrappers' release workflow does; pipx wrappers need a `version` bump by hand).
+Seven published packages gained the optional fields agents read (`ethics.notifies_target` and `ethics.notes`, or a
+key's `pricing`) after their first release, and were re-released with them on 22 Oct 2026: dnsrecon 1.6.4, httpx
+1.12.1, tlsx 1.4.1, holehe 1.61.1 and shodan-host 1.31.1 (community), exif-meta 0.1.1 and image-hash 0.1.1
+(first-party). The community wrappers already pinned the latest upstream release, so their re-releases take a patch
+bump that upstream never shipped; the Dockerfile still pins the same upstream version. fierce and finalrecon have the
+fields too but have never been published (see "Converted from the otinstaller catalog").
+
+A manifest change alone can't be published under the same version: the release must bump it (Docker wrappers' release
+workflow does; pipx wrappers need a `version` bump by hand).

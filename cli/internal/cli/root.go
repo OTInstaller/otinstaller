@@ -146,6 +146,7 @@ func (a *App) Root() *cobra.Command {
 		a.mcpCmd(),
 		a.pivotCmd(),
 		a.tokenCmd(),
+		a.profileCmd(),
 	)
 	return root
 }
