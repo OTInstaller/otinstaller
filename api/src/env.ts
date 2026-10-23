@@ -54,7 +54,9 @@ export type PublishMessage =
   | { linkCheckToolId: string }
   | { publishVersionId: string }
   | { backupVersionId: string }
-  | { profileNamespaceId: string };
+  | { profileNamespaceId: string }
+  // The nightly clean-up of one mirror repository publishers pushed to (backups.ts:sweepMirrorRepo).
+  | { mirrorSweepRepo: string };
 
 export interface User {
   id: string;

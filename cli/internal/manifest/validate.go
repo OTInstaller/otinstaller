@@ -36,6 +36,7 @@ const (
 	CodeTestInputMissing   = "manifest_test_input_missing"
 	CodeTagMismatch        = "manifest_tag_mismatch"
 	CodeFileMissing        = "manifest_file_missing"
+	CodeImageForeign       = "artifact_image_foreign"
 )
 
 // Problem is one validation failure.
@@ -107,6 +108,7 @@ func Validate(doc any, m *Manifest, opt Options) []*Problem {
 	ps = append(ps, checkSecrets(m)...)
 	ps = append(ps, checkPlaceholders(m)...)
 	ps = append(ps, checkTest(m)...)
+	ps = append(ps, checkHostedImage(m)...)
 	if opt.Tag != "" {
 		if strings.TrimPrefix(opt.Tag, "v") != m.Version {
 			ps = append(ps, &Problem{Code: CodeTagMismatch, Path: "/version",
@@ -315,6 +317,24 @@ func checkTest(m *Manifest) []*Problem {
 		}
 	}
 	return ps
+}
+
+// MirrorHost is the registry's own image mirror, where `ot publish --image` pushes.
+const MirrorHost = "mirror.otinstaller.com"
+
+// checkHostedImage: an image on the registry's mirror must be this package's, <mirror>/<namespace>/<name>, as the
+// registry checks (api/src/publish.ts:hostedImageProblems).
+func checkHostedImage(m *Manifest) []*Problem {
+	if m.Runtime == nil || !strings.HasPrefix(m.Runtime.Image, MirrorHost+"/") {
+		return nil
+	}
+	repo := strings.SplitN(strings.TrimPrefix(m.Runtime.Image, MirrorHost+"/"), "@", 2)[0]
+	if repo == m.Namespace+"/"+m.Name {
+		return nil
+	}
+	return []*Problem{{Code: CodeImageForeign, Path: "/runtime/image",
+		Message: fmt.Sprintf("%s is not %s's image on the mirror", m.Runtime.Image, m.Ref()),
+		Hint:    "push the image with `ot publish --image`, which names it after the package"}}
 }
 
 func checkFiles(m *Manifest, dir string) []*Problem {
