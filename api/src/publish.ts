@@ -15,6 +15,7 @@ import { backupVersion } from "./backups";
 import { copyImages, queueContentChecks, recheckLinks, relatedToolProblems, renderRelease, runContentChecks, storeContent, type RenderedRelease } from "./guides";
 import { ownerEmails, sendEmail, templates } from "./notify";
 import { COMMUNITY_NAMESPACE, detectQueued, failImport, heldManifestFor, parseRepoRef } from "./imports";
+import { markSubmittedTool } from "./submissions";
 
 export const MANIFEST_FILE = "otinstaller.yaml";
 
@@ -210,6 +211,9 @@ async function record(env: Env, job: Job, sha: string, ns: Namespace, m: Manifes
         // A package in the community namespace whose homepage is another repository wraps someone else's tool and is
         // labelled so; the namespace's own tools (homepage is the source repository, or none) are first-party.
         upstreamOf(job, m) ? 1 : 0, now, now));
+      if (upstreamOf(job, m)) stmts.push(db.prepare(`UPDATE tools SET upstream_url = ? WHERE id = ?`).bind(m.homepage, toolId));
+      // A community submission's first release waits for a reviewer, and remembers who submitted it.
+      if (job.provider === "github") stmts.push(...markSubmittedTool(db, toolId, job.repo_id));
     }
     // Link the package to its source repository, which sync keeps up to date from now on.
     if (job.provider === "github") {

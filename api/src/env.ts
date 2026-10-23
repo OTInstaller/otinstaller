@@ -17,6 +17,11 @@ export interface Env {
   GITHUB_APP_ID?: string;
   GITHUB_APP_PRIVATE_KEY?: string;
   GITHUB_APP_SLUG?: string; // for the App's install link; defaults to "otinstaller"
+  // The community bot: a second GitHub App installed only on osintverse-community, which creates wrapper repositories
+  // for community submissions and starts their releases (submissions.ts). Without all three, submitting answers 503.
+  COMMUNITY_APP_ID?: string;
+  COMMUNITY_APP_PRIVATE_KEY?: string;
+  COMMUNITY_INSTALLATION_ID?: string;
   GITHUB_WEBHOOK_SECRET?: string;
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;

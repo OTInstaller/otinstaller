@@ -56,6 +56,29 @@ for it again later.
 
 From the terminal: `ot request <repo-url> [--note "..."]`, and `--vote` to vote for an existing request.
 
+## Submissions
+
+Anyone signed in can package an open-source tool they don't maintain, from the [import wizard](/import?community=1)
+("Someone else's tool", or **Package it** on a request) or with `ot import --community <repo-url>`. The registry
+checks it first: the repository's license must let it be redistributed, it mustn't have its own `otinstaller.yaml`,
+and it mustn't be packaged or submitted already. A Python package must come from that repository, according to PyPI.
+
+Then the registry's community bot creates `osintverse-community/<name>` with the manifest and a README crediting the
+project, and starts the first release:
+
+- When the project publishes its own image or wheel, the wrapper pins it and the release is a tag.
+- Otherwise the wrapper builds an image from a Dockerfile you give. The wizard has templates. A Dockerfile that starts
+  from an official base image pinned by tag, runs as a non-root user, downloads nothing into a shell and pins the
+  upstream release (`ARG UPSTREAM_VERSION=1.2.3`, `go install ...@v1.2.3`, `pip install tool==1.2.3`) builds straight
+  away; anything else waits for a reviewer to read it and start the build. The [errors page](/docs/errors#community-submissions)
+  explains each check.
+
+The release is scanned and smoke-tested like any other. Its first version then waits for a community reviewer, never
+the person who submitted it, who approves it, asks for changes or turns it down (the wrapper repository is archived,
+never deleted). You can change the Dockerfile while it waits or after changes were asked for, and withdraw it. Once it
+is published you are listed as its maintainer on the package page. Follow each submission on [/submissions](/submissions).
+Each person can have three submissions waiting at a time.
+
 ## From the terminal
 
 When `ot run` fails at a terminal (it timed out, or exited non-zero and found nothing), it asks:
@@ -104,7 +127,7 @@ and your avatar is left off your posts.
 | Signed in | Open issues, reply, say it works or is broken, follow a thread, flag a post, ask for a tool and vote for requests |
 | The package's maintainers | Triage its issues, lock threads, hide comments on its issues |
 | Triagers | Triage any package's issues, decide tool requests, approve held posts and requests, hide posts, pause an account for up to 7 days |
-| Reviewers | What triagers can, and approve community submissions' first releases |
+| Reviewers | What triagers can, and start, approve, send back or turn down community submissions (never their own) |
 | Staff | Everything, including redacting posts and granting the triager and reviewer roles |
 
 Triagers and reviewers are community members staff trust; ask at
@@ -136,5 +159,7 @@ Everything is in the [registry API](/docs/api) (OpenAPI tag "Community"):
 | `POST /v1/tools/<ns>/<name>/run-reports` | A failed run, as `ot` sends it: `{version, exit_code \| timed_out, os, arch, engine, ot_version}`; anonymous or scope `feedback` |
 | `GET /v1/requests` | Tool requests (`status`, `sort=votes\|new`, `before`) |
 | `POST /v1/requests` | Ask for a tool (scope `feedback`); `PUT /v1/requests/<number>/vote` to vote |
+| `GET /v1/submissions`, `GET /v1/submissions/<number>` | Community submissions and one submission's checks, release and decision |
+| `POST /v1/imports/<id>/finish` `{"mode": "submit"}` | Submit a community import (scope `publish`); `dockerfile` and `request` are optional |
 
 Error codes are on the [errors page](/docs/errors#community).

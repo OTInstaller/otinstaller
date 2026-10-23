@@ -31,6 +31,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0016 | `0016_community.sql` | `users` + `handle` (unique, backfilled from `lower(login)`, a suffix on collision), `profile_hidden`, `posting_blocked_until`; new tables `community_roles`, `issues`, `issue_comments`, `confirmations`, `run_signals`, `content_flags`, `issue_subscriptions`; `health_checks` + `failure_class`; `tools` + `open_broken`, `open_outdated`. |
 | 0017 | `0017_notifications.sql` | New tables `email_prefs` (per person: `community`, `owner_issues` as immediate/daily/off) and `inbox` (kind, scope community/owner_issues/account, summary, site path, read and emailed times); indexes `inbox_user`, `inbox_pending` (partial). |
 | 0018 | `0018_requests.sql` | New tables `tool_requests` (one per repository: status, decline code, decision, the answering package, what otlite and the seed survey knew, votes, moderation) and `request_votes`; indexes `tool_requests_board`, `tool_requests_project`, `tool_requests_requester`, `request_votes_user`. |
+| 0020 | `0020_community_wrappers.sql` | `tools` + `needs_first_review` (default 0), `submitted_by`, `upstream_url` (backfilled for community-packaged tools from the latest manifest's `homepage`); new tables `tool_maintainers` and `wrapper_submissions`; indexes `tool_maintainers_user`, `wrapper_submissions_status`, `wrapper_submissions_upstream`, `wrapper_submissions_repo`, `wrapper_submissions_user`. |
 | 0019 | `0019_people.sql` | New table `contributor_stats` (per person: issues opened and confirmed, replies, confirmations, requests made and published, issues triaged; recounted nightly); indexes `issues_author`, `issue_comments_author`, `confirmations_user`, `issues_closed_by`. |
 
 ---
@@ -415,6 +416,19 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
 - `request_votes`: PK `(request_id, user_id)`, `created_at`; the requester's vote is added with the request.
   `vote_count` is recounted in the same batch as every vote.
 
+### 2.12d Community submissions (0020)
+
+- `tools.needs_first_review`: a community submission's tool; its next scanned version waits in `awaiting_review` even
+  in an active namespace, until a reviewer publishes it. `tools.submitted_by` → `users(id)`; `tools.upstream_url`: the
+  project a community wrapper packages (set by `record()` for new wrappers, backfilled by 0020).
+- `tool_maintainers`: PK `(tool_id, user_id)`, `reason` (`submitter` | `added`), `added_by`, `created_at`.
+- `wrapper_submissions`: `number` (UNIQUE), `user_id`, `import_id`, `request_id`, `provider`, `upstream_path`,
+  `upstream_key` (`provider:lower(path)`), `upstream_url`, `name`, `runtime` (docker | pipx), `builds`,
+  `manifest_json`, `dockerfile`, `checks_json` (`{flags, dockerfile}`), `template_conformant`, `status` (submitted |
+  releasing | in_review | changes_requested | published | rejected | withdrawn | failed), `wrapper_repo`,
+  `wrapper_repo_id` (the GitHub repository ID `record()` matches), `released_version`, `tool_id`, `reviewer_id`,
+  `decision_note`, `error`, `created_at`, `updated_at`.
+
 ### 2.12c Contributor profiles (0019)
 
 - `contributor_stats`: PK `user_id` → `users(id)` (cascade), `issues_opened`, `issues_confirmed` (their broken,
@@ -587,6 +601,18 @@ There is no guard on the current status, so a resolved report can be resolved ag
 | `declined` (`withdrawn`) → `open` when someone asks again | `requests.ts:createRequest` |
 | `open` ↔ `accepted` → `in_progress` → `published`; any active → `declined`; `declined` → `open` | `requests.ts:setRequestStatus` (triagers and staff; the requester may withdraw) |
 | any but `published` → `published` | `requests.ts:linkPublished` (from `scans.ts:publishVersion`) |
+
+### 3.8b `wrapper_submissions.status`
+
+| Transition | Where |
+| --- | --- |
+| (new) → `submitted`, then → `releasing` when the Dockerfile is conformant or there is nothing to build | `submissions.ts:submitWrapper` |
+| `submitted` → `releasing` | `startSubmission` (a reviewer) |
+| `releasing` → `in_review` (scans passed) or `failed` (scan rejected) | `firstReleaseScanned` (from `applyScanResults`) |
+| `in_review` → `published` | `approveSubmission` → `publishVersion` → `firstReleasePublished` |
+| open → `changes_requested` / `rejected` | `decideSubmission` |
+| open → `withdrawn` | `withdrawSubmission` |
+| `submitted` / `changes_requested` / `failed` → `submitted` or `releasing` | `updateSubmission` (the submitter) |
 
 ### 3.9 Others
 - **`feedback.status`**: `open` (insert, `routes/beta.ts`) ↔ `done` / `dismissed` / `open` in `routes/beta.ts`

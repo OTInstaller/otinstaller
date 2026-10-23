@@ -39,7 +39,10 @@ const facts = [
           {r.decline_code && <span class="small muted">{DECLINE_LABEL[r.decline_code]}</span>}
         </p>
         {r.description && <p class="lead">{r.description}</p>}
-        <p><a class="btn btn-sm" href={r.url} rel="nofollow ugc noopener">See it on {host}</a></p>
+        <p class="row">
+          <a class="btn btn-sm" href={r.url} rel="nofollow ugc noopener">See it on {host}</a>
+          {(r.status === "open" || r.status === "accepted") && <a class="btn btn-sm btn-primary" href={`/import?community=1&repo=${encodeURIComponent(r.url)}&request=${r.number}`} rel="nofollow">Package it</a>}
+        </p>
       </div>
     </header>
 

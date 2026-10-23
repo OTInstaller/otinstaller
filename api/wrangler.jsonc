@@ -38,6 +38,8 @@
   }
   // Secrets (set with `wrangler secret put`, or in .dev.vars locally):
   //   GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY (PKCS#8 PEM), GITHUB_WEBHOOK_SECRET,
+  //   COMMUNITY_APP_ID, COMMUNITY_APP_PRIVATE_KEY and COMMUNITY_INSTALLATION_ID (the community bot for submissions;
+  //   submitting answers 503 community_bot_missing without them),
   //   GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, GITLAB_CLIENT_ID, GITLAB_CLIENT_SECRET,
   //   OSINTVERSE_CLIENT_ID and OSINTVERSE_CLIENT_SECRET (Sign in with OSINTverse; the button fails without them),
   //   TOKEN_ENC_KEY (32 random bytes, base64), OPS_DISPATCH_TOKEN or OPS_INSTALLATION_ID, RESEND_API_KEY,

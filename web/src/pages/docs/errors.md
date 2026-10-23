@@ -256,6 +256,84 @@ The request already has that status.
 ### upstream_unreachable
 GitHub or GitLab took too long to answer while the registry checked the repository. Try again in a minute.
 
+## Community submissions
+
+Packaging someone else's tool with [`ot import --community`](/docs/cli) or the [import wizard](/import). The codes
+marked *for reviewers* never stop a submission; they are shown to reviewers on its page.
+
+### community_bot_missing
+The registry's community bot, which creates wrapper repositories, isn't set up on this registry yet. An
+`osintverse-community` admin can still package the tool; ask on [OTInstaller/feedback](https://github.com/OTInstaller/feedback).
+
+### submission_not_found
+There is no [submission](/submissions) with that number.
+
+### submission_exists
+Someone is packaging the same repository already; the message names the submission. Follow it instead.
+
+### already_packaged
+A package of this repository is in the registry already, so it needs no wrapper. If it's broken or out of date, open
+an issue on its page.
+
+### license_mismatch
+The manifest's `license` isn't the license the repository declares. Use the repository's own license.
+
+### pypi_not_upstream
+The PyPI project the manifest pins doesn't name the repository as its source, so it may be someone else's package
+of the same name. Pin the project the repository publishes, or build it from source in a Dockerfile.
+
+### pypi_unchecked
+*For reviewers.* PyPI didn't answer, so whether the package comes from the repository wasn't checked.
+
+### dockerfile_required
+The upstream project publishes no image, so the wrapper builds one: send the Dockerfile (`--dockerfile` with
+`ot import`, or the wizard's packaging step).
+
+### dockerfile_too_large
+A wrapper's Dockerfile can be at most 16 KB.
+
+### dockerfile_base
+The Dockerfile starts from an image that isn't an official base image pinned by tag (Alpine, Debian slim, Python,
+Go, Rust, Node or Ruby). It can still be packaged, but a reviewer starts its build after reading it.
+
+### dockerfile_root
+The final stage doesn't switch to a non-root `USER`. A reviewer starts the build after reading it.
+
+### dockerfile_add_url
+`ADD` downloads from a URL. Download in a `RUN` step and check the file's hash, or `COPY` it.
+
+### dockerfile_pipe_shell
+A downloaded script is piped into a shell (`curl … | sh`). Install from a pinned release instead.
+
+### dockerfile_no_pin
+The Dockerfile doesn't pin the upstream release it builds in a way the registry can read: use
+`ARG UPSTREAM_VERSION=1.2.3`, `go install …@v1.2.3`, `pip install tool==1.2.3`, `git+https://…@v1.2.3` or
+`git checkout v1.2.3`. The upstream watcher uses it to tell when the wrapper falls behind.
+
+### similar_name
+*For reviewers.* The package name is close to another package's or an otlite tool's.
+
+### stale_upstream
+*For reviewers.* Nothing was pushed to the repository in two years.
+
+### few_stars
+*For reviewers.* The repository has fewer than 10 stars.
+
+### dropped_in_survey
+*For reviewers.* The October 2026 seed survey left this repository out; the message says why.
+
+### archived_upstream
+*For reviewers.* The repository is archived.
+
+### not_reviewer
+Only staff and community reviewers can start, approve, send back or turn down a submission.
+
+### self_review
+Someone other than the submitter has to review a submission's first release.
+
+### too_many_submissions
+Each person can have three submissions waiting at a time. Finish or withdraw one first.
+
 ### invalid_unsubscribe_link
 The unsubscribe link was changed or cut short. Change what you get at [notification settings](/settings/notifications).
 

@@ -134,6 +134,10 @@ export interface ToolDetail extends ToolSummary {
   moved_to?: string;
   /** Open issues people filed; older API answers omit it. */
   community?: { open_broken: number; open_outdated: number };
+  /** The handle of whoever submitted a community package (community submissions). */
+  packaged_by?: string;
+  /** People who look after a community package besides its namespace. */
+  maintainers?: string[];
 }
 
 export interface Version {
@@ -457,3 +461,39 @@ export interface Person {
   requests: { number: number; repo: string; status: RequestStatus; created_at: number }[];
   indexable: boolean;
 }
+
+// ---------- community submissions ----------
+
+export type SubmissionStatus = "submitted" | "releasing" | "in_review" | "changes_requested" | "published" | "rejected" | "withdrawn" | "failed";
+
+export interface Submission {
+  number: number;
+  name: string;
+  upstream: { provider: "github" | "gitlab"; repo: string; url: string };
+  runtime: "docker" | "pipx";
+  builds: boolean;
+  status: SubmissionStatus;
+  submitted_by: string | null;
+  wrapper_repo: string | null;
+  tool: string | null;
+  request: number | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface SubmissionCheck { code: string; message: string }
+
+export interface SubmissionDetail extends Submission {
+  manifest: Record<string, unknown>;
+  dockerfile: string | null;
+  template_conformant: boolean;
+  flags: SubmissionCheck[];
+  dockerfile_checks: SubmissionCheck[];
+  released_version: string | null;
+  decision_note: string | null;
+  reviewer: string | null;
+  error: string | null;
+  release: { version: string; status: string; scan_status: string | null; scans: { kind: string; result: string; summary: unknown }[] } | null;
+}
+
+export interface SubmissionViewer { is_submitter: boolean; can_review: boolean; can_edit: boolean }
