@@ -8,7 +8,7 @@
 //
 //   curl -fsSL https://get.otinstaller.com/otlite | sh
 //
-// installs otlite. Its script (otlite/scripts/install.sh) installs from PyPI with pipx, so it is served from the
+// installs otlite. Its script (otlite/scripts/install.sh) installs from PyPI with pipx or uv, so it is served from the
 // main branch rather than a release. Anything else goes to the docs.
 const FILES = {
   "/ot": "install.sh",

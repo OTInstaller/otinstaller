@@ -2908,7 +2908,9 @@ def doctor(
     checks = []
     problems = 0
 
-    from otlite.config import install_hint, platform_name
+    from otlite.config import install_hint, installed_with, platform_name
+
+    installer = installed_with()
 
     # 1. Platform check
     platform = platform_name()
@@ -2939,14 +2941,22 @@ def doctor(
             }
         )
     else:
+        if installer == "uv":
+            fix = (
+                "reinstall otlite on uv's own Python with: "
+                "uv tool install --force --managed-python --python 3.12 otlite"
+            )
+        else:
+            fix = (
+                f"install a supported one with: {install_hint('python')}, "
+                "then reinstall otlite with it (pipx install --python python3.12 otlite)"
+            )
         checks.append(
             {
                 "check": "python_version",
                 "status": "problem",
                 "message": (
-                    f"python {major}.{minor} is not tested, this project supports 3.10-3.14; "
-                    f"install a supported one with: {install_hint('python')}, "
-                    "then reinstall otlite with it (pipx install --python python3.12 otlite)"
+                    f"python {major}.{minor} is not tested, this project supports 3.10-3.14; {fix}"
                 ),
             }
         )
@@ -2978,8 +2988,16 @@ def doctor(
         checks.append({"check": "venv", "status": "problem", "message": msg})
         problems += 1
 
-    # pipx installs and upgrades otlite but isn't needed to run it, so a missing one is a note.
-    if shutil.which("pipx"):
+    # pipx or uv installs and upgrades otlite but isn't needed to run it: a missing pipx is a note.
+    if installer == "uv":
+        checks.append(
+            {
+                "check": "installer",
+                "status": "ok",
+                "message": "installed with uv; upgrade it with: uv tool upgrade otlite",
+            }
+        )
+    elif shutil.which("pipx"):
         checks.append({"check": "pipx", "status": "ok", "message": "pipx found"})
     else:
         checks.append(
