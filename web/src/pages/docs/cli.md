@@ -14,6 +14,7 @@ errors as one line of JSON on stderr; see [Scripts, CI and agents](/docs/automat
 | --- | --- |
 | `ot search [query] [--input email] [--output domain] [--category x] [--runtime docker\|pipx] [--no-keys] [--kind tool\|guide] [--limit 25]` | Search the registry by words, by the input type a tool takes or the entity type it produces |
 | `ot info <ns/name \| otinstaller.yaml>` | Summary, inputs, outputs, keys (with the `ot keys set` command), ethics flags, trust status, and a copy-ready run command using the registry's test input |
+| `ot changelog <ns/name> [--all] [--limit 10]` | Release notes, newest first: for an installed tool the versions newer than yours (what `ot update` would bring), otherwise the latest. `ot info` shows the current version's "What's new" |
 | `ot install <ns/name[@version] \| otinstaller.yaml> ... [--native]` | Install one or more tools: pull each image by digest and verify its signature, or build its Python package into a container (`--native` installs it with pipx on the host instead). Every name is checked before anything installs; then it says how to try each tool and which keys to set first |
 | `ot run <ns/name> --<input> <value> …` | Run a tool; installs it first if needed (`-y`/`--yes` without asking) |
 | `ot run <ns/name> u:johndoe` | Typed inputs fill the tool's input of that type: `u:` username, `d:` domain, `e:` email, `p:` phone, `ip:` IP, `url:` URL |
@@ -31,9 +32,17 @@ errors as one line of JSON on stderr; see [Scripts, CI and agents](/docs/automat
 | `ot pivot <run-id \| saved file> [--registry] [--limit 25]` | Suggest the next runs from what a saved run found, with the `ot run` command for each; runs nothing |
 | `ot mcp [--results-dir DIR]` | Serve [MCP](/docs/agents) over stdio for AI agents; `ot mcp install claude\|claude-desktop\|cursor\|vscode\|codex\|gemini [--print]` adds it to a client (`--print` only shows the configuration) |
 | `ot mcp policy [reset]` · `ot mcp audit [--since 24h]` · `ot mcp tools` | The rules agents run under, what they did, and what the server offers |
-| `ot report <ns/name> [--reason malware\|policy\|impersonation\|license\|broken\|other --details …] [--version X.Y.Z]` | Report a package to the reviewers (opens the form without `--reason`); `--details` is required except for `broken` |
+| `ot issues <ns/name> [--all]` | The package's open [community issues](/docs/community) (`--all` adds closed ones) |
+| `ot request <repo-url> [--note …] [--vote]` | Ask for an open-source tool to be packaged ([tool requests](/requests)); when someone asked already, `--vote` (or yes at the prompt) votes for theirs. Needs `ot login` |
+| `ot report <ns/name> --works\|--broken [--version X.Y.Z]` | Say the installed version (or `--version`) works or is broken for you; `--works` needs `ot login`, and `--broken` joins or opens the version's broken issue when signed in |
+| `ot report <ns/name> [--reason malware\|policy\|impersonation\|license\|broken\|other --details …] [--version X.Y.Z]` | Report a package privately to the reviewers (opens the form without `--reason`); `--details` is required except for `broken` |
 | `ot feedback [--kind bug\|idea\|question\|other] [--about …] [--email …] "message"` | Send feedback to the team with your `ot` version and OS; reads piped text, or opens the form with no message |
 | `ot self-update [--check]` | Update ot itself; the release signature is checked first, and an older release is never installed over a newer one. `ot outdated` says when a newer ot is out |
+
+When a tool times out, or exits non-zero without finding anything, `ot run` asks at a terminal whether to report it
+as broken. A yes sends the package, version, exit code, OS and `ot` version, never your inputs or output. It asks at
+most once a week per version, and never under `ot mcp`, in CI, without a terminal, with `--json`, or with
+`OT_NO_TELEMETRY` set; see [Community](/docs/community#from-the-terminal).
 
 ## Saved results
 
@@ -71,7 +80,7 @@ and `--no-save` skips saving. The result envelope still goes to stdout.
 | `ot namespace trust <ns> github:owner/repo\|gitlab:group/project [--workflow …] [--environment …] [--package …]` · `ot namespace trusted <ns>` · `ot namespace untrust <ns> <id>` | Let a public repository's CI publish into a namespace you own with `ot publish --oidc` ([trusted publishing](/docs/publishing#publish-from-ci)); list or remove them |
 | `ot login [--gitlab \| --osintverse] [--print-token] [--scope …]` · `ot logout` · `ot whoami` | Sign in with GitHub, GitLab or OSINTverse; `--print-token` for machines without a keychain, `--scope` to limit the token |
 | `ot token create <name> [--scope …] [--expires 90]` · `ot token list` · `ot token revoke <id>` | Registry API tokens with [scopes](/docs/api#signing-in-tokens-and-scopes), for scripts, CI and agents |
-| `ot import <repository URL …> [--registry] [--community --wrapper URL] [--draft] [--save FILE] [--file FILE] [--id ID] [-y\|--yes]` · `ot import --list` | The import wizard in the terminal: detect the repository, fill in a draft manifest and finish as a pull or merge request (or keep the manifest on the registry with `--registry`). Several URLs import in bulk; `--draft` stops after saving, `--id` continues it later; `--community` packages someone else's tool as a wrapper (admins only) |
+| `ot import <repository URL …> [--registry] [--community [--dockerfile FILE] [--request N] [--wrapper URL]] [--draft] [--save FILE] [--file FILE] [--id ID] [-y\|--yes]` · `ot import --list` | The import wizard in the terminal: detect the repository, fill in a draft manifest and finish as a pull or merge request (or keep the manifest on the registry with `--registry`). Several URLs import in bulk; `--draft` stops after saving, `--id` continues it later; `--community` packages someone else's tool as a [community submission](/docs/community#submissions) (`--dockerfile FILE` when it builds its own image, `--request N` for the request it answers; admins can use `--wrapper URL` instead) |
 | `ot sync <ns/name> [--log]` | Check the source repository now, or show recent sync events |
 | `ot profile [namespace] [--sync] [--set key=value] [--unset key]` | Show a publisher's profile; owners refresh it from GitHub and GitLab, override fields (name, bio, location, website, company, avatar, socials, about, pins, hide) or go back to the host value |
 | `ot yank <ns/name@version> [--undo]` | Hide a version from search and `@latest` (still installable by exact version) |
@@ -109,7 +118,7 @@ registry's copy and checks the same SHA-256. You see a note when this happens; n
 | `OTINSTALLER_ID_TOKEN` | A GitLab CI job's ID token for `ot publish --oidc` (declare it with `id_tokens:` and `aud: otinstaller`); in GitHub Actions, `ot` asks for one through `ACTIONS_ID_TOKEN_REQUEST_URL` itself |
 | `OT_SITE_URL` | The website `ot guide open`, `ot report` and `ot feedback` open |
 | `OT_HOME` | Where `ot` keeps its state (default `~/.ot`, `%APPDATA%\ot` on Windows) |
-| `OT_NO_TELEMETRY` | Any value stops the install ping (one request per install, with your token when signed in) |
+| `OT_NO_TELEMETRY` | Any value stops the install ping (one anonymous request per install) and the question after a failed run |
 | `OT_OUTPUT=json` | JSON output and JSON errors from every command, as if `--json` were given |
 | `OT_NONINTERACTIVE=1` | Never prompt, even at a terminal (`ot` never prompts without one) |
 | `OT_NO_UPDATE_CHECK=1` | `ot outdated` doesn't look up the latest `ot` release (it does at most once a day otherwise, and never in CI or under `ot mcp`) |

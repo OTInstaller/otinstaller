@@ -8,6 +8,9 @@ import { githubRepo, gitlabRepo, type CommitState } from "./hosts/repo";
 import { audit } from "./routes/auth";
 import { ownerEmails, sendEmail, templates } from "./notify";
 import { updateLinkHealth } from "./guides";
+import { announceVersion } from "./community";
+import { linkPublished } from "./requests";
+import { firstReleasePublished, firstReleaseScanned } from "./submissions";
 import { recordHostedImage } from "./backups";
 
 export const SCAN_TOKEN_TTL = 60 * 60 * 1000;
@@ -161,6 +164,8 @@ type VersionCtx = {
   namespace_id: string;
   namespace: string;
   namespace_status: string;
+  /** A community submission whose first release waits for a reviewer. */
+  needs_first_review: number;
   name: string;
   kind: string;
   job_id: string | null;
@@ -176,7 +181,7 @@ type VersionCtx = {
 export async function loadVersion(env: Env, where: string, ...binds: unknown[]): Promise<VersionCtx | null> {
   return env.DB.prepare(
     `SELECT v.id, v.tool_id, v.version, v.status, v.manifest_json, t.namespace_id, n.name AS namespace, n.status AS namespace_status,
-       t.name, t.kind, j.id AS job_id, j.provider, j.repo, j.repo_id, j.installation_id, j.source_id, j.commit_sha, j.bundle_key
+       t.needs_first_review, t.name, t.kind, j.id AS job_id, j.provider, j.repo, j.repo_id, j.installation_id, j.source_id, j.commit_sha, j.bundle_key
      FROM versions v JOIN tools t ON t.id = v.tool_id JOIN namespaces n ON n.id = t.namespace_id
      LEFT JOIN publish_jobs j ON j.version_id = v.id
      WHERE ${where} ORDER BY j.created_at DESC LIMIT 1`,
@@ -277,6 +282,7 @@ export async function applyScanResults(env: Env, v: VersionCtx, scanned: ScanRes
       to: await ownerEmails(env, v.namespace_id), kind: "rejected", key: `rejected:${v.id}`,
       ...templates.rejected(env, refOf(v), v.version, vd.code, vd.message, retryHint(v)),
     });
+    if (v.needs_first_review) await firstReleaseScanned(env, v.tool_id, "failed", `${vd.code}: ${vd.message}`);
     return { status: "rejected", verdict: vd };
   }
 
@@ -288,7 +294,7 @@ export async function applyScanResults(env: Env, v: VersionCtx, scanned: ScanRes
   );
   await db.batch(stmts);
 
-  if (v.namespace_status === "active") {
+  if (v.namespace_status === "active" && !v.needs_first_review) {
     // The scanner backs this version up itself, with the plan the callback answers with.
     await publishVersion(env, v.id, { backupInline: true });
     return { status: "published", verdict: vd };
@@ -297,6 +303,12 @@ export async function applyScanResults(env: Env, v: VersionCtx, scanned: ScanRes
     db.prepare(`UPDATE versions SET status = 'awaiting_review' WHERE id = ?`).bind(v.id),
     db.prepare(`UPDATE publish_jobs SET status = 'awaiting_review', updated_at = ? WHERE version_id = ?`).bind(now, v.id),
   ]);
+  if (v.needs_first_review) {
+    // A community submission: a reviewer other than the submitter approves the first release (submissions.ts).
+    await commitStatus(env, v, "pending", "Scans passed; a community reviewer looks at the first release");
+    await firstReleaseScanned(env, v.tool_id, "in_review");
+    return { status: "awaiting_review", verdict: vd };
+  }
   await commitStatus(env, v, "pending", "Scans passed; new publisher awaiting review");
   await sendEmail(env, { to: await ownerEmails(env, v.namespace_id), kind: "in_review", key: `in_review:${v.id}`, ...templates.inReview(env, refOf(v), v.version) });
   return { status: "awaiting_review", verdict: vd };
@@ -366,6 +378,12 @@ export async function publishVersion(env: Env, versionId: string, opts: { backup
   await db.batch(stmts);
   // An image a publisher pushed to the mirror goes public now, recorded as its own backup.
   if (m.runtime?.kind === "docker") await recordHostedImage(env, versionId, v.tool_id, m.runtime.image ?? "");
+  // People following open broken or outdated issues are asked whether the new version fixes them.
+  await announceVersion(env, v.tool_id, v.version).catch((e) => console.error("announcing the version on issues failed", e));
+  // A reviewed community submission is out: its submitter becomes a maintainer.
+  await firstReleasePublished(env, v.tool_id).catch((e) => console.error("finishing the submission failed", e));
+  // Requests for this tool (its own repository, or the upstream a wrapper packages) are answered.
+  await linkPublished(env, v.tool_id).catch((e) => console.error("linking tool requests failed", e));
   if (v.kind === "guide" && isLatest) await updateLinkHealth(env, v.tool_id);
   const scan = await db.prepare(`SELECT scan_status FROM versions WHERE id = ?`).bind(versionId).first<{ scan_status: string }>();
   await commitStatus(env, v, "success", `Published ${refOf(v)}@${v.version}`);

@@ -8,7 +8,7 @@ const REASONS: [string, string][] = [
   ["policy", "Breaks the acceptable use policy (stalkerware, credential stuffing, …)"],
   ["impersonation", "Impersonates another tool, vendor or person"],
   ["license", "Copyright or license problem"],
-  ["broken", "Broken or misleading"],
+  ["broken", "Broken or misleading (privately; an issue is usually better)"],
   ["other", "Something else"],
 ];
 
@@ -43,6 +43,9 @@ export default function ReportForm({ refName, versions, version }: { refName: st
           <label class="row"><input type="radio" name="reason" value={value} checked={reason === value} onChange={() => setReason(value)} required /> {label}</label>
         ))}
       </fieldset>
+      {reason === "broken" && (
+        <p class="notice small">If the tool just doesn't work, <a href={`/${refName}/issues?kind=broken#new`}>open a public issue</a> instead: others can confirm it, and the maintainers can answer you there.</p>
+      )}
       <label for="ver">Version</label>
       <select id="ver" value={v} onChange={(e) => setV((e.target as HTMLSelectElement).value)}>
         <option value="">All versions / not sure</option>

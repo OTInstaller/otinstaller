@@ -9,6 +9,7 @@ import { gitlabToken, type SourceRow } from "../hosts/repo";
 import { audit, requireUser } from "./auth";
 import { pollSource, RELEASE_TAG, sourceById, sourceByProject, SOURCE_COLUMNS } from "../sync";
 import { ImportProblem, installUrl, openRepo, parseRepoRef } from "../imports";
+import { RESERVED_NAMESPACES } from "../lib/reserved";
 
 const MANUAL_SYNC_PER_HOUR = 10;
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
@@ -19,7 +20,7 @@ export async function gitlabNamespaceName(env: Env, ns: gitlab.GitlabProject["na
     .bind(String(ns.id)).first<{ id: string; name: string; status: string }>();
   if (existing) return existing;
   let name = slug(ns.path);
-  if (await env.DB.prepare(`SELECT 1 FROM namespaces WHERE name = ?`).bind(name).first()) name = `${name.slice(0, 37)}-gl`;
+  if (RESERVED_NAMESPACES.has(name) || (await env.DB.prepare(`SELECT 1 FROM namespaces WHERE name = ?`).bind(name).first())) name = `${name.slice(0, 37)}-gl`;
   return { name, status: "pending_review" };
 }
 

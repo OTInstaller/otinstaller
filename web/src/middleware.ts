@@ -2,11 +2,8 @@
 // /<ns>/<name>.md and /guides/<ns>/<name>/<page>.md URLs (built from the API).
 import { defineMiddleware } from "astro:middleware";
 import { markdownPage, markdownResponse, prefersMarkdown } from "./lib/markdown";
-import { guideTwin, profileTwin, SLUG, toolTwin } from "./lib/twins";
+import { guideTwin, profileTwin, RESERVED, SLUG, toolTwin } from "./lib/twins";
 import { canonicalRedirect } from "./lib/redirects";
-
-/** First path segments that are site sections, not namespaces. */
-const RESERVED = new Set(["docs", "policy", "schema", "admin", "category", "input", "settings", "transfers", "guides", "search", "import", "feedback", "dashboard", "removed", "publish", "tour", "otlite", "agents"]);
 
 type Route = { kind: "tool"; ns: string; name: string } | { kind: "guide"; ns: string; name: string; page: string } | { kind: "profile"; ns: string };
 

@@ -1,0 +1,62 @@
+---
+// /submissions: community wrapper submissions, the tools people are packaging for the registry. Reviewers find what
+// waits for them here; anyone can follow a submission from the Dockerfile to the published package.
+import Base from "../../layouts/Base.astro";
+import PageHead from "../../components/PageHead.astro";
+import { api, type Submission } from "../../lib/api";
+import { formatDate } from "../../lib/format";
+import { SUBMISSION_STATUS_LABEL, SUBMISSION_STATUS_TONE, submissionHref } from "../../lib/submissions";
+import { cacheFor } from "../../lib/page";
+
+const views = [
+  { key: "", label: "Open", query: "" },
+  { key: "published", label: "Published", query: "status=published" },
+  { key: "closed", label: "Turned down or withdrawn", query: "status=closed" },
+];
+const view = views.find((v) => v.key === (Astro.url.searchParams.get("view") ?? "")) ?? views[0]!;
+const before = /^\d{1,7}$/.test(Astro.url.searchParams.get("before") ?? "") ? Astro.url.searchParams.get("before") : null;
+const params = [view.query, before ? `before=${before}` : ""].filter(Boolean).join("&");
+const list = await api<{ submissions: Submission[]; next_before: number | null }>(`/submissions${params ? `?${params}` : ""}`);
+cacheFor(Astro, 120);
+const link = (key: string) => (key ? `/submissions?view=${key}` : "/submissions");
+---
+<Base title="Community submissions" description="Open-source OSINT tools people are packaging for the OTInstaller registry, and where each one stands.">
+  <PageHead eyebrow="Community" title="Submissions">
+    <p class="lead">Tools people are packaging for the registry as community wrappers. Each first release is built and scanned like any other, then a community reviewer approves it.</p>
+  </PageHead>
+
+  <nav class="row views" aria-label="What to show">
+    {views.map((v) => <a class="chip" href={link(v.key)} aria-current={v.key === view.key ? "page" : undefined} rel={v.key ? "nofollow" : undefined}>{v.label}</a>)}
+  </nav>
+  {list.submissions.length === 0 ? <p class="muted">Nothing here yet. <a href="/import?community=1">Package a tool</a>, or pick one people <a href="/requests">asked for</a>.</p> : (
+    <ul class="subs">
+      {list.submissions.map((s) => (
+        <li>
+          <div>
+            <p class="title"><a href={submissionHref(s.number)}>{s.name}</a> <span class="small muted">#{s.number}</span></p>
+            <p class="small muted">
+              Packages <a href={s.upstream.url} rel="nofollow ugc noopener">{s.upstream.repo}</a> · {s.runtime === "pipx" ? "Python package" : s.builds ? "builds an image" : "upstream's image"}
+              {s.submitted_by && <> · by <a href={`/people/${s.submitted_by}`}>{s.submitted_by}</a></>} on {formatDate(s.created_at)}
+              {s.tool && <> · <a href={`/${s.tool}`}>{s.tool}</a></>}{s.request && <> · answers <a href={`/requests/${s.request}`}>request #{s.request}</a></>}
+            </p>
+          </div>
+          <span class={`badge ${SUBMISSION_STATUS_TONE[s.status]}`}>{SUBMISSION_STATUS_LABEL[s.status]}</span>
+        </li>
+      ))}
+    </ul>
+  )}
+  {list.next_before && <p><a class="btn btn-sm" href={`${link(view.key)}${view.key ? "&" : "?"}before=${list.next_before}`} rel="nofollow">Older</a></p>}
+  <p class="small muted">Package one yourself in the <a href="/import?community=1">import wizard</a> or with <code>ot import --community &lt;repo-url&gt;</code>. <a href="/docs/community#submissions">How submissions work</a>.</p>
+</Base>
+
+<style>
+  .views { margin-bottom: 8px; }
+  .views .chip { text-transform: none; letter-spacing: 0; font-size: var(--fs-1); }
+  .subs { list-style: none; margin: 0 0 16px; padding: 0; border-top: 1px solid var(--border); }
+  .subs li { display: flex; gap: 16px; justify-content: space-between; align-items: baseline; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .title { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+  .subs p { margin: 2px 0 0; overflow-wrap: anywhere; }
+  @media (max-width: 640px) {
+    .subs li { flex-direction: column; gap: 6px; }
+  }
+</style>

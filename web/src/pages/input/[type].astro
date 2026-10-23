@@ -4,20 +4,26 @@
 // the tool pages by the browser only; the server never sees or caches it.
 import Base from "../../layouts/Base.astro";
 import Results from "../../components/Results.astro";
+import CompareTable from "../../components/CompareTable.astro";
 import ToolRow from "../../components/ToolRow.astro";
 import { api, type SearchResult, type Types } from "../../lib/api";
 import { entityLabel, inputLabel } from "../../lib/format";
 import { cacheFor, searchFrom } from "../../lib/page";
 import { GENERIC_INPUTS, INPUT_LANDING } from "../../lib/landing";
 import { breadcrumbs, graph, itemList } from "../../lib/seo";
+import { feedLinks } from "../../lib/feeds";
+import { compareRows } from "../../lib/compare";
 
 const type = Astro.params.type!;
 const types = await api<Types>("/types");
 if (!types.inputs.includes(type)) return new Response(null, { status: 404, statusText: "Not found" });
-const [{ result }, guides] = await Promise.all([
+const [{ result }, guides, all] = await Promise.all([
   searchFrom(Astro.url, { kind: "tool", input: type }),
   api<SearchResult>(`/guides?input=${encodeURIComponent(type)}&limit=4`).catch(() => ({ results: [] }) as SearchResult),
+  // Every tool for the comparison table: one fixed URL per type, so the edge cache keeps one copy.
+  api<SearchResult>(`/tools?kind=tool&input=${encodeURIComponent(type)}&limit=100&sort=health`).catch(() => null),
 ]);
+const compared = all ? compareRows(all.results) : [];
 const label = inputLabel(type);
 const lower = label.toLowerCase();
 const article = /^[aeiou]/i.test(lower) ? "an" : "a";
@@ -39,17 +45,24 @@ const jsonLd = graph(
 );
 cacheFor(Astro, 600);
 ---
-<Base title={title} description={description} noindex={generic} jsonLd={jsonLd} jsonHref={`https://api.otinstaller.com/v1/tools?kind=tool&input=${encodeURIComponent(type)}`}>
+<Base title={title} description={description} noindex={generic} jsonLd={jsonLd} jsonHref={`https://api.otinstaller.com/v1/tools?kind=tool&input=${encodeURIComponent(type)}`} feeds={copy ? feedLinks({ title: `${label} tools`, path: `/input/${type}/feed` }) : undefined}>
   <header class="page-head">
     <p class="eyebrow">I have {article}…</p>
     <h1>{label} OSINT tools</h1>
     <p class="muted lead-line">
       {total} {result.results.length === 1 ? "tool takes" : "tools take"} {article} {lower}<span data-value-note hidden> like <code data-value-text></code></span>. Pick one, and its run command is ready to copy.
       {guides.results.length > 0 && <> New to this? Start with the <a href={`/guides/${guides.results[0]!.namespace}/${guides.results[0]!.name}`}>{guides.results[0]!.title ?? "guide"}</a>.</>}
+      {compared.length > 1 && <> <a href="#compare-h">Compare them side by side ↓</a></>}
     </p>
     {copy && <p class="lead-copy">{copy.lead}</p>}
   </header>
   <Results result={result} types={types} fixed={["input"]} />
+  {compared.length > 1 && (
+    <section class="compare-sec" aria-labelledby="compare-h">
+      <div class="section-head"><h2 id="compare-h">{label} tools compared</h2></div>
+      <CompareTable rows={compared} label={`${article} ${lower}`} />
+    </section>
+  )}
   {copy && copy.steps.length > 0 && (
     <section class="how" aria-labelledby="how-h">
       <div class="section-head"><h2 id="how-h">How {article} {lower} investigation usually starts</h2></div>
@@ -101,7 +114,7 @@ cacheFor(Astro, 600);
   .page-head h1 { margin: 6px 0; }
   .lead-line { margin: 0; max-width: 72ch; }
   .lead-copy { margin: 12px 0 0; max-width: 80ch; font-size: var(--fs-2); line-height: 1.6; color: var(--text-muted); }
-  .how, .faq, .pivots, section[aria-labelledby="guides-h"] { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--border); }
+  .how, .faq, .pivots, .compare-sec, section[aria-labelledby="guides-h"] { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--border); }
   .steps { margin: 8px 0 12px; padding-left: 22px; max-width: 80ch; display: grid; gap: 6px; }
   .how p { margin: 0; }
   .qa { border-bottom: 1px solid var(--border); padding: 10px 0; }

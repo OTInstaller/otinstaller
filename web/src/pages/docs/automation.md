@@ -132,6 +132,22 @@ a tool can print a lot, pass `--max-raw BYTES` (or set `OT_MAX_RAW`). Above that
 is `true` and a warning says where the full output was saved. Entities are always kept. `--no-save` keeps nothing on
 disk.
 
+## Feeds: staying up to date
+
+The registry publishes what changes as Atom and JSON Feed 1.1, so a feed reader, a chat bot or a script can follow it
+without an account. Each feed is cached for 10 minutes.
+
+| Feed | What it carries |
+| --- | --- |
+| `/feed.atom`, `/feed.json` | Everything: new tools and guides, releases, yanks, deprecations and transfers ([What's new](/new) as a page) |
+| `/<namespace>/feed.atom` | One publisher's packages |
+| `/<namespace>/<tool>/feed.atom` | One tool's releases, each with its release notes |
+| `/input/<type>/feed.atom` | Tools and guides that take one input type, such as `/input/email/feed.atom` |
+
+Every one also comes as `.json`. Under the feeds is the API's [`GET /v1/activity`](/docs/api), which takes `limit`,
+`before` (Unix milliseconds, for paging), `kind`, `input` and `namespace`. For the tools you have installed,
+`ot outdated --json` says which have a newer version.
+
 ## For AI agents
 
 The best way for an agent to use OTInstaller is the MCP server, `ot mcp`: see [AI agents and MCP](/docs/agents). An

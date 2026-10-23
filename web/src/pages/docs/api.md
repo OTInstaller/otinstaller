@@ -16,12 +16,13 @@ Search, package pages, manifests, scans, guides, docs, `/types` and `/pivots` ar
 
 | Call | What it gives |
 | --- | --- |
-| `GET /tools?q=whois&input=domain&passive_only=1` | Search. Filters: `input`, `output`, `category`, `runtime`, `kind`, `no_keys`, `passive_only` (tools that run offline, touch no target and collect no personal data), `sort` (`relevance`, `installs`, `stars`, `updated`, `health`), `limit`, `cursor` |
+| `GET /tools?q=whois&input=domain&passive_only=1` | Search. Filters: `input`, `output`, `category`, `runtime`, `kind`, `no_keys`, `passive_only` (tools that run offline, touch no target and collect no personal data), `sort` (`relevance`, `installs`, `stars`, `updated`, `health`; no stars are recorded yet, so `stars` has no effect), `limit`, `cursor` |
 | `GET /facets?kind=tool` | How many visible packages match each input, output, category and runtime, and how many need no key |
 | `GET /tools/{ns}/{name}` | A package, its trust status and its manifest |
 | `GET /tools/{ns}/{name}/{version}/manifest` | What `ot install` uses: the manifest, signer, scan status and backup locations. `manifest` leaves out optional fields added after `ot` v0.12; when it does, `manifest_full` has them |
 | `GET /types` | Input types, entity types, categories and the pivot map |
 | `GET /pivots?from=email,subdomain` | For each entity type, the input types it can feed and the best tools taking them; types that feed nothing are listed in `unmapped` |
+| `GET /activity?limit=30&input=email` | What changed across the registry, newest first: releases (`new_package` marks a first release), yanks, deprecations and transfers. Filters: `kind`, `input`, `namespace`; page with `before=<next_before>`. The site's [feeds](/docs/automation#feeds-staying-up-to-date) are built from it |
 
 Search results and package pages include each tool's `ethics` (`touches_target`, `auth_required`,
 `collects_personal_data`, and `notifies_target` when the publisher sets it) and `egress`. Those decide whether an agent

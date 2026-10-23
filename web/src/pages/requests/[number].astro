@@ -1,0 +1,105 @@
+---
+// One tool request: the repository and what the registry knows about it, the requester's note, its votes and what
+// triagers decided. Islands add the vote button and, for triagers and the requester, the decision controls. Pages
+// stay out of search results until a triager has accepted the request.
+import Base from "../../layouts/Base.astro";
+import RequestVote from "../../islands/RequestVote";
+import RequestDecision from "../../islands/RequestDecision";
+import { apiOrNull, type ToolRequestDetail } from "../../lib/api";
+import { formatDate } from "../../lib/format";
+import { DECLINE_LABEL, REQUEST_STATUS_LABEL, REQUEST_STATUS_TONE, takesVotes } from "../../lib/requests";
+import { cacheFor } from "../../lib/page";
+import { personHref } from "../../lib/community";
+
+const number = Number(Astro.params.number);
+const loaded = /^\d{1,7}$/.test(Astro.params.number ?? "") ? await apiOrNull<{ request: ToolRequestDetail }>(`/requests/${number}`) : null;
+if (!loaded) return Astro.rewrite("/404");
+const r = loaded.request;
+cacheFor(Astro, 60);
+const host = r.provider === "gitlab" ? "GitLab" : "GitHub";
+const facts = [
+  ["Repository", r.repo],
+  ["License", r.license ?? "none found"],
+  r.upstream_stars !== null && ["Stars", r.upstream_stars.toLocaleString("en")],
+  r.pushed_at && ["Last change", formatDate(r.pushed_at)],
+].filter(Boolean) as [string, string][];
+---
+<Base title={`${r.name}: tool request #${r.number}`} description={`A request to package ${r.repo} for the OTInstaller registry. ${r.description ?? ""}`.trim()} noindex={!r.indexable} jsonHref={`https://api.otinstaller.com/v1/requests/${r.number}`}>
+  <p class="small back"><a href="/requests">← All requests</a></p>
+
+  <article class="request">
+    <header class="head">
+      <div class="votes">
+        {takesVotes(r.status) ? <RequestVote client:load number={r.number} votes={r.votes} checkViewer /> : <span class="count">{r.votes} {r.votes === 1 ? "vote" : "votes"}</span>}
+      </div>
+      <div>
+        <h1 class="title">{r.name} <span class="num">#{r.number}</span></h1>
+        <p class="tags">
+          <span class={`badge ${REQUEST_STATUS_TONE[r.status]}`}>{REQUEST_STATUS_LABEL[r.status]}</span>
+          {r.decline_code && <span class="small muted">{DECLINE_LABEL[r.decline_code]}</span>}
+        </p>
+        {r.description && <p class="lead">{r.description}</p>}
+        <p class="row">
+          <a class="btn btn-sm" href={r.url} rel="nofollow ugc noopener">See it on {host}</a>
+          {(r.status === "open" || r.status === "accepted") && <a class="btn btn-sm btn-primary" href={`/import?community=1&repo=${encodeURIComponent(r.url)}&request=${r.number}`} rel="nofollow">Package it</a>}
+        </p>
+      </div>
+    </header>
+
+    {r.status === "published" && r.tool && (
+      <p class="notice ok">Published as <a href={`/${r.tool}`}>{r.tool}</a>. Install it with <code>ot install {r.tool}</code>.</p>
+    )}
+    {r.otlite && <p class="notice small">otlite, the no-Docker edition, installs it already: <code>otlite install {r.otlite}</code> (<a href={`/otlite/tools/${r.otlite}`}>its page</a>).</p>}
+
+    <dl class="facts small">
+      {facts.map(([k, v]) => <><dt>{k}</dt><dd>{v}</dd></>)}
+      <dt>Asked for</dt>
+      <dd>{formatDate(r.created_at)} by {r.requested_by ? (r.requested_by.profile ? <a href={personHref(r.requested_by.handle)}>{r.requested_by.handle}</a> : r.requested_by.handle) : "a deleted account"}</dd>
+    </dl>
+
+    {r.note && (
+      <section class="post">
+        <h2>Why it's worth packaging</h2>
+        <p class="note">{r.note}</p>
+      </section>
+    )}
+
+    {(r.decision_note || r.decided_at) && (
+      <section class="post">
+        <h2>Decision</h2>
+        <p class="small muted">{REQUEST_STATUS_LABEL[r.status]}{r.decided_by ? ` by ${r.decided_by}` : " by the registry"}{r.decided_at && ` on ${formatDate(r.decided_at)}`}</p>
+        {r.decision_note && <p class="note">{r.decision_note}</p>}
+      </section>
+    )}
+
+    {r.dropped_reason && r.status === "open" && (
+      <p class="notice small">When the registry was seeded in October 2026, this repository was left out: {r.dropped_reason}. A triager will look again.</p>
+    )}
+
+    <RequestDecision client:idle number={r.number} status={r.status} />
+  </article>
+</Base>
+
+<style>
+  .back { margin: 0 0 12px; }
+  .request { max-width: 760px; display: grid; gap: 16px; }
+  .head { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 16px; align-items: start; }
+  .votes { display: flex; justify-content: center; padding-top: 6px; }
+  .count { font-weight: 600; font-size: var(--fs-1); text-align: center; }
+  .title { margin: 0; overflow-wrap: anywhere; }
+  .num { color: var(--muted); font-weight: 400; }
+  .tags { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; margin: 6px 0; }
+  .lead { margin: 6px 0 10px; }
+  .facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 16px; margin: 0; }
+  .facts dt { color: var(--muted); }
+  .facts dd { margin: 0; overflow-wrap: anywhere; }
+  .post { border-top: 1px solid var(--border); padding-top: 12px; }
+  .post h2 { margin: 0 0 6px; font-size: var(--fs-2); }
+  .note { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+  .request :global(.decision form label), .request :global(.decision form input), .request :global(.decision form select), .request :global(.decision form textarea) { display: block; width: 100%; }
+  .request :global(.decision form label + *) { margin-top: 4px; }
+  @media (max-width: 560px) {
+    .head { grid-template-columns: minmax(0, 1fr); }
+    .votes { justify-content: flex-start; }
+  }
+</style>
