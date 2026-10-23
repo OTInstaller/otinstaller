@@ -9,7 +9,7 @@ import FlagChoices from "../../../../components/FlagChoices.astro";
 import { apiOrNull, type IssueThread as Thread } from "../../../../lib/api";
 import { formatDate } from "../../../../lib/format";
 import { demoteHeadings } from "../../../../lib/html";
-import { issueHref, KIND_LABEL, STATUS_LABEL, STATUS_TONE } from "../../../../lib/community";
+import { issueHref, KIND_LABEL, personHref, STATUS_LABEL, STATUS_TONE } from "../../../../lib/community";
 import { loadTool } from "../../../../lib/tool";
 import { cacheFor } from "../../../../lib/page";
 
@@ -48,7 +48,7 @@ const facts = [
     </header>
 
     <div class="post">
-      <p class="small muted who">{i.author.system ? <b>The registry</b> : <b>{i.author.handle}</b>} opened this on {formatDate(i.created_at)}{i.edited_at && " (edited)"}</p>
+      <p class="small muted who">{i.author.system ? <b>The registry</b> : <b>{i.author.profile ? <a href={personHref(i.author.handle)}>{i.author.handle}</a> : i.author.handle}</b>} opened this on {formatDate(i.created_at)}{i.edited_at && " (edited)"}</p>
       {facts.length > 0 && <dl class="facts small">{facts.map(([k, v]) => <><dt>{k}</dt><dd><code>{v}</code></dd></>)}</dl>}
       {i.deleted ? <p class="muted">The author withdrew this issue.</p> : <div class="prose body"><Fragment set:html={demoteHeadings(i.body_html)} /></div>}
       {!i.author.system && !i.deleted && (
@@ -63,7 +63,7 @@ const facts = [
       {thread.comments.map((c) => (
         <li class:list={["post", { system: c.author.system }]} id={`c-${c.id}`}>
           <p class="small muted who">
-            {c.author.system ? <b>The registry</b> : <b>{c.author.handle}</b>}
+            {c.author.system ? <b>The registry</b> : <b>{c.author.profile ? <a href={personHref(c.author.handle)}>{c.author.handle}</a> : c.author.handle}</b>}
             {c.role && <span class="badge plain role">{roleLabel[c.role]}</span>}
             {" "}on {formatDate(c.created_at)}{c.edited_at && " (edited)"}
           </p>

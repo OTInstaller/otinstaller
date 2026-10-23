@@ -276,6 +276,16 @@ notifies the requester on every change and voters on published or declined (inbo
 `linkPublished` (called by `publishVersion`) marks requests for the package's own repository or the upstream its
 `homepage` names as published.
 
+Contributor profiles (`routes/people.ts`, logic in `people.ts`, 2 routes):
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/people/:handle` | none | `cached(c, 300)` | routes/people.ts | Handle (case-insensitive), avatar, `joined` (YYYY-MM), `roles` (`staff`, else `triager`/`reviewer`), `counts` from `contributor_stats`, `counted_at`, the 10 newest visible issues and requests, `indexable` (a role, a confirmed or fixed report, a published request or triage); hidden, banned and unknown people 404 `person_not_found`; never email, login or accounts |
+| PUT | `/me/community-profile` | user, manage | no-store | routes/people.ts | `{hidden}` sets `users.profile_hidden` (also on `/me` as `profile_hidden`); audited `profile.hide` / `profile.show` |
+
+`refreshContributorStats` recounts everyone who took part on the nightly cron, with one `INSERT OR REPLACE ... SELECT`
+over the author indexes from 0019.
+
 ### 1.10 Admin and staff (24)
 
 | Method | Path | Auth | Caching | Defined in | Notes |

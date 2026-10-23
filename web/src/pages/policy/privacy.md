@@ -28,6 +28,10 @@ day and the hash is deleted after a day. `OT_NO_TELEMETRY=1` turns the question 
 Tool requests are public too: the repository, your handle and the note you wrote. Votes are counted on each request;
 who voted is not shown.
 
+If you take part, your profile at `/people/<handle>` shows your handle, avatar, roles, the month you joined, counts
+of your visible posts and answers, and your recent issues and requests; never your email. You can hide it in
+[notification settings](/settings/notifications), which also leaves your avatar off your posts.
+
 - You can edit a post for 24 hours and withdraw it at any time; a withdrawn post's text is deleted.
 - A post a moderator redacts is overwritten for good. The database keeps a backup copy for 30 days.
 - Flags you send, and moderators' decisions, are recorded with your account and never shown publicly.

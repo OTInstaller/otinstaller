@@ -442,3 +442,18 @@ export interface RequestViewer {
   /** The requester's own note while a moderator hasn't looked at it yet. */
   note?: string | null;
 }
+
+// ---------- contributor profiles ----------
+
+export interface Person {
+  handle: string;
+  avatar_url: string | null;
+  /** YYYY-MM */
+  joined: string;
+  roles: ("staff" | "triager" | "reviewer")[];
+  counts: { issues_opened: number; issues_confirmed: number; replies: number; confirmations: number; requests_made: number; requests_published: number; issues_triaged: number };
+  counted_at: number | null;
+  issues: { ref: string; number: number; kind: IssueKind; status: IssueStatus; title: string; created_at: number }[];
+  requests: { number: number; repo: string; status: RequestStatus; created_at: number }[];
+  indexable: boolean;
+}
