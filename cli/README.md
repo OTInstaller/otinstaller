@@ -13,9 +13,8 @@ Find and run a tool:
 ```sh
 ot search email
 ot run osintverse-community/holehe e:someone@example.com
+ot runs     # every run is saved under ./results; `ot runs <run-id>` shows one
 ```
-
-Every run is saved under `./results`; `ot runs` lists them and `ot runs <run-id>` shows one.
 
 For scripts, CI and AI agents: `--json` (or `OT_OUTPUT=json`) gives JSON output and one-line JSON errors on stderr, and
 `ot` never prompts without a terminal. See https://otinstaller.com/docs/automation.
