@@ -434,7 +434,7 @@ func (a *App) guideToolsCmd() *cobra.Command {
 			// In JSON mode the plan and its outcome are one list on stdout; the text lines go to stderr.
 			type toolRow struct {
 				Ref    string `json:"ref"`
-				Status string `json:"status"` // unavailable, already_installed, installed, failed
+				Status string `json:"status"` // unavailable, already_installed, installed, failed, not_tried
 				Error  string `json:"error,omitempty"`
 			}
 			var rows []*toolRow
@@ -479,22 +479,17 @@ func (a *App) guideToolsCmd() *cobra.Command {
 					return nil
 				}
 			}
-			var failed []string
-			for i, r := range todo {
-				todoRows[i].Status = "installed"
-				if _, err := a.install(ctx, r, native); err != nil {
-					fmt.Fprintf(a.Err, "error: %s: %v\n", r.Ref(), err)
-					failed = append(failed, r.Ref())
-					todoRows[i].Status, todoRows[i].Error = "failed", err.Error()
-				}
+			res, err := a.installMany(ctx, todo, native)
+			for i, r := range res {
+				todoRows[i].Status, todoRows[i].Error = r.Status, r.Error
 			}
 			if a.jsonMode() {
-				if err := writeJSON(a.Out, rows); err != nil {
-					return err
+				if werr := writeJSON(a.Out, rows); werr != nil {
+					return werr
 				}
 			}
-			if len(failed) > 0 {
-				return exitErr(ExitToolError, "%d of %d tool(s) failed to install: %s", len(failed), len(todo), strings.Join(failed, ", "))
+			if err != nil {
+				return err
 			}
 			if !a.jsonMode() {
 				fmt.Fprintf(a.Out, "Installed %d tool(s) from %s.\n", len(todo), ref.Ref())
