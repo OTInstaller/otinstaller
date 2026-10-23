@@ -31,9 +31,16 @@ errors as one line of JSON on stderr; see [Scripts, CI and agents](/docs/automat
 | `ot pivot <run-id \| saved file> [--registry] [--limit 25]` | Suggest the next runs from what a saved run found, with the `ot run` command for each; runs nothing |
 | `ot mcp [--results-dir DIR]` | Serve [MCP](/docs/agents) over stdio for AI agents; `ot mcp install claude\|claude-desktop\|cursor\|vscode\|codex\|gemini [--print]` adds it to a client (`--print` only shows the configuration) |
 | `ot mcp policy [reset]` · `ot mcp audit [--since 24h]` · `ot mcp tools` | The rules agents run under, what they did, and what the server offers |
-| `ot report <ns/name> [--reason malware\|policy\|impersonation\|license\|broken\|other --details …] [--version X.Y.Z]` | Report a package to the reviewers (opens the form without `--reason`); `--details` is required except for `broken` |
+| `ot issues <ns/name> [--all]` | The package's open [community issues](/docs/community) (`--all` adds closed ones) |
+| `ot report <ns/name> --works\|--broken [--version X.Y.Z]` | Say the installed version (or `--version`) works or is broken for you; `--works` needs `ot login`, and `--broken` joins or opens the version's broken issue when signed in |
+| `ot report <ns/name> [--reason malware\|policy\|impersonation\|license\|broken\|other --details …] [--version X.Y.Z]` | Report a package privately to the reviewers (opens the form without `--reason`); `--details` is required except for `broken` |
 | `ot feedback [--kind bug\|idea\|question\|other] [--about …] [--email …] "message"` | Send feedback to the team with your `ot` version and OS; reads piped text, or opens the form with no message |
 | `ot self-update [--check]` | Update ot itself; the release signature is checked first, and an older release is never installed over a newer one. `ot outdated` says when a newer ot is out |
+
+When a tool times out, or exits non-zero without finding anything, `ot run` asks at a terminal whether to report it
+as broken. A yes sends the package, version, exit code, OS and `ot` version, never your inputs or output. It asks at
+most once a week per version, and never under `ot mcp`, in CI, without a terminal, with `--json`, or with
+`OT_NO_TELEMETRY` set; see [Community](/docs/community#from-the-terminal).
 
 ## Saved results
 
@@ -104,7 +111,7 @@ registry's copy and checks the same SHA-256. You see a note when this happens; n
 | `OT_API_URL` | Use another registry API (for example a staging one) |
 | `OT_SITE_URL` | The website `ot guide open`, `ot report` and `ot feedback` open |
 | `OT_HOME` | Where `ot` keeps its state (default `~/.ot`, `%APPDATA%\ot` on Windows) |
-| `OT_NO_TELEMETRY` | Any value stops the install ping (one request per install, with your token when signed in) |
+| `OT_NO_TELEMETRY` | Any value stops the install ping (one anonymous request per install) and the question after a failed run |
 | `OT_OUTPUT=json` | JSON output and JSON errors from every command, as if `--json` were given |
 | `OT_NONINTERACTIVE=1` | Never prompt, even at a terminal (`ot` never prompts without one) |
 | `OT_NO_UPDATE_CHECK=1` | `ot outdated` doesn't look up the latest `ot` release (it does at most once a day otherwise, and never in CI or under `ot mcp`) |
