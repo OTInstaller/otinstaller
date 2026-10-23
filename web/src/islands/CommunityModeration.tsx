@@ -5,9 +5,15 @@ import { api } from "../lib/api";
 import { issueHref } from "../lib/community";
 import { ErrorNote, Loading, SignIn, useMe, when } from "./shared";
 
-/** A held post: an issue or comment (on a package, ref), or a tool request (ref is null, title is the repository). */
-interface Held { kind: "issue" | "comment" | "request"; id: string; title: string | null; body_html: string; hidden_reason: string | null; created_at: number; ref: string | null; number: number; handle: string | null }
-interface Flag { id: string; target_kind: "issue" | "comment"; target_id: string; reason: string; note: string | null; created_at: number; flagger: string }
+/** A held post: an issue or comment (on a package, ref), or a tool request or a reply on one (ref is null, title is the repository). */
+interface Held { kind: "issue" | "comment" | "request" | "request_comment"; id: string; title: string | null; body_html: string; hidden_reason: string | null; created_at: number; ref: string | null; number: number; handle: string | null }
+/** An open flag, with where its target is on the site (null once it's gone), whether it is hidden, and what it says. */
+interface Flag {
+  id: string; target_kind: Held["kind"]; target_id: string; reason: string; note: string | null; created_at: number; flagger: string;
+  path: string | null; moderation: string | null; body_html: string;
+}
+
+const KIND_WORD: Record<Held["kind"], string> = { issue: "issue", comment: "comment", request: "tool request", request_comment: "reply on a request" };
 interface Role { handle: string; login: string; role: string; note: string | null; granted_at: number; granted_by: string | null }
 
 const REASON: Record<string, string> = {
@@ -42,7 +48,11 @@ function Queue({ staff, onError }: { staff: boolean; onError: (e: unknown) => vo
         <ul class="list-plain stack">
           {flags.map((f) => (
             <li class="card stack">
-              <p class="small"><b>{f.reason.replace(/_/g, " ")}</b> on a {f.target_kind} by {f.flagger}, {when(f.created_at)}{f.note && <>: “{f.note}”</>}</p>
+              <p class="small">
+                <b>{f.reason.replace(/_/g, " ")}</b> on {f.path ? <a href={f.path}>a {KIND_WORD[f.target_kind]}</a> : `a ${KIND_WORD[f.target_kind]}`} by {f.flagger}, {when(f.created_at)}
+                {f.moderation === "hidden" && <> · hidden until you decide</>}{f.note && <>: “{f.note}”</>}
+              </p>
+              {f.body_html && <div class="prose small" dangerouslySetInnerHTML={{ __html: f.body_html }} />}
               <div class="row">
                 <button class="btn btn-sm" type="button" disabled={busy === f.target_id} onClick={() => act(f.target_kind, f.target_id, "hide")}>Hide</button>
                 <button class="btn btn-sm" type="button" disabled={busy === f.target_id} onClick={() => act(f.target_kind, f.target_id, "restore")}>Keep it up</button>
@@ -59,7 +69,7 @@ function Queue({ staff, onError }: { staff: boolean; onError: (e: unknown) => vo
             <li class="card stack">
               <p class="small muted">
                 {h.ref ? <a href={issueHref(h.ref, h.number)}>{h.ref} #{h.number}</a> : <a href={`/requests/${h.number}`}>Request #{h.number}</a>}
-                {" "}· {h.kind === "request" ? "tool request" : h.kind} by {h.handle ?? "deleted account"} · {when(h.created_at)} · {why(h.hidden_reason)}
+                {" "}· {KIND_WORD[h.kind]} by {h.handle ?? "deleted account"} · {when(h.created_at)} · {why(h.hidden_reason)}
               </p>
               {h.title && <p><b>{h.title}</b></p>}
               <div class="prose small" dangerouslySetInnerHTML={{ __html: h.body_html }} />

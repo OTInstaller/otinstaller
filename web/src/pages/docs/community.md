@@ -54,6 +54,12 @@ by the project's own maintainers, the request is marked published and everyone w
 can make 5 requests and 60 votes a day; the person who asked can withdraw their request, and someone else can ask
 for it again later.
 
+Each request has a discussion below it: say why the tool is worth packaging, how you would use it, or what to watch
+out for (a login it needs, a license question). Replies are screened and moderated like issue comments. The person who
+asked follows the request, and so does anyone who replies or clicks **Follow**; followers hear about new replies and
+every decision. Triagers can lock a request's replies, and a request that was published or declined locks by itself
+30 days after its last change. A request or a reply can be flagged like any post.
+
 From the terminal: `ot request <repo-url> [--note "..."]`, and `--vote` to vote for an existing request.
 
 ## Submissions
@@ -144,9 +150,9 @@ and your avatar is left off your posts.
 | Who | Can |
 | --- | --- |
 | Anyone | Read issues, the status line, the [community board](/community) and [tool requests](/requests) |
-| Signed in | Open issues, reply, say it works or is broken, follow a thread, flag a post, ask for a tool and vote for requests |
+| Signed in | Open issues, reply, say it works or is broken, follow a thread, flag a post or request, ask for a tool, vote for and reply on requests |
 | The package's maintainers | Triage its issues, lock threads, hide comments on its issues; for community packages, merge and release bump pull requests |
-| Triagers | Triage any package's issues, decide tool requests, approve held posts and requests, hide posts, pause an account for up to 7 days |
+| Triagers | Triage any package's issues, decide tool requests and lock their replies, approve held posts and requests, hide posts, pause an account for up to 7 days |
 | Reviewers | What triagers can, and start, approve, send back or turn down community submissions (never their own) |
 | Staff | Everything, including redacting posts and granting the triager and reviewer roles |
 
@@ -160,7 +166,8 @@ To keep spam and personal data out:
 - Posts from accounts less than a day old, posts that look like personal data or secrets, and a first post with
   links wait for a moderator.
 - Links from people new to the community are shown as text, and every link is marked `nofollow ugc`.
-- One personal-data flag from an established account hides a post at once; three flags of any kind do the same.
+- One personal-data flag from an established account hides a post or request at once; three flags of any kind do the
+  same. Moderators see each flag with what it is about and a link to it.
 - Each account can post 5 issues a day (2 in its first week), 30 comments, 60 confirmations and 20 flags.
 - Issue pages stay out of search engines until a maintainer has answered or the issue is confirmed or fixed.
 
@@ -179,6 +186,7 @@ Everything is in the [registry API](/docs/api) (OpenAPI tag "Community"):
 | `POST /v1/tools/<ns>/<name>/run-reports` | A failed run, as `ot` sends it: `{version, exit_code \| timed_out, os, arch, engine, ot_version}`; anonymous or scope `feedback` |
 | `GET /v1/requests` | Tool requests (`status`, `sort=votes\|new`, `before`) |
 | `POST /v1/requests` | Ask for a tool (scope `feedback`); `PUT /v1/requests/<number>/vote` to vote |
+| `POST /v1/requests/<number>/comments` | Reply on a request (scope `feedback`); `GET /v1/requests/<number>` includes the replies, `PUT .../subscription` follows it |
 | `GET /v1/activity?events=community` | Issues confirmed or fixed and tool requests accepted or published, worded from fields (`events=all` adds releases) |
 | `GET /v1/upstream/summary` | Community wrappers against their upstream projects: counts by state, and those behind a release |
 | `GET /v1/submissions`, `GET /v1/submissions/<number>` | Community submissions and one submission's checks, release and decision |

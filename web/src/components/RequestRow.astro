@@ -1,6 +1,6 @@
 ---
 // One tool request in a list: its votes (with a vote button while it takes votes), the repository and what it does,
-// who asked and when, and its status.
+// who asked and when, how many replies it has, and its status.
 import type { ToolRequest } from "../lib/api";
 import { formatDate } from "../lib/format";
 import { REQUEST_STATUS_LABEL, REQUEST_STATUS_TONE, requestHref, takesVotes } from "../lib/requests";
@@ -24,6 +24,7 @@ const { request: r } = Astro.props;
     <p class="small muted meta">
       {r.provider === "gitlab" ? "GitLab" : "GitHub"}{r.license && <> · {r.license}</>}{r.upstream_stars !== null && <> · {r.upstream_stars.toLocaleString("en")} stars</>}
       {" "}· asked by {r.requested_by ? (r.requested_by.profile ? <a href={personHref(r.requested_by.handle)}>{r.requested_by.handle}</a> : r.requested_by.handle) : "a deleted account"} on {formatDate(r.created_at)}
+      {r.comments ? <> · <a href={`${requestHref(r.number)}#discussion`}>{r.comments} {r.comments === 1 ? "reply" : "replies"}</a></> : null}
       {r.tool && <> · <a href={`/${r.tool}`}>{r.tool}</a></>}
     </p>
   </div>

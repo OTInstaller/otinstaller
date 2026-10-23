@@ -21,10 +21,12 @@ Items marked **(you)** need the owner of the GitHub, GitLab, Cloudflare, Resend,
 
 The roadmap's phase 1 ([roadmap.md](roadmap.md)) is built as pull requests: #58 (roadmap, stars), #61 (release notes),
 #63 (activity and feeds), #66 (learn hub), and the community stack #68 → #74 → #76 → #78 → #79 → #80 → #81 → #82 → #83,
-with the close-out on top. Nothing is merged or deployed. In order, the owner's steps:
+with the close-out (#84) and request discussions on top. Nothing is merged or deployed. In order, the owner's steps:
 
-- [ ] **(you)** Review and merge the pull requests (the side ones and then the stack, bottom first).
-- [ ] **(you)** Apply migrations 0015 to 0022 remotely before deploying the API
+- [ ] **(you)** Review and merge the pull requests (the side ones and then the stack, bottom first). The
+      `claude/trusted-publishing` branch numbers its own migrations 0015 to 0017 too: whichever reaches `main` second
+      renumbers its migrations first.
+- [ ] **(you)** Apply migrations 0015 to 0023 remotely before deploying the API
       (`npx wrangler d1 migrations apply otinstaller --remote`), then deploy the API and the site.
 - [ ] **(you)** Grant the first triager and reviewer roles (Admin console → Community).
 - [ ] **(you)** Set up the community bot for submissions and bump pull requests (publishing-setup.md section 6,

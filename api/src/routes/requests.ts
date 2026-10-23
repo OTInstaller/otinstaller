@@ -1,14 +1,19 @@
-// Tool request routes: the public board and request pages, making a request, votes, triagers' decisions and what the
-// signed-in person may do on a request. Rules live in ../requests.ts.
+// Tool request routes: the public board and request pages with their discussion, making a request, votes, replies,
+// following, triagers' decisions and locks, and what the signed-in person may do on a request. Rules live in
+// ../requests.ts; editing, deleting and moderating replies share ../community.ts with issue comments.
 import type { Context } from "hono";
 import type { App, AppEnv } from "../env";
 import { apiError } from "../lib/errors";
 import { cached } from "../catalog";
 import { requireUser } from "./auth";
-import { communityRoles } from "../community";
+import { communityRoles, deletePost, editPost, EDIT_WINDOW, renderPost } from "../community";
 import {
-  ACTIVE_STATUSES, createRequest, DECLINE_CODES, indexable, REQUEST_STATUSES, requestByNumber, setRequestStatus, vote, type RequestRow, type RequestStatus,
+  ACTIVE_STATUSES, addRequestComment, createRequest, DECLINE_CODES, followRequest, indexable, REQUEST_STATUSES, requestByNumber, setRequestLocked, setRequestStatus,
+  vote, type RequestRow, type RequestStatus,
 } from "../requests";
+
+/** People new to the community (under a week) have their links shown as text. */
+const NEW_AUTHOR = 7 * 86_400_000;
 
 type Person = { handle: string | null; login: string | null; avatar_url: string | null; profile_hidden: number | null };
 type Row = RequestRow & Person & { ns: string | null; tool: string | null; decider: string | null };
@@ -25,15 +30,40 @@ function person(p: Person) {
 function summaryOf(r: Row) {
   return {
     number: r.number, provider: r.provider, repo: r.repo_path, name: r.repo_path.split("/").pop(), url: r.url, description: r.description, license: r.license,
-    upstream_stars: r.upstream_stars, status: r.status, decline_code: r.decline_code, votes: r.vote_count, requested_by: person(r),
+    upstream_stars: r.upstream_stars, status: r.status, decline_code: r.decline_code, votes: r.vote_count, comments: r.comment_count, requested_by: person(r),
     tool: r.ns && r.tool ? `${r.ns}/${r.tool}` : null, otlite: r.otlite_name, created_at: r.created_at, updated_at: r.updated_at, indexable: indexable(r),
   };
 }
 
 function detailOf(r: Row) {
   return {
-    ...summaryOf(r), note: r.note, decision_note: r.decision_note, decided_at: r.decided_at, decided_by: r.decider, dropped_reason: r.dropped_reason, pushed_at: r.pushed_at,
+    id: r.id, ...summaryOf(r), note: r.note, decision_note: r.decision_note, decided_at: r.decided_at, decided_by: r.decider, dropped_reason: r.dropped_reason,
+    pushed_at: r.pushed_at, locked: !!r.locked_at,
   };
+}
+
+type Reply = { id: string; author_kind: string; role_badge: string | null; body_md: string; edited_at: number | null; created_at: number; author_created: number | null } & Person;
+
+/** A request's visible replies, oldest first, rendered like issue comments. */
+async function replies(c: Context<AppEnv>, requestId: string) {
+  const now = Date.now();
+  const rows = (await c.env.DB.prepare(
+    `SELECT c.id, c.author_kind, c.role_badge, c.body_md, c.edited_at, c.created_at, u.handle, u.login, u.avatar_url, u.profile_hidden, u.created_at AS author_created
+     FROM request_comments c LEFT JOIN users u ON u.id = c.author_id WHERE c.request_id = ? AND c.moderation = 'visible' AND c.deleted_at IS NULL ORDER BY c.created_at LIMIT 500`,
+  ).bind(requestId).all<Reply>()).results;
+  return rows.map((cm) => ({
+    id: cm.id,
+    author: cm.author_kind === "system" ? { system: true as const, handle: "otinstaller" } : person(cm) ?? { handle: "deleted", avatar_url: null, profile: false },
+    role: cm.role_badge, created_at: cm.created_at, edited_at: cm.edited_at,
+    body_html: renderPost(cm.body_md, cm.author_kind !== "system" && !cm.role_badge && (cm.author_created ?? 0) > now - NEW_AUTHOR),
+  }));
+}
+
+async function reply(c: Context<AppEnv>, r: RequestRow): Promise<string> {
+  const id = c.req.param("id")!;
+  const found = await c.env.DB.prepare(`SELECT 1 FROM request_comments WHERE id = ? AND request_id = ?`).bind(id, r.id).first();
+  if (!found) apiError(404, "comment_not_found", `request #${r.number} has no such reply`);
+  return id;
 }
 
 async function request(c: Context<AppEnv>): Promise<RequestRow> {
@@ -80,19 +110,32 @@ export function requestRoutes(app: App) {
     const r = await request(c);
     if (r.moderation !== "visible") apiError(404, "request_not_found", `there is no request #${r.number}`);
     const row = (await c.env.DB.prepare(`SELECT ${COLS} ${FROM} WHERE r.id = ?`).bind(r.id).first<Row>())!;
+    const comments = await replies(c, r.id);
     cached(c, 60);
-    return c.json({ request: detailOf(row) });
+    return c.json({ request: detailOf(row), comments });
   });
 
   // What the signed-in person may do on a request: whether they voted, asked for it, or can decide it.
   app.get("/requests/:number/viewer", async (c) => {
     const u = requireUser(c);
     const r = await request(c);
-    const voted = !!(await c.env.DB.prepare(`SELECT 1 FROM request_votes WHERE request_id = ? AND user_id = ?`).bind(r.id, u.id).first());
+    const [voted, sub, held, mine] = await Promise.all([
+      c.env.DB.prepare(`SELECT 1 FROM request_votes WHERE request_id = ? AND user_id = ?`).bind(r.id, u.id).first(),
+      c.env.DB.prepare(`SELECT muted FROM request_subscriptions WHERE request_id = ? AND user_id = ?`).bind(r.id, u.id).first<{ muted: number }>(),
+      c.env.DB.prepare(`SELECT id, body_md, created_at FROM request_comments WHERE request_id = ? AND author_id = ? AND moderation = 'held' AND deleted_at IS NULL ORDER BY created_at`)
+        .bind(r.id, u.id).all<{ id: string; body_md: string; created_at: number }>(),
+      c.env.DB.prepare(`SELECT id, created_at FROM request_comments WHERE request_id = ? AND author_id = ? AND moderation = 'visible' AND deleted_at IS NULL`).bind(r.id, u.id)
+        .all<{ id: string; created_at: number }>(),
+    ]);
+    const triager = (await communityRoles(c.env, u)).has("triager");
+    const now = Date.now();
     c.header("Cache-Control", "private, no-store");
     return c.json({
-      voted, is_requester: r.requested_by === u.id, can_decide: (await communityRoles(c.env, u)).has("triager"), held: r.moderation === "held",
+      voted: !!voted, is_requester: r.requested_by === u.id, can_decide: triager, held: r.moderation === "held",
       note: r.moderation === "held" && r.requested_by === u.id ? r.note : undefined,
+      subscribed: !!sub && !sub.muted, locked: !!r.locked_at, can_reply: r.moderation === "visible" && (!r.locked_at || triager),
+      editable_comments: mine.results.filter((m) => now - m.created_at < EDIT_WINDOW).map((m) => m.id),
+      held_comments: held.results.map((h) => ({ id: h.id, created_at: h.created_at, body_html: renderPost(h.body_md, true) })),
     });
   });
 
@@ -116,6 +159,41 @@ export function requestRoutes(app: App) {
     });
   }
 
+  // ---------- the discussion (signed in, scope feedback) ----------
+
+  app.post("/requests/:number/comments", async (c) => {
+    const u = requireUser(c);
+    const r = await request(c);
+    const b = await c.req.json<{ body?: unknown }>().catch(() => ({}) as { body?: unknown });
+    const out = await addRequestComment(c.env, r, u, typeof b.body === "string" ? b.body : "");
+    c.header("Cache-Control", "private, no-store");
+    return c.json(out, 201);
+  });
+
+  app.patch("/requests/:number/comments/:id", async (c) => {
+    const u = requireUser(c);
+    const r = await request(c);
+    const id = await reply(c, r);
+    const b = await c.req.json<{ body?: unknown }>().catch(() => ({}) as { body?: unknown });
+    return c.json(await editPost(c.env, "request_comment", id, u, { body: typeof b.body === "string" ? b.body : undefined }));
+  });
+
+  app.delete("/requests/:number/comments/:id", async (c) => {
+    const u = requireUser(c);
+    const r = await request(c);
+    await deletePost(c.env, "request_comment", await reply(c, r), u);
+    return c.json({ deleted: true });
+  });
+
+  for (const method of ["put", "delete"] as const) {
+    app[method]("/requests/:number/subscription", async (c) => {
+      const u = requireUser(c);
+      const r = await request(c);
+      await followRequest(c.env, r, u, method === "put");
+      return c.json({ subscribed: method === "put" });
+    });
+  }
+
   // ---------- decisions (triagers and staff; the requester may withdraw) ----------
 
   app.post("/requests/:number/status", async (c) => {
@@ -126,5 +204,13 @@ export function requestRoutes(app: App) {
     const after = await setRequestStatus(c.env, u, r, String(b.status) as RequestStatus, { decline_code: b.decline_code, note: b.note, tool: b.tool });
     c.header("Cache-Control", "private, no-store");
     return c.json({ number: after.number, status: after.status, decline_code: after.decline_code });
+  });
+
+  app.post("/requests/:number/lock", async (c) => {
+    const u = requireUser(c);
+    const r = await request(c);
+    const b = await c.req.json<{ locked?: boolean }>().catch(() => ({}) as { locked?: boolean });
+    await setRequestLocked(c.env, r, u, b.locked !== false);
+    return c.json({ number: r.number, locked: b.locked !== false });
   });
 }

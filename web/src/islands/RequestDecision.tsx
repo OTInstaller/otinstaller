@@ -2,7 +2,7 @@
 // reopen it; the person who asked can withdraw it, and sees their note while it waits for a moderator.
 import { useEffect, useState } from "preact/hooks";
 import { api, type DeclineCode, type RequestStatus, type RequestViewer } from "../lib/api";
-import { DECLINE_LABEL, REQUEST_STATUS_LABEL, TRIAGE_DECLINE_CODES, takesVotes } from "../lib/requests";
+import { DECLINE_LABEL, REQUEST_STATUS_LABEL, requestViewer, TRIAGE_DECLINE_CODES, takesVotes } from "../lib/requests";
 import { Confirm, ErrorNote } from "./shared";
 
 const MOVES: Record<RequestStatus, RequestStatus[]> = {
@@ -26,7 +26,7 @@ export default function RequestDecision({ number, status }: { number: number; st
   const [error, setError] = useState<unknown>(null);
 
   useEffect(() => {
-    api<RequestViewer>(`/requests/${number}/viewer`).then(setViewer).catch(() => {});
+    void requestViewer(number).then(setViewer);
   }, [number]);
 
   if (!viewer) return null;

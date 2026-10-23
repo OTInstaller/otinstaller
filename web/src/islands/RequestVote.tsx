@@ -1,7 +1,8 @@
 // The vote button on a tool request: one vote per signed-in person, which they can take back. On lists it starts
 // from the server's count; on a request's own page it asks whether this person voted already.
 import { useEffect, useState } from "preact/hooks";
-import { api, ApiError, signInUrl, type RequestViewer } from "../lib/api";
+import { api, ApiError, signInUrl } from "../lib/api";
+import { requestViewer } from "../lib/requests";
 
 export default function RequestVote({ number, votes, checkViewer = false }: { number: number; votes: number; checkViewer?: boolean }) {
   const [count, setCount] = useState(votes);
@@ -11,7 +12,7 @@ export default function RequestVote({ number, votes, checkViewer = false }: { nu
 
   useEffect(() => {
     if (!checkViewer) return;
-    api<RequestViewer>(`/requests/${number}/viewer`).then((v) => setVoted(v.voted)).catch(() => {});
+    void requestViewer(number).then((v) => v && setVoted(v.voted));
   }, [number, checkViewer]);
 
   async function toggle() {
