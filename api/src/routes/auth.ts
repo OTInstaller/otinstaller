@@ -78,6 +78,15 @@ export async function authenticate(c: Context<AppEnv>, next: Next) {
   await next();
 }
 
+/**
+ * The user to link a new sign-in to: only someone signed in with the session cookie. An API token must never
+ * link an account, or anyone holding one (even a read-only token) could attach their own GitHub account to
+ * its owner and sign in as them.
+ */
+function linkingUserId(c: Context<AppEnv>): string | null {
+  return c.get("token") ? null : (c.get("user")?.id ?? null);
+}
+
 export function requireUser(c: Context<AppEnv>): User {
   const u = c.get("user");
   if (!u) apiError(401, "unauthenticated", "sign in first", "run `ot login`, or sign in on otinstaller.com");
@@ -216,7 +225,7 @@ async function osintverseCallback(c: Context<AppEnv>, state: string | undefined,
   const who = await osintverse.fetchUser(deps.fetch, d, t.accessToken, claims.sub);
   // No automatic linking by email: an existing user links OSINTverse by signing in with it while
   // already signed in, the same rule as GitHub and GitLab. A device login never links.
-  const userId = await signIn(c.env, "osintverse", who, { accessToken: null, scopes: osintverse.SCOPES }, device ? null : (c.get("user")?.id ?? null));
+  const userId = await signIn(c.env, "osintverse", who, { accessToken: null, scopes: osintverse.SCOPES }, device ? null : linkingUserId(c));
   if (device) return authorizeDevice(c, device, userId);
   await startSession(c, userId);
   return c.redirect(safeRedirect(c.env, redirect), 302);
@@ -256,7 +265,7 @@ export function authRoutes(app: App) {
       ? await github.exchangeCode(deps.fetch, client.id, client.secret, code, callbackUrl(c.env, p))
       : await gitlab.exchangeCode(deps.fetch, client.id, client.secret, code, callbackUrl(c.env, p));
     const who = p === "github" ? await github.fetchUser(deps.fetch, tokens.accessToken) : await gitlab.fetchUser(deps.fetch, tokens.accessToken);
-    const userId = await signIn(c.env, p, who, tokens, c.get("user")?.id ?? null);
+    const userId = await signIn(c.env, p, who, tokens, linkingUserId(c));
     await startSession(c, userId);
     return c.redirect(safeRedirect(c.env, redirect), 302);
   });
