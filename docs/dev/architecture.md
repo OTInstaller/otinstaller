@@ -188,8 +188,10 @@ Step by step:
    (re-tagging a rejected version reuses its row and resets `scan_status = 'pending'`), `publish_jobs` (`status`,
    `error_code`, `error_detail`, `problems_json`) and an `audit_log` row `publish.scanning|rejected`.
 10. **Outcome.**
-    - Valid: `guides.ts:storeContent` (pages and README in R2, `versions.search_text`), status "Valid; security
-      scans running" (or "Valid; content checks running"), then `startChecks` → `scans.ts:dispatchScan` (tools) or
+    - Valid: `guides.ts:storeContent` (pages and README in R2, `versions.search_text`), then
+      `changelog.ts:captureNotes` (release notes from `host.releaseNotes(tag)`, else the version's section of
+      `CHANGELOG.md`, `CHANGES.md` or `HISTORY.md` at the commit; written only when a release webhook has not
+      already set them, and never an error), status "Valid; security scans running" (or "Valid; content checks running"), then `startChecks` → `scans.ts:dispatchScan` (tools) or
       `guides.ts:queueContentChecks` (guides). If the manifest moved into the repo, the source switches from
       `registry` to `repo` mode.
     - Invalid: email `notify.ts:templates.rejected` (only when a version row was written), status
@@ -671,3 +673,37 @@ The remote server is separate and runs nothing:
      tool -> get(path) -> edgeCached anonymous GET of /v1/tools, /v1/tools/:ns/:name, /v1/types, /v1/pivots,
              /v1/guides, guide pages (no caller headers) -> JSON result with the consent class ot mcp would give
 ```
+
+### l. The community: issues, failed runs, requests, submissions and the upstream watcher
+
+```
+ person (site or ot)                          registry API (community.ts, inbox.ts)
+   POST /tools/:ns/:name/issues  ---------->  poster(): timeout? daily limit? holdReason() (new account, screen(),
+                                               first post with links) -> issues row visible | held
+                                               announceIssue -> inbox rows for the namespace and tool_maintainers
+   ot run fails at a terminal, "y"  ------->  POST /tools/:ns/:name/run-reports {version, exit_code, os, arch, ...}
+                                               signed in: confirm(broken) + join or open the version's broken issue
+                                               anonymous: run_signals daily count; 3 in a week -> system issue
+   */15 cron: deliverInbox("immediate"); nightly: deliverInbox("daily"), lockStaleThreads, refreshContributorStats
+
+ POST /requests {repo} --> readUpstream (as the requester, else the App on osintverse-community, else anonymous)
+                            refuse: exists, packaged, upstream manifest; record declined: license, archived
+                            -> tool_requests (+ the requester's vote); triagers: setRequestStatus -> inbox
+ publishVersion --> linkPublished: requests for the package's repository or its homepage's upstream -> published
+
+ POST /imports {repo, community: true} --> detection --> POST /imports/:id/finish {mode: "submit", dockerfile?}
+   submitWrapper: draftProblems, submissionChecks (license, manifest, packaged, submitted, PyPI source),
+                  dockerfileChecks (conformant?) --> community bot (COMMUNITY_APP_*): createOrgRepo,
+                  putFile x N, sources row --> createTag (pinned image/wheel) | dispatch otinstaller-release.yml
+   tag webhook --> processJob --> record(): markSubmittedTool (needs_first_review, submitted_by)
+   scan callback --> applyScanResults: awaiting_review (firstReleaseScanned -> in_review, reviewers notified)
+   POST /submissions/:n/approve (reviewer, not the submitter) --> publishVersion --> firstReleasePublished
+                  (needs_first_review = 0, tool_maintainers += submitter)
+
+ nightly queueUpstreamChecks --> {upstreamCheckToolId} --> checkUpstream:
+   repoState (gone, renamed, archived, license_changed) --> currentPin (override, pipx, Dockerfile at git_sha via
+   findPin, upstream's own image) --> latestRelease (releases/latest with If-None-Match | PyPI | compare for commits)
+   --> upstream_watch row; UPSTREAM_WATCH=issues: outdated issue 3 days after a release, closed when caught up;
+   =prs: maybeOpenBump (pin-only PR) --> POST /packages/:ns/:name/pulls/:n/release (maintainer) --> merge + release
+```
+

@@ -1,0 +1,50 @@
+---
+// /unsubscribe: where the link at the bottom of a community email lands. Nothing changes until the button is
+// pressed (link scanners open links too); the button posts the signed link to the API.
+import Base from "../layouts/Base.astro";
+
+const q = Astro.url.searchParams;
+const scope = q.get("s");
+const what = scope === "owner_issues" ? "emails about new issues on packages you maintain" : scope === "community" ? "emails about issues you follow" : null;
+Astro.response.headers.set("Cache-Control", "private, no-store");
+---
+<Base title="Unsubscribe" noindex>
+  <div class="unsub">
+    <h1>Unsubscribe</h1>
+    {what ? (
+      <form class="stack" data-unsubscribe>
+        <input type="hidden" name="u" value={q.get("u") ?? ""} />
+        <input type="hidden" name="s" value={scope ?? ""} />
+        <input type="hidden" name="t" value={q.get("t") ?? ""} />
+        <p>Stop {what}? They still show in your inbox on the site.</p>
+        <p><button class="btn btn-primary" type="submit">Unsubscribe</button></p>
+        <p class="small muted" data-unsub-out role="status"></p>
+      </form>
+    ) : (
+      <p>This link is incomplete. Change what you get at <a href="/settings/notifications">notification settings</a>.</p>
+    )}
+  </div>
+</Base>
+
+<script>
+  import { api } from "../lib/api";
+  const form = document.querySelector<HTMLFormElement>("[data-unsubscribe]");
+  form?.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const out = form.querySelector<HTMLElement>("[data-unsub-out]")!;
+    const data = Object.fromEntries(new FormData(form)) as Record<string, string>;
+    try {
+      await api("/unsubscribe", { method: "POST", body: JSON.stringify(data) });
+      out.textContent = "Done. You can turn them back on at notification settings.";
+      form.querySelector("button")!.disabled = true;
+    } catch (e) {
+      out.textContent = e instanceof Error ? e.message : "That didn't work.";
+    }
+  });
+</script>
+
+<style>
+  .unsub { max-width: 560px; margin: 8vh auto; }
+  .unsub h1 { font-size: var(--fs-5); margin: 0 0 12px; }
+  .unsub p { margin: 0; }
+</style>

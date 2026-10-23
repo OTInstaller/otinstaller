@@ -815,6 +815,11 @@ hosted, paid service.
 
 None of these need run telemetry. We keep runs private and count only what we already see, plus opt-out tags.
 
+Later, the community work (October 2026) added one run signal, and it is opt-in per run:
+after a failed `ot run` at a terminal, `ot` asks whether to report it, and only a yes sends the tool, version, exit
+code, OS and `ot` version. It never asks under `ot mcp`, in CI, without a terminal or with `--json`, so agents never
+send it; `OT_NO_TELEMETRY` turns it off ([cli.md](dev/cli.md), `ot run`).
+
 | Metric | Source | Target (90 days after Phase 2) |
 | --- | --- | --- |
 | Share of installs from agents | `install_counts.client` (§6.4) | Visible trend; no fixed target |

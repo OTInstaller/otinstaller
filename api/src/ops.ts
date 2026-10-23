@@ -25,7 +25,22 @@ export async function healthTargets(env: Env) {
   });
 }
 
-export type HealthResult = { version_id: string; result: "pass" | "fail"; duration_ms?: number; error_excerpt?: string };
+export type HealthResult = { version_id: string; result: "pass" | "fail"; duration_ms?: number; error_excerpt?: string; failure?: string };
+
+const FAILURE_CLASSES = ["exit_code", "timeout", "no_output", "pull_failed"];
+
+/**
+ * What kind of failure a check was, for the public health history (the excerpt itself stays private): what the
+ * runner says, else a guess from the excerpt.
+ */
+export function failureClass(r: HealthResult): string | null {
+  if (r.result === "pass") return null;
+  if (r.failure && FAILURE_CLASSES.includes(r.failure)) return r.failure;
+  const text = r.error_excerpt ?? "";
+  if (/timed? ?out|deadline exceeded/i.test(text)) return "timeout";
+  if (/manifest unknown|pull access denied|unauthorized|failed to pull|error pulling|no such image/i.test(text)) return "pull_failed";
+  return text.trim() ? "exit_code" : "no_output";
+}
 
 /**
  * Records results. A tool is Possibly broken after BROKEN_AFTER failures in a row and healthy after one pass;
@@ -43,8 +58,8 @@ export async function applyHealth(env: Env, results: HealthResult[], now = Date.
     const streak = r.result === "pass" ? 0 : t.health_fail_streak + 1;
     const status = r.result === "pass" ? "healthy" : streak >= BROKEN_AFTER ? "broken" : null;
     await db.batch([
-      db.prepare(`INSERT INTO health_checks (id, tool_id, version_id, result, duration_ms, error_excerpt, ran_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-        .bind(ulid(now), t.id, r.version_id, r.result, r.duration_ms ?? null, (r.error_excerpt ?? "").slice(-1000) || null, now),
+      db.prepare(`INSERT INTO health_checks (id, tool_id, version_id, result, duration_ms, error_excerpt, failure_class, ran_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(ulid(now), t.id, r.version_id, r.result, r.duration_ms ?? null, (r.error_excerpt ?? "").slice(-1000) || null, failureClass(r), now),
       db.prepare(`UPDATE tools SET health_fail_streak = ?, health_checked_at = ?, health_status = COALESCE(?, health_status) WHERE id = ?`)
         .bind(streak, now, status, t.id),
       db.prepare(`DELETE FROM health_checks WHERE tool_id = ? AND id NOT IN (SELECT id FROM health_checks WHERE tool_id = ? ORDER BY ran_at DESC LIMIT ?)`)
