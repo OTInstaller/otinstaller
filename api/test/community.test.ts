@@ -379,3 +379,46 @@ describe("notifications", () => {
     expect((await inbox(author)).items[0]).toMatchObject({ kind: "role", summary: expect.stringContaining("triager") });
   });
 });
+
+describe("failed runs reported from ot", () => {
+  const report = (who: Who | null, body: Record<string, unknown>, ip = "203.0.113.9") =>
+    call(`/tools/${TOOL}/run-reports`, { method: "POST", headers: { ...(who?.headers ?? {}), "content-type": "application/json", "cf-connecting-ip": ip }, body: JSON.stringify(body) });
+  const base = { version: "1.2.0", exit_code: 1, os: "linux", arch: "arm64", engine: "podman", ot_version: "0.15.0" };
+
+  it("joins the open broken issue for the version when signed in, or opens one", async () => {
+    // A fresh version keeps this test apart from the other broken issues on the package.
+    const vid = ulid();
+    await DB().prepare(`INSERT INTO versions (id, tool_id, version, semver_major, semver_minor, semver_patch, manifest_json, status, published_at, created_at) VALUES (?, ?, '7.7.7', 7, 7, 7, '{}', 'published', 1, 1)`).bind(vid, TOOL_ID).run();
+    const a = await person();
+    const first = await report(a, { ...base, version: "7.7.7" });
+    expect(first.status).toBe(201);
+    const opened = (await first.json()) as any;
+    expect(opened).toMatchObject({ created: true, moderation: "visible" });
+    const thread = await req(null, "GET", `/tools/${TOOL}/issues/${opened.issue}`);
+    expect(thread.body.issue).toMatchObject({ kind: "broken", version: "7.7.7", platform: "linux/arm64", exit_code: 1, me_too: 1 });
+    expect(thread.body.issue.title).toBe("7.7.7 exited with 1 on linux/arm64");
+    const b = await person();
+    expect((await (await report(b, { ...base, version: "7.7.7", exit_code: null, timed_out: true })).json()) as any).toEqual({ issue: opened.issue, created: false, moderation: "visible" });
+    expect((await req(null, "GET", `/tools/${TOOL}/issues/${opened.issue}`)).body.issue.me_too).toBe(2);
+  });
+
+  it("only counts anonymous reports, once per address a day, and opens an unconfirmed issue after three", async () => {
+    const vid = ulid();
+    await DB().prepare(`INSERT INTO versions (id, tool_id, version, semver_major, semver_minor, semver_patch, manifest_json, status, published_at, created_at) VALUES (?, ?, '8.8.8', 8, 8, 8, '{}', 'published', 1, 1)`).bind(vid, TOOL_ID).run();
+    const r = { ...base, version: "8.8.8" };
+    expect((await (await report(null, r, "198.51.100.1")).json()) as any).toEqual({ counted: true });
+    expect((await (await report(null, r, "198.51.100.1")).json()) as any).toEqual({ counted: false });
+    await report(null, r, "198.51.100.2");
+    expect(await DB().prepare(`SELECT COUNT(*) AS n FROM issues WHERE tool_id = ? AND dedupe_key = 'run_signals:8.8.8'`).bind(TOOL_ID).first()).toEqual({ n: 0 });
+    await report(null, r, "198.51.100.3");
+    const issue = await DB().prepare(`SELECT title, author_kind FROM issues WHERE tool_id = ? AND dedupe_key = 'run_signals:8.8.8'`).bind(TOOL_ID).first();
+    expect(issue).toEqual({ title: "Several reports of 8.8.8 failing (unconfirmed)", author_kind: "system" });
+  });
+
+  it("takes only the fields it needs, and needs the feedback scope with a token", async () => {
+    expect((await report(null, { ...base, os: "linux; rm -rf /" })).status).toBe(400);
+    expect((await report(null, { ...base, exit_code: null })).status).toBe(400);
+    expect((await report(null, { ...base, version: "0.0.0" })).status).toBe(404);
+    expect(requiredScope("POST", `/v1/tools/${TOOL}/run-reports`)).toBe("feedback");
+  });
+});

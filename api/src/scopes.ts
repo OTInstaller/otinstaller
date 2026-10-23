@@ -42,7 +42,7 @@ export function requiredScope(method: string, path: string): string | null {
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") return "read";
   // Taking part: reports, feedback, issues, comments, confirmations, subscriptions and flags. Triage is "manage".
   if (p === "/feedback" || p === "/flags" || /^\/comments\/[^/]+$/.test(p)) return "feedback";
-  if (/^\/tools\/[^/]+\/[^/]+\/(reports|confirmations|issues(\/\d+(\/(comments|subscription))?)?)$/.test(p)) return "feedback";
+  if (/^\/tools\/[^/]+\/[^/]+\/(reports|confirmations|run-reports|issues(\/\d+(\/(comments|subscription))?)?)$/.test(p)) return "feedback";
   if (/^\/(imports|sources)(\/|$)/.test(p) || /^\/packages\/[^/]+\/[^/]+\/(manifest|sync|source)(\/|$)/.test(p)) return "publish";
   return "manage";
 }

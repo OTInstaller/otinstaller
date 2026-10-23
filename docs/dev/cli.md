@@ -25,8 +25,8 @@ Conventions used here:
 ## 1. Commands
 
 Registered in `Root()` (`cli/root.go`) in this order: init, validate, search, info, install, run, playbook, auto,
-runs, extract, diff, list, outdated, update, uninstall, keys, doctor, login, logout, whoami, import, sync, guide, docs,
-report, feedback, claim, transfer, yank, deprecate, self-update, release, mcp, pivot, token, profile. 36 top-level commands,
+runs, issues, extract, diff, list, outdated, update, uninstall, keys, doctor, login, logout, whoami, import, sync, guide,
+docs, report, feedback, claim, transfer, yank, deprecate, self-update, release, mcp, pivot, token, profile. 37 top-level commands,
 plus subcommands `keys set|setup|list|rm`, `guide search|read|open|get|tools`, `mcp install|audit|policy|tools`
 (with `mcp policy reset`) and `token create|list|revoke`.
 
@@ -221,6 +221,15 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   `Install it now? [Y/n]` on stderr unless `-y`, a non-yes answer is exit 2; local manifest paths are always
   reinstalled), resolve inputs and types, load secrets (env var of the same name, then keychain), run, save, print
   the envelope (`Saved <path>` on stderr).
+- Failure prompt (`report_prompt.go`, `offerFailureReport`): after a single run that timed out, or exited non-zero
+  with no entities, ot asks on stderr `<ref> <version> failed (exit N). Report it as broken? ... [y/N]`. Only at a
+  terminal, never under `ot mcp`, with `CI` set, with `--json`/`OT_OUTPUT=json` or `-f json|jsonl` (`runArgs.Machine`),
+  for local manifests, or with telemetry off (`OT_NO_TELEMETRY`, `"telemetry": false`); at most once per
+  `tool@version` every 7 days (`cache/report-prompts.json`, written whatever the answer). Yes sends
+  `POST /tools/{ns}/{name}/run-reports` `{version, exit_code | timed_out, os, arch, engine, ot_version}` and never
+  inputs, output or paths: signed in, the API adds the person to the open broken issue for that version or opens one
+  (a token without the `feedback` scope falls back to an anonymous report); anonymous (`anon()`), it only counts.
+  The run's exit code is unchanged and a failed send is a `warning:`.
 - `--all` flow (`runAll`): needs at least one typed input; refuses `--<input>`, `-o`, `--out-dir` and `--no-save`;
   considers every installed tool; tools with no matching input are left out, tools with an ambiguous input, a missing
   required input or a missing required key are listed as `skipped`. With the table format it prints `Running N
@@ -320,6 +329,14 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   `list_runs` rows. With a run id (`findSavedRunIn`): tool, target, status, exit code, entity count, duration, start
   time, case, saved path, warnings, the first ten distinct entities and, when it found any, a line suggesting `ot pivot <id>`; JSON is the sidecar.
 - No API. Exit: 0, also when nothing is found; 2 for a bad flag value or an unknown run id (`run_not_found`).
+
+#### `ot issues <namespace/name>`
+- File: `cli/issues.go` (`issuesCmd`). Args: `ExactArgs(1)`; a local path or a bad reference is exit 2.
+- Flags: `--all` (bool): closed issues too; `--json`.
+- API: `GET /tools/{ns}/{name}/issues?status=open|all` (anonymous, edge-cached 60 s).
+- Output: table `# KIND STATUS VERSION REPLIES TITLE`, then `N open, M closed: <site>/<ns>/<name>/issues` on stderr;
+  with none, a line with the issues page. JSON is the API's answer (`ref`, `counts`, `issues`).
+- Sign-in: no. Exit: 0; 2 for a bad reference or a registry 4xx (unknown package); 1 otherwise.
 
 #### `ot extract <tool | path>`
 - File: `cli/saved.go` (`extractCmd`); logic in `results/saved.go`. Args: `MaximumNArgs(1)`.
@@ -541,10 +558,18 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 #### `ot report <namespace/name>`
 - File: `cli/trust.go`. Args: `ExactArgs(1)`; `@version` is used as the version when `--version` is not given.
 - Flags: `--reason` (string: malware, policy, impersonation, license, broken, other); `--details` (string; required
-  by the registry except for broken); `--version` (string).
-- Without `--reason`: opens `<site>/<ns>/<name>/report[?v=<version>]`, no API call.
-- API: `POST /tools/{ns}/{name}/reports` `{reason, details, version?}`.
-- Sign-in: no (anonymous unless a token is loaded). Exit: 0; 2 for a bad reference or registry 4xx; 1 otherwise.
+  by the registry except for broken); `--version` (string); `--works` and `--broken` (bool, mutually exclusive,
+  exit 2 together).
+- Without `--reason`, `--works` or `--broken`: opens `<site>/<ns>/<name>/report[?v=<version>]`, no API call.
+- API: `POST /tools/{ns}/{name}/reports` `{reason, details, version?}`. The report is private to the reviewers; with
+  `--reason broken` ot adds a `note:` that `--broken` tells other users too.
+- `--works` / `--broken` (`confirmVersion` in `issues.go`) act on `--version`, else the installed version. `--works`
+  needs a token (exit 2 otherwise) and sends `PUT /tools/{ns}/{name}/confirmations` `{result: "works", version,
+  platform, engine, ot_version}`, printing how many people say that version works. `--broken` needs a version (exit 2
+  without one) and goes through the failure prompt's `sendRunReport` with exit code 1, so it joins or opens the
+  version's broken issue when signed in, and only counts when not.
+- Sign-in: no (anonymous unless a token is loaded), except `--works`. Exit: 0; 2 for a bad reference, `--works`
+  without a token, or a registry 4xx; 1 otherwise.
 
 #### `ot claim [namespace/name]`
 - File: `cli/trust.go`. Args: `RangeArgs(0, 1)`.
@@ -756,6 +781,7 @@ Data directory (`state.Home()`): `$OT_HOME` if set; else on Windows `%APPDATA%\o
 | `<home>/keys.json` | `keys set`, `keys rm`, `login`, `logout`, `doctor` | sorted JSON array of key names (never values), mode 0600 |
 | `<home>/cache/removed.json` | pre-run check (24 h), `ot run` (1 h) | `{"fetched_at", "removed": [...]}` from `GET /removed`, mode 0644 |
 | `<home>/cache/ot-latest.json` | `ot outdated` (24 h) | `{"checked_at", "version"}`: the latest ot release, or the last one known when the lookup failed, mode 0644 |
+| `<home>/cache/report-prompts.json` | `ot run` (the failure prompt) | `{"ns/name@version": "<time asked>"}`; entries older than 7 days are dropped on each write, mode 0644 |
 | `<home>/guides/<ns>/<name>/<version>/` | `guide get` | every page as Markdown at its nav path, plus `guide.json` (the guide detail); read by `guide read` offline |
 | `<home>/pipx/`, `<home>/bin/` | native pipx installs | ot's own `PIPX_HOME` and `PIPX_BIN_DIR`; native runs execute `<home>/bin/<command>[.exe]` |
 | `<home>/agent-policy.json` | `ot mcp policy reset` (else the user) | the agent policy: `enabled`, `mode`, `allow_tools`, `deny_tools`, `auto_approve`, `consent_ttl_minutes`, `max_runs_per_hour`, `max_parallel`, `max_runs_per_target_per_hour`, `max_output_chars`, `allow_install`, `redact_targets_in_audit`; missing fields keep their defaults, a broken file is an error |
@@ -790,6 +816,10 @@ a registry package (not local manifests), 3 s timeout, errors ignored. Disabled 
 once per address, version and day (a salted hash of the address and version in `rate_limits`, removed by the nightly purge once the window is over) and keeps only
 per-version and per-client-kind daily counts.
 
+Run reports (the failure prompt and `ot report --broken`) are sent only when the person says yes, and are switched
+off with the same settings. Anonymous ones also go through `anon()`; the API keeps a daily count per version and
+platform and hashes the address only to count it once a day.
+
 Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-only --tmpfs /tmp:rw,size=256m
 --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --memory 1g --cpus 2 --user 65534:65534 -e HOME=/tmp`,
 `--network none` unless the manifest has `network.egress: true`, `-e NAME` per secret, `-v <out-dir>:/out:rw`,
@@ -805,7 +835,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | Package | One line |
 | --- | --- |
 | `agent` | Consent classes (`Classify`, `Describe`), the policy file (`LoadPolicy`, `DefaultPolicy`), sessions (`DecideRun`, approvals, limits), consent tokens (`CallHash`, `Seal`/`Open`, single use), the audit log (`Record`, `ReadAudit`, rotation) |
-| `api` | Registry HTTP client: `do`, error shape `*api.Error`, search, tool/manifest/versions, install ping, device login, `/me`, tokens, guides and docs, imports, sync, removals, reports, claims and transfers, yank/deprecate, feedback |
+| `api` | Registry HTTP client: `do`, error shape `*api.Error`, search, tool/manifest/versions, install ping, device login, `/me`, tokens, guides and docs, imports, sync, removals, reports, claims and transfers, yank/deprecate, feedback, community issues, run reports and confirmations |
 | `cli` | Every cobra command, the `App` struct, exit codes, `ExitError`, `Main`, `ExitCodeFor`, JSON errors (`machine.go`), the MCP server (`mcp_*.go`) |
 | `envelope` | The result envelope (`Version = 1`), `ParseOutput` for json/jsonl/csv/text, `Write` for json/raw/csv/table |
 | `keys` | Keychain storage (service `osintverse-ot`), env-first `Get`, `keys.json` name index |
@@ -843,6 +873,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `cli/sync_test.go` | `ot sync` and `--log` |
 | `cli/profile_test.go` | `ot profile`: show, `--set`/`--unset`, `--sync`, rate limit, `--json` |
 | `cli/trust_test.go` | report/claim/transfer against a fake registry, removed-package warnings and refusal, `self-update` with a signed fake release (through the GitHub API, and through `/ot/latest` with no downgrade), the newer-ot note in `ot outdated` (daily cache, and never for dev builds, agents, CI or `OT_NO_UPDATE_CHECK=1`) |
+| `cli/community_test.go` | The failure prompt (asks once a week, sends no inputs, stays quiet with telemetry off, no terminal, `--json`, CI, a passing run or a local manifest), `ot report --works` (needs a token) and `--broken`, `ot issues` table and JSON |
 | `cli/feedback_test.go` | `ot feedback`: message with `--kind`/`--about`, piped stdin with `--email`, bad kind exits 2 |
 | `cli/machine_test.go` | `--json` detection, error codes, JSON errors on stderr, no prompts without a terminal, envelope provenance, `--all` JSON lines, stdout stays JSON |
 | `cli/mcp_test.go` | `ot mcp`: tool list, passive runs, consent by elicitation and by token, policy and trust, unattended CLI runs need `--yes`, `mcp install`, docs and plugin match the server, policy changes without a restart, shutdown, sandbox mode, batches |
