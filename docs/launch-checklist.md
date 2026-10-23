@@ -9,58 +9,66 @@ Items marked **(you)** need the owner of the GitHub, GitLab, Cloudflare, Resend,
 
 | Thing | State |
 |-------|-------|
-| `ot` | v0.14.0 is the latest release on `OTInstaller/ot` (23 Oct, 11:31 UTC, tag `v0.14.0` on `374d3a6`), with archives, `.deb`/`.rpm`, signed checksums, six `.mcpb` bundles and `server.json`; `get.otinstaller.com/ot` and `/ot.ps1` serve its install scripts. Checked: a downloaded v0.13.1 on Windows saw it with `ot self-update --check`, then updated to it ("Updated ot from v0.13.1 to v0.14.0") |
-| API and site | Deployed from `main` with `PUBLIC_BETA=0` (no beta strip); migrations up to 0014 applied in production. The site was last deployed on 23 Oct ("Every otlite tool on /otlite" below) |
+| `ot` | v0.15.0 is the latest release on `OTInstaller/ot` (23 Oct, 19:49 UTC, tag `v0.15.0` on `7808e0d`), with archives, `.deb`/`.rpm`, signed checksums, six `.mcpb` bundles and `server.json`; `get.otinstaller.com/ot` and `/ot.ps1` serve its install scripts, and `/ot/latest` answers `v0.15.0`. Checked: the Windows amd64 archive matches `checksums.txt`, reports `ot version v0.15.0`, and has `ot publish --image/--sign/--oidc` and `ot namespace create/trust/trusted/untrust` |
+| API and site | Deployed from `main` (`6787737` and later docs) on 23 Oct: the API at 19:16 UTC, the mirror (now bound to D1) at 19:18 and the site with `PUBLIC_BETA=0` (no beta strip) at 19:44; migrations up to 0027 applied in production ("Phase 1 and publishing" below) |
 | Agents | `ot mcp` (since v0.13.0), the remote MCP server at `https://api.otinstaller.com/mcp`, the plugin `OTInstaller/agent-plugin` v0.1.1 (23 Oct; `claude plugin validate --strict` passes); MCP Registry entries `com.otinstaller/ot` 0.14.0 and `com.otinstaller/registry` 1.0.0 |
 | otlite | 1.0.0, 1.1.0 and 1.2.0 released to PyPI on 22 Oct (09:23, 09:39 and 10:51 UTC) by `release-otlite.yml`, each with a GitHub release `otlite-vX.Y.Z` on `OTInstaller/otinstaller`. 1.2.1 ([PR #48](https://github.com/OTInstaller/otinstaller/pull/48)) followed on 22 Oct at 18:54 UTC and is the latest on PyPI |
 | `otinstaller` shim | 0.2.0 is on PyPI (22 Oct, 11:23 UTC), and its files are on the `otlite-v1.2.0` GitHub release. The workflow publishes it from its own environment `pypi-otinstaller` ([PR #44](https://github.com/OTInstaller/otinstaller/pull/44)), but in the `otlite-v1.2.0` run that job failed with `invalid-publisher` (10:52 UTC), so the Actions history doesn't show how 0.2.0 was uploaded. **(you)** Check that PyPI's trusted publisher for `otinstaller` names the environment `pypi-otinstaller` before the next release |
 | otlite installer | `curl -fsSL https://get.otinstaller.com/otlite \| sh` answers 200 (`otlite/scripts/install.sh` from `main`, through `ops/get`) |
 | Site pages | `/agents`, the homepage for AI agents, with its Markdown twin `/agents.md`; `/otlite` and `/otlite/tools`, both listing every tool from `web/src/data/otlite-catalog.json`; tool pages show the sample output recorded by the scanner's smoke test |
 
-## Phase 1 and publishing (merged 23 and 24 October 2026, not deployed)
+## Phase 1 and publishing (merged and deployed 23 October 2026)
 
 The roadmap's phase 1 ([roadmap.md](roadmap.md)) was merged into `main` on 23 Oct: #58 (roadmap, stars), #61 (release
 notes), #63 (activity and feeds), #66 (learn hub), the community stack #68 → #74 → #76 → #78 → #79 → #80 → #81 → #82 →
 #83 and the close-out #84. Request discussions and flags on requests followed in
 [#89](https://github.com/OTInstaller/otinstaller/pull/89) (migration 0026), and change proposals with a new version's
-first-week counts in [#90](https://github.com/OTInstaller/otinstaller/pull/90) (migration 0027, merged 24 Oct as
+first-week counts in [#90](https://github.com/OTInstaller/otinstaller/pull/90) (migration 0027, merged as
 `6787737`). Publishing without a tag merged the same day: the OAuth callback fix
 [#85](https://github.com/OTInstaller/otinstaller/pull/85), direct publishing with `ot publish`
 [#86](https://github.com/OTInstaller/otinstaller/pull/86) (0023), images hosted on the mirror
 [#87](https://github.com/OTInstaller/otinstaller/pull/87) (0024) and trusted publishing from CI
-[#88](https://github.com/OTInstaller/otinstaller/pull/88) (0025). None of it is deployed. In order:
+[#88](https://github.com/OTInstaller/otinstaller/pull/88) (0025). All of it was deployed on 23 Oct; what's left is
+marked (you). In order:
 
-- [x] Copy the scanner to registry-ops before the API sends direct uploads. Done 24 Oct: `OTInstaller/registry-ops`
+- [x] Copy the scanner to registry-ops before the API sends direct uploads. Done 23 Oct: `OTInstaller/registry-ops`
       `068fc51` (`scan.py` accepts `expected_signer: null` and records the smoke test's sample; `scan.yml` logs Docker
       in to the mirror too).
 - [x] Expire abandoned uploads: lifecycle rule `expire-uploads` on the R2 bucket `otinstaller-content`, prefix
-      `uploads/`, objects expire after 7 days. Done 24 Oct.
+      `uploads/`, objects expire after 7 days. Done 23 Oct.
 - [ ] **(you)** Review the terms change from #87 (`web/src/pages/policy/terms.md`: images hosted on the mirror, and
-      namespaces created on the registry); the site deploy below publishes it.
-- [ ] **(you)** Apply migrations 0015 to 0027 remotely: in `api/`, `npx wrangler d1 migrations apply otinstaller
+      namespaces created on the registry); it went live with the site deploy on 23 Oct, 19:44 UTC.
+- [x] Apply migrations 0015 to 0027 remotely: in `api/`, `npx wrangler d1 migrations apply otinstaller
       --remote` (13 migrations; the permission classifier refuses this to the coding agent as a production deploy).
       The bookmark before them is `0000021a-00000008-0000510d-148af29bf74db2c6a521a2eea887be46`; restore with
-      `npx wrangler d1 time-travel restore otinstaller --bookmark=<that>`.
-- [ ] **(you)** Deploy, after the migrations:
-      1. The API: in `api/`, `npm run deploy`. Roll back to `1e5d3dac-1465-428c-bb46-45770d5e7e22`.
-      2. The mirror, which now binds the D1 database: in `api/`, `npx wrangler deploy -c wrangler.mirror.jsonc`. Roll
-         back to `b222af4e-ee1a-47b2-89d8-a411b338ec02`.
-      3. The site with `PUBLIC_BETA=0`: in `web/`, PowerShell `$env:PUBLIC_BETA = "0"; npm run deploy`. Roll back to
-         `1326b475-6249-4a94-9355-adc015f9d642`.
+      `npx wrangler d1 time-travel restore otinstaller --bookmark=<that>`. Done 23 Oct by the owner, from the
+      repository root with `--config api/wrangler.jsonc`; `d1 migrations list --remote` shows none left.
+- [x] Deploy, after the migrations (done 23 Oct by the owner):
+      1. The API: in `api/`, `npm run deploy`. Now `3c1b95bd-a431-4f15-9d0a-455c2100d6ec` (19:16 UTC); roll back to
+         `1e5d3dac-1465-428c-bb46-45770d5e7e22`.
+      2. The mirror, which now binds the D1 database: in `api/`, `npx wrangler deploy -c wrangler.mirror.jsonc`. Now
+         `598a53cc-d9f5-467f-a2b9-9e3ab696fc18` (19:18 UTC); roll back to `b222af4e-ee1a-47b2-89d8-a411b338ec02`.
+      3. The site with `PUBLIC_BETA=0`: in `web/`, PowerShell `$env:PUBLIC_BETA = "0"; npm run deploy`. Now
+         `d2d15efe-7c5d-4a35-9b90-aa558d9c4087` (19:44 UTC); roll back to `1326b475-6249-4a94-9355-adc015f9d642`.
       Checks: `https://api.otinstaller.com/v1/openapi.json` lists `/publish` and `/auth/oidc/token`;
       `curl -sI https://mirror.otinstaller.com/v2/` answers 401 with a `Bearer` challenge; `/publish` on the site
-      shows three ways in and no beta strip.
+      shows three ways in and no beta strip. All three checked after the deploy, plus `POST /v1/publish` without a
+      token (401 `unauthenticated`) and `POST /v1/auth/oidc/token` with a junk token (401 `oidc_token_invalid`).
 - [ ] **(you)** Grant the first triager and reviewer roles (Admin console → Community).
 - [ ] **(you)** Set up the community bot for submissions, bump pull requests and change proposals (publishing-setup.md section 6,
       "Community submissions"): the "OTInstaller Community" GitHub App, its three secrets, and the main App on all
       repositories of `osintverse-community`. Until then submitting answers 503 and the rest works.
 - [ ] **(you)** After a week of upstream watcher reports (Admin console → Upstream), decide whether to set
       `UPSTREAM_WATCH` to `issues`, and later `prs`.
-- [ ] Release `ot` v0.15.0 once the API above is live (its new commands need it): `ot publish` (with `--image`,
+- [x] Release `ot` v0.15.0 once the API above is live (its new commands need it): `ot publish` (with `--image`,
       `--sign` and `--oidc`), `ot namespace create|trust|trusted|untrust`, `ot issues`, `ot request`, `ot changelog`,
       `ot report --works|--broken`, the failure prompt and the first-week note in `ot outdated`. Push the tag `v0.15.0`
       on `main`. It must be out before anyone sets `OTINSTALLER_PUBLISH=oidc`, because the release workflows' last step
-      installs the latest `ot`.
+      installs the latest `ot`. Done 23 Oct, 19:49 UTC: tag `v0.15.0` on `7808e0d`, release
+      run `40014068906`.
+- [ ] **(you)** List `ot` 0.15.0 in the MCP Registry: download the release's `server.json` and run
+      `mcp-publisher publish server.json` with the `otinstaller.com` key, as for 0.14.0 (publishing-setup.md
+      section 10). It still lists 0.14.0.
 - [ ] **(you)** Publish the draft guide `seed/guides/osint-fundamentals/` (`ot release 1.0.0` in its repository).
 
 ## Left before announcing
