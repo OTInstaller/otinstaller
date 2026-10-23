@@ -91,6 +91,19 @@ func TestBundledPlaybooksFitSeed(t *testing.T) {
 	}
 }
 
+func TestStarter(t *testing.T) {
+	for typ, want := range map[string]string{"username": "username-investigation", "email": "email-investigation",
+		"domain": "domain-recon", "phone": "phone-investigation", "ip": "ip-investigation", "url": ""} {
+		got := ""
+		if p := Starter(typ); p != nil {
+			got = p.Name
+		}
+		if got != want {
+			t.Errorf("Starter(%q) = %q, want %q", typ, got, want)
+		}
+	}
+}
+
 func TestLaterDirsWin(t *testing.T) {
 	home, local := t.TempDir(), t.TempDir()
 	os.WriteFile(filepath.Join(home, "domain-recon.yaml"), []byte("tools: [a-ns/home-tool]\n"), 0o644)

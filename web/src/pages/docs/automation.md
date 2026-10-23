@@ -84,14 +84,15 @@ A tool that runs but exits non-zero makes `ot run` exit 1; the tool's own exit c
 ## No terminal, no prompts
 
 `ot` never waits for an answer when stdin is not a terminal (piped, closed, CI, an agent), or when
-`OT_NONINTERACTIVE=1` is set. Where it would have asked, it fails with `input_required` (or `not_installed` for
-`ot run`), exit code 2, naming the flag that answers the question:
+`OT_NONINTERACTIVE=1` is set. Where it would have asked, it fails with `input_required` (or `not_installed` when a tool
+is missing), exit code 2, naming the flag or command that answers the question in `hint`:
 
 | Prompt | Flag |
 | --- | --- |
 | `ot run` on a tool that isn't installed | `--yes` installs it first |
 | `ot guide tools` | `--yes` |
 | `ot playbook` with tools missing | `--yes` installs them |
+| `ot run --all` or `ot auto` with no installed tool for the target (offers a bundled playbook's tools at a terminal) | none: run the `ot playbook <playbook> <type>:<value> --yes` the hint names |
 | `ot init`, `ot import` | `--yes` accepts the defaults; pass the rest as flags |
 
 **Runs that need consent.** Without a terminal, `ot run`, `run --all`, `playbook` and `auto` also stop before running a

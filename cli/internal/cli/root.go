@@ -42,6 +42,8 @@ type ExitError struct {
 	Reason string
 	// Problems are listed in JSON errors, for errors about a manifest.
 	Problems []api.Problem
+	// Hint says what to do next, usually a command: the hint of a JSON error, and a second line in text.
+	Hint string
 }
 
 func (e *ExitError) Error() string {
@@ -176,6 +178,10 @@ func (a *App) Execute(ctx context.Context, args []string) int {
 			writeJSONError(a.Err, err, code)
 		} else {
 			fmt.Fprintln(a.Err, "error:", msg)
+			var ee *ExitError
+			if errors.As(err, &ee) && ee.Hint != "" {
+				fmt.Fprintln(a.Err, ee.Hint)
+			}
 		}
 	}
 	return code
