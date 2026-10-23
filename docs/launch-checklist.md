@@ -11,7 +11,7 @@ Items marked **(you)** need the owner of the GitHub, GitLab, Cloudflare, Resend,
 |-------|-------|
 | `ot` | v0.14.0 is the latest release on `OTInstaller/ot` (23 Oct, 11:31 UTC, tag `v0.14.0` on `374d3a6`), with archives, `.deb`/`.rpm`, signed checksums, six `.mcpb` bundles and `server.json`; `get.otinstaller.com/ot` and `/ot.ps1` serve its install scripts. Checked: a downloaded v0.13.1 on Windows saw it with `ot self-update --check`, then updated to it ("Updated ot from v0.13.1 to v0.14.0") |
 | API and site | Deployed from `main` with `PUBLIC_BETA=0` (no beta strip); migrations up to 0014 applied in production. The site was last deployed on 23 Oct ("Homepage for AI agents" below) |
-| Agents | `ot mcp` (since v0.13.0), the remote MCP server at `https://api.otinstaller.com/mcp`, the plugin `OTInstaller/agent-plugin` v0.1.1 (23 Oct; `claude plugin validate --strict` passes); MCP Registry entries `com.otinstaller/ot` 0.13.1 and `com.otinstaller/registry` 1.0.0 |
+| Agents | `ot mcp` (since v0.13.0), the remote MCP server at `https://api.otinstaller.com/mcp`, the plugin `OTInstaller/agent-plugin` v0.1.1 (23 Oct; `claude plugin validate --strict` passes); MCP Registry entries `com.otinstaller/ot` 0.14.0 and `com.otinstaller/registry` 1.0.0 |
 | otlite | 1.0.0, 1.1.0 and 1.2.0 released to PyPI on 22 Oct (09:23, 09:39 and 10:51 UTC) by `release-otlite.yml`, each with a GitHub release `otlite-vX.Y.Z` on `OTInstaller/otinstaller`. 1.2.1 ([PR #48](https://github.com/OTInstaller/otinstaller/pull/48)) followed on 22 Oct at 18:54 UTC and is the latest on PyPI |
 | `otinstaller` shim | 0.2.0 is on PyPI (22 Oct, 11:23 UTC), and its files are on the `otlite-v1.2.0` GitHub release. The workflow publishes it from its own environment `pypi-otinstaller` ([PR #44](https://github.com/OTInstaller/otinstaller/pull/44)), but in the `otlite-v1.2.0` run that job failed with `invalid-publisher` (10:52 UTC), so the Actions history doesn't show how 0.2.0 was uploaded. **(you)** Check that PyPI's trusted publisher for `otinstaller` names the environment `pypi-otinstaller` before the next release |
 | otlite installer | `curl -fsSL https://get.otinstaller.com/otlite \| sh` answers 200 (`otlite/scripts/install.sh` from `main`, through `ops/get`) |
@@ -49,9 +49,9 @@ with the close-out on top. Nothing is merged or deployed. In order, the owner's 
       `npx wrangler deploy --config ops/get/wrangler.jsonc` from the repository root, version
       `d2d55f10-9903-4a21-bb7d-8b7b9c0ed93b`); `/ot/latest` answers `{"version":"v0.14.0"}` with
       `cache-control: public, max-age=3600`.
-- [ ] **(you)** List `ot` 0.14.0 in the MCP Registry: download the release's `server.json` and run
-      `mcp-publisher publish server.json` with the `otinstaller.com` key (publishing-setup.md section 10). It still
-      lists 0.13.1.
+- [x] List `ot` 0.14.0 in the MCP Registry. Done 23 Oct: the release's `server.json` published with `mcp-publisher`
+      v1.8.1 (`go install github.com/modelcontextprotocol/registry/cmd/publisher@v1.8.1` builds it as `publisher.exe`
+      in `~/go/bin`, which isn't on the PATH) after `login http --domain otinstaller.com --private-key <hex>`.
 - [x] Release `ot` v0.14.0 (`ot install a b c`, three more bundled playbooks, the fresh-machine offer, `ot runs`,
       lifecycle flags in `ot outdated` and `ot update` following moved packages, the newer-`ot` note), then publish
       the agent plugin 0.1.1, whose skill names the new playbooks and `run_all`'s `not_installed`. Done 23 Oct: v0.14.0
