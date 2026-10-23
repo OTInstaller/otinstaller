@@ -70,12 +70,10 @@ marked (you). In order:
 - [x] List `ot` 0.15.0 in the MCP Registry. Done 23 Oct, 19:55 UTC: the release's `server.json` (six `.mcpb`
       packages) published with `mcp-publisher` after `login http --domain otinstaller.com`; the registry lists 0.15.0
       as the latest `com.otinstaller/ot`.
-- [ ] **(you)** Publish the guide `seed/guides/osint-fundamentals/` (checked: `ot validate` passes, and every command
-      and site section it names exists). Creating its public repository is refused to the coding agent, so: create
-      `osintverse-community/osint-fundamentals` (public, homepage
-      `https://otinstaller.com/guides/osintverse-community/osint-fundamentals`), push the folder's contents to `main`
-      as one commit ("Add the osint-fundamentals guide"), then tag it: `git tag -a v1.0.0 -m "Release 1.0.0"` and
-      `git push origin v1.0.0` (or `ot release 1.0.0`). The main App covers the new repository, so the tag publishes it.
+- [x] Publish the guide `seed/guides/osint-fundamentals/`. Done 23 Oct: the owner created
+      `osintverse-community/osint-fundamentals` (creating a public repository is refused to the coding agent) and
+      pushed the tag `v1.0.0`; the registry published it at 20:03 UTC, and
+      `https://otinstaller.com/guides/osintverse-community/osint-fundamentals` answers 200.
 
 ## Left before announcing
 
