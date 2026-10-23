@@ -59,7 +59,7 @@ restore drill).
 | `GITHUB_APP_ID` | yes (GitHub publishing) | App JWT: installation tokens for repos and (fallback) registry-ops dispatch, imports | 503 on use | yes | yes |
 | `GITHUB_APP_PRIVATE_KEY` | yes | PKCS#8 PEM for the App JWT | 503 on use | yes | yes |
 | `GITHUB_WEBHOOK_SECRET` | yes | HMAC check on `POST /v1/webhooks/github` | 503 on every GitHub webhook | yes | yes |
-| `UPSTREAM_WATCH` (var) | no | What the upstream watcher does: `report` (default) records; `issues` also opens and closes outdated issues on community wrappers | report only | yes | no |
+| `UPSTREAM_WATCH` (var) | no | What the upstream watcher does: `report` (default) records; `issues` also opens and closes outdated issues on community wrappers; `prs` also has the community bot open bump pull requests | report only | yes | no |
 | `COMMUNITY_APP_ID` / `COMMUNITY_APP_PRIVATE_KEY` / `COMMUNITY_INSTALLATION_ID` | for community submissions | The community bot: a second GitHub App installed only on `osintverse-community` that creates wrapper repositories, commits their files, tags or dispatches their release and archives turned-down ones (`submissions.ts`) | 503 `community_bot_missing` on submit; the rest of the site works | yes | no |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | yes (GitHub sign-in) | OAuth sign-in | 503 on GitHub login | yes | yes |
 | `GITLAB_CLIENT_ID` / `GITLAB_CLIENT_SECRET` | yes (GitLab) | GitLab OAuth sign-in and refreshing stored GitLab tokens (`hosts/repo.ts`) | 503 on GitLab login and GitLab repo calls | yes | yes |

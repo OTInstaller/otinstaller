@@ -47,19 +47,21 @@ export async function isMember(env: Env, namespaceId: string, userId: string): P
 }
 
 /** The badge a person's comments carry on a package's thread, or null for everyone else. */
-export async function roleBadge(env: Env, user: User, t: Pick<ToolRef, "namespace_id">): Promise<"maintainer" | "staff" | "triager" | null> {
+export async function roleBadge(env: Env, user: User, t: Pick<ToolRef, "namespace_id"> & { id?: string }): Promise<"maintainer" | "staff" | "triager" | null> {
   if (await isMember(env, t.namespace_id, user.id)) return "maintainer";
+  // A community package's submitter and the others staff add maintain it too.
+  if (t.id && (await env.DB.prepare(`SELECT 1 FROM tool_maintainers WHERE tool_id = ? AND user_id = ?`).bind(t.id, user.id).first())) return "maintainer";
   if (user.is_admin || user.is_reviewer) return "staff";
   return (await communityRoles(env, user)).has("triager") ? "triager" : null;
 }
 
 /** Package members, triagers and staff can triage a package's issues. */
-export async function canTriage(env: Env, user: User | null, t: Pick<ToolRef, "namespace_id">): Promise<boolean> {
+export async function canTriage(env: Env, user: User | null, t: Pick<ToolRef, "namespace_id"> & { id?: string }): Promise<boolean> {
   if (!user) return false;
   return (await roleBadge(env, user, t)) !== null;
 }
 
-export async function requireTriage(env: Env, user: User | null, t: Pick<ToolRef, "namespace_id">): Promise<User> {
+export async function requireTriage(env: Env, user: User | null, t: Pick<ToolRef, "namespace_id"> & { id?: string }): Promise<User> {
   if (!user) apiError(401, "unauthenticated", "sign in first", "run `ot login`, or sign in on otinstaller.com");
   if (!(await canTriage(env, user, t))) apiError(403, "not_triager", "only the package's maintainers, triagers and staff can do this");
   return user;
@@ -213,7 +215,7 @@ const KIND_WORDS: Record<IssueKind, string> = { broken: "broken", outdated: "out
 
 /** Tells a package's maintainers about a new issue on it. */
 async function announceIssue(env: Env, t: Pick<ToolRef, "namespace" | "name" | "namespace_id" | "id">, i: Pick<IssueRow, "id" | "number" | "kind" | "title">, actorId: string | null) {
-  await notify(env, await maintainers(env, t.namespace_id), {
+  await notify(env, await maintainers(env, t.namespace_id, t.id), {
     kind: "issue_opened", scope: "owner_issues", summary: `New ${KIND_WORDS[i.kind]} issue on ${refOf(t)}: ${i.title}`,
     path: `/${refOf(t)}/issues/${i.number}`, tool_id: t.id, issue_id: i.id, actor_id: actorId,
   });

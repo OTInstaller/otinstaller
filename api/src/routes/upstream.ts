@@ -1,12 +1,14 @@
-// Upstream watcher routes: the public summary of community wrappers behind their upstream, and the staff view with
-// pin overrides and a check-now button. Logic lives in ../upstream.ts.
+// Upstream watcher routes: the public summary of community wrappers behind their upstream, the staff view with pin
+// overrides and a check-now button, and merging and releasing a bump pull request. Logic lives in ../upstream.ts and
+// ../bumps.ts.
 import type { Context } from "hono";
 import type { App, AppEnv } from "../env";
 import { apiError } from "../lib/errors";
 import { cached } from "../catalog";
-import { audit } from "./auth";
+import { audit, requireUser } from "./auth";
 import { requireAdmin, requireReviewer } from "./review";
 import { checkUpstream, publicWatch, watchMode, type WatchRow, type WatchState } from "../upstream";
+import { canRelease, openBumpFor, releaseBump } from "../bumps";
 
 type Joined = WatchRow & { ns: string; name: string };
 const FROM = `FROM upstream_watch w JOIN tools t ON t.id = w.tool_id JOIN namespaces n ON n.id = t.namespace_id WHERE t.status != 'removed'`;
@@ -14,6 +16,17 @@ const FROM = `FROM upstream_watch w JOIN tools t ON t.id = w.tool_id JOIN namesp
 async function wrapper(c: Context<AppEnv>): Promise<{ id: string }> {
   const t = await c.env.DB.prepare(`SELECT t.id FROM tools t JOIN namespaces n ON n.id = t.namespace_id WHERE n.name = ? AND t.name = ? AND t.upstream_url IS NOT NULL`)
     .bind(c.req.param("ns"), c.req.param("name")).first<{ id: string }>();
+  if (!t) apiError(404, "tool_not_found", "no community wrapper by that name");
+  return t;
+}
+
+/** A community wrapper with what releasing a bump needs. */
+async function bumpTool(c: Context<AppEnv>) {
+  const t = await c.env.DB.prepare(
+    `SELECT t.id, t.name, n.name AS ns, t.namespace_id, t.upstream_url, s.path AS wrapper, v.manifest_json
+     FROM tools t JOIN namespaces n ON n.id = t.namespace_id JOIN versions v ON v.id = t.latest_version_id LEFT JOIN sources s ON s.tool_id = t.id
+     WHERE n.name = ? AND t.name = ? AND t.upstream_url IS NOT NULL AND t.status != 'removed'`,
+  ).bind(c.req.param("ns"), c.req.param("name")).first<{ id: string; name: string; ns: string; namespace_id: string; upstream_url: string; wrapper: string | null; manifest_json: string }>();
   if (!t) apiError(404, "tool_not_found", "no community wrapper by that name");
   return t;
 }
@@ -31,6 +44,27 @@ export function upstreamRoutes(app: App) {
       behind: rows.filter((r) => r.state === "behind" && !r.commits_behind).map((r) => ({ ref: `${r.ns}/${r.name}`, ...publicWatch(r) })),
       checked_at: rows.reduce((m, r) => Math.max(m, r.checked_at ?? 0), 0) || null,
     });
+  });
+
+  // ---------- bump pull requests (the package's maintainers and reviewers) ----------
+
+  // The open bump pull request, and whether the signed-in person may merge and release it.
+  app.get("/packages/:ns/:name/bump", async (c) => {
+    const u = requireUser(c);
+    const t = await bumpTool(c);
+    const [bump, who] = await Promise.all([openBumpFor(c.env, t.id), canRelease(c.env, u, t)]);
+    c.header("Cache-Control", "private, no-store");
+    return c.json({ bump: bump ? { version: bump.version, number: bump.pr_number, url: bump.url } : null, can_release: who.maintainer || who.reviewer });
+  });
+
+  app.post("/packages/:ns/:name/pulls/:number/release", async (c) => {
+    const u = requireUser(c);
+    const t = await bumpTool(c);
+    const n = Number(c.req.param("number"));
+    if (!Number.isInteger(n) || n <= 0) apiError(400, "invalid_parameter", "the pull request number is a positive integer");
+    const out = await releaseBump(c.env, u, t, n);
+    c.header("Cache-Control", "private, no-store");
+    return c.json({ merged: true, upstream_version: out.version, version: out.released });
   });
 
   // ---------- staff ----------

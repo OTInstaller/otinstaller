@@ -45,7 +45,7 @@ export function requiredScope(method: string, path: string): string | null {
   if (p === "/feedback" || p === "/flags" || /^\/comments\/[^/]+$/.test(p)) return "feedback";
   if (p === "/requests" || /^\/requests\/\d+\/vote$/.test(p)) return "feedback";
   if (/^\/tools\/[^/]+\/[^/]+\/(reports|confirmations|run-reports|issues(\/\d+(\/(comments|subscription))?)?)$/.test(p)) return "feedback";
-  if (/^\/(imports|sources)(\/|$)/.test(p) || /^\/packages\/[^/]+\/[^/]+\/(manifest|sync|source)(\/|$)/.test(p)) return "publish";
+  if (/^\/(imports|sources)(\/|$)/.test(p) || /^\/packages\/[^/]+\/[^/]+\/(manifest|sync|source|pulls)(\/|$)/.test(p)) return "publish";
   // A submitter changing their submission publishes; withdrawing it and reviewers' decisions are "manage".
   if (method === "PUT" && /^\/submissions\/\d+$/.test(p)) return "publish";
   return "manage";
