@@ -3,7 +3,8 @@ import Base from "../../../layouts/Base.astro";
 import ToolHeader from "../../../components/ToolHeader.astro";
 import VersionActions from "../../../islands/VersionActions";
 import { api, type Version } from "../../../lib/api";
-import { formatDate } from "../../../lib/format";
+import { formatDate, upstreamReleasesUrl } from "../../../lib/format";
+import { demoteHeadings } from "../../../lib/html";
 import { loadTool } from "../../../lib/tool";
 import { cacheFor } from "../../../lib/page";
 
@@ -17,10 +18,16 @@ const scanClass: Record<string, string> = { pass: "ok", warn: "warn", fail: "bad
 const scanLabel: Record<string, string> = { pass: "Passed", warn: "Warnings", fail: "Failed", pending: "Pending" };
 const tagUrl = (v: string) => (t.repo_url ? `${t.repo_url.replace(/\/$/, "")}/${t.repo_url.includes("gitlab.com") ? "-/tags" : "releases/tag"}/v${v}` : null);
 const anyGone = versions.some((v) => v.status === "yanked");
+// A community wrapper's own notes say what changed in the packaging; the upstream project's releases say what changed
+// in the tool.
+const upstream = t.community_packaged ? upstreamReleasesUrl(t.homepage) : null;
+const noteSource: Record<string, string> = { release: "From the release", file: "From CHANGELOG.md" };
+// Release notes show under their version, open for the newest one that has any.
+const openNotes = versions.find((v) => v.changelog_html && v.status !== "removed")?.version;
 ---
 <Base title={`${ref} versions`} description={`Version history of ${ref}.`} jsonHref={`https://api.otinstaller.com/v1/tools/${ref}/versions`}>
   <ToolHeader tool={t} active="versions" hasDocs={hasDocs} />
-  <p class="small muted intro"><code>ot install {ref}</code> takes the version marked latest; an exact version pins it. Each tag links to the commit the release was built from.</p>
+  <p class="small muted intro"><code>ot install {ref}</code> takes the version marked latest; an exact version pins it. Each tag links to the commit the release was built from.{upstream && <> What changed in the tool itself is in <a href={upstream} rel="nofollow noopener">the upstream project's releases</a>.</>}</p>
   <div class="table-wrap">
     <table class="data versions">
       <thead><tr><th scope="col">Version</th><th scope="col">Published</th><th scope="col">Scan</th><th scope="col">Signed</th><th scope="col">Tag</th><th scope="col">Install</th></tr></thead>
@@ -30,7 +37,8 @@ const anyGone = versions.some((v) => v.status === "yanked");
           const latest = v.version === t.latest_version && !gone;
           const tag = tagUrl(v.version);
           return (
-            <tr class:list={{ latest, gone }}>
+            <>
+            <tr class:list={{ latest, gone }} id={`v${v.version}`}>
               <td class="vcell">
                 <code class:list={{ struck: gone }}>{v.version}</code>
                 {latest && <span class="badge info">latest</span>}
@@ -43,6 +51,17 @@ const anyGone = versions.some((v) => v.status === "yanked");
               <td>{tag ? <a href={tag} rel="nofollow noopener">v{v.version}</a> : <span class="faint">—</span>}</td>
               <td>{v.status === "removed" ? <span class="faint">—</span> : <span class="inst"><code>ot install {ref}@{v.version}</code><button class="btn btn-sm copy" type="button" data-copy={`ot install ${ref}@${v.version}`} aria-label={`Copy install command for ${v.version}`}><span class="label">Copy</span></button></span>}</td>
             </tr>
+            {v.changelog_html && (
+              <tr class:list={["notes-row", { latest, gone }]}>
+                <td colspan="6">
+                  <details open={v.version === openNotes}>
+                    <summary>What's new in {v.version} <span class="faint">· {noteSource[v.changelog_source ?? "release"]}</span></summary>
+                    <div class="prose notes"><Fragment set:html={demoteHeadings(v.changelog_html)} /></div>
+                  </details>
+                </td>
+              </tr>
+            )}
+            </>
           );
         })}
       </tbody>
@@ -60,4 +79,9 @@ const anyGone = versions.some((v) => v.status === "yanked");
   .gone { color: var(--text-faint); }
   .status { text-decoration: none; }
   .inst { display: inline-flex; gap: 8px; align-items: center; }
+  .notes-row td { padding-top: 0; }
+  .notes-row summary { cursor: pointer; font-size: var(--fs-1); color: var(--text-muted); padding: 2px 0 8px; }
+  .notes { max-width: 72ch; padding: 0 0 12px; font-size: var(--fs-2); }
+  .notes :global(h2), .notes :global(h3), .notes :global(h4) { font-size: var(--fs-2); margin: 12px 0 4px; }
+  .notes :global(ul) { margin: 4px 0; }
 </style>

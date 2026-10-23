@@ -207,6 +207,29 @@ describe("publish consumer", () => {
     expect((await call("/tools/pat/whois-plus")).status).toBe(404);
   });
 
+  it("records the release's notes, else the version's section of CHANGELOG.md, and never fails a publish over them", async () => {
+    const notes = (versionId: string) => DB().prepare(`SELECT changelog, changelog_source FROM versions WHERE id = ?`).bind(versionId).first<{ changelog: string | null; changelog_source: string | null }>();
+    const files = (login: string) => ({ "otinstaller.yaml": manifestFor(login), "README.md": README });
+
+    const a = await queuedJob(220, "una", 8020, 65);
+    fakeRelease("una/whois-plus", files("una"), { extra: { "GET https://api.github.com/repositories/65/releases/tags/v1.0.0": { body: "## Fixed\r\n- \u001b[31mfaster\u001b[0m lookups‮" } } });
+    const outA = await processJob(await testEnv(), a);
+    expect(outA).toMatchObject({ status: "scanning" });
+    expect(await notes(outA!.versionId!)).toEqual({ changelog: "## Fixed\n- [31mfaster[0m lookups", changelog_source: "release" });
+
+    const b = await queuedJob(221, "vic", 8021, 66);
+    const changelog = "# Changelog\n\n## [1.0.0] - 2026-10-01\n### Added\n- whois lookups\n\n## [0.9.0]\n- beta\n";
+    fakeRelease("vic/whois-plus", { ...files("vic"), "CHANGELOG.md": changelog });
+    const outB = await processJob(await testEnv(), b);
+    expect(await notes(outB!.versionId!)).toEqual({ changelog: "### Added\n- whois lookups", changelog_source: "file" });
+
+    const c = await queuedJob(222, "wes", 8022, 67);
+    fakeRelease("wes/whois-plus", files("wes"), { extra: { "GET https://api.github.com/repositories/67/releases/": new Response("boom", { status: 500 }) } });
+    const outC = await processJob(await testEnv(), c);
+    expect(outC).toMatchObject({ status: "scanning", problems: [] });
+    expect(await notes(outC!.versionId!)).toEqual({ changelog: null, changelog_source: null });
+  });
+
   it("rejects an invalid manifest with a failed commit status naming the error", async () => {
     const id = await queuedJob(201, "quinn", 8002, 61);
     const bad = manifestFor("quinn").replace('"{domain}"', '"{host}"');
