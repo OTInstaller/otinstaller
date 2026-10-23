@@ -11,7 +11,7 @@ Items marked **(you)** need the owner of the GitHub, GitLab, Cloudflare, Resend,
 |-------|-------|
 | `ot` | v0.15.0 is the latest release on `OTInstaller/ot` (23 Oct, 19:49 UTC, tag `v0.15.0` on `7808e0d`), with archives, `.deb`/`.rpm`, signed checksums, six `.mcpb` bundles and `server.json`; `get.otinstaller.com/ot` and `/ot.ps1` serve its install scripts, and `/ot/latest` answers `v0.15.0`. Checked: the Windows amd64 archive matches `checksums.txt`, reports `ot version v0.15.0`, and has `ot publish --image/--sign/--oidc` and `ot namespace create/trust/trusted/untrust` |
 | API and site | Deployed from `main` (`6787737` and later docs) on 23 Oct: the API at 19:16 UTC, the mirror (now bound to D1) at 19:18 and the site with `PUBLIC_BETA=0` (no beta strip) at 19:44; migrations up to 0027 applied in production ("Phase 1 and publishing" below) |
-| Agents | `ot mcp` (since v0.13.0), the remote MCP server at `https://api.otinstaller.com/mcp`, the plugin `OTInstaller/agent-plugin` v0.1.1 (23 Oct; `claude plugin validate --strict` passes); MCP Registry entries `com.otinstaller/ot` 0.14.0 and `com.otinstaller/registry` 1.0.0 |
+| Agents | `ot mcp` (since v0.13.0), the remote MCP server at `https://api.otinstaller.com/mcp`, the plugin `OTInstaller/agent-plugin` v0.1.1 (23 Oct; `claude plugin validate --strict` passes); MCP Registry entries `com.otinstaller/ot` 0.15.0 (latest since 23 Oct, 19:55 UTC) and `com.otinstaller/registry` 1.0.0 |
 | otlite | 1.0.0, 1.1.0 and 1.2.0 released to PyPI on 22 Oct (09:23, 09:39 and 10:51 UTC) by `release-otlite.yml`, each with a GitHub release `otlite-vX.Y.Z` on `OTInstaller/otinstaller`. 1.2.1 ([PR #48](https://github.com/OTInstaller/otinstaller/pull/48)) followed on 22 Oct at 18:54 UTC and is the latest on PyPI |
 | `otinstaller` shim | 0.2.0 is on PyPI (22 Oct, 11:23 UTC), and its files are on the `otlite-v1.2.0` GitHub release. The workflow publishes it from its own environment `pypi-otinstaller` ([PR #44](https://github.com/OTInstaller/otinstaller/pull/44)), but in the `otlite-v1.2.0` run that job failed with `invalid-publisher` (10:52 UTC), so the Actions history doesn't show how 0.2.0 was uploaded. **(you)** Check that PyPI's trusted publisher for `otinstaller` names the environment `pypi-otinstaller` before the next release |
 | otlite installer | `curl -fsSL https://get.otinstaller.com/otlite \| sh` answers 200 (`otlite/scripts/install.sh` from `main`, through `ops/get`) |
@@ -56,8 +56,9 @@ marked (you). In order:
       token (401 `unauthenticated`) and `POST /v1/auth/oidc/token` with a junk token (401 `oidc_token_invalid`).
 - [ ] **(you)** Grant the first triager and reviewer roles (Admin console → Community).
 - [ ] **(you)** Set up the community bot for submissions, bump pull requests and change proposals (publishing-setup.md section 6,
-      "Community submissions"): the "OTInstaller Community" GitHub App, its three secrets, and the main App on all
-      repositories of `osintverse-community`. Until then submitting answers 503 and the rest works.
+      "Community submissions"): the "OTInstaller Community" GitHub App and its three secrets. Until then submitting
+      answers 503 and the rest works. The main App (`otinstaller`, installation `173364459`) already covers all
+      repositories of `osintverse-community` (checked 23 Oct), so the new wrapper repositories reach the registry.
 - [ ] **(you)** After a week of upstream watcher reports (Admin console → Upstream), decide whether to set
       `UPSTREAM_WATCH` to `issues`, and later `prs`.
 - [x] Release `ot` v0.15.0 once the API above is live (its new commands need it): `ot publish` (with `--image`,
@@ -66,10 +67,15 @@ marked (you). In order:
       on `main`. It must be out before anyone sets `OTINSTALLER_PUBLISH=oidc`, because the release workflows' last step
       installs the latest `ot`. Done 23 Oct, 19:49 UTC: tag `v0.15.0` on `7808e0d`, release
       run `40014068906`.
-- [ ] **(you)** List `ot` 0.15.0 in the MCP Registry: download the release's `server.json` and run
-      `mcp-publisher publish server.json` with the `otinstaller.com` key, as for 0.14.0 (publishing-setup.md
-      section 10). It still lists 0.14.0.
-- [ ] **(you)** Publish the draft guide `seed/guides/osint-fundamentals/` (`ot release 1.0.0` in its repository).
+- [x] List `ot` 0.15.0 in the MCP Registry. Done 23 Oct, 19:55 UTC: the release's `server.json` (six `.mcpb`
+      packages) published with `mcp-publisher` after `login http --domain otinstaller.com`; the registry lists 0.15.0
+      as the latest `com.otinstaller/ot`.
+- [ ] **(you)** Publish the guide `seed/guides/osint-fundamentals/` (checked: `ot validate` passes, and every command
+      and site section it names exists). Creating its public repository is refused to the coding agent, so: create
+      `osintverse-community/osint-fundamentals` (public, homepage
+      `https://otinstaller.com/guides/osintverse-community/osint-fundamentals`), push the folder's contents to `main`
+      as one commit ("Add the osint-fundamentals guide"), then tag it: `git tag -a v1.0.0 -m "Release 1.0.0"` and
+      `git push origin v1.0.0` (or `ot release 1.0.0`). The main App covers the new repository, so the tag publishes it.
 
 ## Left before announcing
 
