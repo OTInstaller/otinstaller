@@ -31,6 +31,10 @@
       "description": "READMEs, docs and guide pages"
     },
     {
+      "name": "Community",
+      "description": "Issues, comments, confirmations and moderation on packages; reading needs no sign-in"
+    },
+    {
       "name": "Auth",
       "description": "Signing in, in a browser or with a device code"
     },
@@ -858,11 +862,34 @@
           }
         ],
         "requestBody": {
-          "required": true,
+          "required": false,
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "enum": [
+                      "pr",
+                      "registry",
+                      "connect",
+                      "wrapper",
+                      "submit"
+                    ],
+                    "description": "submit: a community import becomes a reviewed submission (anyone); wrapper: osintverse-community admins open a pull request in wrapper_repo"
+                  },
+                  "wrapper_repo": {
+                    "type": "string"
+                  },
+                  "dockerfile": {
+                    "type": "string",
+                    "description": "submit, when the wrapper builds an image"
+                  },
+                  "request": {
+                    "type": "integer",
+                    "description": "submit: the tool request it answers"
+                  }
+                }
               }
             }
           }
@@ -2403,6 +2430,3681 @@
         "security": []
       }
     },
+    "/tools/{ns}/{name}/run-reports": {
+      "post": {
+        "operationId": "report_failed_run",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Report a failed run (what ot's prompt sends)",
+        "description": "Only the version, exit code or timeout, OS, architecture, engine and ot version; never inputs or output. With a token it counts as broken for you and joins (or opens) the version's broken issue; without one it only adds to a daily count, and enough reports in a week open an unconfirmed issue.",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "issue": {
+                      "type": "integer"
+                    },
+                    "created": {
+                      "type": "boolean"
+                    },
+                    "moderation": {
+                      "type": "string"
+                    },
+                    "counted": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "version",
+                  "os",
+                  "arch"
+                ],
+                "properties": {
+                  "version": {
+                    "type": "string"
+                  },
+                  "exit_code": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "timed_out": {
+                    "type": "boolean"
+                  },
+                  "os": {
+                    "type": "string"
+                  },
+                  "arch": {
+                    "type": "string"
+                  },
+                  "engine": {
+                    "type": "string"
+                  },
+                  "ot_version": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-scope": "feedback",
+        "security": [
+          {},
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/tools/{ns}/{name}/status": {
+      "get": {
+        "operationId": "get_package_status",
+        "tags": [
+          "Community"
+        ],
+        "summary": "How a package is doing: health check, confirmations and open issues",
+        "description": "One line built from facts (the nightly health check, what signed-in people said about the latest version in the last 30 days, open broken issues), plus the last 30 health checks with their failure class. Error excerpts are never included. Cached for 5 minutes.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "line": {
+                      "type": "object",
+                      "properties": {
+                        "state": {
+                          "enum": [
+                            "working",
+                            "mixed",
+                            "failing",
+                            "unknown"
+                          ]
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "health": {
+                      "type": "object"
+                    },
+                    "confirmations": {
+                      "type": "object"
+                    },
+                    "issues": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error"
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          }
+        ],
+        "security": []
+      }
+    },
+    "/tools/{ns}/{name}/issues": {
+      "get": {
+        "operationId": "list_issues",
+        "tags": [
+          "Community"
+        ],
+        "summary": "A package's issues, most recently active first",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error"
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "closed",
+                "all"
+              ]
+            },
+            "description": "open (open and confirmed), closed or all"
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "broken",
+                "outdated",
+                "wrong_info",
+                "feature",
+                "question"
+              ]
+            },
+            "description": "Only this kind"
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Paging: next_before from the last page"
+          }
+        ],
+        "description": "Only visible posts. Cached for a minute.",
+        "security": []
+      },
+      "post": {
+        "operationId": "open_issue",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Open an issue on a package",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "broken",
+                      "outdated",
+                      "wrong_info",
+                      "feature",
+                      "question"
+                    ]
+                  },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 140
+                  },
+                  "body": {
+                    "type": "string",
+                    "maxLength": 8000
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "platform": {
+                    "type": "string",
+                    "description": "such as linux/amd64"
+                  },
+                  "engine": {
+                    "enum": [
+                      "docker",
+                      "podman",
+                      "native"
+                    ]
+                  },
+                  "exit_code": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "title"
+                ]
+              }
+            }
+          }
+        },
+        "description": "Posts from new accounts, posts that look like personal data or secrets, and a first post with links come back with moderation held until a moderator approves them. 5 a day (2 for accounts under a week old).",
+        "x-scope": "feedback",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/tools/{ns}/{name}/issues/{number}": {
+      "get": {
+        "operationId": "get_issue",
+        "tags": [
+          "Community"
+        ],
+        "summary": "An issue and its comments",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueThread"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error"
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Issue number on the package"
+          }
+        ],
+        "description": "Cached for a minute.",
+        "security": []
+      },
+      "patch": {
+        "operationId": "edit_issue",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Edit your issue (within 24 hours)",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Issue number on the package"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-scope": "feedback",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "delete_issue",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Withdraw your issue",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Issue number on the package"
+          }
+        ],
+        "x-scope": "feedback",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/tools/{ns}/{name}/issues/{number}/comments": {
+      "post": {
+        "operationId": "comment_on_issue",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Comment on an issue",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Issue number on the package"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "body": {
+                    "type": "string",
+                    "maxLength": 8000
+                  }
+                },
+                "required": [
+                  "body"
+                ]
+              }
+            }
+          }
+        },
+        "description": "Locked threads take comments only from the package's maintainers, triagers and staff. 30 a day.",
+        "x-scope": "feedback",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/tools/{ns}/{name}/issues/{number}/viewer": {
+      "get": {
+        "operationId": "issue_viewer",
+        "tags": [
+          "Community"
+        ],
+        "summary": "What you may do on an issue, and your posts waiting for a moderator",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Issue number on the package"
+          }
+        ],
+        "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/tools/{ns}/{name}/issues/{number}/subscription": {
+      "put": {
+        "operationId": "follow_issue",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Follow an issue",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Issue number on the package"
+          }
+        ],
+        "x-scope": "feedback",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "unfollow_issue",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Stop following an issue",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Issue number on the package"
+          }
+        ],
+        "x-scope": "feedback",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/tools/{ns}/{name}/issues/{number}/status": {
+      "post": {
+        "operationId": "set_issue_status",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Triage an issue",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Issue number on the package"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "open",
+                      "confirmed",
+                      "fixed",
+                      "wont_fix",
+                      "duplicate"
+                    ]
+                  },
+                  "duplicate_of": {
+                    "type": "integer"
+                  },
+                  "fixed_in": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              }
+            }
+          }
+        },
+        "description": "The package's maintainers, triagers and staff; the issue's author may close it as fixed.",
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/tools/{ns}/{name}/issues/{number}/lock": {
+      "post": {
+        "operationId": "lock_issue",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Lock or unlock an issue's thread",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Issue number on the package"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "locked": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/tools/{ns}/{name}/confirmations": {
+      "put": {
+        "operationId": "confirm_version",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Say a version works, or is broken, for you",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "result": {
+                    "enum": [
+                      "works",
+                      "broken"
+                    ]
+                  },
+                  "version": {
+                    "type": "string",
+                    "description": "Defaults to the latest"
+                  },
+                  "platform": {
+                    "type": "string"
+                  },
+                  "engine": {
+                    "type": "string"
+                  },
+                  "ot_version": {
+                    "type": "string"
+                  },
+                  "issue": {
+                    "type": "integer",
+                    "description": "Counts a broken answer as a me too on this issue"
+                  }
+                },
+                "required": [
+                  "result"
+                ]
+              }
+            }
+          }
+        },
+        "description": "One answer per person, version and platform; a new answer replaces the old one. Returns the version's counts for the last 30 days.",
+        "x-scope": "feedback",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/comments/{id}": {
+      "patch": {
+        "operationId": "edit_comment",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Edit your comment (within 24 hours)",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "body": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "body"
+                ]
+              }
+            }
+          }
+        },
+        "x-scope": "feedback",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "delete_comment",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Withdraw your comment",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-scope": "feedback",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/flags": {
+      "post": {
+        "operationId": "flag_post",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Flag an issue or comment for a moderator",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "target_kind": {
+                    "enum": [
+                      "issue",
+                      "comment"
+                    ]
+                  },
+                  "target_id": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "enum": [
+                      "personal_data",
+                      "spam",
+                      "abuse",
+                      "off_topic",
+                      "other"
+                    ]
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "target_kind",
+                  "target_id",
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
+        "description": "A personal-data flag from an account older than a week hides the post at once; three flags of any kind do the same.",
+        "x-scope": "feedback",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/issues": {
+      "get": {
+        "operationId": "list_open_problems",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Open broken, outdated and wrong-information issues across the registry",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          }
+        },
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "broken",
+                "outdated",
+                "wrong_info",
+                "feature",
+                "question"
+              ]
+            },
+            "description": "Only this kind"
+          },
+          {
+            "name": "needs",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "confirmation"
+              ]
+            },
+            "description": "confirmation: broken issues nobody has confirmed yet"
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Paging: next_before from the last page"
+          }
+        ],
+        "description": "For people who want to help keep the catalog working. Cached for 2 minutes.",
+        "security": []
+      }
+    },
+    "/requests": {
+      "get": {
+        "operationId": "list_requests",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Tool requests, most wanted first",
+        "description": "Requests to package an open-source tool, with their votes and status. Cached for 2 minutes.",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "all",
+                "open",
+                "accepted",
+                "in_progress",
+                "published",
+                "declined"
+              ],
+              "default": "active"
+            },
+            "description": "active: open, accepted and in progress"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "votes",
+                "new"
+              ],
+              "default": "votes"
+            },
+            "description": "Most votes, or newest first"
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Paging: next_before from the last page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "requests": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "number": {
+                            "type": "integer"
+                          },
+                          "provider": {
+                            "enum": [
+                              "github",
+                              "gitlab"
+                            ]
+                          },
+                          "repo": {
+                            "type": "string",
+                            "description": "owner/name as the host spells it"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "license": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "upstream_stars": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "status": {
+                            "enum": [
+                              "open",
+                              "accepted",
+                              "in_progress",
+                              "published",
+                              "declined"
+                            ]
+                          },
+                          "decline_code": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "votes": {
+                            "type": "integer"
+                          },
+                          "requested_by": {
+                            "type": [
+                              "object",
+                              "null"
+                            ]
+                          },
+                          "tool": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "The published package that answers it"
+                          },
+                          "otlite": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "otlite's name for it, when otlite installs it"
+                          },
+                          "created_at": {
+                            "type": "integer"
+                          },
+                          "updated_at": {
+                            "type": "integer"
+                          },
+                          "indexable": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "counts": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "integer"
+                      }
+                    },
+                    "next_before": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      },
+      "post": {
+        "operationId": "request_tool",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Ask for a tool to be packaged",
+        "description": "Checks the repository first: it must be public, not in the registry or requested already (409 request_exists carries the number to vote for), and not publish itself. A license the registry can't redistribute, or an archived repository, is recorded as declined at once. Requests from new accounts, and notes that look like personal data, wait for a moderator. Five a day.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "repo"
+                ],
+                "properties": {
+                  "repo": {
+                    "type": "string",
+                    "description": "A GitHub or GitLab repository URL"
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 500,
+                    "description": "Why it's worth packaging; plain text"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "request": {
+                      "type": "object",
+                      "properties": {
+                        "number": {
+                          "type": "integer"
+                        },
+                        "provider": {
+                          "enum": [
+                            "github",
+                            "gitlab"
+                          ]
+                        },
+                        "repo": {
+                          "type": "string",
+                          "description": "owner/name as the host spells it"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "license": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "upstream_stars": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "status": {
+                          "enum": [
+                            "open",
+                            "accepted",
+                            "in_progress",
+                            "published",
+                            "declined"
+                          ]
+                        },
+                        "decline_code": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "votes": {
+                          "type": "integer"
+                        },
+                        "requested_by": {
+                          "type": [
+                            "object",
+                            "null"
+                          ]
+                        },
+                        "tool": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "The published package that answers it"
+                        },
+                        "otlite": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "otlite's name for it, when otlite installs it"
+                        },
+                        "created_at": {
+                          "type": "integer"
+                        },
+                        "updated_at": {
+                          "type": "integer"
+                        },
+                        "indexable": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "held": {
+                      "type": "boolean"
+                    },
+                    "notes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "url": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "feedback",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/requests/{number}": {
+      "get": {
+        "operationId": "get_request",
+        "tags": [
+          "Community"
+        ],
+        "summary": "One tool request",
+        "description": "With the requester's note, the decision and what the registry already knew about the repository. Cached for a minute.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Request number"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/requests/{number}/viewer": {
+      "get": {
+        "operationId": "request_viewer",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Whether you voted for a request, asked for it, or can decide it",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Request number"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/requests/{number}/vote": {
+      "put": {
+        "operationId": "vote_for_request",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Vote for a request",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Request number"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-scope": "feedback",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "unvote_request",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Take your vote back",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Request number"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "feedback",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/requests/{number}/status": {
+      "post": {
+        "operationId": "decide_request",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Accept, start, publish, decline or reopen a request",
+        "description": "Triagers and staff. The requester may withdraw their own (status declined, decline_code withdrawn). Publishing names the package; the registry also does this itself when a package from the repository is published.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Request number"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "open",
+                      "accepted",
+                      "in_progress",
+                      "published",
+                      "declined"
+                    ]
+                  },
+                  "decline_code": {
+                    "enum": [
+                      "license",
+                      "archived",
+                      "not_osint",
+                      "not_cli",
+                      "needs_login",
+                      "acceptable_use",
+                      "unmaintained",
+                      "duplicate",
+                      "withdrawn",
+                      "other"
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "tool": {
+                    "type": "string",
+                    "description": "namespace/name, for published"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/submissions": {
+      "get": {
+        "operationId": "list_submissions",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Community wrapper submissions",
+        "description": "Tools people are packaging for the registry, newest first. Cached for 2 minutes.",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "published",
+                "closed",
+                "all"
+              ],
+              "default": "open"
+            },
+            "description": "open: submitted, releasing, in review, sent back or failed; closed: rejected or withdrawn"
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Paging: next_before from the last page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/submissions/{number}": {
+      "get": {
+        "operationId": "get_submission",
+        "tags": [
+          "Community"
+        ],
+        "summary": "One submission",
+        "description": "The upstream, the manifest and Dockerfile, what reviewers should look at (flags and Dockerfile checks), the wrapper repository, the latest release's scans and the decision. Cached for a minute.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Submission number"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      },
+      "put": {
+        "operationId": "update_submission",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Change your submission's manifest or Dockerfile",
+        "description": "While it is submitted, sent back or failed. Checked again, committed to the wrapper repository and released again (a new patch version when the last one was tagged already).",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Submission number"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "manifest": {
+                    "type": "object",
+                    "description": "Fields to change; null removes one. namespace, name, homepage and readme can't change"
+                  },
+                  "dockerfile": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "publish",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/submissions/{number}/viewer": {
+      "get": {
+        "operationId": "submission_viewer",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Whether you submitted it, can review it or can change it",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Submission number"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/submissions/{number}/withdraw": {
+      "post": {
+        "operationId": "withdraw_submission",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Withdraw your submission",
+        "description": "The wrapper repository is archived, never deleted.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Submission number"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/submissions/{number}/approve": {
+      "post": {
+        "operationId": "approve_submission",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Approve a submission's first release",
+        "description": "Staff and community reviewers, never the submitter (403 self_review). Publishes the release that waits for review; the submitter becomes a maintainer.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Submission number"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "note": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/submissions/{number}/request-changes": {
+      "post": {
+        "operationId": "request_submission_changes",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Send a submission back to its submitter",
+        "description": "With a note saying what to change; a release waiting for review is turned down so a new one can follow.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Submission number"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "note": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/submissions/{number}/reject": {
+      "post": {
+        "operationId": "reject_submission",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Turn a submission down",
+        "description": "With a note; the wrapper repository is archived and a linked request goes back to accepted.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Submission number"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "note": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/submissions/{number}/start": {
+      "post": {
+        "operationId": "start_submission",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Start the build of a Dockerfile off the template",
+        "description": "For submissions whose Dockerfile breaks a rule (see dockerfile_checks), once a reviewer has read it.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Submission number"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/upstream/summary": {
+      "get": {
+        "operationId": "upstream_summary",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Community wrappers against their upstream projects",
+        "description": "Counts by state (current, behind, unknown, archived, gone, license_changed, renamed, error) and the wrappers behind an upstream release, from the nightly upstream watcher. mode is what the watcher does with a difference: report, or issues (it also opens and closes outdated issues). Cached for an hour.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mode": {
+                      "enum": [
+                        "report",
+                        "issues"
+                      ]
+                    },
+                    "counts": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "integer"
+                      }
+                    },
+                    "behind": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "ref": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "pinned": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "latest": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "latest_at": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "commits_behind": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "checked_at": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "checked_at": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          }
+        },
+        "security": []
+      }
+    },
+    "/packages/{ns}/{name}/bump": {
+      "get": {
+        "operationId": "get_bump",
+        "tags": [
+          "Owners"
+        ],
+        "summary": "A community package's open bump pull request, and whether you may release it",
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "bump": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "version": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "type": "integer"
+                        },
+                        "url": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "can_release": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/packages/{ns}/{name}/pulls/{number}/release": {
+      "post": {
+        "operationId": "release_bump",
+        "tags": [
+          "Owners"
+        ],
+        "summary": "Merge and release a bump pull request",
+        "description": "The package's maintainers (its submitter, others staff add, the namespace's members) and reviewers. The community bot merges the pull request and starts the release: the release workflow for builds (the version follows upstream's), a tag for wheels. A pull request that changes more than the pin needs a reviewer (403 not_pin_only).",
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The pull request's number"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "merged": {
+                      "type": "boolean"
+                    },
+                    "upstream_version": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string",
+                      "description": "The package version being released"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "publish",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/people/{handle}": {
+      "get": {
+        "operationId": "get_person",
+        "tags": [
+          "Community"
+        ],
+        "summary": "A contributor's public profile",
+        "description": "Their handle, avatar, roles, when they joined, counts of what they did (recounted nightly; only visible posts count) and their recent issues and requests. Never their email or accounts. Hidden profiles answer 404. Cached for 5 minutes.",
+        "parameters": [
+          {
+            "name": "handle",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The handle shown on their posts"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "handle": {
+                      "type": "string"
+                    },
+                    "avatar_url": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "joined": {
+                      "type": "string",
+                      "description": "YYYY-MM"
+                    },
+                    "roles": {
+                      "type": "array",
+                      "items": {
+                        "enum": [
+                          "staff",
+                          "triager",
+                          "reviewer"
+                        ]
+                      }
+                    },
+                    "counts": {
+                      "type": "object",
+                      "properties": {
+                        "issues_opened": {
+                          "type": "integer"
+                        },
+                        "issues_confirmed": {
+                          "type": "integer"
+                        },
+                        "replies": {
+                          "type": "integer"
+                        },
+                        "confirmations": {
+                          "type": "integer"
+                        },
+                        "requests_made": {
+                          "type": "integer"
+                        },
+                        "requests_published": {
+                          "type": "integer"
+                        },
+                        "issues_triaged": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "counted_at": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "requests": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "indexable": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/moderation/{kind}/{id}": {
+      "post": {
+        "operationId": "moderate_post",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Hide, restore, approve or redact a post",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "issue",
+                "comment"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "enum": [
+                      "hide",
+                      "restore",
+                      "approve",
+                      "redact"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ]
+              }
+            }
+          }
+        },
+        "description": "Triagers and staff; a package's maintainers may hide comments on its issues. Only staff redact.",
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/moderation/queue": {
+      "get": {
+        "operationId": "moderation_queue",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Held posts or open flags",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "held",
+                "flags"
+              ]
+            },
+            "description": "held or flags"
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Paging"
+          }
+        ],
+        "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/moderation/users/{handle}/timeout": {
+      "post": {
+        "operationId": "timeout_user",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Stop someone posting for up to 7 days",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "handle",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "days": {
+                    "type": "integer",
+                    "maximum": 7
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/me/inbox": {
+      "get": {
+        "operationId": "list_inbox",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Your notifications, newest first",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "summary": {
+                            "type": "string"
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "created_at": {
+                            "type": "integer"
+                          },
+                          "read_at": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "unread": {
+                      "type": "integer"
+                    },
+                    "next_before": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/me/inbox/read": {
+      "post": {
+        "operationId": "mark_inbox_read",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Mark notifications read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "The given ids, or all of them when none are given.",
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/me/email-prefs": {
+      "get": {
+        "operationId": "get_email_prefs",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "How often you get community emails",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "community": {
+                      "enum": [
+                        "immediate",
+                        "daily",
+                        "off"
+                      ]
+                    },
+                    "owner_issues": {
+                      "enum": [
+                        "immediate",
+                        "daily",
+                        "off"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [],
+        "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "set_email_prefs",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Change how often you get community emails",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "community": {
+                      "enum": [
+                        "immediate",
+                        "daily",
+                        "off"
+                      ]
+                    },
+                    "owner_issues": {
+                      "enum": [
+                        "immediate",
+                        "daily",
+                        "off"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "community": {
+                    "enum": [
+                      "immediate",
+                      "daily",
+                      "off"
+                    ]
+                  },
+                  "owner_issues": {
+                    "enum": [
+                      "immediate",
+                      "daily",
+                      "off"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "community: threads you follow; owner_issues: new issues on your packages. Moderation and role notices are always sent.",
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/me/community-profile": {
+      "put": {
+        "operationId": "set_community_profile",
+        "tags": [
+          "Account"
+        ],
+        "summary": "Hide or show your contributor profile",
+        "description": "A hidden profile answers 404 and your avatar is left off your posts; your handle still shows on what you wrote.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "hidden"
+                ],
+                "properties": {
+                  "hidden": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "hidden": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/unsubscribe": {
+      "get": {
+        "operationId": "unsubscribe_page",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Redirects to the site's unsubscribe page",
+        "responses": {
+          "302": {
+            "description": "To otinstaller.com/unsubscribe"
+          }
+        },
+        "parameters": [
+          {
+            "name": "u",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "s",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "t",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": []
+      },
+      "post": {
+        "operationId": "unsubscribe",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Turn one kind of community email off (RFC 8058 one-click)",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "u",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "s",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "t",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "The signed link from a community email's List-Unsubscribe header; no sign-in.",
+        "security": []
+      }
+    },
     "/removed": {
       "get": {
         "operationId": "list_removed",
@@ -3434,13 +7136,22 @@
           "Registry"
         ],
         "summary": "Published, yanked and removed versions",
+        "description": "Newest first, each with its release notes when the release has any.",
         "responses": {
           "200": {
             "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "properties": {
+                    "versions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Version"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3485,13 +7196,29 @@
           "Registry"
         ],
         "summary": "One version",
+        "description": "The version's manifest and its release notes.",
         "responses": {
           "200": {
             "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Version"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "ref": {
+                          "type": "string"
+                        },
+                        "manifest": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -4162,6 +7889,117 @@
         },
         "security": []
       }
+    },
+    "/activity": {
+      "get": {
+        "operationId": "list_activity",
+        "tags": [
+          "Registry"
+        ],
+        "summary": "What changed across the registry, newest first",
+        "description": "Releases, yanks, deprecations and transfers of packages anyone can see. Removals are listed by /removed. Cached for 5 minutes; the site's feeds at otinstaller.com/feed.atom and /feed.json are built from it.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ActivityEvent"
+                      }
+                    },
+                    "next_before": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "description": "Pass as before= for the next page; null on the last page"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Only events before this Unix time in milliseconds"
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "tool",
+                "guide"
+              ]
+            }
+          },
+          {
+            "name": "input",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only packages that take this input type, such as email"
+          },
+          {
+            "name": "namespace",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only one publisher's packages"
+          },
+          {
+            "name": "events",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "registry",
+                "community",
+                "all"
+              ],
+              "default": "registry"
+            },
+            "description": "registry: releases, yanks, deprecations, transfers; community: issues confirmed or fixed (issue_confirmed, issue_fixed, with number and issue_kind) and tool requests accepted or published (request_accepted, request_published, with number and tool); all: both. Community events are worded from fields, never from what people wrote."
+          }
+        ],
+        "security": []
+      }
     }
   },
   "components": {
@@ -4828,6 +8666,270 @@
           }
         }
       },
+      "IssueSummary": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "broken",
+              "outdated",
+              "wrong_info",
+              "feature",
+              "question"
+            ]
+          },
+          "status": {
+            "enum": [
+              "open",
+              "confirmed",
+              "fixed",
+              "wont_fix",
+              "duplicate"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "author": {
+            "type": "object",
+            "properties": {
+              "handle": {
+                "type": "string"
+              },
+              "avatar_url": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "system": {
+                "type": "boolean"
+              }
+            }
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "platform": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "comments": {
+            "type": "integer"
+          },
+          "me_too": {
+            "type": "integer"
+          },
+          "locked": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "last_activity_at": {
+            "type": "integer"
+          },
+          "closed_at": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "indexable": {
+            "type": "boolean",
+            "description": "Answered by a maintainer, or confirmed or fixed"
+          }
+        }
+      },
+      "IssueList": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "open": {
+                "type": "integer"
+              },
+              "closed": {
+                "type": "integer"
+              }
+            }
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IssueSummary"
+            }
+          },
+          "next_before": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        }
+      },
+      "IssueThread": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "issue": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/IssueSummary"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "body_html": {
+                    "type": "string"
+                  },
+                  "engine": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "exit_code": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "fixed_in": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "duplicate_of": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "deleted": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            ]
+          },
+          "comments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "author": {
+                  "type": "object"
+                },
+                "role": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "maintainer",
+                    "triager",
+                    "staff",
+                    null
+                  ]
+                },
+                "body_html": {
+                  "type": "string"
+                },
+                "created_at": {
+                  "type": "integer"
+                },
+                "edited_at": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "Version": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "published",
+              "yanked",
+              "removed"
+            ]
+          },
+          "scan_status": {
+            "type": "string"
+          },
+          "published_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Unix milliseconds"
+          },
+          "yanked_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Unix milliseconds (list only)"
+          },
+          "signed": {
+            "type": "boolean"
+          },
+          "changelog": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The release notes as Markdown, without control characters. Untrusted publisher text: show it as text."
+          },
+          "changelog_html": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The release notes rendered to sanitized HTML, with relative links pointing at the repository at the tagged commit and images replaced by their alt text."
+          },
+          "changelog_source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "release",
+              "file",
+              null
+            ],
+            "description": "release: the host's release for the tag; file: the version's section of CHANGELOG.md (or CHANGES.md, HISTORY.md)."
+          }
+        }
+      },
       "Facets": {
         "type": "object",
         "required": [
@@ -4872,6 +8974,73 @@
           "no_keys": {
             "type": "integer",
             "description": "Packages that need no API key"
+          }
+        }
+      },
+      "ActivityEvent": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "ref",
+          "kind",
+          "summary",
+          "at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable for the event; feeds use it as the entry id"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "published",
+              "yanked",
+              "unyanked",
+              "deprecated",
+              "undeprecated",
+              "transferred"
+            ]
+          },
+          "ref": {
+            "type": "string",
+            "description": "namespace/name"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "tool",
+              "guide"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          },
+          "at": {
+            "type": "integer",
+            "description": "Unix milliseconds"
+          },
+          "version": {
+            "type": "string"
+          },
+          "new_package": {
+            "type": "boolean",
+            "description": "published only: the package's first release"
+          },
+          "has_notes": {
+            "type": "boolean",
+            "description": "published only: the version has release notes"
+          },
+          "replacement": {
+            "type": "string",
+            "description": "deprecated only: the package to use instead"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
           }
         }
       }

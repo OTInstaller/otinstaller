@@ -9,6 +9,7 @@ import * as gitlab from "../hosts/gitlab";
 import * as osintverse from "../hosts/osintverse";
 import { authorizeDevice, devicePage, deviceRoutes, pollOsintverseDevice, startOsintverseDevice } from "./device";
 import { ALL_SCOPES, enforceScopes, parseScopes, USER_SCOPES } from "../scopes";
+import { communityRoles } from "../community";
 
 export type Provider = "github" | "gitlab" | "osintverse";
 const SESSION_COOKIE = "ot_session";
@@ -124,7 +125,11 @@ export async function signIn(
   const stmts: D1PreparedStatement[] = [];
   if (!userId) {
     userId = ulid(now);
-    stmts.push(db.prepare(`INSERT INTO users (id, login, name, email, avatar_url, created_at) VALUES (?, ?, ?, ?, ?, ?)`).bind(userId, who.login, who.name, who.email, who.avatarUrl, now));
+    // The public handle is the login, made unique across providers with the end of the user's ID.
+    stmts.push(db.prepare(
+      `INSERT INTO users (id, login, name, email, avatar_url, created_at, handle) VALUES (?1, ?2, ?3, ?4, ?5, ?6,
+         CASE WHEN EXISTS (SELECT 1 FROM users WHERE handle = lower(?2)) THEN lower(?2) || '-' || lower(substr(?1, -4)) ELSE lower(?2) END)`,
+    ).bind(userId, who.login, who.name, who.email, who.avatarUrl, now));
   } else {
     const has = await db.prepare(`SELECT 1 FROM accounts WHERE user_id = ? AND provider = ?`).bind(userId, p).first();
     if (has) apiError(409, "provider_already_linked", `you already linked a different ${p} account`);
@@ -306,13 +311,19 @@ export function authRoutes(app: App) {
   // ---------- me ----------
   app.get("/me", async (c) => {
     const u = requireUser(c);
-    const [accounts, namespaces] = await Promise.all([
+    const [accounts, namespaces, me, roles] = await Promise.all([
       c.env.DB.prepare(`SELECT provider, login FROM accounts WHERE user_id = ? ORDER BY provider`).bind(u.id).all(),
       c.env.DB.prepare(
         `SELECT n.name, n.status, n.verified, m.role FROM namespace_members m JOIN namespaces n ON n.id = m.namespace_id WHERE m.user_id = ? ORDER BY n.name`,
       ).bind(u.id).all(),
+      c.env.DB.prepare(`SELECT handle, profile_hidden, (SELECT COUNT(*) FROM inbox WHERE user_id = users.id AND read_at IS NULL) AS unread FROM users WHERE id = ?`).bind(u.id)
+        .first<{ handle: string | null; profile_hidden: number | null; unread: number }>(),
+      communityRoles(c.env, u),
     ]);
-    return c.json({ login: u.login, admin: u.is_admin === 1, reviewer: u.is_reviewer === 1, accounts: accounts.results, namespaces: namespaces.results });
+    return c.json({
+      login: u.login, handle: me?.handle ?? u.login.toLowerCase(), admin: u.is_admin === 1, reviewer: u.is_reviewer === 1,
+      community_roles: [...roles].sort(), profile_hidden: !!me?.profile_hidden, unread: me?.unread ?? 0, accounts: accounts.results, namespaces: namespaces.results,
+    });
   });
 
   app.get("/me/tokens", async (c) => {

@@ -10,8 +10,9 @@ import { audit, requireUser } from "./auth";
 import { requireMember, sourceForPackage } from "./sources";
 import {
   MAX_BULK, ImportProblem, draftProblems, editImport, finishImport, importById, installUrl, manifestYaml, missingFields, openChange,
-  heldManifestProblems, parseRepoRef, requireOwnImport, startImports, suggestedFields, type Detection, type FinishMode, type ImportRow, type Provider,
+  heldManifestProblems, isCommunityAdmin, parseRepoRef, requireOwnImport, startImports, suggestedFields, type Detection, type FinishMode, type ImportRow, type Provider,
 } from "../imports";
+import { submitWrapper } from "../submissions";
 
 /** Runs wizard code, turning its refusals into API errors (with the draft's problems when there are any). */
 async function wizard<T>(fn: () => Promise<T>): Promise<T> {
@@ -56,7 +57,7 @@ async function view(env: Env, row: ImportRow) {
     can_hold_manifest: facts?.canHoldManifest ?? false,
     community: row.community === 1,
     wrapper_repo: row.wrapper_path ?? undefined,
-    finish_modes: !facts ? [] : row.community === 1 ? ["wrapper"] : facts.existingManifest ? ["connect"] : facts.canHoldManifest ? ["pr", "registry"] : ["pr"],
+    finish_modes: !facts ? [] : row.community === 1 ? ["submit", "wrapper"] : facts.existingManifest ? ["connect"] : facts.canHoldManifest ? ["pr", "registry"] : ["pr"],
     draft,
     draft_yaml: draft ? manifestYaml(draft) : null,
     problems: draft && row.status !== "finished" ? await draftProblems(env, row, draft) : [],
@@ -185,14 +186,23 @@ export function importRoutes(app: App) {
   });
 
   // Finish: {mode: "pr"} opens a pull/merge request, "registry" keeps the manifest on the registry,
-  // "connect" links a repository that already has otinstaller.yaml, and "wrapper" (community imports)
-  // opens the pull/merge request in {wrapper_repo}.
+  // "connect" links a repository that already has otinstaller.yaml. Community imports finish with "submit" (anyone:
+  // the community bot creates the wrapper repository, and a reviewer approves the first release) or "wrapper"
+  // (osintverse-community admins: a pull request in {wrapper_repo}).
   app.post("/imports/:id/finish", async (c) => {
     const u = requireUser(c);
     const row = requireOwnImport(u, await importById(c.env, c.req.param("id")));
-    const { mode = row.community === 1 ? "wrapper" : "pr", wrapper_repo } = await c.req.json<{ mode?: string; wrapper_repo?: string }>().catch(() => ({}) as { mode?: string; wrapper_repo?: string });
-    if (!["pr", "registry", "connect", "wrapper"].includes(mode)) apiError(400, "invalid_mode", "mode must be pr, registry, connect or wrapper");
-    const out = await wizard(() => finishImport(c.env, u, row, mode as FinishMode, { wrapper: wrapper_repo }));
+    type Body = { mode?: string; wrapper_repo?: string; dockerfile?: string; request?: number };
+    const body = await c.req.json<Body>().catch(() => ({}) as Body);
+    const mode = body.mode ?? (row.community === 1 ? ((await isCommunityAdmin(c.env, u)) ? "wrapper" : "submit") : "pr");
+    if (!["pr", "registry", "connect", "wrapper", "submit"].includes(mode)) apiError(400, "invalid_mode", "mode must be pr, registry, connect, wrapper or submit");
+    if (mode === "submit") {
+      if (body.dockerfile !== undefined && typeof body.dockerfile !== "string") apiError(400, "invalid_body", "dockerfile is the Dockerfile's text");
+      const sub = await wizard(() => submitWrapper(c.env, u, row, { dockerfile: body.dockerfile, request: Number(body.request) || undefined }));
+      c.header("Cache-Control", "private, no-store");
+      return c.json({ ...(await view(c.env, (await importById(c.env, row.id))!)), submission: { number: sub.number, status: sub.status, url: `${c.env.SITE_URL}/submissions/${sub.number}` } }, 201);
+    }
+    const out = await wizard(() => finishImport(c.env, u, row, mode as FinishMode, { wrapper: body.wrapper_repo }));
     return c.json({ ...(await view(c.env, (await importById(c.env, row.id))!)), queued_tag: out.queued ?? undefined });
   });
 

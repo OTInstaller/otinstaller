@@ -8,6 +8,9 @@ export interface Env {
   BACKUPS: R2Bucket; // git bundles (git/...) and wheels (wheels/...)
   MIRROR: R2Bucket; // the image mirror's storage, shared with the mirror Worker (takedowns hide and delete images here)
   MIRROR_HOST?: string; // defaults to mirror.otinstaller.com
+  // What the upstream watcher does (upstream.ts): "report" (the default) records what it finds, "issues" also opens
+  // and closes outdated issues on community wrappers, "prs" also opens bump pull requests (bumps.ts).
+  UPSTREAM_WATCH?: string;
   BACKUPS_BUCKET?: string; // the BACKUPS bucket's name, for presigned URLs; defaults to otinstaller-backups
   R2_ACCOUNT_ID?: string; // with R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY, uploads and downloads go straight to R2
   R2_ACCESS_KEY_ID?: string;
@@ -17,6 +20,11 @@ export interface Env {
   GITHUB_APP_ID?: string;
   GITHUB_APP_PRIVATE_KEY?: string;
   GITHUB_APP_SLUG?: string; // for the App's install link; defaults to "otinstaller"
+  // The community bot: a second GitHub App installed only on osintverse-community, which creates wrapper repositories
+  // for community submissions and starts their releases (submissions.ts). Without all three, submitting answers 503.
+  COMMUNITY_APP_ID?: string;
+  COMMUNITY_APP_PRIVATE_KEY?: string;
+  COMMUNITY_INSTALLATION_ID?: string;
   GITHUB_WEBHOOK_SECRET?: string;
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
@@ -54,7 +62,8 @@ export type PublishMessage =
   | { linkCheckToolId: string }
   | { publishVersionId: string }
   | { backupVersionId: string }
-  | { profileNamespaceId: string };
+  | { profileNamespaceId: string }
+  | { upstreamCheckToolId: string };
 
 export interface User {
   id: string;
