@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { b64url } from "../src/lib/crypto";
+import { b64url, sha256Hex, ulid } from "../src/lib/crypto";
 import { loginFrom, resetCaches } from "../src/hosts/osintverse";
 import { normalizeCode } from "../src/routes/device";
 import { call, cookiesFrom, fakeHosts, testEnv } from "./helpers";
@@ -124,6 +124,41 @@ describe("Sign in with OSINTverse (web)", () => {
     expect(linked.status).toBe(302);
     const me = (await (await call("/me", { headers: { cookie: session } }, e)).json()) as any;
     expect(me.accounts.map((a: any) => a.provider)).toEqual(["github", "osintverse"]);
+  });
+
+  it("never links a sign-in to the owner of an API token sent with the callback", async () => {
+    const e = await ovEnv();
+    // Someone else's read-only token, replayed on a callback the attacker started with their own accounts.
+    const victim = ulid();
+    const token = `ot_test_${victim}`;
+    await env.DB.batch([
+      env.DB.prepare(`INSERT INTO users (id, login, created_at) VALUES (?, 'victim', ?)`).bind(victim, Date.now()),
+      env.DB.prepare(`INSERT INTO api_tokens (id, user_id, name, token_hash, scopes, scoped, created_at) VALUES (?, ?, 'cli', ?, 'read', 1, ?)`)
+        .bind(ulid(), victim, await sha256Hex(token), Date.now()),
+    ]);
+    const bearer = { authorization: `Bearer ${token}` };
+
+    fakeHosts({
+      "POST https://github.com/login/oauth/access_token": { access_token: "gho_y", scope: "read:user" },
+      "GET https://api.github.com/user/emails": [],
+      "GET https://api.github.com/user": { id: 7002, login: "mallory" },
+    });
+    const gh = await call("/auth/github/login", {}, e);
+    const ghState = new URL(gh.headers.get("location")!).searchParams.get("state");
+    const res = await call(`/auth/github/callback?code=x&state=${ghState}`, { headers: { cookie: cookiesFrom(gh), ...bearer } }, e);
+    expect(res.status).toBe(302);
+    const p = provider({ sub: "ov-mallory", name: "Mallory" });
+    const start = await call("/auth/osintverse/login", {}, e);
+    p.state.challenge = new URL(start.headers.get("location")!).searchParams.get("code_challenge")!;
+    p.state.nonce = new URL(start.headers.get("location")!).searchParams.get("nonce")!;
+    const state = new URL(start.headers.get("location")!).searchParams.get("state");
+    await call(`/auth/osintverse/callback?code=good-code&state=${state}`, { headers: { cookie: cookiesFrom(start), ...bearer } }, e);
+
+    const linked = await env.DB.prepare(`SELECT provider FROM accounts WHERE user_id = ?`).bind(victim).all<any>();
+    expect(linked.results).toEqual([]);
+    // The session the callback started belongs to a new user, not to the token's owner.
+    const me = (await (await call("/me", { headers: { cookie: cookiesFrom(res) } }, e)).json()) as any;
+    expect(me.login).toBe("mallory");
   });
 
   it("rejects ID tokens with the wrong nonce, audience, issuer or signature", async () => {
