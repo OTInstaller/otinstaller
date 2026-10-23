@@ -1,0 +1,93 @@
+---
+// The tools for one input type side by side (lib/compare.ts). Server-rendered healthiest first; the column headers
+// re-sort the rows in the browser without new URLs, so crawlers see one page and the edge cache one entry.
+import type { CompareRow } from "../lib/compare";
+import { formatCount } from "../lib/format";
+
+interface Props {
+  rows: CompareRow[];
+  /** What the tools take, for the caption ("email address"). */
+  label: string;
+}
+const { rows, label } = Astro.props;
+const cols = [
+  { key: "ref", label: "Tool", type: "text" },
+  { key: "finds", label: "Finds", type: "text" },
+  { key: "key", label: "API key", type: "text" },
+  { key: "footprint", label: "Reaches", type: "number" },
+  { key: "personal", label: "Personal data", type: "text" },
+  { key: "runtime", label: "Runtime", type: "text" },
+  { key: "health", label: "Health", type: "number" },
+  { key: "installs", label: "Installs, 30 days", type: "number" },
+];
+---
+<div class="table-wrap compare" data-compare>
+  <table class="data">
+    <caption class="sr-only">Every tool that takes {label}, compared. Select a column heading to sort by it.</caption>
+    <thead>
+      <tr>
+        {cols.map((c, i) => (
+          <th scope="col" aria-sort={i === 6 ? "ascending" : undefined}>
+            <button type="button" data-sort={c.key} data-type={c.type} data-first={c.key === "installs" ? "desc" : undefined}>{c.label}</button>
+          </th>
+        ))}
+      </tr>
+    </thead>
+    <tbody>
+      {rows.map((r) => (
+        <tr>
+          <td data-ref={r.ref} class="tool"><a href={r.href}>{r.ref.split("/")[0]}/<wbr />{r.ref.split("/")[1]}</a></td>
+          <td data-finds={r.finds}>{r.finds}</td>
+          <td data-key={r.key}>{r.key}</td>
+          <td data-footprint={r.footprint.rank}><span class={`status ${r.footprint.tone}`}>{r.footprint.label}</span></td>
+          <td data-personal={r.personal}>{r.personal}</td>
+          <td data-runtime={r.runtime}>{r.runtime}</td>
+          <td data-health={r.health.rank}><span class={`status ${r.health.cls}`}>{r.health.text}</span></td>
+          <td data-installs={r.installs} class="num">{r.installs >= 10 ? formatCount(r.installs) : "fewer than 10"}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</div>
+<p class="small muted note">Facts from each tool's manifest and the registry's nightly health check. "Reaches" says whether a run stays offline, reads public sources, sends requests about the target, or may notify them.</p>
+
+<script>
+  // Sort a comparison table by the column whose heading was pressed; pressing it again reverses the order.
+  for (const wrap of document.querySelectorAll<HTMLElement>("[data-compare]")) {
+    const tbody = wrap.querySelector("tbody");
+    if (!tbody) continue;
+    wrap.addEventListener("click", (ev) => {
+      const button = (ev.target as Element).closest<HTMLButtonElement>("button[data-sort]");
+      if (!button) return;
+      const key = button.dataset.sort!;
+      const numeric = button.dataset.type === "number";
+      const th = button.closest("th")!;
+      // A first press sorts ascending, except where the biggest number matters most (installs).
+      const current = th.getAttribute("aria-sort");
+      const ascending = current ? current !== "ascending" : button.dataset.first !== "desc";
+      for (const other of wrap.querySelectorAll("th")) other.removeAttribute("aria-sort");
+      th.setAttribute("aria-sort", ascending ? "ascending" : "descending");
+      const value = (row: Element) => row.querySelector<HTMLElement>(`[data-${key}]`)?.dataset[key] ?? "";
+      const rows = [...tbody.querySelectorAll("tr")];
+      rows.sort((a, b) => {
+        const x = value(a);
+        const y = value(b);
+        const order = numeric ? Number(x) - Number(y) : x.localeCompare(y);
+        return ascending ? order : -order;
+      });
+      tbody.append(...rows);
+    });
+  }
+</script>
+
+<style>
+  .compare th button { all: unset; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; white-space: nowrap; }
+  .compare th button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+  .compare th[aria-sort="ascending"] button::after { content: "↑"; color: var(--text-faint); }
+  .compare th[aria-sort="descending"] button::after { content: "↓"; color: var(--text-faint); }
+  .compare td { vertical-align: top; }
+  .compare .tool { min-width: 16ch; }
+  .compare td { min-width: 9ch; }
+  .compare .num { white-space: nowrap; }
+  .note { margin: 8px 0 0; max-width: 80ch; }
+</style>
