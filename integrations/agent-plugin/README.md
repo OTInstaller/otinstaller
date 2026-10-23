@@ -10,8 +10,8 @@ target, goes online or involves a person's identifiers, and every run is logged 
 
 ## Install
 
-1. Install `ot`: https://otinstaller.com/docs/getting-started. Docker (or Podman) must be running, and cosign must be
-   installed for agents to install tools.
+1. Install `ot` v0.14.0 or later (`ot self-update` updates an older one): https://otinstaller.com/docs/getting-started.
+   Docker (or Podman) must be running, and cosign must be installed for agents to install tools.
 2. Add the plugin:
 
    - **Claude Code**
