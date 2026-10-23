@@ -4,8 +4,8 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 `api/migrations/*.sql` and the code in `api/src/`, `api/test/` and `api/scripts/`.
 
 - Binding: `DB`, database name `otinstaller`, `migrations_dir: "migrations"` (`api/wrangler.jsonc`).
-- 17 migrations, `0001` to `0017`.
-- Final schema: **38 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 39. FTS5 also creates its own shadow
+- 25 migrations, `0001` to `0025`.
+- Final schema: **54 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 55. FTS5 also creates its own shadow
   tables, which aren't listed here.
 
 ---
@@ -28,9 +28,17 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0012 | `0012_feedback.sql` | New table `feedback` and index `feedback_queue`. (Its header says it was numbered after 0011, which was on its own branch at the time.) |
 | 0013 | `0013_agent_tokens.sql` | `api_tokens` + `scoped` (INTEGER NN default 0; tokens minted before scopes were enforced keep 0 and every power); new table `install_clients`. Must be applied before an API that reads `scoped` is deployed: `authenticate` selects it on every token request. |
 | 0014 | `0014_publisher_profiles.sql` | New tables `namespace_profiles` (host values, owner overrides, About, pins, sync state) and `namespace_hosts` (secondary GitHub or GitLab accounts shown on a profile); indexes `namespace_profiles_synced` and `audit_log_target` (for the profile's activity feed). |
-| 0015 | `0015_direct_publish.sql` | Direct publishing (`ot publish`): `publish_jobs` + `namespace_id` (FK namespaces), `bundle_key` (R2 `CONTENT` prefix of the upload), `submitted_by` (FK users), index `publish_jobs_namespace`; `namespaces` + `created_by` (FK users: who made a registry namespace). Apply before an API that selects these columns is deployed. |
-| 0016 | `0016_hosted_images.sql` | Images hosted on the mirror (`ot publish --image`): new table `mirror_pushes` (every manifest a publisher pushes: repo, digest, tag, user, token, size; indexes `mirror_pushes_repo`, `mirror_pushes_created`), for the push limits and the nightly sweep; `backups` + `hosted` (INTEGER NN default 0: the image row is the image itself, never an install fallback). The mirror Worker binds the same database from then on. |
-| 0017 | `0017_trusted_publishers.sql` | Trusted publishing (`ot publish --oidc`): new table `trusted_publishers` (indexes `trusted_publishers_repo`, `trusted_publishers_namespace`); `api_tokens` + `namespace_id` (FK namespaces, cascade), `package`, `trusted_publisher_id` (FK, set null), `oidc_json`, `jti` (unique index `api_tokens_jti`) for the restricted CI tokens; `publish_jobs` + `trusted_publisher_id` (FK, set null), `ci_json`. Apply before an API that selects these columns is deployed: `findToken` reads them on every token request, in the API and the mirror. |
+| 0015 | `0015_release_notes.sql` | `versions` + `changelog_source` (`release` or `file`, CHECK); existing notes marked `release`. |
+| 0016 | `0016_community.sql` | `users` + `handle` (unique, backfilled from `lower(login)`, a suffix on collision), `profile_hidden`, `posting_blocked_until`; new tables `community_roles`, `issues`, `issue_comments`, `confirmations`, `run_signals`, `content_flags`, `issue_subscriptions`; `health_checks` + `failure_class`; `tools` + `open_broken`, `open_outdated`. |
+| 0017 | `0017_notifications.sql` | New tables `email_prefs` (per person: `community`, `owner_issues` as immediate/daily/off) and `inbox` (kind, scope community/owner_issues/account, summary, site path, read and emailed times); indexes `inbox_user`, `inbox_pending` (partial). |
+| 0018 | `0018_requests.sql` | New tables `tool_requests` (one per repository: status, decline code, decision, the answering package, what otlite and the seed survey knew, votes, moderation) and `request_votes`; indexes `tool_requests_board`, `tool_requests_project`, `tool_requests_requester`, `request_votes_user`. |
+| 0019 | `0019_people.sql` | New table `contributor_stats` (per person: issues opened and confirmed, replies, confirmations, requests made and published, issues triaged; recounted nightly); indexes `issues_author`, `issue_comments_author`, `confirmations_user`, `issues_closed_by`. |
+| 0020 | `0020_community_wrappers.sql` | `tools` + `needs_first_review` (default 0), `submitted_by`, `upstream_url` (backfilled for community-packaged tools from the latest manifest's `homepage`); new tables `tool_maintainers` and `wrapper_submissions`; indexes `tool_maintainers_user`, `wrapper_submissions_status`, `wrapper_submissions_upstream`, `wrapper_submissions_repo`, `wrapper_submissions_user`. |
+| 0021 | `0021_upstream_watch.sql` | New table `upstream_watch` (per community wrapper: the pin and how it was read, upstream's latest release, state, license, the releases ETag, a staff override, the last error) and index `upstream_watch_state`. |
+| 0022 | `0022_bump_prs.sql` | New table `bump_prs` (one per community package and upstream release: the pull request's number, URL and branch, `open`/`merged`/`closed`, the version the merge released, who merged it) and index `bump_prs_open`. |
+| 0023 | `0023_direct_publish.sql` | Direct publishing (`ot publish`): `publish_jobs` + `namespace_id` (FK namespaces), `bundle_key` (R2 `CONTENT` prefix of the upload), `submitted_by` (FK users), index `publish_jobs_namespace`; `namespaces` + `created_by` (FK users: who made a registry namespace). Apply before an API that selects these columns is deployed. |
+| 0024 | `0024_hosted_images.sql` | Images hosted on the mirror (`ot publish --image`): new table `mirror_pushes` (every manifest a publisher pushes: repo, digest, tag, user, token, size; indexes `mirror_pushes_repo`, `mirror_pushes_created`), for the push limits and the nightly sweep; `backups` + `hosted` (INTEGER NN default 0: the image row is the image itself, never an install fallback). The mirror Worker binds the same database from then on. |
+| 0025 | `0025_trusted_publishers.sql` | Trusted publishing (`ot publish --oidc`): new table `trusted_publishers` (indexes `trusted_publishers_repo`, `trusted_publishers_namespace`); `api_tokens` + `namespace_id` (FK namespaces, cascade), `package`, `trusted_publisher_id` (FK, set null), `oidc_json`, `jti` (unique index `api_tokens_jti`) for the restricted CI tokens; `publish_jobs` + `trusted_publisher_id` (FK, set null), `ci_json`. Apply before an API that selects these columns is deployed: `findToken` reads them on every token request, in the API and the mirror. |
 
 ---
 
@@ -77,7 +85,7 @@ Purpose: `ot_...` bearer tokens for the CLI.
 - `last_used_at`, `expires_at`, `revoked_at` INTEGER · `created_at` INTEGER NN. `expires_at` is set for `/me/tokens`
   tokens (90 days unless `expires_in_days` says otherwise) and left null for `ot login` tokens unless asked
 - Index `api_tokens_user (user_id)` (0002)
-- CI tokens (0017, trusted publishing): `namespace_id` TEXT → `namespaces(id)` ON DELETE CASCADE (set means the token
+- CI tokens (0025, trusted publishing): `namespace_id` TEXT → `namespaces(id)` ON DELETE CASCADE (set means the token
   is restricted to that namespace) · `package` TEXT (and that package) · `trusted_publisher_id` TEXT →
   `trusted_publishers(id)` ON DELETE SET NULL · `oidc_json` TEXT (the run: provider, repository and its id, ref, sha,
   workflow, run, environment, event, actor) · `jti` TEXT (`<provider>:<the ID token's jti>`; unique index
@@ -110,7 +118,7 @@ Purpose: a publisher (GitHub user or org, GitLab group, or a registry-owned name
 - `verified` INTEGER NN default 0
 - `reviewed_by` TEXT → `users(id)` · `reviewed_at` INTEGER · `review_notes` TEXT
 - `created_at` INTEGER NN
-- `created_by` TEXT → `users(id)` (0015): the user who made a registry namespace with `POST /namespaces`; NULL for
+- `created_by` TEXT → `users(id)` (0023): the user who made a registry namespace with `POST /namespaces`; NULL for
   GitHub and GitLab namespaces and the seed. Such a namespace has `provider = 'registry'` and
   `provider_owner_id = id`.
 - UNIQUE `(provider, provider_owner_id)`
@@ -143,7 +151,7 @@ Purpose: GitHub or GitLab accounts an owner linked to a profile besides the name
 - `provider` TEXT NN CHECK `('github', 'gitlab')` · `provider_owner_id`, `login` TEXT NN · `kind` TEXT NN CHECK
   `('user', 'org', 'group')` · `linked_by` TEXT → `users(id)` ON DELETE SET NULL · `created_at` INTEGER NN
 
-#### `trusted_publishers` (0017)
+#### `trusted_publishers` (0025)
 Purpose: a GitHub Actions workflow or GitLab CI pipeline a namespace's owner trusts to publish into it with
 `ot publish --oidc` (`trusted.ts`).
 - PK `id` TEXT · `namespace_id` TEXT NN → `namespaces(id)` ON DELETE CASCADE
@@ -206,7 +214,7 @@ Purpose: one release of a tool or guide, holding its full manifest.
 - `yanked_at`, `published_at` INTEGER · `created_at` INTEGER NN
 - `scan_token_hash` TEXT · `scan_token_expires_at` INTEGER · `scan_dispatched_at` INTEGER (0003)
 - `expected_signer_regexp`, `expected_signer_issuer` TEXT (0003) · `rejected_reason` TEXT (0003)
-- `changelog` TEXT (0004) · `search_text` TEXT (0007; plain text copied to `tools.readme_text` when it becomes latest)
+- `changelog` TEXT (0004; release notes as cleaned Markdown, rendered when served) · `changelog_source` TEXT (0015; `release` | `file`) · `search_text` TEXT (0007; plain text copied to `tools.readme_text` when it becomes latest)
 - UNIQUE `(tool_id, version)`
 - Indexes `versions_tool_status (tool_id, status, published_at DESC)`, `versions_status (status, scan_dispatched_at)`,
   partial UNIQUE `versions_scan_token (scan_token_hash) WHERE scan_token_hash IS NOT NULL`
@@ -278,10 +286,10 @@ Purpose: one attempt to publish a release: a tag (from a webhook, a poll or an i
 - PK `id` TEXT · `delivery_id` TEXT NN UNIQUE (dedup key; `direct:<id>` for an upload)
 - `provider` TEXT NN (`github`, `gitlab`, or `direct` for an upload with no repository) · `repo` TEXT NN
   (`<ns>/<name>` for an upload) · `tag` TEXT NN (`v<version>` for an upload)
-- Bundle jobs (0015): `namespace_id` TEXT → `namespaces(id)` (tag jobs find theirs through the installation or the
+- Bundle jobs (0023): `namespace_id` TEXT → `namespaces(id)` (tag jobs find theirs through the installation or the
   source) · `bundle_key` TEXT (`uploads/<id>` in R2 `CONTENT`; kept after the files are deleted, so it also marks the
   job as an upload) · `submitted_by` TEXT → `users(id)`. Index `publish_jobs_namespace (namespace_id, created_at)`
-- CI uploads (0017): `provider`, `repo` and `repo_id` are the repository the run's ID token proved, `delivery_id` is
+- CI uploads (0025): `provider`, `repo` and `repo_id` are the repository the run's ID token proved, `delivery_id` is
   `ci:<id>`, `tag` and `commit_sha` come from a tag ref (else `v<version>` and NULL) · `trusted_publisher_id` TEXT →
   `trusted_publishers(id)` ON DELETE SET NULL · `ci_json` TEXT (`{workflow, ref, sha, run}`, shown on the job page)
 - `version_id` TEXT → `versions(id)` · `tool_id` TEXT → `tools(id)` (0002) · `source_id` TEXT → `sources(id)` (0004)
@@ -390,12 +398,12 @@ Purpose: one backed-up item. `location` is the R2 key (git, wheel) or the mirror
 - `size_bytes` INTEGER · `sha256` TEXT · `filename` TEXT · `refs_count` INTEGER · `detail` TEXT
 - `delete_after` INTEGER (ms; set by a takedown (+14 days, `TAKEDOWN_GRACE`) or a git-backup opt-out (now); cleared by a legal hold)
 - `created_at` INTEGER NN · `stored_at`, `deleted_at` INTEGER
-- `hosted` INTEGER NN default 0 (0016): 1 for an image a publisher pushed to the mirror itself (`recordHostedImage`, at
+- `hosted` INTEGER NN default 0 (0024): 1 for an image a publisher pushed to the mirror itself (`recordHostedImage`, at
   publishing, with no run). Takedowns, purges, legal holds and drills treat it like any image row;
   `installFallbacks` leaves it out.
 - Indexes `backups_tool (tool_id, kind, status, created_at DESC)`, `backups_version (version_id, kind, status)`, `backups_delete (delete_after)`
 
-#### `mirror_pushes` (0016)
+#### `mirror_pushes` (0024)
 Purpose: every manifest a publisher pushed to the mirror with an `ot_` token, written by the mirror Worker.
 - PK `id` TEXT · `repo` TEXT NN (`<namespace>/<name>`) · `digest` TEXT NN · `tag` TEXT (NULL for a push by digest)
 - `user_id` TEXT → `users(id)` ON DELETE SET NULL · `token_id` TEXT · `size_bytes` INTEGER (of the manifest) · `created_at` INTEGER NN
@@ -419,6 +427,79 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
 - `status` TEXT NN CHECK `('sent', 'skipped', 'failed')` (no default)
 - `error` TEXT · `created_at` INTEGER NN
 - Flow (`notify.ts:sendEmail`): inserted as `sent`, or as `skipped` when `RESEND_API_KEY` is unset; set to `failed` if Resend answers with an error.
+
+### 2.12a Community (0016)
+
+- `community_roles`: `user_id`, `role` (`triager` | `reviewer`, CHECK), `granted_by`, `note`, `granted_at`; PK
+  `(user_id, role)`. Staff (`is_admin`, `is_reviewer`) hold both without a row.
+- `issues`: per-package `number` (UNIQUE with `tool_id`, assigned as `MAX(number) + 1` in the insert), `kind`
+  (broken | outdated | wrong_info | feature | question), `status` (open | confirmed | fixed | wont_fix | duplicate),
+  `title`, `body_md`, `version`, `platform`, `engine` (docker | podman | native), `exit_code`, `author_id`,
+  `author_kind` (user | system), `system_source`, `dedupe_key` (unique per tool when set), `duplicate_of`, `fixed_in`,
+  `moderation` (visible | held | hidden), `hidden_reason`, `locked_at`, `deleted_at`, `edited_at`,
+  `maintainer_replied_at`, `comment_count`, `me_too_count`, `created_at`, `last_activity_at`, `closed_at`, `closed_by`.
+  Indexes `issues_tool`, `issues_board` (partial, visible), `issues_held` (partial), `issues_dedupe`.
+- `issue_comments`: `issue_id`, `author_id`, `author_kind`, `role_badge` (maintainer | triager | staff, as it was when
+  written), `body_md`, `moderation`, `hidden_reason`, `edited_at`, `deleted_at`, `created_at`.
+- `confirmations`: `tool_id`, `version_id`, `user_id`, `result` (works | broken), `platform`, `engine`, `ot_version`,
+  `issue_id`; UNIQUE `(version_id, user_id, platform)`.
+- `run_signals`: anonymous daily counts of failed runs, PK `(version_id, day, platform, engine, exit_class)`.
+- `content_flags`: `target_kind` (issue | comment), `target_id`, `flagger_id`, `reason` (personal_data | spam | abuse |
+  off_topic | other), `note`, `status` (open | upheld | dismissed); UNIQUE per target and flagger.
+- `issue_subscriptions`: `(issue_id, user_id)` with `reason` (author, commented, confirmed, manual) and `muted`.
+- `tools.open_broken` / `open_outdated` are kept by `community.ts:refreshCounts` in the same batch as every change.
+
+### 2.12b Tool requests (0018)
+
+- `tool_requests`: `number` (UNIQUE, `MAX(number) + 1` in the insert), `provider` (github | gitlab), `repo_path` (as
+  the host spells it), `repo_key` (UNIQUE, `provider:lower(path)`), `project_id`, `url`, `description`, `license`,
+  `upstream_stars`, `pushed_at`, `note` (plain text, 500 characters), `requested_by`, `status` (open | accepted |
+  in_progress | published | declined), `decline_code` (license | archived | not_osint | not_cli | needs_login |
+  acceptable_use | unmaintained | duplicate | withdrawn | other), `decision_note`, `decided_by`, `decided_at`,
+  `tool_id` (the package that answers it), `otlite_name`, `dropped_reason` (from `known-repos.ts`), `vote_count`,
+  `moderation` (visible | held | hidden), `hidden_reason`, `created_at`, `updated_at`. Indexes
+  `tool_requests_board (status, vote_count DESC, number DESC)`, `tool_requests_project (provider, project_id)`,
+  `tool_requests_requester (requested_by, created_at)`.
+- `request_votes`: PK `(request_id, user_id)`, `created_at`; the requester's vote is added with the request.
+  `vote_count` is recounted in the same batch as every vote.
+
+### 2.12f Bump pull requests (0022)
+
+- `bump_prs`: PK `(tool_id, version)` (upstream's release), `pr_number`, `url`, `branch`, `status` (open | merged |
+  closed), `released_version`, `merged_by`, `created_at`, `updated_at`. Written by `bumps.ts:maybeOpenBump` and
+  `releaseBump`.
+
+### 2.12e Upstream watch (0021)
+
+- `upstream_watch`: PK `tool_id` → `tools(id)` (cascade), `provider`, `upstream_path`, `pin_kind` (an
+  `upstream-pin.ts` kind, `pipx`, `image`, an override's kind, or `none`), `pinned`, `pin_package` (the PyPI project
+  or crate a pip or cargo pin names), `pinned_version_id` (the version the Dockerfile was read at), `latest`,
+  `latest_at`, `commits_behind` (commit pins), `state` (current | behind | unknown | archived | gone |
+  license_changed | renamed | error), `upstream_license`, `releases_etag`, `override_json`, `error`, `checked_at`,
+  `changed_at` (when the state or latest release last changed). Written only by `upstream.ts:checkUpstream` and the
+  staff override route.
+
+### 2.12d Community submissions (0020)
+
+- `tools.needs_first_review`: a community submission's tool; its next scanned version waits in `awaiting_review` even
+  in an active namespace, until a reviewer publishes it. `tools.submitted_by` → `users(id)`; `tools.upstream_url`: the
+  project a community wrapper packages (set by `record()` for new wrappers, backfilled by 0020).
+- `tool_maintainers`: PK `(tool_id, user_id)`, `reason` (`submitter` | `added`), `added_by`, `created_at`.
+- `wrapper_submissions`: `number` (UNIQUE), `user_id`, `import_id`, `request_id`, `provider`, `upstream_path`,
+  `upstream_key` (`provider:lower(path)`), `upstream_url`, `name`, `runtime` (docker | pipx), `builds`,
+  `manifest_json`, `dockerfile`, `checks_json` (`{flags, dockerfile}`), `template_conformant`, `status` (submitted |
+  releasing | in_review | changes_requested | published | rejected | withdrawn | failed), `wrapper_repo`,
+  `wrapper_repo_id` (the GitHub repository ID `record()` matches), `released_version`, `tool_id`, `reviewer_id`,
+  `decision_note`, `error`, `created_at`, `updated_at`.
+
+### 2.12c Contributor profiles (0019)
+
+- `contributor_stats`: PK `user_id` → `users(id)` (cascade), `issues_opened`, `issues_confirmed` (their broken,
+  outdated and wrong_info issues now confirmed or fixed), `replies`, `confirmations`, `requests_made`,
+  `requests_published`, `issues_triaged` (other people's issues they closed), `updated_at`. Only visible, undeleted
+  posts by people (not the registry) count. Written only by `people.ts:refreshContributorStats` (nightly).
+- Indexes for profiles: `issues_author (author_id, created_at DESC)`, `issue_comments_author`, `confirmations_user`,
+  `issues_closed_by`.
 
 ### 2.12 Feedback (0012)
 
@@ -574,6 +655,27 @@ Claims never use `accepted`, and transfers never use `verified`.
 ### 3.8 `reports.status`
 `open` (insert default, `trust.ts`) → `actioned` / `dismissed` in `routes/trust.ts` `POST /admin/reports/:id/resolve`.
 There is no guard on the current status, so a resolved report can be resolved again.
+
+### 3.8a `tool_requests.status`
+
+| Transition | Where |
+| --- | --- |
+| (new) → `open`, or `declined` at once (`license`, `archived`) | `requests.ts:createRequest` |
+| `declined` (`withdrawn`) → `open` when someone asks again | `requests.ts:createRequest` |
+| `open` ↔ `accepted` → `in_progress` → `published`; any active → `declined`; `declined` → `open` | `requests.ts:setRequestStatus` (triagers and staff; the requester may withdraw) |
+| any but `published` → `published` | `requests.ts:linkPublished` (from `scans.ts:publishVersion`) |
+
+### 3.8b `wrapper_submissions.status`
+
+| Transition | Where |
+| --- | --- |
+| (new) → `submitted`, then → `releasing` when the Dockerfile is conformant or there is nothing to build | `submissions.ts:submitWrapper` |
+| `submitted` → `releasing` | `startSubmission` (a reviewer) |
+| `releasing` → `in_review` (scans passed) or `failed` (scan rejected) | `firstReleaseScanned` (from `applyScanResults`) |
+| `in_review` → `published` | `approveSubmission` → `publishVersion` → `firstReleasePublished` |
+| open → `changes_requested` / `rejected` | `decideSubmission` |
+| open → `withdrawn` | `withdrawSubmission` |
+| `submitted` / `changes_requested` / `failed` → `submitted` or `releasing` | `updateSubmission` (the submitter) |
 
 ### 3.9 Others
 - **`feedback.status`**: `open` (insert, `routes/beta.ts`) ↔ `done` / `dismissed` / `open` in `routes/beta.ts`

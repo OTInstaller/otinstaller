@@ -9,7 +9,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "deploy": "wrangler deploy",
-    "sync:templates": "node scripts/sync-templates.mjs"
+    "sync:templates": "node scripts/sync-templates.mjs",
+    "sync:known-repos": "node scripts/sync-known-repos.mjs"
   },
   "dependencies": {
     "@cfworker/json-schema": "^4.1.1",

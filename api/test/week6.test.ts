@@ -4,6 +4,7 @@ import { processJob } from "../src/publish";
 import { expectedSigner } from "../src/scans";
 import { pollDueSources, pollSource, sourceById } from "../src/sync";
 import { encrypt, sha256Hex, ulid } from "../src/lib/crypto";
+import { changelogSection, cleanNotes } from "../src/changelog";
 import { call, fakeHosts, sent, testEnv, webhook } from "./helpers";
 import { README, manifestFor } from "./fixtures";
 
@@ -192,7 +193,52 @@ describe("GitLab webhooks and publishing", () => {
       DB().prepare(`UPDATE sources SET tool_id = ? WHERE id = ?`).bind(toolId, sourceId),
     ]);
     await gitlabWebhook({ object_kind: "release", action: "create", tag: "v1.0.0", description: "Faster lookups", project: { id: p.id } }, secret);
-    expect(await DB().prepare(`SELECT changelog FROM versions WHERE tool_id = ?`).bind(toolId).first()).toMatchObject({ changelog: "Faster lookups" });
+    expect(await DB().prepare(`SELECT changelog, changelog_source FROM versions WHERE tool_id = ?`).bind(toolId).first()).toMatchObject({ changelog: "Faster lookups", changelog_source: "release" });
+    // An edited release replaces the notes, cleaned of control characters.
+    await gitlabWebhook({ object_kind: "release", action: "update", tag: "v1.0.0", description: "Faster lookups\u0007\r\nand fewer bugs", project: { id: p.id } }, secret);
+    expect(await DB().prepare(`SELECT changelog FROM versions WHERE tool_id = ?`).bind(toolId).first()).toMatchObject({ changelog: "Faster lookups\nand fewer bugs" });
+  });
+});
+
+// ---------- release notes ----------
+
+describe("release notes", () => {
+  it.each([
+    ["## [1.2.0] - 2026-10-01\n- new\n\n## [1.1.0]\n- old", "- new"],
+    ["# Changes\n\n## v1.2.0\n### Fixed\n- a\n\n### Added\n- b\n## v1.1.0\n- c", "### Fixed\n- a\n\n### Added\n- b"],
+    ["### 1.2.0 (2026-10-01)\n```\n## 1.1.0 in a code block\n```\n### 1.1.0\n- c", "```\n## 1.1.0 in a code block\n```"],
+    ["## Version 1.2.0\nnotes", "notes"],
+    ["## 1.2.0-beta.1\n- pre\n## 1.2.0\n- final", "- final"],
+    ["## 11.2.0\n- other\n## 1.2.00\n- other", null],
+    ["## 1.2.0\n\n## 1.1.0\n- c", null],
+  ])("takes the 1.2.0 section of %j", (md, want) => {
+    expect(changelogSection(md, "1.2.0")).toBe(want);
+  });
+
+  it("cleans notes for any terminal and caps them", () => {
+    expect(cleanNotes("  \u001b[1mbold\u001b[0m ‮evil‬\r\nline\t2 \u0000 ")).toBe("[1mbold[0m evil\nline\t2");
+    expect(cleanNotes(" \n ")).toBeNull();
+    expect(cleanNotes("x".repeat(30000))!.length).toBe(20000);
+  });
+
+  it("serves notes as Markdown and sanitized HTML with links into the repository at the tag", async () => {
+    const v = await DB().prepare(
+      `SELECT v.id, n.name AS ns, t.name FROM versions v JOIN tools t ON t.id = v.tool_id JOIN namespaces n ON n.id = t.namespace_id
+       WHERE v.status = 'published' AND t.kind = 'tool' AND n.status = 'active' AND t.repo_url LIKE 'https://github.com/%' AND v.id = t.latest_version_id LIMIT 1`,
+    ).first<{ id: string; ns: string; name: string }>();
+    const md = "## Fixed\n- <script>alert(1)</script>\n- [docs](docs/usage.md) [x](javascript:alert(1)) ![logo](logo.png)";
+    await DB().prepare(`UPDATE versions SET changelog = ?, changelog_source = 'file', git_sha = 'abc123' WHERE id = ?`).bind(md, v!.id).run();
+    const list = (await (await call(`/tools/${v!.ns}/${v!.name}/versions`)).json()) as any;
+    const one = (await (await call(`/tools/${v!.ns}/${v!.name}/latest`)).json()) as any;
+    for (const got of [list.versions.find((x: any) => x.changelog), one]) {
+      expect(got).toMatchObject({ changelog: md, changelog_source: "file" });
+      expect(got.changelog_html).toContain("&lt;script&gt;");
+      expect(got.changelog_html).not.toMatch(/<script|href="javascript:|<img/);
+      expect(got.changelog_html).toMatch(/href="https:\/\/github\.com\/[^"]+\/blob\/abc123\/docs\/usage\.md"/);
+      expect(got.changelog_html).toContain("logo");
+      expect(got).not.toHaveProperty("git_sha");
+    }
+    expect(list.versions.filter((x: any) => !x.changelog).every((x: any) => x.changelog_html === null && x.changelog_source === null)).toBe(true);
   });
 });
 

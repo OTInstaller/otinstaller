@@ -6,6 +6,7 @@ import { HostError } from "./hosts/github";
 import { hostForSource, repoUrl, type RepoHost, type RepoMeta, type SourceRow } from "./hosts/repo";
 import { audit } from "./routes/auth";
 import { ownerEmails, sendEmail } from "./notify";
+import { cleanNotes } from "./changelog";
 
 export const POLL_INTERVAL = 6 * 3600 * 1000;
 export const RELEASE_TAG = /^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
@@ -130,9 +131,15 @@ export async function queueTag(env: Env, s: SourceRow, tag: string, deliveryId: 
   return jobId;
 }
 
+/**
+ * Records a release's notes as its version's changelog (a release edited later replaces them). A release that arrives
+ * before its version exists is read again when the version is validated (captureNotes in changelog.ts).
+ */
 export async function setChangelog(env: Env, s: SourceRow, tag: string, notes: string) {
   if (!s.tool_id || !RELEASE_TAG.test(tag)) return;
-  await env.DB.prepare(`UPDATE versions SET changelog = ? WHERE tool_id = ? AND version = ?`).bind(notes.slice(0, 20000), s.tool_id, tag.slice(1)).run();
+  const clean = cleanNotes(notes);
+  await env.DB.prepare(`UPDATE versions SET changelog = ?, changelog_source = ? WHERE tool_id = ? AND version = ?`)
+    .bind(clean, clean ? "release" : null, s.tool_id, tag.slice(1)).run();
 }
 
 /** One sync pass over a source: metadata, README, then any release tags the webhooks missed. */

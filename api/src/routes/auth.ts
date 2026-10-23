@@ -9,6 +9,7 @@ import * as gitlab from "../hosts/gitlab";
 import * as osintverse from "../hosts/osintverse";
 import { authorizeDevice, devicePage, deviceRoutes, pollOsintverseDevice, startOsintverseDevice } from "./device";
 import { ALL_SCOPES, enforceScopes, parseScopes, USER_SCOPES } from "../scopes";
+import { communityRoles } from "../community";
 import { findToken, restrictedRouteAllowed, TOKEN_PREFIX } from "../lib/tokens";
 
 export type Provider = "github" | "gitlab" | "osintverse";
@@ -75,6 +76,15 @@ export async function authenticate(c: Context<AppEnv>, next: Next) {
   await next();
 }
 
+/**
+ * The user to link a new sign-in to: only someone signed in with the session cookie. An API token must never
+ * link an account, or anyone holding one (even a read-only token) could attach their own GitHub account to
+ * its owner and sign in as them.
+ */
+function linkingUserId(c: Context<AppEnv>): string | null {
+  return c.get("token") ? null : (c.get("user")?.id ?? null);
+}
+
 export function requireUser(c: Context<AppEnv>): User {
   const u = c.get("user");
   if (!u) apiError(401, "unauthenticated", "sign in first", "run `ot login`, or sign in on otinstaller.com");
@@ -112,7 +122,11 @@ export async function signIn(
   const stmts: D1PreparedStatement[] = [];
   if (!userId) {
     userId = ulid(now);
-    stmts.push(db.prepare(`INSERT INTO users (id, login, name, email, avatar_url, created_at) VALUES (?, ?, ?, ?, ?, ?)`).bind(userId, who.login, who.name, who.email, who.avatarUrl, now));
+    // The public handle is the login, made unique across providers with the end of the user's ID.
+    stmts.push(db.prepare(
+      `INSERT INTO users (id, login, name, email, avatar_url, created_at, handle) VALUES (?1, ?2, ?3, ?4, ?5, ?6,
+         CASE WHEN EXISTS (SELECT 1 FROM users WHERE handle = lower(?2)) THEN lower(?2) || '-' || lower(substr(?1, -4)) ELSE lower(?2) END)`,
+    ).bind(userId, who.login, who.name, who.email, who.avatarUrl, now));
   } else {
     const has = await db.prepare(`SELECT 1 FROM accounts WHERE user_id = ? AND provider = ?`).bind(userId, p).first();
     if (has) apiError(409, "provider_already_linked", `you already linked a different ${p} account`);
@@ -213,7 +227,7 @@ async function osintverseCallback(c: Context<AppEnv>, state: string | undefined,
   const who = await osintverse.fetchUser(deps.fetch, d, t.accessToken, claims.sub);
   // No automatic linking by email: an existing user links OSINTverse by signing in with it while
   // already signed in, the same rule as GitHub and GitLab. A device login never links.
-  const userId = await signIn(c.env, "osintverse", who, { accessToken: null, scopes: osintverse.SCOPES }, device ? null : (c.get("user")?.id ?? null));
+  const userId = await signIn(c.env, "osintverse", who, { accessToken: null, scopes: osintverse.SCOPES }, device ? null : linkingUserId(c));
   if (device) return authorizeDevice(c, device, userId);
   await startSession(c, userId);
   return c.redirect(safeRedirect(c.env, redirect), 302);
@@ -253,7 +267,7 @@ export function authRoutes(app: App) {
       ? await github.exchangeCode(deps.fetch, client.id, client.secret, code, callbackUrl(c.env, p))
       : await gitlab.exchangeCode(deps.fetch, client.id, client.secret, code, callbackUrl(c.env, p));
     const who = p === "github" ? await github.fetchUser(deps.fetch, tokens.accessToken) : await gitlab.fetchUser(deps.fetch, tokens.accessToken);
-    const userId = await signIn(c.env, p, who, tokens, c.get("user")?.id ?? null);
+    const userId = await signIn(c.env, p, who, tokens, linkingUserId(c));
     await startSession(c, userId);
     return c.redirect(safeRedirect(c.env, redirect), 302);
   });
@@ -294,13 +308,19 @@ export function authRoutes(app: App) {
   // ---------- me ----------
   app.get("/me", async (c) => {
     const u = requireUser(c);
-    const [accounts, namespaces] = await Promise.all([
+    const [accounts, namespaces, me, roles] = await Promise.all([
       c.env.DB.prepare(`SELECT provider, login FROM accounts WHERE user_id = ? ORDER BY provider`).bind(u.id).all(),
       c.env.DB.prepare(
         `SELECT n.name, n.status, n.verified, m.role FROM namespace_members m JOIN namespaces n ON n.id = m.namespace_id WHERE m.user_id = ? ORDER BY n.name`,
       ).bind(u.id).all(),
+      c.env.DB.prepare(`SELECT handle, profile_hidden, (SELECT COUNT(*) FROM inbox WHERE user_id = users.id AND read_at IS NULL) AS unread FROM users WHERE id = ?`).bind(u.id)
+        .first<{ handle: string | null; profile_hidden: number | null; unread: number }>(),
+      communityRoles(c.env, u),
     ]);
-    return c.json({ login: u.login, admin: u.is_admin === 1, reviewer: u.is_reviewer === 1, accounts: accounts.results, namespaces: namespaces.results });
+    return c.json({
+      login: u.login, handle: me?.handle ?? u.login.toLowerCase(), admin: u.is_admin === 1, reviewer: u.is_reviewer === 1,
+      community_roles: [...roles].sort(), profile_hidden: !!me?.profile_hidden, unread: me?.unread ?? 0, accounts: accounts.results, namespaces: namespaces.results,
+    });
   });
 
   app.get("/me/tokens", async (c) => {
