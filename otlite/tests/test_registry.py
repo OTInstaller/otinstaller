@@ -74,6 +74,55 @@ class TestParseTool:
         tool = parse_tool(data)
         assert tool.requires_python is None
 
+    def test_notes_parsed(self):
+        data = {
+            "name": "ghunt",
+            "display_name": "GHunt",
+            "description": "D",
+            "install": {"method": "pip", "package": "ghunt"},
+            "entrypoint": {"command": "ghunt"},
+            "notes": ["Sign in once with ghunt login.", "Needs Python <3.14."],
+        }
+        tool = parse_tool(data)
+        assert tool.notes == ("Sign in once with ghunt login.", "Needs Python <3.14.")
+
+    def test_notes_default_to_empty(self):
+        data = {
+            "name": "sherlock",
+            "display_name": "S",
+            "description": "D",
+            "install": {"method": "pip", "package": "s"},
+            "entrypoint": {"command": "s"},
+        }
+        assert parse_tool(data).notes == ()
+
+
+def _notes_tool(notes):
+    return {
+        "name": "sherlock",
+        "display_name": "S",
+        "description": "D",
+        "install": {"method": "pip", "package": "s"},
+        "entrypoint": {"command": "s"},
+        "notes": notes,
+    }
+
+
+@pytest.mark.parametrize(
+    "notes,expected_error",
+    [
+        ("Needs a login.", "notes must be a list of strings"),
+        ([3], "notes must be a list of strings"),
+        ([""], "notes entries must not be empty"),
+        (["   "], "notes entries must not be empty"),
+        (["first line\nsecond line"], "notes entries must be one line"),
+        (["x" * 301], "notes entries must be at most 300 characters"),
+    ],
+)
+def test_notes_validation_errors(notes, expected_error):
+    with pytest.raises(RegistryError, match=expected_error):
+        parse_tool(_notes_tool(notes))
+
 
 @pytest.mark.parametrize(
     "data,expected_error",
@@ -698,6 +747,20 @@ def test_bundled_registry_fixes_for_held_back_tools():
     )
     for name in interactive:
         assert by_name[name].interactive, name
+
+
+def test_bundled_registry_notes_explain_python_limits():
+    path = Path(__file__).parent.parent / "src" / "otlite" / "data" / "registry.yaml"
+    tools = load_registry(path)
+    by_name = {t.name: t for t in tools}
+
+    # Every tool that pins a Python range says why, and descriptions stay one sentence.
+    for tool in tools:
+        if tool.requires_python and tool.name != "osint-brazuca-regex":
+            assert any("Python" in note for note in tool.notes), tool.name
+        assert "Requires Python" not in tool.description, tool.name
+    assert "ANTHROPIC_API_KEY" not in by_name["openosint"].description
+    assert any("ANTHROPIC_API_KEY" in note for note in by_name["openosint"].notes)
 
 
 def test_bundled_registry_telegram_keys_match_tool_env_names():

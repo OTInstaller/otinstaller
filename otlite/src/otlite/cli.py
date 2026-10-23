@@ -489,6 +489,10 @@ def _show_tool_info(
     if "dual-use" in tool.capabilities:
         lines.append("Dual-use tool. See the responsible use notice in the README.")
 
+    if tool.notes:
+        lines.append("Notes:")
+        lines.extend(f"- {note}" for note in tool.notes)
+
     # Show curated usage or fall back to tool's --help
     if tool.entrypoint.command:
         lines.append(f"Usage: {tool.entrypoint.command} [OPTIONS]")
@@ -685,6 +689,10 @@ def info(
 
     if "dual-use" in tool.capabilities:
         lines.append("Dual-use tool. See the responsible use notice in the README.")
+
+    if tool.notes:
+        lines.append("Notes:")
+        lines.extend(f"- {note}" for note in tool.notes)
 
     for line in lines:
         console.print(line)
