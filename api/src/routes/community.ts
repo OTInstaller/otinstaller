@@ -10,7 +10,7 @@ import { toolByRef, type ToolRef } from "../trust";
 import { notify } from "../inbox";
 import {
   addComment, canTriage, communityRoles, communityStatus, confirm, createIssue, deletePost, editPost, EDIT_WINDOW, fileSystemIssue, flagPost, FLAG_REASONS,
-  indexable, ISSUE_KINDS, ISSUE_STATUSES, issueByNumber, issueInput, moderate, OPEN_STATUSES, renderPost, requireModerator, requireTriage,
+  indexable, ISSUE_KINDS, ISSUE_STATUSES, issueByNumber, issueInput, moderate, OPEN_STATUSES, renderPost, reportRun, requireModerator, requireTriage, runReportInput,
   setLocked, setStatus, timeout, type IssueRow, type IssueStatus, type ModerationAction,
 } from "../community";
 
@@ -216,6 +216,14 @@ export function communityRoutes(app: App) {
     const u = requireUser(c);
     await deletePost(c.env, "comment", c.req.param("id"), u);
     return c.json({ deleted: true });
+  });
+
+  // A failed run from ot's prompt: tool, version, exit code, OS and ot version only. A token is optional.
+  app.post("/tools/:ns/:name/run-reports", async (c) => {
+    const t = await tool(c);
+    const r = runReportInput(await body<Record<string, unknown>>(c));
+    c.header("Cache-Control", "private, no-store");
+    return c.json(await reportRun(c.env, t, c.get("user"), c.req.header("cf-connecting-ip") ?? "unknown", r), 201);
   });
 
   // "Works for me" or "broken for me" on a version; with {issue} a "broken" counts as a "me too" on that issue.

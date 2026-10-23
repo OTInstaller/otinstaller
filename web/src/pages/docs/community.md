@@ -35,6 +35,29 @@ takes you to a new broken issue, and **I have this problem too** on an issue add
 per version and platform, and the counts from the last 30 days appear in the tool's status line next to the
 registry's own nightly health check. They are counts, never ratings.
 
+## From the terminal
+
+When `ot run` fails at a terminal (it timed out, or exited non-zero and found nothing), it asks:
+
+```text
+dheeraj/holehe-lite 1.2.0 failed (exit 1). Report it as broken? This sends the tool, version, exit code, OS and ot version, never your inputs or output. [y/N]
+```
+
+It asks at most once a week per tool and version, and never from agents (`ot mcp`), scripts without a terminal, CI,
+`--json` runs, local manifests, or with `OT_NO_TELEMETRY=1` or `"telemetry": false` in `config.json`. Signed in
+(`ot login`), a yes adds you to the version's open broken issue, or opens one. Without a sign-in it only counts:
+when three different addresses report the same version within a week, the registry opens an issue marked
+unconfirmed, and someone who can reproduce it confirms it.
+
+| Command | What |
+| --- | --- |
+| `ot issues <ns/name> [--all]` | The package's open issues (`--all` adds closed ones), so you can check before reporting |
+| `ot report <ns/name> --works` | Say the installed version (or `--version X.Y.Z`) works for you; needs a sign-in |
+| `ot report <ns/name> --broken` | Say it is broken for you, the same as answering yes to the question |
+
+`ot report --reason broken` still sends a private report to the reviewers; use `--broken` or an issue when other
+users should know.
+
 ## Notifications
 
 Your inbox at [Settings → Notifications](/settings/notifications) collects replies and status changes on issues you
@@ -80,5 +103,6 @@ Everything is in the [registry API](/docs/api) (OpenAPI tag "Community"):
 | `GET /v1/issues` | Open problems across the registry (`kind`, `needs=confirmation`) |
 | `POST /v1/tools/<ns>/<name>/issues` | Open an issue (token scope `feedback`) |
 | `PUT /v1/tools/<ns>/<name>/confirmations` | Works or broken for you (scope `feedback`) |
+| `POST /v1/tools/<ns>/<name>/run-reports` | A failed run, as `ot` sends it: `{version, exit_code \| timed_out, os, arch, engine, ot_version}`; anonymous or scope `feedback` |
 
 Error codes are on the [errors page](/docs/errors#community).

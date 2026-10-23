@@ -2407,6 +2407,122 @@
         "security": []
       }
     },
+    "/tools/{ns}/{name}/run-reports": {
+      "post": {
+        "operationId": "report_failed_run",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Report a failed run (what ot's prompt sends)",
+        "description": "Only the version, exit code or timeout, OS, architecture, engine and ot version; never inputs or output. With a token it counts as broken for you and joins (or opens) the version's broken issue; without one it only adds to a daily count, and enough reports in a week open an unconfirmed issue.",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "issue": {
+                      "type": "integer"
+                    },
+                    "created": {
+                      "type": "boolean"
+                    },
+                    "moderation": {
+                      "type": "string"
+                    },
+                    "counted": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "version",
+                  "os",
+                  "arch"
+                ],
+                "properties": {
+                  "version": {
+                    "type": "string"
+                  },
+                  "exit_code": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "timed_out": {
+                    "type": "boolean"
+                  },
+                  "os": {
+                    "type": "string"
+                  },
+                  "arch": {
+                    "type": "string"
+                  },
+                  "engine": {
+                    "type": "string"
+                  },
+                  "ot_version": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-scope": "feedback",
+        "security": [
+          {},
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/tools/{ns}/{name}/status": {
       "get": {
         "operationId": "get_package_status",
