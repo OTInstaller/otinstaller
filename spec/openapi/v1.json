@@ -221,6 +221,72 @@
         "security": []
       }
     },
+    "/auth/oidc/token": {
+      "post": {
+        "operationId": "oidc_token",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Trade a CI run's OIDC ID token for a registry token (trusted publishing, ot publish --oidc)",
+        "responses": {
+          "200": {
+            "description": "OK: {token, expires_at, namespace, package, repository, workflow}",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id_token",
+                  "namespace"
+                ],
+                "properties": {
+                  "id_token": {
+                    "type": "string"
+                  },
+                  "namespace": {
+                    "type": "string"
+                  },
+                  "package": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [],
+        "description": "Anonymous: the ID token is the credential. It must come from GitHub Actions or GitLab.com CI with the audience otinstaller, from a public repository a trusted publisher of the namespace names. Each ID token is exchanged once. The token lasts an hour, acts for the owner who added the publisher, and only uploads (POST /publish) into that namespace and package and follows its job (GET /me/publish-jobs/{id}); anywhere else it counts as anonymous. At most 30 exchanges an hour per repository. Never cached (private, no-store)."
+      }
+    },
     "/auth/{provider}/callback": {
       "get": {
         "operationId": "web_login_callback",
@@ -1915,6 +1981,202 @@
           }
         ],
         "description": "Needs a sign-in as an owner of the namespace: the session cookie, or an API token with the manage scope. Never cached (private, no-store)."
+      }
+    },
+    "/me/namespaces/{ns}/trusted-publishers": {
+      "get": {
+        "operationId": "list_trusted_publishers",
+        "tags": [
+          "Owners"
+        ],
+        "summary": "The CI publishers a namespace trusts",
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: {namespace, publishers}",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "description": "Needs a sign-in as an owner of the namespace: the session cookie, or an API token with the read scope. Never cached (private, no-store)."
+      },
+      "post": {
+        "operationId": "add_trusted_publisher",
+        "tags": [
+          "Owners"
+        ],
+        "summary": "Trust a GitHub Actions workflow or GitLab CI pipeline to publish into a namespace",
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "provider",
+                  "repository"
+                ],
+                "properties": {
+                  "provider": {
+                    "enum": [
+                      "github",
+                      "gitlab"
+                    ]
+                  },
+                  "repository": {
+                    "type": "string"
+                  },
+                  "workflow": {
+                    "type": "string"
+                  },
+                  "environment": {
+                    "type": "string"
+                  },
+                  "package": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "description": "Needs a sign-in as an owner of the namespace: the session cookie, or an API token with the manage scope. repository is owner/name or group/project; workflow, environment and package narrow it. At most 20 per namespace."
+      }
+    },
+    "/me/namespaces/{ns}/trusted-publishers/{id}": {
+      "delete": {
+        "operationId": "remove_trusted_publisher",
+        "tags": [
+          "Owners"
+        ],
+        "summary": "Stop trusting a CI publisher; tokens its runs hold stop working at once",
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Trusted publisher ID"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "description": "Needs a sign-in as an owner of the namespace: the session cookie, or an API token with the manage scope."
       }
     },
     "/openapi.json": {

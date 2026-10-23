@@ -32,7 +32,9 @@ import { openBumpFor } from "./bumps";
 import { upstreamRoutes } from "./routes/upstream";
 import { deliverInbox, purgeInbox } from "./inbox";
 import { directRoutes } from "./routes/direct";
+import { trustedRoutes } from "./routes/trusted";
 import { purgeIdleNamespaces } from "./direct";
+import { purgeCiTokens } from "./trusted";
 import { refreshDueProfiles } from "./profiles";
 import { backfillBackups, expireDrills, expireRuns, installFallbacks, purgeBackups, queueMirrorSweeps, RESTORE_DRILL_CRON, startDrill, WEEKLY_BACKUP_CRON, weeklyBackups } from "./backups";
 import { alertStuckJobs, dailyDigest, purgeRateLimits, reportError } from "./ops";
@@ -91,6 +93,7 @@ peopleRoutes(app);
 submissionRoutes(app);
 upstreamRoutes(app);
 directRoutes(app);
+trustedRoutes(app);
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
@@ -570,6 +573,7 @@ export default {
       await refreshContributorStats(env);
       await queueUpstreamChecks(env);
       await purgeIdleNamespaces(env);
+      await purgeCiTokens(env);
       // Images publishers pushed to the mirror that no version uses, and unfinished uploads.
       await queueMirrorSweeps(env);
       await env.DB.prepare(

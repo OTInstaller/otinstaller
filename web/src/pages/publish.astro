@@ -48,6 +48,7 @@ const checklist = [
       <p class="small muted">Signing is optional; the first signer is pinned for later versions.</p>
     </section>
   </div>
+  <p class="small muted guides-note">Rather not install the App or connect the project? The release workflow can publish its release itself as a trusted publisher, with the CI's own identity and no token to store: <code>ot namespace trust &lt;namespace&gt; github:you/tool</code>, then set the CI variable <code>OTINSTALLER_PUBLISH</code> to <code>oidc</code>. <a href="/docs/publishing#publish-from-ci">Publish from CI →</a></p>
   <p class="small muted guides-note">Guides are Markdown pages, versioned like tools: <code>ot init --guide</code> scaffolds one, then <code>ot release 1.0.0</code> tags it or <code>ot publish</code> uploads it. <a href="/docs/guides">Writing guides →</a></p>
 
   <section class="after" aria-labelledby="after-h">

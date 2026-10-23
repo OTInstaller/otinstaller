@@ -1,4 +1,7 @@
 # Publishes to PyPI with Trusted Publishing, pins the wheel hash in otinstaller.yaml and tags the release.
+# The OTInstaller GitHub App publishes the tag; without the App, trust this repository
+# (`ot namespace trust <namespace> github:<owner>/<repo>`) and set the repository variable OTINSTALLER_PUBLISH to oidc,
+# and the last step publishes the release itself.
 name: otinstaller release
 on:
   workflow_dispatch:
@@ -31,3 +34,8 @@ jobs:
           git commit -am "Release ${VERSION}"
           git tag "v${VERSION}"
           git push origin HEAD "v${VERSION}"
+      - name: Publish to OTInstaller
+        if: vars.OTINSTALLER_PUBLISH == 'oidc'
+        run: |
+          curl -fsSL https://get.otinstaller.com/ot | OT_INSTALL_DIR="$RUNNER_TEMP" sh
+          "$RUNNER_TEMP/ot" publish --oidc
