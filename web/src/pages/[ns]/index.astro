@@ -7,6 +7,7 @@ import ToolRow from "../../components/ToolRow.astro";
 import { api, apiOrNull, type ActivityEvent, type Namespace, type NamespaceStats, type Profile } from "../../lib/api";
 import { ago, formatCount, formatDate, inputLabel } from "../../lib/format";
 import { cacheFor } from "../../lib/page";
+import { feedLinks } from "../../lib/feeds";
 import { aboutHtml, activityParts, hostName, kindLabel, profilePage, profileQuery, shortUrl, socialLabel, sortPackages, type KindFilter, type ProfileSort, type ProfileTab } from "../../lib/profile";
 import { breadcrumbs, graph, itemList } from "../../lib/seo";
 
@@ -77,6 +78,7 @@ cacheFor(Astro, 300);
   markdown={`${Astro.site}${n.name}.md`}
   ogType="website"
   ogImage={n.avatar_url && !pending ? { url: n.avatar_url, alt: `Avatar of ${name}` } : undefined}
+  feeds={pending ? undefined : feedLinks({ title: `${name} on OTInstaller`, path: `/${n.name}/feed` })}
 >
   <div class="profile">
     <aside class="side" aria-label={`About ${name}`}>

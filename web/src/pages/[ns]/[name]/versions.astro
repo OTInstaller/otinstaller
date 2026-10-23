@@ -6,6 +6,7 @@ import { api, type Version } from "../../../lib/api";
 import { formatDate } from "../../../lib/format";
 import { loadTool } from "../../../lib/tool";
 import { cacheFor } from "../../../lib/page";
+import { feedLinks } from "../../../lib/feeds";
 
 const loaded = await loadTool(Astro, "/versions");
 if ("response" in loaded) return loaded.response;
@@ -18,7 +19,7 @@ const scanLabel: Record<string, string> = { pass: "Passed", warn: "Warnings", fa
 const tagUrl = (v: string) => (t.repo_url ? `${t.repo_url.replace(/\/$/, "")}/${t.repo_url.includes("gitlab.com") ? "-/tags" : "releases/tag"}/v${v}` : null);
 const anyGone = versions.some((v) => v.status === "yanked");
 ---
-<Base title={`${ref} versions`} description={`Version history of ${ref}.`} jsonHref={`https://api.otinstaller.com/v1/tools/${ref}/versions`}>
+<Base title={`${ref} versions`} description={`Version history of ${ref}.`} jsonHref={`https://api.otinstaller.com/v1/tools/${ref}/versions`} feeds={feedLinks({ title: `${ref} releases`, path: `/${ref}/feed` })}>
   <ToolHeader tool={t} active="versions" hasDocs={hasDocs} />
   <p class="small muted intro"><code>ot install {ref}</code> takes the version marked latest; an exact version pins it. Each tag links to the commit the release was built from.</p>
   <div class="table-wrap">

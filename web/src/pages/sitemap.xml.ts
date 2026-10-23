@@ -24,7 +24,7 @@ export const GET: APIRoute = async ({ site }) => {
   const [types, tools, guides, facets] = await Promise.all([api<Types>("/types"), all("/tools?kind=tool"), all("/guides"), api<Facets>("/facets?kind=tool").catch(() => null)]);
   const listed = (counts: Record<string, number> | undefined, v: string) => !counts || (counts[v] ?? 0) > 0;
   const paths = [
-    "/", "/search", "/guides", "/publish", "/tour", "/otlite", "/otlite/tools", "/agents",
+    "/", "/search", "/guides", "/new", "/publish", "/tour", "/otlite", "/otlite/tools", "/agents",
     ...OTLITE_TOOLS.map((t) => toolPath(t.name)),
     ...types.inputs.filter((t) => !GENERIC_INPUTS.has(t) && listed(facets?.inputs, t)).map((t) => `/input/${t}`),
     ...types.categories.filter((c) => listed(facets?.categories, c)).map((c) => `/category/${c}`),

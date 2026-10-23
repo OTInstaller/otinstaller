@@ -44,6 +44,8 @@ export const GET: APIRoute = async () => {
       `- [Result envelope](${SITE_URL}/schema/envelope-v1.json): JSON Schema for the output of \`ot run --format json\``,
       `- [Run-all summary](${SITE_URL}/schema/run-all-v1.json): JSON Schema for the summary of \`ot run --all\`, \`ot playbook\` and \`ot auto\``,
       `- [Error](${SITE_URL}/schema/error-v1.json): JSON Schema for JSON errors from \`ot\` and the registry API`,
+      `- [Activity](${API_URL}/v1/activity): what changed across the registry, newest first (releases, yanks, deprecations, transfers)`,
+      `- [Feed](${SITE_URL}/feed.json): the same as JSON Feed 1.1 (also ${SITE_URL}/feed.atom); add \`/feed.json\` to a publisher, tool or \`/input/<type>\` page URL for its own feed`,
     ].join("\n"),
     `## Policies\n\n${POLICY_PAGES.map(link).join("\n")}`,
     `## Tools by what you have\n\n${Object.entries(INPUT_LANDING).map(([type, l]) => `- [${l.title}](${SITE_URL}/input/${type}): ${l.description}`).join("\n")}`,
