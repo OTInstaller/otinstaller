@@ -26,6 +26,14 @@ Items marked **(you)** need the owner of the GitHub, GitLab, Cloudflare, Resend,
 - [ ] **(you)** Resubmit the sitemap in Google Search Console.
 - [ ] **(you)** Submit the plugin to Anthropic's directory and the Cursor marketplace (texts in
       [launch/agent-listings.md](launch/agent-listings.md)); try `ot mcp` and the plugin in a real client first.
+- [ ] **(you)** Deploy `ops/get` (`npx wrangler deploy` from `ops/get`) so `get.otinstaller.com/ot/latest` answers
+      `{"version"}`. It is on `main` since 23 Oct (CLI usability, PRs #59 to #69) but not deployed; until then
+      `ot self-update` and `ot outdated` fall back to the GitHub API. Check with
+      `curl -s https://get.otinstaller.com/ot/latest`.
+- [ ] **(you)** Release `ot` v0.14.0 (new: `ot install a b c`, three more bundled playbooks, the fresh-machine offer,
+      `ot runs`, lifecycle flags in `ot outdated`, the newer-`ot` note), then publish the agent plugin 0.1.1
+      (publishing-setup.md section 12): its skill names the new playbooks and `run_all`'s `not_installed`, which
+      v0.13.1 doesn't have, so the plugin waits for the release.
 - [ ] **(you)** Pick the launch date and approve the launch posts ([launch/](launch/README.md)); nothing is posted.
 - [ ] **(you)** Back up `~/.mcp-registry/otinstaller.com.ed25519.hex` somewhere safe and offline. Without it, a new
       key pair, a new `web/public/.well-known/mcp-registry-auth` and a site deploy are needed to publish to the MCP
