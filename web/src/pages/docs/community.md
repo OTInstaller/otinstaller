@@ -79,6 +79,19 @@ never deleted). You can change the Dockerfile while it waits or after changes we
 is published you are listed as its maintainer on the package page. Follow each submission on [/submissions](/submissions).
 Each person can have three submissions waiting at a time.
 
+## Keeping community packages current
+
+Every night the registry checks each community wrapper against the project it packages: which release its latest
+version pins (read from its Dockerfile, or the wheel it pins on PyPI) and what the project has released since. A tool
+page says when the project has released a newer version, or when its repository was archived, removed or relicensed,
+and the [community board](/community) lists the wrappers that are behind.
+
+When this is switched on for the registry, a wrapper behind a release for three days gets an **outdated** issue from
+the registry, which closes itself once a version pinning that release is published; an archived, removed, renamed or
+relicensed upstream gets an issue too. Wrappers pinned to a commit rather than a release are reported, but get no
+issue for new commits. Dockerfiles that pin their release in a way the registry can read make this work; the
+[errors page](/docs/errors#dockerfile_no_pin) lists the ways.
+
 ## From the terminal
 
 When `ot run` fails at a terminal (it timed out, or exited non-zero and found nothing), it asks:
@@ -159,6 +172,7 @@ Everything is in the [registry API](/docs/api) (OpenAPI tag "Community"):
 | `POST /v1/tools/<ns>/<name>/run-reports` | A failed run, as `ot` sends it: `{version, exit_code \| timed_out, os, arch, engine, ot_version}`; anonymous or scope `feedback` |
 | `GET /v1/requests` | Tool requests (`status`, `sort=votes\|new`, `before`) |
 | `POST /v1/requests` | Ask for a tool (scope `feedback`); `PUT /v1/requests/<number>/vote` to vote |
+| `GET /v1/upstream/summary` | Community wrappers against their upstream projects: counts by state, and those behind a release |
 | `GET /v1/submissions`, `GET /v1/submissions/<number>` | Community submissions and one submission's checks, release and decision |
 | `POST /v1/imports/<id>/finish` `{"mode": "submit"}` | Submit a community import (scope `publish`); `dockerfile` and `request` are optional |
 

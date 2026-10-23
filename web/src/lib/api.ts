@@ -134,6 +134,8 @@ export interface ToolDetail extends ToolSummary {
   moved_to?: string;
   /** Open issues people filed; older API answers omit it. */
   community?: { open_broken: number; open_outdated: number };
+  /** What the upstream watcher last found, for community wrappers. */
+  upstream?: UpstreamWatch;
   /** The handle of whoever submitted a community package (community submissions). */
   packaged_by?: string;
   /** People who look after a community package besides its namespace. */
@@ -497,3 +499,22 @@ export interface SubmissionDetail extends Submission {
 }
 
 export interface SubmissionViewer { is_submitter: boolean; can_review: boolean; can_edit: boolean }
+
+// ---------- the upstream watcher ----------
+
+export interface UpstreamWatch {
+  state: "current" | "behind" | "unknown" | "archived" | "gone" | "license_changed" | "renamed" | "error";
+  pinned: string | null;
+  latest: string | null;
+  latest_at: number | null;
+  /** For commit pins: how many commits upstream's default branch has moved on. */
+  commits_behind: number | null;
+  checked_at: number | null;
+}
+
+export interface UpstreamSummary {
+  mode: "report" | "issues";
+  counts: Record<UpstreamWatch["state"], number>;
+  behind: (UpstreamWatch & { ref: string })[];
+  checked_at: number | null;
+}

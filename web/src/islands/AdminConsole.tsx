@@ -1,15 +1,17 @@
-// /admin: an overview of what is waiting, the review queue, reports and takedowns, claims and transfers, the audit log,
-// and for the closed beta its feedback queue and the metrics its exit criteria are measured by.
+// /admin: an overview of what is waiting, the review queue, reports and takedowns, claims and transfers, the community,
+// the upstream watcher, the audit log, and for the closed beta its feedback queue and the metrics its exit criteria are
+// measured by.
 import type { ComponentChildren } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { api } from "../lib/api";
 import { ErrorNote, Loading, SignIn, useMe, when } from "./shared";
 import CommunityModeration from "./CommunityModeration";
+import UpstreamWatch from "./UpstreamWatch";
 import "../styles/admin.css";
 
-type Tab = "review" | "reports" | "transfers" | "community" | "audit" | "feedback" | "beta";
+type Tab = "review" | "reports" | "transfers" | "community" | "upstream" | "audit" | "feedback" | "beta";
 const PATHS: Record<Tab, string> = {
-  review: "/admin", reports: "/admin/reports", transfers: "/admin/transfers", community: "/admin/community", audit: "/admin/audit", feedback: "/admin/feedback", beta: "/admin/beta",
+  review: "/admin", reports: "/admin/reports", transfers: "/admin/transfers", community: "/admin/community", upstream: "/admin/upstream", audit: "/admin/audit", feedback: "/admin/feedback", beta: "/admin/beta",
 };
 const CATEGORIES = ["malware", "policy", "impersonation", "license", "legal", "other"];
 
@@ -785,6 +787,7 @@ export default function AdminConsole({ back, initialTab = "review" }: { back: st
     ["reports", "Reports", counts?.reports],
     ["transfers", "Claims", counts?.claims],
     ["community", "Community", undefined],
+    ["upstream", "Upstream", undefined],
     ["audit", "Audit log", undefined],
     ["feedback", "Feedback", counts?.feedback],
     ["beta", "Beta", undefined],
@@ -814,6 +817,7 @@ export default function AdminConsole({ back, initialTab = "review" }: { back: st
         {tab === "reports" && <Reports notify={notify} onError={setError} onChange={refresh} />}
         {tab === "transfers" && <Transfers admin={me.admin} notify={notify} onError={setError} onChange={refresh} />}
         {tab === "community" && <CommunityModeration back={back} embedded />}
+        {tab === "upstream" && <UpstreamWatch admin={me.admin} />}
         {tab === "audit" && <Audit onError={setError} />}
         {tab === "feedback" && <FeedbackQueue notify={notify} onError={setError} onChange={refresh} />}
         {tab === "beta" && <Beta onError={setError} />}

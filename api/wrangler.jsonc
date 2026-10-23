@@ -35,6 +35,8 @@
     "EMAIL_FROM": "OTInstaller Registry <registry@otinstaller.com>",
     "MIRROR_HOST": "mirror.otinstaller.com"
     // "GITHUB_APP_SLUG": "otinstaller" is the App's URL name for install links (this is the default)
+    // "UPSTREAM_WATCH": "report" is what the upstream watcher does (the default); "issues" also opens and closes
+    // outdated issues on community wrappers (owner's decision, after reading a week of reports)
   }
   // Secrets (set with `wrangler secret put`, or in .dev.vars locally):
   //   GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY (PKCS#8 PEM), GITHUB_WEBHOOK_SECRET,
