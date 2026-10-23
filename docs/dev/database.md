@@ -4,7 +4,8 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 `api/migrations/*.sql` and the code in `api/src/`, `api/test/` and `api/scripts/`.
 
 - Binding: `DB`, database name `otinstaller`, `migrations_dir: "migrations"` (`api/wrangler.jsonc`).
-- 23 migrations: `0001` to `0022`, and `0026`. `0023` to `0025` belong to the direct-publishing pull requests.
+- 24 migrations: `0001` to `0023`, and `0026`. `0024` and `0025` belong to the hosted-images and
+  trusted-publishing pull requests.
 - Final schema: **54 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 55. FTS5 also creates its own shadow
   tables, which aren't listed here.
 
@@ -36,6 +37,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0020 | `0020_community_wrappers.sql` | `tools` + `needs_first_review` (default 0), `submitted_by`, `upstream_url` (backfilled for community-packaged tools from the latest manifest's `homepage`); new tables `tool_maintainers` and `wrapper_submissions`; indexes `tool_maintainers_user`, `wrapper_submissions_status`, `wrapper_submissions_upstream`, `wrapper_submissions_repo`, `wrapper_submissions_user`. |
 | 0021 | `0021_upstream_watch.sql` | New table `upstream_watch` (per community wrapper: the pin and how it was read, upstream's latest release, state, license, the releases ETag, a staff override, the last error) and index `upstream_watch_state`. |
 | 0022 | `0022_bump_prs.sql` | New table `bump_prs` (one per community package and upstream release: the pull request's number, URL and branch, `open`/`merged`/`closed`, the version the merge released, who merged it) and index `bump_prs_open`. |
+| 0023 | `0023_direct_publish.sql` | Direct publishing (`ot publish`): `publish_jobs` + `namespace_id` (FK namespaces), `bundle_key` (R2 `CONTENT` prefix of the upload), `submitted_by` (FK users), index `publish_jobs_namespace`; `namespaces` + `created_by` (FK users: who made a registry namespace). Apply before an API that selects these columns is deployed. |
 | 0026 | `0026_request_threads.sql` | New tables `request_comments` (replies on tool requests, moderated like issue comments) and `request_subscriptions` (backfilled with each request's requester); `tool_requests` + `comment_count`, `locked_at`; `content_flags` rebuilt so `target_kind` also takes `request` and `request_comment`; indexes `request_comments_request`, `request_comments_held` (partial), `request_comments_author`, and `content_flags_open` again. |
 
 ---
@@ -110,6 +112,9 @@ Purpose: a publisher (GitHub user or org, GitLab group, or a registry-owned name
 - `verified` INTEGER NN default 0
 - `reviewed_by` TEXT → `users(id)` · `reviewed_at` INTEGER · `review_notes` TEXT
 - `created_at` INTEGER NN
+- `created_by` TEXT → `users(id)` (0023): the user who made a registry namespace with `POST /namespaces`; NULL for
+  GitHub and GitLab namespaces and the seed. Such a namespace has `provider = 'registry'` and
+  `provider_owner_id = id`.
 - UNIQUE `(provider, provider_owner_id)`
 
 #### `namespace_members`
@@ -257,9 +262,13 @@ Purpose: a log of webhook deliveries and polls per source, deduplicated by provi
 - Index `sync_events_source (source_id, received_at DESC)`
 
 #### `publish_jobs`
-Purpose: one attempt to publish a tag (from a webhook, a poll or an import).
-- PK `id` TEXT · `delivery_id` TEXT NN UNIQUE (dedup key)
-- `provider` TEXT NN · `repo` TEXT NN · `tag` TEXT NN
+Purpose: one attempt to publish a release: a tag (from a webhook, a poll or an import) or an upload (`ot publish`).
+- PK `id` TEXT · `delivery_id` TEXT NN UNIQUE (dedup key; `direct:<id>` for an upload)
+- `provider` TEXT NN (`github`, `gitlab`, or `direct` for an upload with no repository) · `repo` TEXT NN
+  (`<ns>/<name>` for an upload) · `tag` TEXT NN (`v<version>` for an upload)
+- Bundle jobs (0023): `namespace_id` TEXT → `namespaces(id)` (tag jobs find theirs through the installation or the
+  source) · `bundle_key` TEXT (`uploads/<id>` in R2 `CONTENT`; kept after the files are deleted, so it also marks the
+  job as an upload) · `submitted_by` TEXT → `users(id)`. Index `publish_jobs_namespace (namespace_id, created_at)`
 - `version_id` TEXT → `versions(id)` · `tool_id` TEXT → `tools(id)` (0002) · `source_id` TEXT → `sources(id)` (0004)
 - `status` TEXT NN (**no CHECK**; values in section 3)
 - `error_code`, `error_detail` TEXT · `problems_json` TEXT (0002)

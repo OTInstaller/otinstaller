@@ -1,5 +1,8 @@
 """Unit tests for scan.py helpers. Run: python -m unittest discover ops/scanner"""
+import json
+import subprocess
 import unittest
+from unittest import mock
 
 import scan
 
@@ -67,6 +70,50 @@ class SignatureCertTest(unittest.TestCase):
 
     def test_no_certificate(self):
         self.assertIsNone(scan.signature_cert_der({"Cert": None}))
+
+
+class AnySignerTest(unittest.TestCase):
+    """Direct uploads: no expected signer, so any keyless signature counts and every verified identity is reported."""
+
+    def fake_run(self, returncode, stdout):
+        calls = []
+
+        def run(cmd, timeout=600, check=False):
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, returncode, stdout, "")
+        return calls, run
+
+    def test_reports_every_identity_cosign_verified(self):
+        out = json.dumps([
+            {"critical": {}, "optional": {"Subject": IDENTITY, "Issuer": ISSUER}},
+            {"critical": {}, "optional": {"Subject": "alice@example.com", "Issuer": "https://github.com/login/oauth"}},
+            {"critical": {}, "optional": {"Subject": IDENTITY, "Issuer": ISSUER}},
+        ])
+        calls, fake = self.fake_run(0, out)
+        with mock.patch.object(scan, "run", fake):
+            r = scan.check_image_signature("mirror.otinstaller.com/a/b@sha256:" + "0" * 64, None)
+        self.assertEqual(r["status"], "pass")
+        self.assertEqual((r["identity"], r["issuer"]), (IDENTITY, ISSUER))
+        self.assertEqual([i["identity"] for i in r["identities"]], [IDENTITY, "alice@example.com"])
+        self.assertIn("--certificate-oidc-issuer-regexp", calls[0])
+
+    def test_unsigned_is_absent(self):
+        _, fake = self.fake_run(1, "")
+        with mock.patch.object(scan, "run", fake):
+            self.assertEqual(scan.check_image_signature("x/y@sha256:" + "0" * 64, None), {"status": "absent"})
+
+    def test_identities_from_one_document_per_line(self):
+        out = json.dumps({"optional": {"Subject": "a@example.com", "Issuer": "https://accounts.google.com"}}) + "\n" + "not json\n"
+        self.assertEqual(scan.verified_identities(out), [("a@example.com", "https://accounts.google.com")])
+
+    def test_wheel_from_any_publisher_without_a_source_repository(self):
+        prov = {"attestation_bundles": [{"publisher": {"kind": "GitHub", "repository": "Alice/Tool", "workflow": "release.yml"}}]}
+        with mock.patch.object(scan, "http_json", lambda url: prov):
+            r = scan.check_wheel_provenance("tool", "1.0.0", "tool-1.0.0-py3-none-any.whl", "")
+            self.assertEqual(r["status"], "pass")
+            self.assertEqual(r["identity"], "pypi:GitHub:alice/tool/release.yml")
+            # With a source repository, someone else's provenance still fails.
+            self.assertEqual(scan.check_wheel_provenance("tool", "1.0.0", "tool-1.0.0-py3-none-any.whl", "github.com/bob/tool")["status"], "fail")
 
 
 if __name__ == "__main__":
