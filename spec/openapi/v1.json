@@ -2590,13 +2590,17 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "file": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "format": "binary"
-                    }
+                  "otinstaller.yaml": {
+                    "type": "string",
+                    "format": "binary"
                   }
+                },
+                "required": [
+                  "otinstaller.yaml"
+                ],
+                "additionalProperties": {
+                  "type": "string",
+                  "format": "binary"
                 }
               }
             }
@@ -2611,7 +2615,7 @@
             "session": []
           }
         ],
-        "description": "Needs a sign-in: the session cookie, or an API token with the publish scope, as an owner or publisher of the namespace. One file part per file, named by its path relative to otinstaller.yaml; at most 25 MB and 300 files. The release is then validated, scanned and reviewed as a tag is. At most 20 uploads an hour per namespace."
+        "description": "Needs a sign-in: the session cookie, or an API token with the publish scope, as an owner or publisher of the namespace. One part per file, the part named by the file's path relative to otinstaller.yaml (otinstaller.yaml itself included); at most 25 MB and 300 files. The release is then validated, scanned and reviewed as a tag is. At most 20 uploads an hour per namespace."
       }
     },
     "/removed": {

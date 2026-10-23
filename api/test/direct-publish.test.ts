@@ -84,10 +84,10 @@ function files(ns: string, version = "1.0.0", over: Record<string, string | Uint
   return Object.fromEntries(Object.entries(all).filter(([, v]) => v !== null)) as Record<string, string | Uint8Array>;
 }
 
-/** Uploads files as `ot publish` does: multipart with one `file` part per path, and a Content-Length. */
+/** Uploads files as `ot publish` does: multipart with one part per file, named by its path, and a Content-Length. */
 async function upload(p: Person, ns: string, version: string, fs: Record<string, string | Uint8Array>, query?: string) {
   const form = new FormData();
-  for (const [path, content] of Object.entries(fs)) form.append("file", new Blob([content]), path);
+  for (const [path, content] of Object.entries(fs)) form.append(path, new Blob([content]), path.split("/").pop());
   const req = new Response(form);
   const body = await req.arrayBuffer();
   return call(`/publish?${query ?? `namespace=${ns}&name=whois-plus&version=${version}`}`, {

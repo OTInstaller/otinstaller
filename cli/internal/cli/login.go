@@ -109,7 +109,7 @@ func (a *App) loginCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&gitlab, "gitlab", false, "sign in with GitLab instead of GitHub")
-	cmd.Flags().BoolVar(&osintverse, "osintverse", false, "sign in with an OSINTverse account (publishing still needs GitHub or GitLab)")
+	cmd.Flags().BoolVar(&osintverse, "osintverse", false, "sign in with an OSINTverse account (publish with `ot namespace create` and `ot publish`)")
 	cmd.Flags().BoolVar(&printToken, "print-token", false, "print the token instead of saving it to the keychain")
 	cmd.Flags().StringSliceVar(&scopes, "scope", nil, "limit the token to these scopes (read, publish, manage, feedback); default: all four")
 	return cmd
