@@ -15,6 +15,7 @@ import { backupVersion } from "./backups";
 import { copyImages, queueContentChecks, recheckLinks, relatedToolProblems, renderRelease, runContentChecks, storeContent, type RenderedRelease } from "./guides";
 import { ownerEmails, sendEmail, templates } from "./notify";
 import { COMMUNITY_NAMESPACE, detectQueued, failImport, heldManifestFor, parseRepoRef } from "./imports";
+import { captureNotes } from "./changelog";
 
 export const MANIFEST_FILE = "otinstaller.yaml";
 
@@ -124,6 +125,7 @@ export async function processJob(env: Env, jobId: string): Promise<Outcome | nul
   }
   if (outcome.status === "scanning") {
     await storeContent(env, outcome.versionId!, manifest!, content!);
+    await captureNotes(env, host, outcome.versionId!, job.tag, sha, manifest!.version);
     // The status moves on before dispatch, so a dispatch that keeps failing never leaves "Validating" behind.
     await host.setStatus(sha, "pending", manifest!.kind === "guide" ? "Valid; content checks running" : "Valid; security scans running", target);
     await startChecks(env, outcome.versionId!, job, manifest!);

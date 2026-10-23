@@ -139,6 +139,12 @@ export interface Version {
   published_at: number | null;
   yanked_at: number | null;
   signed: boolean;
+  /** Release notes as Markdown: untrusted text, never rendered as HTML. Absent from older API answers. */
+  changelog?: string | null;
+  /** The same notes, rendered and sanitized by the registry. */
+  changelog_html?: string | null;
+  /** Where the notes came from: the host's release for the tag, or the version's section of CHANGELOG.md. */
+  changelog_source?: "release" | "file" | null;
 }
 
 /** The manifest endpoint: what `ot install` reads, plus where it falls back to when the original host refuses. */

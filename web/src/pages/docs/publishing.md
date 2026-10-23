@@ -64,6 +64,20 @@ From the terminal: `ot profile` shows yours, `ot profile --sync` refreshes it, a
 - `@latest` is the highest version that is not a prerelease or yanked.
 - `ot sync <ns/name>` checks your repository for missed tags right away; the registry also polls every 6 hours.
 
+## Release notes
+
+Tell people what changed and the registry shows it on the package page ("What's new"), under each version on the
+Versions tab, and in the API (`GET /v1/tools/<ns>/<name>/versions`). It reads the notes when it validates the tag:
+
+1. **A release for the tag** on GitHub or GitLab: its notes, as written. A release you create or edit later replaces
+   them.
+2. **Otherwise, `CHANGELOG.md`** (or `CHANGES.md`, `HISTORY.md`) at the tagged commit: the section under the heading
+   that names the version, such as `## [1.2.0] - 2026-10-01`, `## v1.2.0` or `### 1.2.0 (2026-10-01)`, up to the next
+   heading of the same level. The [Keep a Changelog](https://keepachangelog.com) format works as it is.
+
+Notes are Markdown. Raw HTML is shown as text, images are replaced by their alt text, and relative links point at
+your repository at the tagged commit. Notes longer than 20,000 characters are cut.
+
 ## Backups
 
 The registry keeps its own copy of every published package, so a mistaken ban or takedown on GitHub or GitLab never breaks installs or loses your code.
