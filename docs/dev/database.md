@@ -4,8 +4,8 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 `api/migrations/*.sql` and the code in `api/src/`, `api/test/` and `api/scripts/`.
 
 - Binding: `DB`, database name `otinstaller`, `migrations_dir: "migrations"` (`api/wrangler.jsonc`).
-- 25 migrations, `0001` to `0025`.
-- Final schema: **54 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 55. FTS5 also creates its own shadow
+- 26 migrations, `0001` to `0025` and `0027` (`0026` is request threads, on its own branch).
+- Final schema: **55 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 56. FTS5 also creates its own shadow
   tables, which aren't listed here.
 
 ---
