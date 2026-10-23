@@ -216,7 +216,7 @@ const refOf = (t: Pick<Wrapper, "ns" | "name">) => `${t.ns}/${t.name}`;
 function pullBody(env: Env, t: Wrapper, p: { handle: string; note: string; version: string; checks: Check[]; number?: number }) {
   const fence = (s: string) => "```text\n" + s.replace(/```/g, "'''") + "\n```";
   return [
-    `Proposed on otinstaller.com by ${p.handle} (${env.SITE_URL}/people/${p.handle}), a maintainer of ${refOf(t)}.`,
+    `A change to ${refOf(t)} proposed on otinstaller.com by ${p.handle} (${env.SITE_URL}/people/${p.handle}).`,
     p.note ? `\n${fence(p.note)}` : "",
     `\nA staff or community reviewer who isn't the proposer approves it on the registry${p.number ? ` (${env.SITE_URL}/${refOf(t)}/changes/${p.number})` : ""}; ` +
       `the registry then merges it and releases ${refOf(t)} ${p.version}, which is built, signed and scanned like any other release.`,
