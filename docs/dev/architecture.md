@@ -238,6 +238,27 @@ Step by step:
 - The upload is deleted after the checks start, on rejection, and in `failJob`. An R2 lifecycle rule on `uploads/`
   removes anything left over.
 
+**Hosted images.** `ot publish --image|--image-archive|--build` first pushes the image to the mirror.
+- **Reading.** `cli/internal/oci` reads an OCI layout or a docker-archive. It drops platforms whose blobs aren't in
+  the archive and requires linux/amd64.
+- **Pushing.**
+  - The CLI gets a push token from the mirror's `/token` with Basic `ot:<ot_ token>`.
+  - It uploads each blob the repository lacks in 50 MiB PATCHes, then the platform manifests, then the tag `<version>`.
+  - It rewrites `runtime.image` to `<mirror>/<ns>/<name>@<digest>`; `--sign` then runs `cosign sign` with a temporary
+    `DOCKER_CONFIG`.
+- **On the mirror.** Each manifest PUT is recorded in `mirror_pushes` and marked `pending/`. Only the scanner and the
+  repository's publishers can read it.
+- **Validation.** `artifactProblems` sees the mirror host (`backups.ts:hostedImage`).
+  - It reads the image through the `MIRROR` bucket (`imageExists`, `imagePlatforms`) instead of over HTTPS.
+  - It refuses another package's repository (`artifact_image_foreign`).
+- **Publishing.** `publishVersion` calls `recordHostedImage`: `releaseImage` clears the pending markers (index children
+  too), and a `backups` row with `hosted = 1` stands for the image. `releasePlan` never copies such an image, and
+  `installFallbacks` never offers it.
+- **Clean-up.** Nightly, `queueMirrorSweeps` queues `{mirrorSweepRepo}` for repositories with pushes older than a week.
+  `sweepMirrorRepo` keeps the digests of the package's non-rejected versions and backups, with their index children and
+  `sha256-*` tags; it deletes other manifests older than a week and unused blobs older than a day (`sweepRepo`).
+  `purgeUploads` clears blob uploads idle for a day.
+
 Registry namespaces come from `POST /v1/namespaces` (`direct.ts:createNamespace`, `ot namespace create`):
 - Name rules: the slug; no name in `RESERVED_NAMESPACES` or `REGISTRY_RESERVED` (`api/src/lib/reserved.ts`;
   `namespace_reserved`); not taken.

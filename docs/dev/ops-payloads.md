@@ -658,7 +658,9 @@ Needs `REGISTRY_API` (origin, e.g. `https://api.otinstaller.com`; `/v1` is appen
   4. `imjasonh/setup-crane@v0.4`
   5. `actions/setup-python@v6` (3.12)
   6. scan only: `pip install guarddog==3.2.0 cryptography==50.0.2`
-  7. if `MIRROR_PUSH_TOKEN` set: `crane auth login "$MIRROR_HOST" -u scanner --password-stdin`
+  7. if `MIRROR_PUSH_TOKEN` set: `crane auth login "$MIRROR_HOST" -u scanner --password-stdin`, then the same with
+     `docker login` (images publishers pushed to the mirror are only served to this credential until they are
+     published, and the scan pulls them with Docker)
   8. writes `toJSON(github.event.client_payload)` to `$RUNNER_TEMP/request.json`
   9. `python3 ops/scanner/scan.py "$RUNNER_TEMP/request.json" --post`
 - Docker is the runner's preinstalled engine (no setup step).
