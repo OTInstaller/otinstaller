@@ -3,7 +3,7 @@
 // (the repository exists and is public, isn't in the registry or requested already, doesn't publish itself, has a
 // license the registry may redistribute, isn't archived) and is linked to its package once one is published.
 // Each request has a discussion thread, screened and moderated like issue comments, which its requester and the people
-// who reply follow. Routes live in routes/requests.ts; the tables are in migrations 0018 and 0023; known-repos.ts is
+// who reply follow. Routes live in routes/requests.ts; the tables are in migrations 0018 and 0026; known-repos.ts is
 // generated.
 import { deps, requireSecret, type Env, type User } from "./env";
 import { ulid } from "./lib/crypto";

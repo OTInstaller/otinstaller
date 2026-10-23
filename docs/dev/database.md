@@ -4,7 +4,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 `api/migrations/*.sql` and the code in `api/src/`, `api/test/` and `api/scripts/`.
 
 - Binding: `DB`, database name `otinstaller`, `migrations_dir: "migrations"` (`api/wrangler.jsonc`).
-- 23 migrations, `0001` to `0023`.
+- 23 migrations: `0001` to `0022`, and `0026`. `0023` to `0025` belong to the direct-publishing pull requests.
 - Final schema: **54 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 55. FTS5 also creates its own shadow
   tables, which aren't listed here.
 
@@ -36,7 +36,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0020 | `0020_community_wrappers.sql` | `tools` + `needs_first_review` (default 0), `submitted_by`, `upstream_url` (backfilled for community-packaged tools from the latest manifest's `homepage`); new tables `tool_maintainers` and `wrapper_submissions`; indexes `tool_maintainers_user`, `wrapper_submissions_status`, `wrapper_submissions_upstream`, `wrapper_submissions_repo`, `wrapper_submissions_user`. |
 | 0021 | `0021_upstream_watch.sql` | New table `upstream_watch` (per community wrapper: the pin and how it was read, upstream's latest release, state, license, the releases ETag, a staff override, the last error) and index `upstream_watch_state`. |
 | 0022 | `0022_bump_prs.sql` | New table `bump_prs` (one per community package and upstream release: the pull request's number, URL and branch, `open`/`merged`/`closed`, the version the merge released, who merged it) and index `bump_prs_open`. |
-| 0023 | `0023_request_threads.sql` | New tables `request_comments` (replies on tool requests, moderated like issue comments) and `request_subscriptions` (backfilled with each request's requester); `tool_requests` + `comment_count`, `locked_at`; `content_flags` rebuilt so `target_kind` also takes `request` and `request_comment`; indexes `request_comments_request`, `request_comments_held` (partial), `request_comments_author`, and `content_flags_open` again. |
+| 0026 | `0026_request_threads.sql` | New tables `request_comments` (replies on tool requests, moderated like issue comments) and `request_subscriptions` (backfilled with each request's requester); `tool_requests` + `comment_count`, `locked_at`; `content_flags` rebuilt so `target_kind` also takes `request` and `request_comment`; indexes `request_comments_request`, `request_comments_held` (partial), `request_comments_author`, and `content_flags_open` again. |
 
 ---
 
@@ -401,7 +401,7 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
 - `confirmations`: `tool_id`, `version_id`, `user_id`, `result` (works | broken), `platform`, `engine`, `ot_version`,
   `issue_id`; UNIQUE `(version_id, user_id, platform)`.
 - `run_signals`: anonymous daily counts of failed runs, PK `(version_id, day, platform, engine, exit_class)`.
-- `content_flags`: `target_kind` (issue | comment | request | request_comment, since 0023), `target_id`, `flagger_id`, `reason` (personal_data | spam | abuse |
+- `content_flags`: `target_kind` (issue | comment | request | request_comment, since 0026), `target_id`, `flagger_id`, `reason` (personal_data | spam | abuse |
   off_topic | other), `note`, `status` (open | upheld | dismissed); UNIQUE per target and flagger.
 - `issue_subscriptions`: `(issue_id, user_id)` with `reason` (author, commented, confirmed, manual) and `muted`.
 - `tools.open_broken` / `open_outdated` are kept by `community.ts:refreshCounts` in the same batch as every change.
@@ -420,7 +420,7 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
 - `request_votes`: PK `(request_id, user_id)`, `created_at`; the requester's vote is added with the request.
   `vote_count` is recounted in the same batch as every vote.
 
-### 2.12g Request discussions (0023)
+### 2.12g Request discussions (0026)
 
 - `request_comments`: `request_id` → `tool_requests(id)` (cascade), `author_id`, `author_kind` (user | system),
   `role_badge` (triager | staff, as it was when written; requests have no maintainers), `body_md`, `moderation`
