@@ -10,6 +10,8 @@ Contents
 1. System overview
 2. Flows
    - a. Publish a tool
+   - a2. Publish directly (`ot publish`)
+   - a3. Trusted publishing from CI
    - b. Scan
    - c. Guide publish
    - d. Backups
@@ -268,6 +270,47 @@ Registry namespaces come from `POST /v1/namespaces` (`direct.ts:createNamespace`
 - Limits: 3 per user (`namespace_limit`), 5 attempts a day.
 - The row is `provider 'registry'`, `provider_owner_id = id`, `pending_review`, `created_by`, plus an owner member.
 - `purgeIdleNamespaces` (nightly) deletes ones with no tools, transfers or running jobs after 30 days.
+
+### a3. Trusted publishing from CI
+
+An owner trusts a repository first: `POST /v1/me/namespaces/:ns/trusted-publishers` (`ot namespace trust`, the
+dashboard), a `trusted_publishers` row with optional `workflow`, `environment` and `package`.
+
+```
+ release workflow (spec/templates/*: the last step when OTINSTALLER_PUBLISH = oidc)
+   ot publish --oidc                                 (cli/internal/cli/publish.go, oidc.go)
+     ciIDToken: GitHub GET $ACTIONS_ID_TOKEN_REQUEST_URL&audience=otinstaller (bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN)
+                GitLab $OTINSTALLER_ID_TOKEN (id_tokens: aud otinstaller)
+     POST /v1/auth/oidc/token {id_token, namespace, package}
+       lib/oidc.ts:verifyCiToken
+         iss -> github | gitlab; discovery + JWKS cached per issuer (refetched for an unknown kid); RS256
+         aud otinstaller, exp/nbf/iat (60 s leeway), exp - iat <= 1 day, jti present   (401 oidc_token_invalid)
+         claims normalised (CiClaims); the workflow must be in the repository itself:
+           GitHub job_workflow_ref <repo>/.github/workflows/<file>@<ref>, GitLab ci_config_ref_uri gitlab.com/<path>//<file>@<ref>
+       trusted.ts:exchangeIdToken
+         overLimit("oidc_token", provider:repository_id, 30/h); namespace exists and may publish
+         repository visibility public                                    (else 403 publisher_not_trusted)
+         matchPublisher: (provider, repository, namespace) rows; pinned repository_id/owner_id, workflow,
+           environment (case-insensitive), package; pull_request_target / merge_request_event only with an environment
+         the publisher's creator is still a member and not banned
+         batch: INSERT api_tokens (scopes read,publish, 1 h, namespace_id, package, trusted_publisher_id, oidc_json,
+                jti UNIQUE -> 401 oidc_token_reused) + pin ids + audit token.create_ci (actor_kind github|gitlab)
+     the minted token: image push (mirror canPush: its namespace and package only), then
+     POST /v1/publish   authenticate: a restricted token counts only here and on GET /me/publish-jobs/:id
+       direct.ts:acceptUpload
+         uploadTarget: the token's namespace and package
+         sameRelease: a job for provider + repo_id + v<version> in the namespace, queued..published
+                      -> 200 {already_received: true, job_id}
+         uploadConflicts: manifest_name_taken unless tools.repo_url is this repository
+         INSERT publish_jobs (provider/repo/repo_id from the claims, delivery_id ci:<id>, tag + commit_sha from a tag
+                              ref, else v<version> + NULL; trusted_publisher_id, ci_json, bundle_key)
+```
+
+`processJob` then treats the job as that repository's release: it is a bundle job (files from R2, no `sources` row,
+no commit status), but `fileUrlFor` links into the repository at the commit or tag, `releaseProblems` and `record` use
+`repoUrl(provider, repo)` for name ownership, and `startChecks` dispatches `expectedSigner(provider, repo, tag)`, as
+for a tag. `onTag` skips a tag a CI run already uploaded, and an upload of a release the App's webhook already queued
+answers `already_received`, so a repository with both doesn't fail one of them.
 
 ### b. Scan
 
