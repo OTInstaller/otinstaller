@@ -21,6 +21,7 @@ import { opsRoutes } from "./routes/ops";
 import { betaRoutes } from "./routes/beta";
 import { backupRoutes } from "./routes/backups";
 import { profileRoutes } from "./routes/profiles";
+import { communityRoutes } from "./routes/community";
 import { refreshDueProfiles } from "./profiles";
 import { backfillBackups, expireDrills, expireRuns, installFallbacks, purgeBackups, RESTORE_DRILL_CRON, startDrill, WEEKLY_BACKUP_CRON, weeklyBackups } from "./backups";
 import { alertStuckJobs, dailyDigest, purgeRateLimits, reportError } from "./ops";
@@ -33,6 +34,7 @@ import { handleBatch } from "./publish";
 import { edgeCached } from "./edge-cache";
 import { compatManifest } from "./lib/manifest";
 import { mcpEndpoint } from "./mcp";
+import { lockStaleThreads } from "./community";
 
 export type { Env } from "./env";
 
@@ -69,6 +71,7 @@ opsRoutes(app);
 betaRoutes(app);
 backupRoutes(app);
 profileRoutes(app);
+communityRoutes(app);
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
@@ -490,6 +493,7 @@ export default {
       await dailyDigest(env);
       await purgeRateLimits(env);
       await purgeBackups(env);
+      await lockStaleThreads(env);
       await env.DB.prepare(
         `UPDATE tools SET installs_30d = COALESCE((SELECT SUM(count) FROM install_counts
            WHERE tool_id = tools.id AND day >= date('now', '-30 days')), 0)`,
