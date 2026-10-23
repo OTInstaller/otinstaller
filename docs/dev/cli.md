@@ -244,15 +244,16 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   `--list`), `-y/--yes` (install the playbook's missing tools first), `--native` (for those installs), `--parallel`
   (int, 4), `--results-dir`, `--case` (default the playbook's `case`, which defaults to `playbook-<name>`),
   `-h/--help`. `--live` accepted; `--no-save`, `-o`, `--out-dir`, `--<input>` refused.
+- `--list`: table `NAME TAKES DESCRIPTION TOOLS SOURCE` (TAKES is `inputs`, or `-`); JSON is the playbooks with
+  `inputs` always an array.
 - Sources, later winning on a name clash: bundled (`playbook/bundled/`, all `osintverse-community/`, none needing a
   key: `domain-recon`: dnstwist, crtsh-subdomains; `username-investigation`: sherlock, maigret; `email-investigation`:
   holehe, user-scanner, checkdmarc, dns-records; `phone-investigation`: phone-parse, phoneinfoga, numint;
   `ip-investigation`: ipwhois, naabu), `<ot home>/playbooks/*.yaml|*.yml`, `./playbooks/*.yaml|*.yml`. YAML keys:
   `name` (defaults to the file stem), `description`, `inputs` (input types the playbook is for, main one first; each
   one of username, email, domain, phone, ip, url, no duplicates; optional), `tools` (`ns/name`, no duplicates,
-  namespace required), `case`, `requires_target` (ignored). A broken file is an error.
-- `--list`: table `NAME TAKES DESCRIPTION TOOLS SOURCE` (TAKES is `inputs`, or `-`); JSON is the playbooks with
-  `inputs` always an array.
+  namespace required), `case`,
+  `requires_target` (ignored). A broken file is an error.
 - Missing tools without `-y`: exit 2 listing `ot install …` commands. With `-y`: installs them (`GET …/manifest`,
   `POST /installs`). Prints `Playbook <name>: <tools>` on stderr (table). Tools with no input of the given types are
   listed as `skipped`.
