@@ -267,6 +267,8 @@ app.get("/tools/:ns/:name", async (c) => {
     deprecated_message: row.deprecated_message ?? undefined,
     manifest: JSON.parse(row.manifest_json),
     moved_to: movedTo,
+    // Open issues people filed (the full status line is GET /tools/:ns/:name/status).
+    community: { open_broken: row.open_broken ?? 0, open_outdated: row.open_outdated ?? 0 },
   });
 });
 
