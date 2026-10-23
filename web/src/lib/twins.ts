@@ -10,7 +10,7 @@ export const SLUG = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 /** First path segments that are site sections, not namespaces (reserved.test.ts checks every page is listed). */
 export const RESERVED = new Set([
   "docs", "policy", "schema", "admin", "category", "input", "settings", "transfers", "guides", "search", "import", "feedback",
-  "dashboard", "removed", "publish", "tour", "otlite", "agents", "new", "404", "500", "community", "unsubscribe", "requests",
+  "dashboard", "removed", "publish", "tour", "otlite", "agents", "new", "404", "500", "learn", "community", "unsubscribe", "requests",
   "people", "submissions",
 ]);
 

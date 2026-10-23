@@ -87,6 +87,7 @@ Every public page type, what it emits, and whether it is meant to be indexed. "C
 | `/policy/{page}` | {title} | Frontmatter | `WebPage` with `dateModified`, `BreadcrumbList` | yes | 1 h |
 | `/publish` | Publish a tool or guide | as before | none | yes | 1 h |
 | `/agents` | AI agents | Connecting an AI client, consent, no Docker on the agent side | none | yes | 1 h |
+| `/learn` | Learn OSINT | How an investigation runs, opsec and legal basics, reading order | `TechArticle`, `BreadcrumbList` | yes | 1 h |
 | `/otlite`, `/otlite/tools` | otlite / otlite tools | What otlite is; all N tools by what they take | none | yes | 1 h |
 | `/otlite/tools/{name}` | {display name} with otlite: {first sentence, cut to fit about 60} | First sentence; install and run on Linux or macOS, no Docker; what it takes; keys or no key | `SoftwareApplication` (version, licence, repository, requirements, keywords), `BreadcrumbList` | yes | 1 h |
 | `/new` | What's new | New tools and guides, releases, yanks and deprecations | none | yes (`?before=` pages `noindex`, the Older link `nofollow`) | 5 min |
@@ -119,7 +120,9 @@ Tool titles put the name first, then the summary cut at a word; landing-page tit
   from the `ot` releases rather than writing it by hand.
 - **No "X vs Y" pages.** The "Other {input} tools" section on every tool page (the alternatives, linked to the input
   landing page) answers "sherlock alternative" searches with real, maintained content instead of thin comparison
-  pages that would need rewriting with every release.
+  pages that would need rewriting with every release. Each input page also has a table comparing every tool that takes
+  it, built from manifest facts (what it finds, keys, what a run reaches, personal data, runtime) and the nightly health
+  check. It sorts in the browser, so it adds no URLs, and it contains no ratings.
 
 ## 3. Keyword map
 

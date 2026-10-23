@@ -73,6 +73,13 @@ export function upstreamReleasesUrl(homepage: string | null | undefined): string
   return gl && gl[1]!.includes("/") && !gl[1]!.includes("/-/") ? `https://gitlab.com/${gl[1]}/-/releases` : null;
 }
 
+/** How a tool's nightly health check reads in lists and tables: a status class and a short phrase. */
+export function healthLabel(t: { health: string; health_checked_at?: number | null }, now = Date.now()): { cls: "ok" | "warn" | "none"; text: string } {
+  if (t.health === "healthy") return { cls: "ok", text: t.health_checked_at ? `Worked ${ago(t.health_checked_at, now)}` : "Health check passing" };
+  if (t.health === "broken") return { cls: "warn", text: t.health_checked_at ? `Possibly broken since ${ago(t.health_checked_at, now).replace(/^on /, "")}` : "Possibly broken" };
+  return { cls: "none", text: "Not health-checked" };
+}
+
 /** "last night", "3 days ago", or a date, for health checks and similar timestamps. */
 export function ago(ms: number | null | undefined, now = Date.now()): string {
   if (!ms) return "never";
