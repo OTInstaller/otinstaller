@@ -241,6 +241,11 @@ At most 30 changes a minute per account.
 ### too_many_reports
 At most 5 reports an hour from one address, or 20 a day per account. Write to abuse@otinstaller.com for more.
 
+### database_unavailable
+The registry's database didn't answer, which passes on its own. Try again after the `Retry-After` header (also
+`retry_after_s` in the body): usually a second, or midnight UTC when a daily limit was reached. Nothing you sent was
+wrong, and the website retries reads once by itself.
+
 ### invalid_reason
 Report reasons are malware, policy, impersonation, license, broken and other.
 

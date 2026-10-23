@@ -10,12 +10,32 @@ Items marked **(you)** need the owner of the GitHub, GitLab, Cloudflare, Resend,
 | Thing | State |
 |-------|-------|
 | `ot` | v0.15.0 is the latest release on `OTInstaller/ot` (23 Oct, 19:49 UTC, tag `v0.15.0` on `7808e0d`), with archives, `.deb`/`.rpm`, signed checksums, six `.mcpb` bundles and `server.json`; `get.otinstaller.com/ot` and `/ot.ps1` serve its install scripts, and `/ot/latest` answers `v0.15.0`. Checked: the Windows amd64 archive matches `checksums.txt`, reports `ot version v0.15.0`, and has `ot publish --image/--sign/--oidc` and `ot namespace create/trust/trusted/untrust` |
-| API and site | Deployed from `main` (`6787737` and later docs) on 23 Oct: the API at 19:16 UTC, the mirror (now bound to D1) at 19:18 and the site with `PUBLIC_BETA=0` (no beta strip) at 19:44; migrations up to 0027 applied in production ("Phase 1 and publishing" below) |
+| API and site | Deployed from `main` (`6787737` and later docs) on 23 Oct: the API at 19:16 UTC, the mirror (now bound to D1) at 19:18 and the site with `PUBLIC_BETA=0` (no beta strip) at 19:44; migrations up to 0027 applied in production ("Phase 1 and publishing" below). The API and site were deployed again at 20:42 and 20:43 UTC with the D1 outage handling ("D1 outages" below); the mirror wasn't, as nothing it runs changed |
 | Agents | `ot mcp` (since v0.13.0), the remote MCP server at `https://api.otinstaller.com/mcp`, the plugin `OTInstaller/agent-plugin` v0.1.1 (23 Oct; `claude plugin validate --strict` passes); MCP Registry entries `com.otinstaller/ot` 0.15.0 (the latest, listed 23 Oct, 19:55 UTC) and `com.otinstaller/registry` 1.0.0 |
 | otlite | 1.0.0, 1.1.0 and 1.2.0 released to PyPI on 22 Oct (09:23, 09:39 and 10:51 UTC) by `release-otlite.yml`, each with a GitHub release `otlite-vX.Y.Z` on `OTInstaller/otinstaller`. 1.2.1 ([PR #48](https://github.com/OTInstaller/otinstaller/pull/48)) followed on 22 Oct at 18:54 UTC and is the latest on PyPI |
 | `otinstaller` shim | 0.2.0 is on PyPI (22 Oct, 11:23 UTC), and its files are on the `otlite-v1.2.0` GitHub release. The workflow publishes it from its own environment `pypi-otinstaller` ([PR #44](https://github.com/OTInstaller/otinstaller/pull/44)), but in the `otlite-v1.2.0` run that job failed with `invalid-publisher` (10:52 UTC), so the Actions history doesn't show how 0.2.0 was uploaded. **(you)** Check that PyPI's trusted publisher for `otinstaller` names the environment `pypi-otinstaller` before the next release |
 | otlite installer | `curl -fsSL https://get.otinstaller.com/otlite \| sh` answers 200 (`otlite/scripts/install.sh` from `main`, through `ops/get`) |
 | Site pages | `/agents`, the homepage for AI agents, with its Markdown twin `/agents.md`; `/otlite` and `/otlite/tools`, both listing every tool from `web/src/data/otlite-catalog.json`; tool pages show the sample output recorded by the scanner's smoke test |
+
+## D1 outages answered with 503 (deployed 23 October 2026)
+
+Sentry's OTINSTALLER-A and -B were twelve `D1_ERROR: internal error; reference = ...` events from 21 to 23 Oct, on
+read-only queries D1 had already retried. The API now answers such failures with 503 `database_unavailable` and
+`Retry-After`, reports them as one grouped Sentry warning per kind, and the site retries a read once
+([troubleshooting.md](dev/troubleshooting.md#d1-read-limit-exhaustion)). It was deployed from the branch
+`claude/d1-transient-errors` before that was merged.
+
+- [x] Deploy the API: in `api/`, `npm run deploy`. Now `cf3639a6-dc66-4fbd-bf9d-925180288eb8` (23 Oct, 20:42 UTC);
+      roll back to `3c1b95bd-a431-4f15-9d0a-455c2100d6ec`.
+- [x] Deploy the site with `PUBLIC_BETA=0`: in `web/`, PowerShell `$env:PUBLIC_BETA = "0"; npm run deploy`. Now
+      `d8c4a74f-7dfa-4c23-a1e7-6be77c66c024` (23 Oct, 20:43 UTC); roll back to `d2d15efe-7c5d-4a35-9b90-aa558d9c4087`.
+      Checks: `/v1/tools` and `/v1/health` answer 200, the site has no beta strip, and `/docs/errors` has
+      `database_unavailable`.
+- [ ] **(you)** Merge the pull request for `claude/d1-transient-errors`; until then a deploy from `main` takes the
+      handling out of production again.
+- [ ] **(you)** Resolve OTINSTALLER-A and -B in Sentry once it's merged: new D1 failures arrive as warnings under the
+      fingerprint `d1-unavailable`. OTINSTALLER-6 (an old `otinstaller` 0.1.0 usage error otlite no longer reports),
+      -8 (the setup test) and -9 (the 21 Oct read-limit outage, fixed by the edge cache and Workers Paid) can go too.
 
 ## Phase 1 and publishing (merged and deployed 23 October 2026)
 

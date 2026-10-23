@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { sha256Hex, ulid } from "../src/lib/crypto";
+import { d1RetryAfter } from "../src/lib/errors";
 import { recomputeLatest } from "../src/trust";
 import { alertStuckJobs, applyHealth, businessDays, dailyDigest } from "../src/ops";
 import { call, fakeHosts, testEnv } from "./helpers";
@@ -357,6 +358,53 @@ describe("monitoring", () => {
     expect(header.dsn).toBe("https://pubkey@sentry.example/42");
     expect(event).toMatchObject({ level: "error", tags: { request_id: "abc-LHR" }, transaction: "GET /v1/tools/dheeraj/whois-lite/readme" });
     expect(sent).not.toContain("secret");
+  });
+
+  // A database whose every query fails the way production's D1 did (OTINSTALLER-A and -B in Sentry).
+  const failingDb = (message: string) => {
+    const fail = () => Promise.reject(new Error(message));
+    const stmt: Record<string, unknown> = { first: fail, all: fail, run: fail, raw: fail };
+    stmt.bind = () => stmt;
+    return { prepare: () => stmt, batch: fail } as unknown as D1Database;
+  };
+
+  it("answers a D1 failure on Cloudflare's side with a 503 that says when to retry, reported as a warning", async () => {
+    const events: any[] = [];
+    fakeHosts({ "POST https://sentry.example/api/42/envelope/": async (req) => (events.push(JSON.parse((await req.text()).trim().split("\n")[2]!)), { id: "x" }) });
+    const e = (message: string) => ({ ...env, DB: failingDb(message), SENTRY_DSN: "https://pubkey@sentry.example/42" }) as any;
+
+    const res = await call("/tools", { headers: { "cf-ray": "def-LHR" } }, e("D1_ERROR: internal error; reference = a0cj7t444s94ckbg836c09pk"));
+    expect(res.status).toBe(503);
+    expect(res.headers.get("retry-after")).toBe("1");
+    expect(await res.json()).toMatchObject({
+      error: { code: "database_unavailable", hint: "try again in a few seconds", request_id: "def-LHR", retry_after_s: 1 },
+    });
+    // Every stack lands in one warning issue instead of a new error issue each.
+    expect(events.at(-1)).toMatchObject({ level: "warning", fingerprint: ["d1-unavailable", "transient"], tags: { request_id: "def-LHR" } });
+
+    const limited = await call("/tools/dheeraj/whois-lite", {}, e("D1_ERROR: Your account has exceeded D1's free tier daily row read limit. Upgrade to a paid plan or wait until tomorrow (midnight UTC) to continue."));
+    expect(limited.status).toBe(503);
+    expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);
+    expect(((await limited.json()) as any).error.hint).toBe("try again after midnight UTC");
+    expect(events.at(-1).fingerprint).toEqual(["d1-unavailable", "daily-limit"]);
+
+    // A query of ours that D1 had to stop is still our bug.
+    const ours = await call("/tools", {}, e("D1_ERROR: D1 DB exceeded its CPU time limit and was reset."));
+    expect(ours.status).toBe(500);
+    expect(((await ours.json()) as any).error.code).toBe("internal_error");
+    expect(events.at(-1)).toMatchObject({ level: "error" });
+    expect(events.at(-1).fingerprint).toBeUndefined();
+  });
+
+  it("knows which D1 errors pass on their own", () => {
+    const midnight = Date.UTC(2026, 9, 24);
+    expect(d1RetryAfter(new Error("D1_ERROR: Network connection lost."))).toBe(1);
+    expect(d1RetryAfter(new Error("D1_ERROR: Internal error in D1 DB storage caused object to be reset."))).toBe(1);
+    expect(d1RetryAfter(new Error("D1_ERROR: D1 DB is overloaded. Too many requests queued."))).toBe(1);
+    expect(d1RetryAfter(new Error("D1_ERROR: Your account has exceeded D1's free tier daily row write limit."), midnight - 90_000)).toBe(90);
+    expect(d1RetryAfter(new Error("D1_ERROR: D1 DB's isolate exceeded its memory limit and was reset."))).toBeNull();
+    expect(d1RetryAfter(new Error("D1_ERROR: no such table: toolz: SQLITE_ERROR"))).toBeNull();
+    expect(d1RetryAfter(new Error("internal error"))).toBeNull();
   });
 });
 

@@ -727,8 +727,9 @@ cron deletes it two days after it expires.
   the same shape as `ot --json` errors). Codes are snake_case;
   messages are short lowercase sentences; hints usually name an `ot` command or a sign-in link (the site makes hint
   links clickable). Multi-problem responses add `problems`. Unhandled errors become 500 `internal_error` with a
-  `request_id` (the `cf-ray` header) and go to Sentry. If you add a user-facing code, document it in
-  `web/src/pages/docs/errors.md`.
+  `request_id` (the `cf-ray` header) and go to Sentry; D1 failing on Cloudflare's side (`d1RetryAfter`) is 503
+  `database_unavailable` with `Retry-After` instead, a Sentry warning grouped by kind, and the site's `api()` retries
+  such a read once. If you add a user-facing code, document it in `web/src/pages/docs/errors.md`.
 - **All outbound HTTP goes through `deps.fetch`** (passed to host functions as `f: Fetch`). Calling `fetch` directly
   breaks the tests' fake hosts.
 - Raw D1 SQL with `?` bindings; multi-statement writes in `db.batch([...])` with `audit(...)` in the same batch.

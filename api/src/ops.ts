@@ -128,9 +128,12 @@ export async function purgeRateLimits(env: Env, now = Date.now()) {
 
 /**
  * Sends an exception to Sentry (when SENTRY_DSN is set) through its envelope endpoint. Request headers,
- * cookies and bodies are never included.
+ * cookies and bodies are never included. A fingerprint groups events into one issue whatever their stack.
  */
-export async function reportError(env: Env, err: unknown, ctx: { requestId: string; method?: string; path?: string }) {
+export async function reportError(
+  env: Env, err: unknown,
+  ctx: { requestId: string; method?: string; path?: string; level?: "error" | "warning"; fingerprint?: string[] },
+) {
   if (!env.SENTRY_DSN) return;
   try {
     const dsn = new URL(env.SENTRY_DSN);
@@ -138,8 +141,8 @@ export async function reportError(env: Env, err: unknown, ctx: { requestId: stri
     const e = err instanceof Error ? err : new Error(String(err));
     const eventId = crypto.randomUUID().replace(/-/g, "");
     const event = {
-      event_id: eventId, timestamp: Date.now() / 1000, platform: "javascript", level: "error", environment: env.SENTRY_ENVIRONMENT ?? "production",
-      server_name: "otinstaller-registry-api", tags: { request_id: ctx.requestId },
+      event_id: eventId, timestamp: Date.now() / 1000, platform: "javascript", level: ctx.level ?? "error", environment: env.SENTRY_ENVIRONMENT ?? "production",
+      server_name: "otinstaller-registry-api", tags: { request_id: ctx.requestId }, fingerprint: ctx.fingerprint,
       transaction: ctx.path ? `${ctx.method ?? "GET"} ${ctx.path.replace(/\/[0-9A-Z]{26}(?=\/|$)/g, "/:id")}` : undefined,
       exception: { values: [{ type: e.name, value: e.message, stacktrace: e.stack ? { frames: e.stack.split("\n").slice(1, 30).reverse().map((l) => ({ function: l.trim() })) } : undefined }] },
     };

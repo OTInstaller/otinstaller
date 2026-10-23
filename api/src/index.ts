@@ -8,7 +8,7 @@ import openapi from "../../spec/openapi/v1.json";
 import { rank } from "./ranking";
 import { cached, findTool, findVersion, notFound, LISTED, publishedVia, rankInput, summary, SUMMARY_COLUMNS, VISIBLE, type SummaryRow } from "./catalog";
 import type { AppEnv, Env, PublishMessage } from "./env";
-import { apiError, errorDocs, rateLimited, windowRetry } from "./lib/errors";
+import { apiError, d1RetryAfter, errorDocs, rateLimited, windowRetry } from "./lib/errors";
 import { authRoutes } from "./routes/auth";
 import { webhookRoutes } from "./routes/webhooks";
 import { reviewRoutes } from "./routes/review";
@@ -102,7 +102,28 @@ app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
   // The request ID ties a user's report to the log line; behind Cloudflare it is the cf-ray.
   const requestId = c.req.header("cf-ray") ?? ulid();
-  c.executionCtx.waitUntil(reportError(c.env, err, { requestId, method: c.req.method, path: new URL(c.req.url).pathname }));
+  const path = new URL(c.req.url).pathname;
+  // D1 failing on Cloudflare's side is a 503 that says when to retry, reported as a warning under one Sentry issue
+  // per kind (each new stack used to open a new error issue); anything else is our bug.
+  const retryAfter = d1RetryAfter(err);
+  if (retryAfter !== null) {
+    const daily = retryAfter > 60;
+    c.executionCtx.waitUntil(reportError(c.env, err, {
+      requestId, method: c.req.method, path, level: "warning", fingerprint: ["d1-unavailable", daily ? "daily-limit" : "transient"],
+    }));
+    console.error(`request ${requestId}:`, err);
+    return c.json({
+      error: {
+        code: "database_unavailable",
+        message: "the registry's database didn't answer",
+        hint: daily ? "try again after midnight UTC" : "try again in a few seconds",
+        docs: errorDocs("database_unavailable"),
+        request_id: requestId,
+        retry_after_s: retryAfter,
+      },
+    }, 503, { "Retry-After": String(retryAfter) });
+  }
+  c.executionCtx.waitUntil(reportError(c.env, err, { requestId, method: c.req.method, path }));
   console.error(`request ${requestId}:`, err);
   return c.json({
     error: {
