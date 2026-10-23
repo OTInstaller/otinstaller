@@ -147,7 +147,7 @@ export async function submissionChecks(env: Env, user: User, upstream: { provide
 // ---------- the community bot ----------
 
 /** The bot's token, or 503 when the operator hasn't set it up. */
-async function botToken(env: Env): Promise<string> {
+export async function botToken(env: Env): Promise<string> {
   if (!env.COMMUNITY_APP_ID || !env.COMMUNITY_APP_PRIVATE_KEY || !env.COMMUNITY_INSTALLATION_ID) {
     apiError(503, "community_bot_missing", "community submissions aren't switched on yet", "an osintverse-community admin can package it meanwhile; ask on OTInstaller/feedback");
   }

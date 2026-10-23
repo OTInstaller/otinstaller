@@ -92,6 +92,13 @@ relicensed upstream gets an issue too. Wrappers pinned to a commit rather than a
 issue for new commits. Dockerfiles that pin their release in a way the registry can read make this work; the
 [errors page](/docs/errors#dockerfile_no_pin) lists the ways.
 
+Further on, the registry's community bot also opens a pull request in the wrapper repository that changes only the
+pin: the Dockerfile's pin line, or for a Python package its version and wheel hash. The outdated issue links to it.
+The package's maintainers (whoever submitted it, others staff add, and the namespace's members) see **Merge and
+release** on the package page: the registry merges the pull request and starts the release, which is built, signed
+and scanned like any other. A pull request that changes more than the pin waits for a reviewer. Maintainers can also
+triage their package's issues.
+
 ## From the terminal
 
 When `ot run` fails at a terminal (it timed out, or exited non-zero and found nothing), it asks:
@@ -138,7 +145,7 @@ and your avatar is left off your posts.
 | --- | --- |
 | Anyone | Read issues, the status line, the [community board](/community) and [tool requests](/requests) |
 | Signed in | Open issues, reply, say it works or is broken, follow a thread, flag a post, ask for a tool and vote for requests |
-| The package's maintainers | Triage its issues, lock threads, hide comments on its issues |
+| The package's maintainers | Triage its issues, lock threads, hide comments on its issues; for community packages, merge and release bump pull requests |
 | Triagers | Triage any package's issues, decide tool requests, approve held posts and requests, hide posts, pause an account for up to 7 days |
 | Reviewers | What triagers can, and start, approve, send back or turn down community submissions (never their own) |
 | Staff | Everything, including redacting posts and granting the triager and reviewer roles |

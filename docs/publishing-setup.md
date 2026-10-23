@@ -182,8 +182,9 @@ else changes.
 1. The registry's own App must be installed on **All repositories** of `osintverse-community`, so it sees the tags of
    repositories the bot creates (the publish webhook and the 6-hourly poller both use it).
 2. Create a GitHub App called "OTInstaller Community", owned by the `osintverse-community` organisation, with no
-   webhook. Repository permissions: Administration, Contents, Workflows and Actions **read and write**; Metadata
-   read. Install it on `osintverse-community` only (all repositories).
+   webhook. Repository permissions: Administration, Contents, Workflows, Actions and Pull requests **read and
+   write** (pull requests for the upstream watcher's bumps); Metadata read. Install it on `osintverse-community`
+   only (all repositories).
 3. Set the secrets on the API Worker (owner's step: `wrangler secret put` changes production):
    `COMMUNITY_APP_ID`, `COMMUNITY_APP_PRIVATE_KEY` (the App's key converted to PKCS#8, like `GITHUB_APP_PRIVATE_KEY`)
    and `COMMUNITY_INSTALLATION_ID`.

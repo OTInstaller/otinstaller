@@ -510,6 +510,8 @@ export interface UpstreamWatch {
   /** For commit pins: how many commits upstream's default branch has moved on. */
   commits_behind: number | null;
   checked_at: number | null;
+  /** The community bot's open pull request bumping the pin, on the tool detail only. */
+  bump?: { version: string; number: number; url: string };
 }
 
 export interface UpstreamSummary {

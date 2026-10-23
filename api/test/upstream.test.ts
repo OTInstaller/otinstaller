@@ -4,6 +4,7 @@ import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { findPin } from "../src/upstream-pin";
 import { checkUpstream, compareVersions, queueUpstreamChecks } from "../src/upstream";
+import { pinOnly } from "../src/bumps";
 import { sha256Hex, ulid } from "../src/lib/crypto";
 import { call, fakeHosts, sent, testEnv } from "./helpers";
 
@@ -210,5 +211,135 @@ describe("upstream watcher", () => {
 
     sent.length = 0;
     expect(await queueUpstreamChecks(await testEnv())).toBeGreaterThan(0);
+  });
+});
+
+// ---------- bump pull requests ----------
+
+describe("bump pull requests", () => {
+  /** The community bot on the wrapper repository: its files, the pull request it opens, merges, tags and dispatches. */
+  function bot(upstream: string, w: { name: string }, files: Record<string, string>, extra: Record<string, any> = {}) {
+    const repo = `osintverse-community/${w.name}`;
+    const commits: { path: string; content: string; branch: string }[] = [];
+    const did: { pulls: unknown[]; merged: unknown[]; dispatched: unknown[]; tagged: unknown[] } = { pulls: [], merged: [], dispatched: [], tagged: [] };
+    const calls = fakeHosts({
+      [`POST ${GH}/app/installations/`]: { token: "ghs_x" },
+      [`GET ${GH}/repos/${upstream}`]: { full_name: upstream, archived: false, default_branch: "main", license: { spdx_id: "MIT" } },
+      [`GET ${GH}/repos/${upstream}/releases/latest`]: { tag_name: "v1.3.0", published_at: new Date(Date.now() - 10 * DAY).toISOString() },
+      [`GET ${GH}/repos/${repo}/contents/`]: (req: Request) => {
+        const path = decodeURIComponent(new URL(req.url).pathname.split("/contents/")[1]!);
+        if (files[path] === undefined) return null;
+        return (req.headers.get("accept") ?? "").includes("raw") ? new Response(files[path]) : { sha: "old", type: "file" };
+      },
+      [`PUT ${GH}/repos/${repo}/contents/`]: async (req: Request) => {
+        const b = (await req.json()) as { content: string; branch: string };
+        commits.push({ path: decodeURIComponent(new URL(req.url).pathname.split("/contents/")[1]!), branch: b.branch, content: atob(b.content) });
+        return new Response("{}", { status: 201 });
+      },
+      [`GET ${GH}/repos/${repo}/git/ref/heads/main`]: { object: { sha: "base123" } },
+      [`POST ${GH}/repos/${repo}/git/refs`]: async (req: Request) => {
+        const b = (await req.json()) as { ref: string };
+        if (b.ref.startsWith("refs/tags/")) did.tagged.push(b);
+        return new Response("{}", { status: 201 });
+      },
+      [`POST ${GH}/repos/${repo}/pulls`]: async (req: Request) => (did.pulls.push(await req.json()), { html_url: `https://github.com/${repo}/pull/9`, number: 9 }),
+      [`GET ${GH}/repos/${repo}/pulls/9/files`]: [{ filename: "Dockerfile", status: "modified", changes: 2, patch: "@@ -1,2 +1,2 @@\n FROM golang:1.26-alpine AS b\n-RUN go install x@v1.2.0\n+RUN go install x@v1.3.0" }],
+      [`PUT ${GH}/repos/${repo}/pulls/9/merge`]: async (req: Request) => (did.merged.push(await req.json()), { sha: "merged456", merged: true }),
+      [`POST ${GH}/repos/${repo}/actions/workflows/`]: async (req: Request) => (did.dispatched.push(await req.json()), new Response(null, { status: 204 })),
+      "GET https://pypi.org/pypi/": { info: { version: "1.3.0" }, urls: [{ packagetype: "bdist_wheel", filename: "x-1.3.0-py3-none-any.whl", digests: { sha256: "d".repeat(64) } }] },
+      ...extra,
+    });
+    return { commits, did, calls };
+  }
+
+  async function botEnv() {
+    const base = await testEnv();
+    return { ...base, UPSTREAM_WATCH: "prs", COMMUNITY_APP_ID: "77", COMMUNITY_INSTALLATION_ID: "555", COMMUNITY_APP_PRIVATE_KEY: base.GITHUB_APP_PRIVATE_KEY };
+  }
+
+  async function person(opts: { reviewer?: boolean } = {}) {
+    const id = ulid();
+    const token = `ot_test_${id}`;
+    await DB().batch([
+      DB().prepare(`INSERT INTO users (id, login, handle, is_reviewer, created_at) VALUES (?, ?, ?, ?, 1)`).bind(id, `m${uniq()}`, `m${uniq()}`, opts.reviewer ? 1 : 0),
+      DB().prepare(`INSERT INTO api_tokens (id, user_id, name, token_hash, created_at) VALUES (?, ?, 't', ?, 1)`).bind(ulid(), id, await sha256Hex(token)),
+    ]);
+    return { id, headers: { authorization: `Bearer ${token}`, "content-type": "application/json" } };
+  }
+
+  it("opens a pull request changing only the pin, and a maintainer merges and releases it", async () => {
+    await installation();
+    const upstream = `up${uniq()}/tool`;
+    const w = await wrapper(upstream);
+    const dockerfile = go(upstream, "v1.2.0");
+    const b = bot(upstream, w, { Dockerfile: dockerfile });
+    const e = await botEnv();
+    expect(await checkUpstream(e, w.toolId)).toMatchObject({ state: "behind" });
+    expect(b.commits).toEqual([{ path: "Dockerfile", branch: "otinstaller/bump-1.3.0", content: dockerfile.replace("@v1.2.0", "@v1.3.0") }]);
+    expect(b.did.pulls[0]).toMatchObject({ title: `Bump ${w.name} to v1.3.0`, head: "otinstaller/bump-1.3.0", base: "main" });
+    expect(await DB().prepare(`SELECT version, pr_number, status FROM bump_prs WHERE tool_id = ?`).bind(w.toolId).first()).toEqual({ version: "v1.3.0", pr_number: 9, status: "open" });
+    const issue = await DB().prepare(`SELECT body_md FROM issues WHERE tool_id = ? AND dedupe_key = 'outdated:v1.3.0'`).bind(w.toolId).first<{ body_md: string }>();
+    expect(issue!.body_md).toContain(`https://github.com/osintverse-community/${w.name}/pull/9`);
+    // Checking again opens no second pull request.
+    await checkUpstream(e, w.toolId);
+    expect(b.did.pulls).toHaveLength(1);
+    expect(((await (await call(`/tools/${w.ref}`, {}, e)).json()) as any).upstream.bump).toEqual({ version: "v1.3.0", number: 9, url: `https://github.com/osintverse-community/${w.name}/pull/9` });
+
+    // Someone unrelated can't release it; a maintainer of the package can.
+    const stranger = await person();
+    const nope = await call(`/packages/${w.ref}/pulls/9/release`, { method: "POST", headers: stranger.headers, body: "{}" }, e);
+    expect(((await nope.json()) as any).error.code).toBe("not_package_maintainer");
+    const maintainer = await person();
+    await DB().prepare(`INSERT INTO tool_maintainers (tool_id, user_id, reason, created_at) VALUES (?, ?, 'submitter', 1)`).bind(w.toolId, maintainer.id).run();
+    expect(((await (await call(`/packages/${w.ref}/bump`, { headers: maintainer.headers }, e)).json()) as any)).toMatchObject({ can_release: true, bump: { number: 9 } });
+    const res = await call(`/packages/${w.ref}/pulls/9/release`, { method: "POST", headers: maintainer.headers, body: "{}" }, e);
+    expect(await res.json()).toEqual({ merged: true, upstream_version: "v1.3.0", version: "1.3.0" });
+    expect(b.did.merged).toHaveLength(1);
+    expect(b.did.dispatched).toEqual([{ ref: "main", inputs: { version: "1.3.0" } }]);
+    expect(await DB().prepare(`SELECT status, released_version FROM bump_prs WHERE tool_id = ?`).bind(w.toolId).first()).toEqual({ status: "merged", released_version: "1.3.0" });
+    // The package's maintainers triage its issues too.
+    const viewer = await call(`/tools/${w.ref}/issues/1/viewer`, { headers: maintainer.headers }, e);
+    expect(viewer.status).toBe(200);
+    expect(((await viewer.json()) as any).can_triage).toBe(true);
+  });
+
+  it("leaves a pull request that changes more than the pin to a reviewer", async () => {
+    await installation();
+    const upstream = `up${uniq()}/tool`;
+    const w = await wrapper(upstream);
+    const extra = { [`GET ${GH}/repos/osintverse-community/${w.name}/pulls/9/files`]: [{ filename: "Dockerfile", changes: 4, patch: "-USER 65534\n+USER root\n-RUN go install x@v1.2.0\n+RUN go install x@v1.3.0" }] };
+    bot(upstream, w, { Dockerfile: go(upstream, "v1.2.0") }, extra);
+    const e = await botEnv();
+    await checkUpstream(e, w.toolId);
+    const maintainer = await person();
+    await DB().prepare(`INSERT INTO tool_maintainers (tool_id, user_id, reason, created_at) VALUES (?, ?, 'added', 1)`).bind(w.toolId, maintainer.id).run();
+    expect(((await (await call(`/packages/${w.ref}/pulls/9/release`, { method: "POST", headers: maintainer.headers, body: "{}" }, e)).json()) as any).error.code).toBe("not_pin_only");
+    const reviewer = await person({ reviewer: true });
+    expect((await call(`/packages/${w.ref}/pulls/9/release`, { method: "POST", headers: reviewer.headers, body: "{}" }, e)).status).toBe(200);
+  });
+
+  it("bumps a wheel's version and hash in the manifest, and releases it with a tag", async () => {
+    await installation();
+    const upstream = `up${uniq()}/py`;
+    const w = await wrapper(upstream, { pipx: { package: "py-tool", version: "1.2.0" } });
+    const yaml = `schema: 1\nname: ${w.name}\nversion: 1.2.0\nruntime:\n  kind: pipx\n  package: py-tool\n  package_version: "1.2.0"\n  wheel_sha256: ${"c".repeat(64)}\n`;
+    const b = bot(upstream, w, { "otinstaller.yaml": yaml }, {
+      "GET https://pypi.org/pypi/py-tool/json": { info: { version: "1.3.0" }, releases: { "1.3.0": [{ upload_time_iso_8601: new Date(Date.now() - 10 * DAY).toISOString() }] } },
+      [`GET ${GH}/repos/osintverse-community/${w.name}/pulls/9/files`]: [{ filename: "otinstaller.yaml", changes: 6, patch: "-version: 1.2.0\n+version: 1.3.0\n-  package_version: \"1.2.0\"\n+  package_version: \"1.3.0\"\n-  wheel_sha256: c\n+  wheel_sha256: d" }],
+    });
+    const e = await botEnv();
+    expect(await checkUpstream(e, w.toolId)).toMatchObject({ state: "behind", pin_kind: "pipx", latest: "1.3.0" });
+    expect(b.commits[0]!.content).toBe(yaml.replace("version: 1.2.0", "version: 1.3.0").replace('package_version: "1.2.0"', 'package_version: "1.3.0"').replace("c".repeat(64), "d".repeat(64)));
+    const reviewer = await person({ reviewer: true });
+    expect(await (await call(`/packages/${w.ref}/pulls/9/release`, { method: "POST", headers: reviewer.headers, body: "{}" }, e)).json()).toMatchObject({ version: "1.3.0" });
+    expect(b.did.tagged).toEqual([{ ref: "refs/tags/v1.3.0", sha: "merged456" }]);
+  });
+
+  it("knows a pin-only change when it sees one", () => {
+    expect(pinOnly([{ filename: "Dockerfile", patch: "@@ -2 +2 @@\n-RUN go install x@v1\n+RUN go install x@v2" }])).toBe(true);
+    expect(pinOnly([{ filename: "Dockerfile", patch: "-a\n+b\n-c\n+d" }])).toBe(false);
+    expect(pinOnly([{ filename: "README.md", patch: "-a\n+b" }])).toBe(false);
+    expect(pinOnly([{ filename: "otinstaller.yaml", patch: "-version: 1\n+version: 2\n-  wheel_sha256: a\n+  wheel_sha256: b" }])).toBe(true);
+    expect(pinOnly([{ filename: "otinstaller.yaml", patch: "-  command: [a]\n+  command: [b]" }])).toBe(false);
   });
 });

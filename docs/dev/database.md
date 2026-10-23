@@ -31,6 +31,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0016 | `0016_community.sql` | `users` + `handle` (unique, backfilled from `lower(login)`, a suffix on collision), `profile_hidden`, `posting_blocked_until`; new tables `community_roles`, `issues`, `issue_comments`, `confirmations`, `run_signals`, `content_flags`, `issue_subscriptions`; `health_checks` + `failure_class`; `tools` + `open_broken`, `open_outdated`. |
 | 0017 | `0017_notifications.sql` | New tables `email_prefs` (per person: `community`, `owner_issues` as immediate/daily/off) and `inbox` (kind, scope community/owner_issues/account, summary, site path, read and emailed times); indexes `inbox_user`, `inbox_pending` (partial). |
 | 0018 | `0018_requests.sql` | New tables `tool_requests` (one per repository: status, decline code, decision, the answering package, what otlite and the seed survey knew, votes, moderation) and `request_votes`; indexes `tool_requests_board`, `tool_requests_project`, `tool_requests_requester`, `request_votes_user`. |
+| 0022 | `0022_bump_prs.sql` | New table `bump_prs` (one per community package and upstream release: the pull request's number, URL and branch, `open`/`merged`/`closed`, the version the merge released, who merged it) and index `bump_prs_open`. |
 | 0021 | `0021_upstream_watch.sql` | New table `upstream_watch` (per community wrapper: the pin and how it was read, upstream's latest release, state, license, the releases ETag, a staff override, the last error) and index `upstream_watch_state`. |
 | 0020 | `0020_community_wrappers.sql` | `tools` + `needs_first_review` (default 0), `submitted_by`, `upstream_url` (backfilled for community-packaged tools from the latest manifest's `homepage`); new tables `tool_maintainers` and `wrapper_submissions`; indexes `tool_maintainers_user`, `wrapper_submissions_status`, `wrapper_submissions_upstream`, `wrapper_submissions_repo`, `wrapper_submissions_user`. |
 | 0019 | `0019_people.sql` | New table `contributor_stats` (per person: issues opened and confirmed, replies, confirmations, requests made and published, issues triaged; recounted nightly); indexes `issues_author`, `issue_comments_author`, `confirmations_user`, `issues_closed_by`. |
@@ -416,6 +417,12 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
   `tool_requests_requester (requested_by, created_at)`.
 - `request_votes`: PK `(request_id, user_id)`, `created_at`; the requester's vote is added with the request.
   `vote_count` is recounted in the same batch as every vote.
+
+### 2.12f Bump pull requests (0022)
+
+- `bump_prs`: PK `(tool_id, version)` (upstream's release), `pr_number`, `url`, `branch`, `status` (open | merged |
+  closed), `released_version`, `merged_by`, `created_at`, `updated_at`. Written by `bumps.ts:maybeOpenBump` and
+  `releaseBump`.
 
 ### 2.12e Upstream watch (0021)
 

@@ -328,6 +328,21 @@ The Dockerfile doesn't pin the upstream release it builds in a way the registry 
 ### not_reviewer
 Only staff and community reviewers can start, approve, send back or turn down a submission.
 
+### not_package_maintainer
+Only a community package's maintainers (whoever submitted it, others staff added, and the namespace's members) and
+reviewers can merge and release its bump pull requests.
+
+### bump_not_found
+The package has no open bump pull request with that number. It may have been merged, or replaced by a newer one.
+
+### not_pin_only
+The bump pull request changes more than the pinned upstream release, so a reviewer merges it instead of a
+maintainer.
+
+### bump_not_mergeable
+GitHub won't merge the bump pull request, usually because the branch conflicts with newer commits. Resolve it on
+GitHub, or ask a reviewer.
+
 ### self_review
 Someone other than the submitter has to review a submission's first release.
 
