@@ -5099,6 +5099,96 @@
         ]
       }
     },
+    "/upstream/summary": {
+      "get": {
+        "operationId": "upstream_summary",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Community wrappers against their upstream projects",
+        "description": "Counts by state (current, behind, unknown, archived, gone, license_changed, renamed, error) and the wrappers behind an upstream release, from the nightly upstream watcher. mode is what the watcher does with a difference: report, or issues (it also opens and closes outdated issues). Cached for an hour.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mode": {
+                      "enum": [
+                        "report",
+                        "issues"
+                      ]
+                    },
+                    "counts": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "integer"
+                      }
+                    },
+                    "behind": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "ref": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "pinned": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "latest": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "latest_at": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "commits_behind": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "checked_at": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "checked_at": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          }
+        },
+        "security": []
+      }
+    },
     "/people/{handle}": {
       "get": {
         "operationId": "get_person",

@@ -306,6 +306,28 @@ even in an active namespace (`firstReleaseScanned`), and `publishVersion` clears
 (`self_review`). `GET /tools/:ns/:name` gains `packaged_by` and `maintainers`. `POST /imports {community: true}` is open
 to anyone signed in (10 a day); bulk community imports stay with admins.
 
+The upstream watcher (`routes/upstream.ts`, logic in `upstream.ts`, 4 routes; the nightly cron queues
+`{upstreamCheckToolId}` for every published community wrapper with an `upstream_url`):
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/upstream/summary` | none | `cached(c, 3600)` | routes/upstream.ts | `mode`, `counts` by state, `behind` (release pins only), `checked_at` |
+| GET | `/admin/upstream` | reviewer | no-store | routes/upstream.ts | Every watch row (`state` filter), with pin kind, license, error and override |
+| PUT | `/admin/upstream/:ns/:name` | admin | no-store | routes/upstream.ts | `{pinned, pin_kind?, package?}` override or `{clear: true}`; audited `upstream.override`; checks at once |
+| POST | `/admin/upstream/:ns/:name/check` | reviewer | no-store | routes/upstream.ts | Checks now |
+
+`checkUpstream` reads the upstream repository (gone → `gone`, a different `full_name` → `renamed`, `archived`, a
+license `isRedistributable` refuses → `license_changed`), then the pin: a staff override, the pipx manifest's
+`package_version`, the Dockerfile at the version's `git_sha` (`upstream-pin.ts:findPin`; read again only when
+`latest_version_id` changes), or the manifest version for wrappers of upstream's own image. Then upstream's latest:
+PyPI JSON for pip and pipx pins; for commit pins the compare API (`commits_behind`); otherwise
+`releases/latest` with `If-None-Match` (a 304 keeps the stored answer) or, with no releases, the highest tag.
+`compareVersions` decides `behind` or `current`; names it can't compare are `unknown`. GitHub calls use the registry
+App's installation on `osintverse-community` (anonymous without one). With `UPSTREAM_WATCH=issues`, `actOn` files
+`outdated` system issues (dedupe `outdated:<release>`, three days after the release, older ones closed as superseded,
+closed as fixed when the pin catches up) and one per upstream change (`upstream:<state>`), and tells admins about a
+license that no longer allows redistribution. `GET /tools/:ns/:name` gains `upstream` (`publicWatch`).
+
 Contributor profiles (`routes/people.ts`, logic in `people.ts`, 2 routes):
 
 | Method | Path | Auth | Caching | Defined in | Notes |

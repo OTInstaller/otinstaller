@@ -27,6 +27,8 @@ import { requestRoutes } from "./routes/requests";
 import { peopleRoutes } from "./routes/people";
 import { submissionRoutes } from "./routes/submissions";
 import { refreshContributorStats } from "./people";
+import { publicWatch, queueUpstreamChecks, type WatchRow } from "./upstream";
+import { upstreamRoutes } from "./routes/upstream";
 import { deliverInbox, purgeInbox } from "./inbox";
 import { refreshDueProfiles } from "./profiles";
 import { backfillBackups, expireDrills, expireRuns, installFallbacks, purgeBackups, RESTORE_DRILL_CRON, startDrill, WEEKLY_BACKUP_CRON, weeklyBackups } from "./backups";
@@ -82,6 +84,7 @@ inboxRoutes(app);
 requestRoutes(app);
 peopleRoutes(app);
 submissionRoutes(app);
+upstreamRoutes(app);
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
@@ -271,9 +274,12 @@ app.get("/tools/:ns/:name", async (c) => {
     `SELECT COALESCE(u.handle, lower(u.login)) AS handle, m.reason FROM tool_maintainers m JOIN users u ON u.id = m.user_id
      WHERE m.tool_id = ? AND u.profile_hidden = 0 AND u.banned_at IS NULL ORDER BY m.created_at`,
   ).bind(row.id).all<{ handle: string; reason: string }>()).results;
+  // What the upstream watcher last found, for community wrappers.
+  const watch = await c.env.DB.prepare(`SELECT * FROM upstream_watch WHERE tool_id = ?`).bind(row.id).first<WatchRow>();
   cached(c, 60);
   return c.json({
     ...summary(row),
+    upstream: watch ? publicWatch(watch) : undefined,
     packaged_by: maintainers.find((m) => m.reason === "submitter")?.handle ?? undefined,
     maintainers: maintainers.length ? maintainers.map((m) => m.handle) : undefined,
     sample: sampleJson ? { ...sampleJson, version: row.latest_version, recorded_at: smoke!.ran_at } : undefined,
@@ -518,6 +524,7 @@ export default {
       await deliverInbox(env, "daily");
       await purgeInbox(env);
       await refreshContributorStats(env);
+      await queueUpstreamChecks(env);
       await env.DB.prepare(
         `UPDATE tools SET installs_30d = COALESCE((SELECT SUM(count) FROM install_counts
            WHERE tool_id = tools.id AND day >= date('now', '-30 days')), 0)`,
