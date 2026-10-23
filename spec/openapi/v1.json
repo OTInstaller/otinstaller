@@ -7981,6 +7981,21 @@
               "type": "string"
             },
             "description": "Only one publisher's packages"
+          },
+          {
+            "name": "events",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "registry",
+                "community",
+                "all"
+              ],
+              "default": "registry"
+            },
+            "description": "registry: releases, yanks, deprecations, transfers; community: issues confirmed or fixed (issue_confirmed, issue_fixed, with number and issue_kind) and tool requests accepted or published (request_accepted, request_published, with number and tool); all: both. Community events are worded from fields, never from what people wrote."
           }
         ],
         "security": []

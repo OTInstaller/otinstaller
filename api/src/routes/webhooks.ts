@@ -5,6 +5,7 @@ import { hmacSha256Hex, safeEqual, sha256Hex, ulid } from "../lib/crypto";
 import { audit } from "./auth";
 import { githubRepo, gitlabRepo, type RepoMeta } from "../hosts/repo";
 import { RELEASE_TAG, applyMeta, queueTag, recordEvent, refreshReadme, setChangelog, sourceByProject } from "../sync";
+import { RESERVED_NAMESPACES } from "../lib/reserved";
 
 const MAX_BODY = 5 * 1024 * 1024;
 
@@ -12,14 +13,15 @@ const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(
 
 /**
  * Creates (or finds) the namespace for a GitHub account. A new namespace waits for manual review.
- * If the account's login is already taken by someone on another host, it gets a "-gh" suffix.
+ * If the account's login is already taken by someone on another host, or is one of the site's own sections
+ * (RESERVED_NAMESPACES), it gets a "-gh" suffix.
  */
 async function namespaceFor(env: Env, account: { id: number; login: string; type: string }): Promise<string> {
   const db = env.DB;
   const existing = await db.prepare(`SELECT id FROM namespaces WHERE provider = 'github' AND provider_owner_id = ?`).bind(String(account.id)).first<{ id: string }>();
   if (existing) return existing.id;
   let name = slug(account.login);
-  if (await db.prepare(`SELECT 1 FROM namespaces WHERE name = ?`).bind(name).first()) name = `${name.slice(0, 37)}-gh`;
+  if (RESERVED_NAMESPACES.has(name) || (await db.prepare(`SELECT 1 FROM namespaces WHERE name = ?`).bind(name).first())) name = `${name.slice(0, 37)}-gh`;
   const id = ulid();
   await db.batch([
     db.prepare(

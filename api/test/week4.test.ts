@@ -163,6 +163,11 @@ describe("GitHub App webhooks", () => {
     expect(ns).toMatchObject({ name: "dheeraj-gh" });
   });
 
+  it("never names a namespace after one of the site's own sections", async () => {
+    await webhook("installation", installation(109, { id: 7009, login: "Community" }, [9]));
+    expect(await DB().prepare(`SELECT name FROM namespaces WHERE provider_owner_id = '7009'`).first()).toMatchObject({ name: "community-gh" });
+  });
+
   it("queues a publish job for a release tag, once per delivery", async () => {
     await webhook("installation", installation(102, { id: 7003, login: "mallory" }, [30]));
     const res = await webhook("create", tagEvent(102, "mallory/tool", 30, "v1.0.0"), "delivery-1");

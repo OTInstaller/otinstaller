@@ -249,3 +249,18 @@ describe("requests and tokens", () => {
     expect({ otlite: OTLITE_REPOS, dropped: DROPPED_REPOS, reasons: DROPPED_REASONS }, "run `npm run sync:known-repos`").toEqual(want);
   });
 });
+
+describe("requests in the activity feed", () => {
+  it("lists accepted requests worded from fields, never the requester's note", async () => {
+    const path = `feed/tool${uniq()}`;
+    fakeHosts(githubRepo(path).routes);
+    const note = `A private reason ${uniq()}`;
+    const number = (await req(await person(), "POST", "/requests", { repo: `https://github.com/${path}`, note })).body.request.number;
+    await req(await triager(), "POST", `/requests/${number}/status`, { status: "accepted" });
+    const feed = (await req(null, "GET", "/activity?events=community&limit=100")).body;
+    expect(feed.events.find((e: any) => e.type === "request_accepted" && e.number === number)).toMatchObject({ ref: path, kind: "request" });
+    expect(JSON.stringify(feed)).not.toContain(note);
+    // A publisher filter leaves requests out.
+    expect((await req(null, "GET", "/activity?events=community&namespace=dheeraj&limit=100")).body.events.some((e: any) => e.kind === "request")).toBe(false);
+  });
+});

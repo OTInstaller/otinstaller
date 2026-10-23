@@ -438,7 +438,8 @@ app.get("/activity", async (c) => {
   const input = oneOf(c.req.query("input"), INPUT_TYPES, "input");
   const namespace = c.req.query("namespace") || undefined;
   if (namespace !== undefined && !/^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$/.test(namespace)) apiError(400, "invalid_parameter", "namespace must be a namespace name");
-  const result = await siteActivity(c.env.DB, { limit, before, kind, input, namespace });
+  const events = oneOf(c.req.query("events"), ["registry", "community", "all"], "events") as "registry" | "community" | "all" | undefined;
+  const result = await siteActivity(c.env.DB, { limit, before, kind, input, namespace, events });
   cached(c, 300);
   return c.json(result);
 });
