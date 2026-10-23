@@ -486,6 +486,10 @@ handler that returns ends the chain):
 5. `app.onError`: an `HTTPException` (every `apiError`) returns its own response. Anything else: request ID =
    `cf-ray` header or a new ULID, `reportError` to Sentry via `waitUntil`, `console.error`, and
    `500 {error: {code: "internal_error", message: "Something went wrong on our side.", hint, docs, request_id}}`.
+   A D1 failure on Cloudflare's side (`d1RetryAfter` in `lib/errors.ts`: the generic "internal error", lost
+   connections, resets, overload, the free plan's daily limits) is instead `503 database_unavailable` with
+   `Retry-After` and `retry_after_s` (1 s, or until midnight UTC for a daily limit), reported as a Sentry warning
+   fingerprinted `d1-unavailable` + `transient` or `daily-limit`. D1 CPU, memory and timeout resets stay 500s.
 6. `app.notFound`: `404 {error: {code: "not_found", message: "No such endpoint.", hint: "the API reference is at
    /v1/openapi.json", docs}}`.
 7. The public catalog endpoints of `index.ts` (section 1.1), registered last at module level.
@@ -712,6 +716,7 @@ The PUT writes a `pending/` marker (except for `sha256-*` tags) and a `mirror_pu
 `ErrorStatus` allows 400, 401, 403, 404, 409, 410, 413, 429, 500, 503. Responses built by hand differ:
 
 - 500 `internal_error`: `{error: {code, message, hint, docs, request_id}}` from `onError`.
+- 503 `database_unavailable`: the same plus `retry_after_s` and a `Retry-After` header, from `onError`.
 - 404 `not_found`: `{error: {code, message, hint, docs}}` from `notFound`.
 - 403 `insufficient_scope` from `enforceScopes`: adds `required_scope` and a `WWW-Authenticate` header.
 - 429s from `rateLimited` add `retry_after_s` and the `Retry-After` and `RateLimit-Policy` headers.
@@ -743,6 +748,7 @@ route wrappers, so they reach clients the same way.
 | bundle_too_large | 413 | direct.ts | yes |
 | cannot_ban_admin | 409 | routes/trust.ts | yes |
 | community_namespace_missing | 409 | imports.ts | yes |
+| database_unavailable | 503 | index.ts (`onError`, hand-built) | yes |
 | destination_required | 400 | transfers.ts | yes |
 | docs_not_found | 404 | routes/guides.ts | yes |
 | feedback_not_found | 404 | routes/beta.ts | yes |

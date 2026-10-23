@@ -208,6 +208,13 @@ Paid. Remaining exposure: the cache key includes every query parameter, so new f
 signed-in request goes to D1; `caches.default` is per data centre. Watch D1 reads in the Cloudflare dashboard; tail
 for `D1_ERROR` lines.
 
+A D1 failure on Cloudflare's side answers 503 `database_unavailable` with `Retry-After`
+instead of 500 (a daily limit says to wait until midnight UTC), and Sentry gets it as a warning in one issue per
+kind (fingerprint `d1-unavailable` + `transient` or `daily-limit`), not a new error issue for each route. The site
+retries such a read once after a second. A burst of `D1_ERROR: internal error; reference = ...` warnings (Sentry
+OTINSTALLER-A and -B, 21 to 23 Oct: twelve in three bursts, all read-only queries D1 had already retried twice) is
+Cloudflare's to explain; quote the references to Cloudflare support if it keeps happening.
+
 ### CSP failures on the site
 
 The CSP is set by Astro's `security.csp` in `web/astro.config.mjs` (hashed scripts and styles, `connect-src 'self'
