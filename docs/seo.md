@@ -89,6 +89,8 @@ Every public page type, what it emits, and whether it is meant to be indexed. "C
 | `/agents` | AI agents | Connecting an AI client, consent, no Docker on the agent side | none | yes | 1 h |
 | `/otlite`, `/otlite/tools` | otlite / otlite tools | What otlite is; all N tools by what they take | none | yes | 1 h |
 | `/otlite/tools/{name}` | {display name} with otlite: {first sentence, cut to fit about 60} | First sentence; install and run on Linux or macOS, no Docker; what it takes; keys or no key | `SoftwareApplication` (version, licence, repository, requirements, keywords), `BreadcrumbList` | yes | 1 h |
+| `/new` | What's new | New tools and guides, releases, yanks and deprecations | none | yes (`?before=` pages `noindex`, the Older link `nofollow`) | 5 min |
+| `/feed.atom`, `/feed.json`, `/{ns}/feed.*`, `/{ns}/{name}/feed.*`, `/input/{type}/feed.*` | (feeds) | — | — | `X-Robots-Tag: noindex`; announced with `rel="alternate"` on every page (the registry feed) and on publisher, tool and input pages (their own) | 10 min |
 | `/community` | Community | What needs a hand: broken, outdated and wrong-information issues | none | yes (view and `?before=` forms `noindex`, filter links `nofollow`) | 2 min |
 | `/{ns}/{name}/issues`, `/{ns}/{name}/issues/{n}` | {ref} issues / {title} · {ref} #{n} | The issue's kind and title | none | only once a maintainer answered or the issue was confirmed or fixed (`indexable` from the API); filter links `nofollow`; not in the sitemap | 1 min |
 | `/feedback`, `/import`, `/dashboard…`, `/settings…`, `/admin…`, `/transfers/…`, claim and report pages, 404, 410, 500 | — | — | — | `noindex` | — |

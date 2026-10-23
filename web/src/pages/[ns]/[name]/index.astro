@@ -14,6 +14,7 @@ import { entityLabel, formatDate, inputLabel } from "../../../lib/format";
 import { ethicsLines, evidence, inputExample, prefixFor, recordedEnvelope, sampleEnvelope } from "../../../lib/evidence";
 import { loadTool } from "../../../lib/tool";
 import { cacheFor } from "../../../lib/page";
+import { feedLinks } from "../../../lib/feeds";
 import { demoteHeadings, excerpt } from "../../../lib/html";
 import { GENERIC_INPUTS } from "../../../lib/landing";
 import { article, breadcrumbs, clip, graph } from "../../../lib/seo";
@@ -107,7 +108,7 @@ const software = {
 };
 const jsonLd = graph(software, breadcrumbs([["Tools", "/search"], [t.namespace, `/${t.namespace}`], [t.name, `/${ref}`]]));
 ---
-<Base title={title} description={description} jsonLd={jsonLd} jsonHref={jsonHref} markdown={`/${ref}.md`}>
+<Base title={title} description={description} jsonLd={jsonLd} jsonHref={jsonHref} markdown={`/${ref}.md`} feeds={feedLinks({ title: `${ref} releases`, path: `/${ref}/feed` })}>
   <ToolHeader tool={t} active="overview" hasDocs={hasDocs} />
   <section class="run" aria-labelledby="run-h" data-run data-input={first?.name} data-type={first?.type}>
     <div class="run-head">

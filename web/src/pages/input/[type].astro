@@ -10,6 +10,7 @@ import { entityLabel, inputLabel } from "../../lib/format";
 import { cacheFor, searchFrom } from "../../lib/page";
 import { GENERIC_INPUTS, INPUT_LANDING } from "../../lib/landing";
 import { breadcrumbs, graph, itemList } from "../../lib/seo";
+import { feedLinks } from "../../lib/feeds";
 
 const type = Astro.params.type!;
 const types = await api<Types>("/types");
@@ -39,7 +40,7 @@ const jsonLd = graph(
 );
 cacheFor(Astro, 600);
 ---
-<Base title={title} description={description} noindex={generic} jsonLd={jsonLd} jsonHref={`https://api.otinstaller.com/v1/tools?kind=tool&input=${encodeURIComponent(type)}`}>
+<Base title={title} description={description} noindex={generic} jsonLd={jsonLd} jsonHref={`https://api.otinstaller.com/v1/tools?kind=tool&input=${encodeURIComponent(type)}`} feeds={copy ? feedLinks({ title: `${label} tools`, path: `/input/${type}/feed` }) : undefined}>
   <header class="page-head">
     <p class="eyebrow">I have {article}…</p>
     <h1>{label} OSINT tools</h1>

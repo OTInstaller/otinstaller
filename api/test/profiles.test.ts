@@ -294,6 +294,58 @@ describe("activity", () => {
     expect(JSON.stringify(body)).not.toContain("private note");
     expect(JSON.stringify(body)).not.toContain("malware");
   });
+
+  it("lists the registry's public events, filtered and paged, without reasons or hidden packages", async () => {
+    const t0 = Date.now() + 10_000;
+    const ver = (toolId: string) => DB().prepare(`SELECT id FROM versions WHERE tool_id = ? ORDER BY created_at LIMIT 1`).bind(toolId).first<{ id: string }>();
+    const holehe = await ver("tool_dheeraj_holehe-lite");
+    // A package nobody can see yet: its namespace is waiting for review.
+    const pending = await namespace({ status: "pending_review" });
+    const hiddenTool = ulid();
+    const hiddenVersion = ulid();
+    await DB().batch([
+      DB().prepare(`INSERT INTO tools (id, namespace_id, name, summary, categories, latest_version_id, created_at, updated_at) VALUES (?, ?, 'secret-tool', 'Hidden', '[]', ?, 0, 0)`).bind(hiddenTool, pending.id, hiddenVersion),
+      DB().prepare(`INSERT INTO versions (id, tool_id, version, semver_major, semver_minor, semver_patch, manifest_json, status, published_at, created_at) VALUES (?, ?, '1.0.0', 1, 0, 0, '{}', 'published', 1, 0)`).bind(hiddenVersion, hiddenTool),
+    ]);
+    const row = (action: string, kind: string, target: string, meta: unknown, at: number) =>
+      DB().prepare(`INSERT INTO audit_log (id, actor_id, actor_kind, action, target_kind, target_id, metadata_json, created_at) VALUES (?, NULL, 'system', ?, ?, ?, ?, ?)`)
+        .bind(ulid(), action, kind, target, JSON.stringify(meta), at);
+    await DB().batch([
+      row("version.published", "version", holehe!.id, {}, t0 + 1),
+      row("version.published", "version", hiddenVersion, {}, t0 + 2),
+      row("version.yank", "version", holehe!.id, { reason: "private yank note" }, t0 + 3),
+      row("tool.deprecated_archived", "tool", "tool_dheeraj_holehe-lite", {}, t0 + 4),
+      row("report.create", "tool", "tool_dheeraj_holehe-lite", { reason: "malware" }, t0 + 5),
+      row("version.remove", "version", holehe!.id, { reason: "takedown details" }, t0 + 6),
+    ]);
+
+    const { res, body } = await get("/activity?limit=3");
+    expect(res.headers.get("cache-control")).toMatch(/public.*max-age=300/);
+    expect(body.events.map((e: any) => [e.type, e.ref])).toEqual([
+      ["deprecated", "dheeraj/holehe-lite"], ["yanked", "dheeraj/holehe-lite"], ["published", "dheeraj/holehe-lite"],
+    ]);
+    expect(body.events[2]).toMatchObject({ kind: "tool", version: expect.any(String), new_package: expect.any(Boolean), has_notes: false, summary: expect.any(String) });
+    expect(body.next_before).toBe(t0 + 1);
+    const text = JSON.stringify(body);
+    for (const secret of ["private yank note", "malware", "takedown details", "secret-tool"]) expect(text).not.toContain(secret);
+
+    // The next page starts after the last event; filters narrow by kind and input type.
+    const older = (await get(`/activity?limit=3&before=${body.next_before}`)).body;
+    expect(older.events.every((e: any) => e.at < t0 + 1)).toBe(true);
+    expect((await get("/activity?kind=guide&limit=5")).body.events.every((e: any) => e.kind === "guide")).toBe(true);
+    const byInput = (await get("/activity?input=email&limit=5")).body.events;
+    expect(byInput.length).toBeGreaterThan(0);
+    expect((await get("/activity?input=crypto_address&limit=5")).body.events.some((e: any) => e.ref === "dheeraj/holehe-lite")).toBe(false);
+
+    const mine = (await get("/activity?namespace=dheeraj&limit=10")).body.events;
+    expect(mine.length).toBeGreaterThan(0);
+    expect(mine.every((e: any) => e.ref.startsWith("dheeraj/"))).toBe(true);
+    expect((await get(`/activity?namespace=${pending.name}`)).body.events).toEqual([]);
+
+    expect((await get("/activity?before=yesterday")).res.status).toBe(400);
+    expect((await get("/activity?namespace=Not_A_Name")).res.status).toBe(400);
+    expect((await get("/activity?kind=plugin")).res.status).toBe(400);
+  });
 });
 
 describe("keeping profiles in sync", () => {

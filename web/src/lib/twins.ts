@@ -7,6 +7,13 @@ import { profileMarkdown } from "./profile";
 /** A namespace or package name (the manifest's slug rule); anything else is not a package URL. */
 export const SLUG = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 
+/** First path segments that are site sections, not namespaces (reserved.test.ts checks every page is listed). */
+export const RESERVED = new Set([
+  "docs", "policy", "schema", "admin", "category", "input", "settings", "transfers", "guides", "search", "import", "feedback",
+  "dashboard", "removed", "publish", "tour", "otlite", "agents", "new", "404", "500", "community", "unsubscribe", "requests",
+  "people", "submissions",
+]);
+
 /** A Markdown response. Negotiated ones answer an HTML URL by Accept header, so no shared cache may keep them. */
 function md(body: string, status: number, seconds: number, canonical: string | null, negotiated: boolean): Response {
   const headers: Record<string, string> = {

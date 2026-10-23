@@ -9,6 +9,7 @@ import Logo from "../components/Logo.astro";
 import ThemeToggle from "../components/ThemeToggle.astro";
 import BetaNotice from "../components/BetaNotice.astro";
 import SearchDialog from "../islands/SearchDialog";
+import { feedLinks } from "../lib/feeds";
 
 interface Props {
   title: string;
@@ -28,8 +29,10 @@ interface Props {
   markdown?: string;
   /** A square share image (a publisher's avatar) in place of the site's wide one; shown as a small card. */
   ogImage?: { url: string; alt: string };
+  /** Feeds announced as rel="alternate" links (lib/feeds.ts feedLinks); every page offers the registry-wide one. */
+  feeds?: { title: string; href: string; type: string }[];
 }
-const { title, description = "Find, install and run OSINT tools and investigation guides with one command.", canonical, jsonLd, noindex, ogType = "website", bleed = false, jsonHref, markdown, ogImage } = Astro.props;
+const { title, description = "Find, install and run OSINT tools and investigation guides with one command.", canonical, jsonLd, noindex, ogType = "website", bleed = false, jsonHref, markdown, ogImage, feeds = feedLinks() } = Astro.props;
 const fullTitle = title === "OTInstaller Registry" ? "OTInstaller: free OSINT tools and guides, run with one command" : `${title} · OTInstaller`;
 const canonicalUrl = `${SITE_URL}${canonical ?? Astro.url.pathname}`;
 const path = Astro.url.pathname;
@@ -71,6 +74,7 @@ const isCurrent = (href: string) =>
     <meta name="twitter:image" content={ogImage?.url ?? `${SITE_URL}/og.png`} />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     {jsonHref && <link rel="alternate" type="application/json" href={jsonHref} />}
+    {feeds.map((f) => <link rel="alternate" type={f.type} title={f.title} href={f.href} />)}
     <Font cssVariable="--font-geist" preload />
     {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd).replace(/</g, "\\u003c")} />}
   </head>
@@ -132,6 +136,7 @@ const isCurrent = (href: string) =>
             <ul class="list-plain small">
               <li><a href="/search">All tools</a></li>
               <li><a href="/guides">Guides</a></li>
+              <li><a href="/new">What's new</a> · <a href="/feed.atom">Feed</a></li>
               <li><a href="/docs/quick-start">Quick start</a></li>
               <li><a href="/tour">What you can do</a></li>
               <li><a href="/otlite">otlite, no Docker</a></li>

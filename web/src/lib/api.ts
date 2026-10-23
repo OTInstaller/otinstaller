@@ -311,6 +311,20 @@ export interface ActivityEvent {
   to?: string;
 }
 
+/** GET /activity: what changed across the registry (a superset of a profile's events). */
+export interface RegistryEvent extends ActivityEvent {
+  id: string;
+  summary: string;
+  new_package?: boolean;
+  has_notes?: boolean;
+  replacement?: string;
+}
+
+export interface RegistryActivity {
+  events: RegistryEvent[];
+  next_before: number | null;
+}
+
 export interface PublisherList {
   namespaces: { name: string; kind: string; verified: boolean; display_name: string; packages: number; installs_30d: number }[];
 }

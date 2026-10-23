@@ -7889,6 +7889,102 @@
         },
         "security": []
       }
+    },
+    "/activity": {
+      "get": {
+        "operationId": "list_activity",
+        "tags": [
+          "Registry"
+        ],
+        "summary": "What changed across the registry, newest first",
+        "description": "Releases, yanks, deprecations and transfers of packages anyone can see. Removals are listed by /removed. Cached for 5 minutes; the site's feeds at otinstaller.com/feed.atom and /feed.json are built from it.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ActivityEvent"
+                      }
+                    },
+                    "next_before": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "description": "Pass as before= for the next page; null on the last page"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Only events before this Unix time in milliseconds"
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "tool",
+                "guide"
+              ]
+            }
+          },
+          {
+            "name": "input",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only packages that take this input type, such as email"
+          },
+          {
+            "name": "namespace",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only one publisher's packages"
+          }
+        ],
+        "security": []
+      }
     }
   },
   "components": {
@@ -8863,6 +8959,73 @@
           "no_keys": {
             "type": "integer",
             "description": "Packages that need no API key"
+          }
+        }
+      },
+      "ActivityEvent": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "ref",
+          "kind",
+          "summary",
+          "at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable for the event; feeds use it as the entry id"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "published",
+              "yanked",
+              "unyanked",
+              "deprecated",
+              "undeprecated",
+              "transferred"
+            ]
+          },
+          "ref": {
+            "type": "string",
+            "description": "namespace/name"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "tool",
+              "guide"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          },
+          "at": {
+            "type": "integer",
+            "description": "Unix milliseconds"
+          },
+          "version": {
+            "type": "string"
+          },
+          "new_package": {
+            "type": "boolean",
+            "description": "published only: the package's first release"
+          },
+          "has_notes": {
+            "type": "boolean",
+            "description": "published only: the version has release notes"
+          },
+          "replacement": {
+            "type": "string",
+            "description": "deprecated only: the package to use instead"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
           }
         }
       }

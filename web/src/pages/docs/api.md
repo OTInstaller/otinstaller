@@ -22,6 +22,7 @@ Search, package pages, manifests, scans, guides, docs, `/types` and `/pivots` ar
 | `GET /tools/{ns}/{name}/{version}/manifest` | What `ot install` uses: the manifest, signer, scan status and backup locations. `manifest` leaves out optional fields added after `ot` v0.12; when it does, `manifest_full` has them |
 | `GET /types` | Input types, entity types, categories and the pivot map |
 | `GET /pivots?from=email,subdomain` | For each entity type, the input types it can feed and the best tools taking them; types that feed nothing are listed in `unmapped` |
+| `GET /activity?limit=30&input=email` | What changed across the registry, newest first: releases (`new_package` marks a first release), yanks, deprecations and transfers. Filters: `kind`, `input`, `namespace`; page with `before=<next_before>`. The site's [feeds](/docs/automation#feeds-staying-up-to-date) are built from it |
 
 Search results and package pages include each tool's `ethics` (`touches_target`, `auth_required`,
 `collects_personal_data`, and `notifies_target` when the publisher sets it) and `egress`. Those decide whether an agent
