@@ -103,6 +103,9 @@ for a script that doesn't need it. The rules are the same as the [MCP server's](
 Links are printed instead of opened in a browser. `ot keys set NAME` still reads a piped value from stdin, or use
 `--from-env VAR`.
 
+`ot outdated` looks up the latest `ot` release at most once a day and notes a newer one on stderr. It never does in CI
+(when `CI` is set) or under `ot mcp`; `OT_NO_UPDATE_CHECK=1` turns it off anywhere else.
+
 ## Signing in and keys without a keychain
 
 CI machines and containers usually have no OS keychain. `ot` doesn't need one:
