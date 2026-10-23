@@ -171,6 +171,16 @@ guess, first match wins: `url` (starts with `http://` or `https://`), `ip` (IPv4
 nothing. While a batch runs, a line such as `[2/5] osintverse-community/sherlock complete` goes to stderr as each tool
 finishes; otinstaller's `--live` is accepted and changes nothing.
 
+## `ot runs`
+
+`ot runs` lists saved runs, newest first, from the results folder (`--results-dir`, `$OT_RESULTS_DIR` or `./results`)
+and `<ot home>/results`, where `ot mcp` saves: by default the last 20 started in the past week. `--tool`, `--target`,
+`--case` and `--status` narrow it; `--since 0` and `--limit 0` lift the defaults. The rows are the ones MCP's
+`list_runs` returns (both use `listSavedRuns`), and `--json` prints them as an array. `ot runs <run-id>` shows one
+run (tool and version, target, status and exit code, duration, case, where it is saved and the first ten entities)
+and suggests `ot pivot <run-id>`; with `--json` it prints the run's sidecar. Nothing found is not an error (exit 0);
+an unknown run id is (exit 2, `run_not_found`).
+
 ## `ot extract` and `ot diff`
 
 `ot extract <tool | path>` (or `--case <name>`) reads every saved output under the tool's results folder, a file or a

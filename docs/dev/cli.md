@@ -25,8 +25,8 @@ Conventions used here:
 ## 1. Commands
 
 Registered in `Root()` (`cli/root.go`) in this order: init, validate, search, info, install, run, playbook, auto,
-extract, diff, list, outdated, update, uninstall, keys, doctor, login, logout, whoami, import, sync, guide, docs,
-report, feedback, claim, transfer, yank, deprecate, self-update, release, mcp, pivot, token. 34 top-level commands,
+runs, extract, diff, list, outdated, update, uninstall, keys, doctor, login, logout, whoami, import, sync, guide, docs,
+report, feedback, claim, transfer, yank, deprecate, self-update, release, mcp, pivot, token, profile. 36 top-level commands,
 plus subcommands `keys set|setup|list|rm`, `guide search|read|open|get|tools`, `mcp install|audit|policy|tools`
 (with `mcp policy reset`) and `token create|list|revoke`.
 
@@ -281,6 +281,20 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   `spec/pivots.json`, lists for each entity worth following the input type it fits and the installed tools that take
   it, with an `ot run` line for each. The run's own inputs are left out. Nothing is run.
 - API: only with `--registry` (`GET /pivots`). Exit: 0; 2 when the run or its sidecar can't be found.
+
+#### `ot runs [run-id]`
+- File: `cli/runs.go` (`runsCmd`, `listSavedRuns`, `showRun`). Args: `MaximumNArgs(1)`.
+- Flags: `--tool` (`ns/name` or `name`), `--target`, `--case` (reads `<dir>/cases/<case>`), `--status` (`complete`,
+  `failed`, `timeout` or `interrupted`; anything else exit 2), `--since` (duration, default `168h`; `0` for all),
+  `--limit` (int, 20; `0` for all), `--results-dir` (read only that folder), `--json`.
+- Reads `resultDirs()`: the results dir (`$OT_RESULTS_DIR`, else `./results`) and `<ot home>/results`, merged newest
+  first by the time stamp in the file names. `listSavedRuns` is also what MCP's `list_runs` uses (with only the results
+  dir, as before).
+- Output: table `RUN STARTED TOOL TARGET STATUS ENTITIES CASE` (a `note:` on stderr when `--limit` cut it, and a line
+  pointing at `ot runs <run-id>` and `ot pivot`), or "No saved runs from the last 7 days under …"; JSON is an array of
+  `list_runs` rows. With a run id (`findSavedRunIn`): tool, target, status, exit code, entity count, duration, start
+  time, case, saved path, warnings, the first ten distinct entities and, when it found any, a line suggesting `ot pivot <id>`; JSON is the sidecar.
+- No API. Exit: 0, also when nothing is found; 2 for a bad flag value or an unknown run id (`run_not_found`).
 
 #### `ot extract <tool | path>`
 - File: `cli/saved.go` (`extractCmd`); logic in `results/saved.go`. Args: `MaximumNArgs(1)`.
@@ -786,6 +800,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | --- | --- |
 | `cli/cli_test.go` | Shared helpers (`newTestApp`, `fakeExec`); `validate` output and exit codes, `init` then `validate`, `init` not overwriting, running a local manifest, run exit codes, `parseRunArgs` |
 | `cli/run_test.go` | Typed-input parsing, typed run saving results, `--no-save` and `--results-dir`, typed-input errors, `run --all`, Ctrl-C keeping partial output (exit 130) |
+| `cli/runs_test.go` | `ot runs`: none yet, newest first, each filter, the default `--since`, the table, one run in text and JSON, unknown ids (`run_not_found`), a bad `--status`, `--results-dir` |
 | `cli/auto_test.go` | `ot auto`: type guessing, `--dry-run`, `--type`, `--live` progress lines, and errors (bad `--type`, `--type` with two targets, no matching tool, `--all`; plus `run --dry-run` without `--all`) |
 | `cli/playbook_test.go` | `ot playbook`: `--list` with a user playbook and the TAKES column, prefixed and guessed targets, and errors (missing tools, no matching inputs, no typed input, unknown playbook, `--all`) |
 | `cli/saved_test.go` | `ot extract` and `ot diff` against saved runs |
