@@ -255,9 +255,15 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   `--list`), `-y/--yes` (install the playbook's missing tools first), `--native` (for those installs), `--parallel`
   (int, 4), `--results-dir`, `--case` (default the playbook's `case`, which defaults to `playbook-<name>`),
   `-h/--help`. `--live` accepted; `--no-save`, `-o`, `--out-dir`, `--<input>` refused.
-- Sources, later winning on a name clash: bundled (`domain-recon`: dnstwist, ctfr; `username-investigation`: sherlock,
-  maigret, all `osintverse-community/`), `<ot home>/playbooks/*.yaml|*.yml`, `./playbooks/*.yaml|*.yml`. YAML keys:
-  `name` (defaults to the file stem), `description`, `tools` (`ns/name`, no duplicates, namespace required), `case`,
+- `--list`: table `NAME TAKES DESCRIPTION TOOLS SOURCE` (TAKES is `inputs`, or `-`); JSON is the playbooks with
+  `inputs` always an array.
+- Sources, later winning on a name clash: bundled (`playbook/bundled/`, all `osintverse-community/`, none needing a
+  key: `domain-recon`: dnstwist, crtsh-subdomains; `username-investigation`: sherlock, maigret; `email-investigation`:
+  holehe, user-scanner, checkdmarc, dns-records; `phone-investigation`: phone-parse, phoneinfoga, numint;
+  `ip-investigation`: ipwhois, naabu), `<ot home>/playbooks/*.yaml|*.yml`, `./playbooks/*.yaml|*.yml`. YAML keys:
+  `name` (defaults to the file stem), `description`, `inputs` (input types the playbook is for, main one first; each
+  one of username, email, domain, phone, ip, url, no duplicates; optional), `tools` (`ns/name`, no duplicates,
+  namespace required), `case`,
   `requires_target` (ignored). A broken file is an error.
 - Missing tools without `-y`: exit 2 listing `ot install …` commands. With `-y`: installs them all with `installMany`
   (`GET …/manifest`, `POST /installs`), then runs; a failed install stops the playbook with that install's code (or the
@@ -781,7 +787,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `cli/cli_test.go` | Shared helpers (`newTestApp`, `fakeExec`); `validate` output and exit codes, `init` then `validate`, `init` not overwriting, running a local manifest, run exit codes, `parseRunArgs` |
 | `cli/run_test.go` | Typed-input parsing, typed run saving results, `--no-save` and `--results-dir`, typed-input errors, `run --all`, Ctrl-C keeping partial output (exit 130) |
 | `cli/auto_test.go` | `ot auto`: type guessing, `--dry-run`, `--type`, `--live` progress lines, and errors (bad `--type`, `--type` with two targets, no matching tool, `--all`; plus `run --dry-run` without `--all`) |
-| `cli/playbook_test.go` | `ot playbook`: `--list` with a user playbook, prefixed and guessed targets, and errors (missing tools, no matching inputs, no typed input, unknown playbook, `--all`) |
+| `cli/playbook_test.go` | `ot playbook`: `--list` with a user playbook and the TAKES column, prefixed and guessed targets, and errors (missing tools, no matching inputs, no typed input, unknown playbook, `--all`) |
 | `cli/saved_test.go` | `ot extract` and `ot diff` against saved runs |
 | `cli/update_test.go` | `ot outdated --json` and `ot update` (named, `--all`) against a fake registry (update available, removed, not in registry), plus usage errors |
 | `cli/guide_test.go` | Guide search and read, terminal rewriting (`forTerminal`), Glamour rendering, `guide get` then offline read, `guide tools`, `guide open` and `docs`, request IDs on server errors, guide content validation |
@@ -805,7 +811,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `envelope/envelope_test.go` | `ParseOutput` per format; `Write` formats |
 | `manifest/validate_test.go` | Every valid fixture passes, every invalid fixture's first code, tag mismatch, file checks, embedded schema equals `spec/schema/v1.json` |
 | `manifest/seed_test.go` | Every `seed/*/*/otinstaller.yaml` validates with its files (at least 50) |
-| `playbook/playbook_test.go` | Bundled playbooks, bundled tools exist in the seed, later dirs win, parse errors, a broken file is an error |
+| `playbook/playbook_test.go` | Bundled playbooks, bundled tools exist in the seed (`TestBundledPlaybooksFitSeed`: each takes one of its playbook's input types and needs no key), later dirs win, parse errors, a broken file is an error |
 | `results/results_test.go` | `Sanitize`, `Dir` precedence (flag, `OT_RESULTS_DIR`, `OTINSTALLER_RESULTS_DIR`), start/finish sidecar, stderr file only when written |
 | `results/saved_test.go` | `Outputs` and `Extract`; `Diff` |
 | `runner/runner_test.go` | `BuildCommand` (dropping optional args, no re-expansion), `ResolveInputs`, sandbox container args, docker install and run, no engine (exit 5), signature failure refuses, wheel hash check, sandboxed pipx image build |
