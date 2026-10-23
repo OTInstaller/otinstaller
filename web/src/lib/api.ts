@@ -467,6 +467,8 @@ export interface ToolRequest {
   status: RequestStatus;
   decline_code: DeclineCode | null;
   votes: number;
+  /** Visible replies on its thread (registries before request threads send none). */
+  comments?: number;
   requested_by: IssueAuthor | null;
   /** The published package that answers it. */
   tool: string | null;
@@ -478,12 +480,24 @@ export interface ToolRequest {
 }
 
 export interface ToolRequestDetail extends ToolRequest {
+  id: string;
   note: string | null;
   decision_note: string | null;
   decided_at: number | null;
   decided_by: string | null;
   dropped_reason: string | null;
   pushed_at: number | null;
+  locked: boolean;
+}
+
+/** A reply on a request's thread: like an issue comment, but a request has no maintainers. */
+export interface RequestComment extends Omit<IssueComment, "role"> {
+  role: "triager" | "staff" | null;
+}
+
+export interface RequestPage {
+  request: ToolRequestDetail;
+  comments: RequestComment[];
 }
 
 export interface RequestBoard {
@@ -499,6 +513,11 @@ export interface RequestViewer {
   held: boolean;
   /** The requester's own note while a moderator hasn't looked at it yet. */
   note?: string | null;
+  subscribed: boolean;
+  locked: boolean;
+  can_reply: boolean;
+  editable_comments: string[];
+  held_comments: { id: string; created_at: number; body_html: string }[];
 }
 
 // ---------- contributor profiles ----------

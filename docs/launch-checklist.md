@@ -17,18 +17,19 @@ Items marked **(you)** need the owner of the GitHub, GitLab, Cloudflare, Resend,
 | otlite installer | `curl -fsSL https://get.otinstaller.com/otlite \| sh` answers 200 (`otlite/scripts/install.sh` from `main`, through `ops/get`) |
 | Site pages | `/agents`, the homepage for AI agents, with its Markdown twin `/agents.md`; `/otlite` and `/otlite/tools`, both listing every tool from `web/src/data/otlite-catalog.json`; tool pages show the sample output recorded by the scanner's smoke test |
 
-## Phase 1: the community (built 23 October 2026, not deployed)
+## Phase 1: the community (merged 23 October 2026, not deployed)
 
-The roadmap's phase 1 ([roadmap.md](roadmap.md)) is built as pull requests: #58 (roadmap, stars), #61 (release notes),
-#63 (activity and feeds), #66 (learn hub), and the community stack #68 → #74 → #76 → #78 → #79 → #80 → #81 → #82 → #83,
-with the close-out (#84) on top. The stack is merged into `main` (23 Oct) but not deployed. Two follow-ups are open
-against `main`: request threads and flags (`claude/phase1-gaps`, migration 0026) and change proposals with the
-first-week counts (#90, migration 0027). 0023 to 0025 are direct publishing, hosted images and trusted publishing
-(#86 to #88, merged). In order, the owner's steps:
+The roadmap's phase 1 ([roadmap.md](roadmap.md)) was merged into `main` on 23 Oct: #58 (roadmap, stars), #61 (release
+notes), #63 (activity and feeds), #66 (learn hub), the community stack #68 → #74 → #76 → #78 → #79 → #80 → #81 → #82 →
+#83 and the close-out #84. Request discussions and flags on requests followed in
+[#89](https://github.com/OTInstaller/otinstaller/pull/89) (migration 0026, merged), and change proposals with a new
+version's first-week counts in [#90](https://github.com/OTInstaller/otinstaller/pull/90) (migration 0027). Nothing of
+phase 1 is deployed. In order, the owner's steps:
 
-- [ ] **(you)** Review and merge the follow-ups and any side pull requests still open.
-- [ ] **(you)** Apply migrations 0015 to 0027 remotely before deploying the API
-      (`npx wrangler d1 migrations apply otinstaller --remote`), then deploy the API and the site.
+- [ ] **(you)** Review and merge #90 (change proposals and first-week counts).
+- [ ] **(you)** Apply every migration that has reached `main` remotely before deploying the API: 0015 to 0022 (phase 1),
+      0023 to 0025 (direct publishing, #86 to #88, merged), 0026 (request discussions) and 0027 (change proposals), with
+      `npx wrangler d1 migrations apply otinstaller --remote`; then deploy the API and the site.
 - [ ] **(you)** Grant the first triager and reviewer roles (Admin console → Community).
 - [ ] **(you)** Set up the community bot for submissions, bump pull requests and change proposals (publishing-setup.md section 6,
       "Community submissions"): the "OTInstaller Community" GitHub App, its three secrets, and the main App on all

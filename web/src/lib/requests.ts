@@ -1,6 +1,6 @@
-// Labels for tool requests, shared by the server pages and the islands. What may be done is decided by the API;
-// this only words it.
-import type { DeclineCode, RequestStatus } from "./api";
+// Labels for tool requests, shared by the server pages and the islands, and the signed-in person's view of a request
+// that the islands on its page share. What may be done is decided by the API; this only words it.
+import { api, type DeclineCode, type RequestStatus, type RequestViewer } from "./api";
 
 export const REQUEST_STATUS_LABEL: Record<RequestStatus, string> = {
   open: "Open",
@@ -33,3 +33,12 @@ export const requestHref = (number: number) => `/requests/${number}`;
 
 /** Whether a request still takes votes. */
 export const takesVotes = (status: RequestStatus) => status === "open" || status === "accepted" || status === "in_progress";
+
+const viewers = new Map<number, Promise<RequestViewer | null>>();
+
+/** What the signed-in person may do on a request, asked once per page for every island; null when signed out. */
+export function requestViewer(number: number): Promise<RequestViewer | null> {
+  let p = viewers.get(number);
+  if (!p) viewers.set(number, (p = api<RequestViewer>(`/requests/${number}/viewer`).catch(() => null)));
+  return p;
+}

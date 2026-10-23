@@ -96,7 +96,9 @@ describe("issues and comments", () => {
 
   it("shows new people's links as text and marks others nofollow", () => {
     expect(renderPost("see [docs](https://example.com/docs)", true)).toContain("docs (https://example.com/docs)");
-    expect(renderPost("see [docs](https://example.com/docs)")).toContain('rel="nofollow ugc noopener" href="https://example.com/docs"');
+    const linked = renderPost("see [docs](https://example.com/docs)");
+    expect(linked).toContain('<a href="https://example.com/docs" rel="nofollow ugc noopener noreferrer">docs</a>');
+    expect(linked.match(/rel=/g)).toHaveLength(1);
     expect(renderPost("<script>alert(1)</script> ![x](https://example.com/a.png)")).not.toMatch(/<script|<img/);
     expect(screen("token ghp_abcdefghijklmnopqrstuvwxyz0123")).toContain("secret");
     expect(screen("try 192.0.2.10 or 10.0.0.1")).toEqual([]);
