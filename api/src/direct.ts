@@ -3,11 +3,11 @@
 // files come from R2 CONTENT under uploads/<jobId>/ rather than from GitHub or GitLab; scans, review, publishing
 // and backups are the same as for a tag.
 import type { Context } from "hono";
-import reserved from "../../spec/reserved-namespaces.json";
 import { deps, type AppEnv, type Env, type User } from "./env";
 import { apiError, rateLimited, windowRetry } from "./lib/errors";
 import { ulid } from "./lib/crypto";
 import { parseManifest } from "./lib/manifest";
+import { REGISTRY_RESERVED, RESERVED_NAMESPACES } from "./lib/reserved";
 import { overLimit } from "./trust";
 import { ownerEmails, sendEmail, templates } from "./notify";
 import { audit, requireUser } from "./routes/auth";
@@ -24,7 +24,8 @@ const PUBLISHES_PER_HOUR = 20;
 export const IDLE_NAMESPACE_MS = 30 * 86_400_000;
 const SLUG = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
-const RESERVED = new Set(reserved.names);
+// The site's own sections (refused for every new namespace) and names that pass for the registry's own.
+const RESERVED = new Set([...RESERVED_NAMESPACES, ...REGISTRY_RESERVED]);
 
 // ---------- namespaces ----------
 
@@ -274,6 +275,8 @@ export function bundleHost(env: Env, key: string, provider: RepoHost["provider"]
     setStatus: async () => {},
     listTags: async () => ({ notModified: true, tags: [], etag: null }),
     metadata: async () => null,
+    // An upload has no release on a host; its notes come from a CHANGELOG.md in the upload instead (changelog.ts).
+    releaseNotes: async () => null,
   };
 }
 

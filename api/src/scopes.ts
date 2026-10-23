@@ -17,7 +17,7 @@ export const SCOPE_HELP: Record<string, string> = {
   read: "your account, tokens and publish history (/me)",
   publish: "uploads (`ot publish`), imports, manifest edits, syncs and sources",
   manage: "yanks, deprecations, claims, transfers, backup settings and tokens",
-  feedback: "reports and feedback",
+  feedback: "reports, feedback, issues and comments",
   staff: "the review queue and admin actions (reviewers and admins only)",
 };
 
@@ -37,11 +37,17 @@ export function parseScopes(input: unknown): string[] {
 /** The scope a request needs when it is made with a token, or null when tokens don't apply. */
 export function requiredScope(method: string, path: string): string | null {
   const p = path.replace(/^\/v1/, "");
-  if (/^\/(auth|internal|webhooks)\//.test(p) || p === "/installs" || p === "/health") return null;
+  if (/^\/(auth|internal|webhooks)\//.test(p) || p === "/installs" || p === "/health" || p === "/unsubscribe") return null;
   if (p.startsWith("/admin")) return "staff";
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") return "read";
-  if (p === "/feedback" || /^\/tools\/[^/]+\/[^/]+\/reports$/.test(p)) return "feedback";
-  if (p === "/publish" || /^\/(imports|sources)(\/|$)/.test(p) || /^\/packages\/[^/]+\/[^/]+\/(manifest|sync|source)(\/|$)/.test(p)) return "publish";
+  // Taking part: reports, feedback, issues, comments, confirmations, subscriptions, flags, requests and votes.
+  // Triage, including deciding requests, is "manage".
+  if (p === "/feedback" || p === "/flags" || /^\/comments\/[^/]+$/.test(p)) return "feedback";
+  if (p === "/requests" || /^\/requests\/\d+\/vote$/.test(p)) return "feedback";
+  if (/^\/tools\/[^/]+\/[^/]+\/(reports|confirmations|run-reports|issues(\/\d+(\/(comments|subscription))?)?)$/.test(p)) return "feedback";
+  if (p === "/publish" || /^\/(imports|sources)(\/|$)/.test(p) || /^\/packages\/[^/]+\/[^/]+\/(manifest|sync|source|pulls)(\/|$)/.test(p)) return "publish";
+  // A submitter changing their submission publishes; withdrawing it and reviewers' decisions are "manage".
+  if (method === "PUT" && /^\/submissions\/\d+$/.test(p)) return "publish";
   return "manage";
 }
 

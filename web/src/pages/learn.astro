@@ -1,0 +1,87 @@
+---
+// /learn: the method behind an OSINT investigation (scope, collect, pivot, verify, record, report), opsec and legal
+// basics for the investigator, and the order to read the guides in. Static and cached; lib/learn.ts holds the
+// content shared with the Markdown twin at /learn.md.
+import Base from "../layouts/Base.astro";
+import InlineText from "../components/InlineText.astro";
+import PageHead from "../components/PageHead.astro";
+import { LEARN_PAGE, LEGAL, METHOD, OPSEC, PATH } from "../lib/learn";
+import { breadcrumbs, graph } from "../lib/seo";
+import { cacheFor } from "../lib/page";
+
+cacheFor(Astro, 3600);
+const jsonLd = graph(
+  { "@type": "TechArticle", headline: LEARN_PAGE.title, description: LEARN_PAGE.description, url: `${Astro.site}learn`, inLanguage: "en" },
+  breadcrumbs([["Learn", "/learn"]]),
+);
+---
+<Base title="Learn OSINT" description={LEARN_PAGE.description} ogType="article" jsonLd={jsonLd} markdown="/learn.md">
+  <PageHead eyebrow="Learn" title="Learn OSINT, one step at a time">
+    <p class="lead">OSINT means answering a question from information anyone can lawfully get to. The tools are the easy part; the method is what makes a finding hold up. Here is the method in short, what to watch for your own safety and the law, and the order to read the guides in.</p>
+  </PageHead>
+
+  <section aria-labelledby="method-h" class="block">
+    <div class="section-head"><h2 id="method-h">How an investigation runs</h2></div>
+    <ol class="stages">
+      {METHOD.map((s, i) => (
+        <li class="stage">
+          <span class="n" aria-hidden="true">{String(i + 1).padStart(2, "0")}</span>
+          <div>
+            <h3>{s.name}</h3>
+            <p><InlineText text={s.text} /></p>
+            <p class="small links">{s.links.map((l, j) => <>{j > 0 && " · "}<a href={l.href}>{l.label}</a></>)}</p>
+          </div>
+        </li>
+      ))}
+    </ol>
+  </section>
+
+  <div class="two block">
+    <section aria-labelledby="opsec-h" class="panel">
+      <h2 id="opsec-h">Opsec for the investigator</h2>
+      <ul>{OPSEC.map((o) => <li><InlineText text={o} /></li>)}</ul>
+    </section>
+    <section aria-labelledby="legal-h" class="panel">
+      <h2 id="legal-h">Legal and ethical basics</h2>
+      <ul>{LEGAL.map((l) => <li><InlineText text={l} /></li>)}</ul>
+    </section>
+  </div>
+
+  <section aria-labelledby="path-h" class="block">
+    <div class="section-head"><h2 id="path-h">What to read, in order</h2></div>
+    <ol class="path">
+      {PATH.map((p) => (
+        <li>
+          <h3>{p.title}</h3>
+          <p class="small muted"><InlineText text={p.text} /></p>
+          <ul class="small">{p.links.map((l) => <li><a href={l.href}>{l.label}</a></li>)}</ul>
+        </li>
+      ))}
+    </ol>
+  </section>
+</Base>
+
+<style>
+  .block { margin-top: 36px; }
+  .stages, .path { list-style: none; margin: 0; padding: 0; }
+  .stages { display: grid; border-top: 1px solid var(--border); }
+  .stage { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--border); }
+  .stage .n { font-size: var(--fs-3); color: var(--text-faint); font-weight: 600; }
+  .stage h3 { margin: 0 0 4px; font-size: var(--fs-3); }
+  .stage p { margin: 0 0 6px; max-width: 75ch; }
+  .stage .links { margin: 0; color: var(--text-muted); }
+  .two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .two ul { margin: 0; padding-left: 18px; display: grid; gap: 8px; font-size: var(--fs-2); }
+  .path { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); }
+  .path > li { background: var(--bg); padding: 14px; display: grid; gap: 6px; align-content: start; }
+  .path h3 { margin: 0; font-size: var(--fs-2); }
+  .path p { margin: 0; }
+  .path ul { margin: 0; padding-left: 16px; display: grid; gap: 4px; }
+  @media (max-width: 960px) {
+    .path { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 640px) {
+    .two, .path { grid-template-columns: minmax(0, 1fr); }
+    .stage { grid-template-columns: 32px minmax(0, 1fr); gap: 10px; }
+  }
+</style>

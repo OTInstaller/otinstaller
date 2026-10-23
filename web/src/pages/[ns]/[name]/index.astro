@@ -7,12 +7,15 @@ import Evidence from "../../../components/Evidence.astro";
 import InstallBlock from "../../../components/InstallBlock.astro";
 import CopyCode from "../../../components/CopyCode.astro";
 import ToolRow from "../../../components/ToolRow.astro";
-import { apiOrNull, type ManifestResponse, type Pivots, type Scans, type SearchResult } from "../../../lib/api";
+import { apiOrNull, type CommunityStatus, type ManifestResponse, type Pivots, type Scans, type SearchResult, type Version } from "../../../lib/api";
+import { STATE_TONE } from "../../../lib/community";
+import WorksForMe from "../../../islands/WorksForMe";
 import { entityLabel, formatDate, inputLabel } from "../../../lib/format";
 import { ethicsLines, evidence, inputExample, prefixFor, recordedEnvelope, sampleEnvelope } from "../../../lib/evidence";
 import { loadTool } from "../../../lib/tool";
 import { cacheFor } from "../../../lib/page";
-import { demoteHeadings } from "../../../lib/html";
+import { feedLinks } from "../../../lib/feeds";
+import { demoteHeadings, excerpt } from "../../../lib/html";
 import { GENERIC_INPUTS } from "../../../lib/landing";
 import { article, breadcrumbs, clip, graph } from "../../../lib/seo";
 
@@ -23,17 +26,21 @@ const ref = `${t.namespace}/${t.name}`;
 const m = t.manifest;
 const pivotFrom = (m.outputs ?? []).map((o) => o.type);
 const required0 = (m.inputs ?? []).find((i) => i.required && !GENERIC_INPUTS.has(i.type)) ?? (m.inputs ?? []).find((i) => !GENERIC_INPUTS.has(i.type));
-const [readme, guides, scans, manifest, latest, pivots, similar] = await Promise.all([
+const [readme, guides, scans, manifest, latest, pivots, similar, community] = await Promise.all([
   apiOrNull<{ html: string }>(`/tools/${ref}/readme`),
   apiOrNull<{ guides: SearchResult["results"] }>(`/tools/${ref}/guides`),
   apiOrNull<Scans>(`/tools/${ref}/${t.latest_version}/scans`),
   apiOrNull<ManifestResponse>(`/tools/${ref}/${t.latest_version}/manifest`),
-  apiOrNull<{ published_at: number | null }>(`/tools/${ref}/${t.latest_version}`),
+  apiOrNull<Pick<Version, "published_at" | "changelog_html" | "changelog_source">>(`/tools/${ref}/${t.latest_version}`),
   pivotFrom.length ? apiOrNull<Pivots>(`/pivots?from=${encodeURIComponent(pivotFrom.join(","))}`).catch(() => null) : Promise.resolve(null),
   // Other tools that take the same thing: the alternatives, and the way to the input landing page.
   required0 ? apiOrNull<SearchResult>(`/tools?kind=tool&input=${encodeURIComponent(required0.type)}&limit=8`).catch(() => null) : Promise.resolve(null),
+  // The community status line: the health check, what people said about this version, open issues.
+  apiOrNull<CommunityStatus>(`/tools/${ref}/status`).catch(() => null),
 ]);
 const alternatives = (similar?.results ?? []).filter((s) => `${s.namespace}/${s.name}` !== ref).slice(0, 5);
+// The latest version's release notes, as a preview that links to the full notes on the versions page.
+const whatsNew = latest?.changelog_html ? excerpt(latest.changelog_html) : "";
 const e = m.ethics;
 const lines = evidence(t, scans, manifest);
 const required = (m.inputs ?? []).filter((i) => i.required);
@@ -94,13 +101,14 @@ const software = {
   installUrl: "https://otinstaller.com/docs/getting-started",
   softwareRequirements: "ot, Docker or Podman",
   ...(latest?.published_at ? { datePublished: new Date(latest.published_at).toISOString() } : {}),
+  ...(whatsNew ? { releaseNotes: `${Astro.site}${ref}/versions#v${t.latest_version}` } : {}),
   ...(t.homepage && t.homepage !== t.repo_url ? { sameAs: t.homepage } : {}),
   publisher: { "@type": "Organization", name: t.namespace, url: `${Astro.site}${t.namespace}` },
   keywords: [...new Set([...t.categories, ...takes.map((k) => `${k} OSINT`), "OSINT tool"])].join(", "),
 };
 const jsonLd = graph(software, breadcrumbs([["Tools", "/search"], [t.namespace, `/${t.namespace}`], [t.name, `/${ref}`]]));
 ---
-<Base title={title} description={description} jsonLd={jsonLd} jsonHref={jsonHref} markdown={`/${ref}.md`}>
+<Base title={title} description={description} jsonLd={jsonLd} jsonHref={jsonHref} markdown={`/${ref}.md`} feeds={feedLinks({ title: `${ref} releases`, path: `/${ref}/feed` })}>
   <ToolHeader tool={t} active="overview" hasDocs={hasDocs} />
   <section class="run" aria-labelledby="run-h" data-run data-input={first?.name} data-type={first?.type}>
     <div class="run-head">
@@ -141,6 +149,14 @@ const jsonLd = graph(software, breadcrumbs([["Tools", "/search"], [t.namespace, 
     <div class="stack main">
       <Evidence lines={lines} securityHref={`/${ref}/security`} />
 
+      {community && (
+        <section class="panel community" aria-labelledby="com-h">
+          <div class="ph"><h2 id="com-h">From the community</h2><a href={`/${ref}/issues`}>Issues →</a></div>
+          <p class="line"><span class={`status ${STATE_TONE[community.line.state]}`}>{community.line.text}</span></p>
+          <div class="pad"><WorksForMe client:visible refName={ref} version={t.latest_version} back={`${Astro.site}${ref}`} /></div>
+        </section>
+      )}
+
       <section class="panel sample-panel" aria-labelledby="out-h">
         <div class="ph"><h2 id="out-h">What you get back</h2><a href="/docs/results">Result envelope →</a></div>
         {recordedText ? (
@@ -156,6 +172,14 @@ const jsonLd = graph(software, breadcrumbs([["Tools", "/search"], [t.namespace, 
           <p class="small muted pad">Every tool returns this shape, shaped here from what this tool declares it finds. <code>--format table</code> to read it; <code>ot extract</code> and <code>ot auto</code> to continue.</p>
         )}
       </section>
+
+      {whatsNew && (
+        <section class="panel sample-panel" aria-labelledby="new-h">
+          <div class="ph"><h2 id="new-h">What's new in {t.latest_version}</h2><a href={`/${ref}/versions#v${t.latest_version}`}>Full notes →</a></div>
+          <p class="whats-new">{whatsNew}</p>
+          <p class="small muted pad">{latest?.changelog_source === "file" ? "From the version's section of CHANGELOG.md" : "From the release notes"} on {t.repo_url?.includes("gitlab.com") ? "GitLab" : "GitHub"}.</p>
+        </section>
+      )}
 
       <section class="prose readme" aria-label="README">
         {readme ? <Fragment set:html={demoteHeadings(readme.html)} /> : <p class="muted">This version has no rendered README yet.</p>}
@@ -300,6 +324,9 @@ const jsonLd = graph(software, breadcrumbs([["Tools", "/search"], [t.namespace, 
   .ph a { font-size: var(--fs-1); color: var(--text-muted); }
   .sample { margin: 0; padding: 12px 14px; font-size: var(--fs-1); line-height: 1.55; overflow-x: auto; color: var(--text-muted); }
   .pad { padding: 10px 14px; margin: 0; border-top: 1px solid var(--border); }
+  .community { padding: 0; }
+  .community .line { margin: 0; padding: 12px 14px; font-size: var(--fs-2); }
+  .whats-new { margin: 0; padding: 12px 14px; font-size: var(--fs-2); }
   .readme { padding-top: 4px; }
   .pivots { gap: 8px; }
   .pivots .chip { text-transform: none; letter-spacing: 0; font-size: var(--fs-1); height: 28px; }

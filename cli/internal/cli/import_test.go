@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -13,10 +14,14 @@ import (
 
 // fakeImports is the registry's import wizard: a Docker repository whose draft lacks what can't be detected.
 type fakeImports struct {
-	edits     []map[string]any
-	finished  string
-	community bool
-	wrapper   string
+	edits      []map[string]any
+	finished   string
+	community  bool
+	wrapper    string
+	dockerfile string
+	request    float64
+	// builds makes the draft a wrapper that builds its own image (a placeholder digest).
+	builds bool
 }
 
 func (f *fakeImports) handler(t *testing.T) http.HandlerFunc {
@@ -26,6 +31,9 @@ func (f *fakeImports) handler(t *testing.T) http.HandlerFunc {
 		"runtime": map[string]any{"kind": "docker", "image": "ghcr.io/alice/whois-plus@sha256:" + strings.Repeat("a", 64), "platforms": []string{"linux/amd64"}, "output_format": "json"},
 	}
 	view := func(status string, missing, suggested []string) map[string]any {
+		if f.builds {
+			draft["runtime"].(map[string]any)["image"] = "ghcr.io/osintverse-community/whois-plus@sha256:" + strings.Repeat("0", 64)
+		}
 		return map[string]any{
 			"id": "imp1", "provider": "github", "repo": "alice/whois-plus", "status": status, "namespace": "alice", "detected_kind": "docker",
 			"signals": []string{"Dockerfile"}, "assumed": []string{`runtime.output_format: "json"`}, "finish_modes": []string{"pr", "registry"},
@@ -57,7 +65,7 @@ func (f *fakeImports) handler(t *testing.T) http.HandlerFunc {
 			f.community, _ = body["community"].(bool)
 			v := view("draft", []string{"inputs", "outputs", "command", "ethics"}, []string{"test"})
 			if f.community {
-				v["finish_modes"] = []string{"wrapper"}
+				v["finish_modes"] = []string{"submit", "wrapper"}
 			}
 			json.NewEncoder(w).Encode(v)
 		case r.Method == "PATCH" && r.URL.Path == "/v1/imports/imp1":
@@ -66,7 +74,16 @@ func (f *fakeImports) handler(t *testing.T) http.HandlerFunc {
 		case r.Method == "POST" && r.URL.Path == "/v1/imports/imp1/finish":
 			f.finished, _ = body["mode"].(string)
 			f.wrapper, _ = body["wrapper_repo"].(string)
+			f.dockerfile, _ = body["dockerfile"].(string)
+			f.request, _ = body["request"].(float64)
 			v := view("finished", []string{}, []string{})
+			if f.finished == "submit" {
+				v["finish_mode"] = "wrapper"
+				v["submission"] = map[string]any{"number": 4, "status": "releasing", "url": "https://otinstaller.com/submissions/4"}
+				w.WriteHeader(201)
+				json.NewEncoder(w).Encode(v)
+				return
+			}
 			v["finish_mode"] = f.finished
 			v["pr_url"] = "https://github.com/alice/whois-plus/pull/7"
 			json.NewEncoder(w).Encode(v)
@@ -145,20 +162,45 @@ func TestImportRegistryFlagAndYes(t *testing.T) {
 }
 
 func TestImportCommunityWrapper(t *testing.T) {
-	// Answers as in the PR test, then Enter to accept the suggested wrapper repository.
-	a, f, out := importApp(t, "domain\n\nother\nwhois-plus {domain}\nn\nn\ny\n\n\n")
-	if code := run(a, "import", "--community", "https://github.com/alice/whois-plus"); code != 0 {
+	// Answers as in the PR test; a community import finishes as a submission.
+	a, f, out := importApp(t, "domain\n\nother\nwhois-plus {domain}\nn\nn\ny\n\n")
+	if code := run(a, "import", "--community", "--request", "12", "https://github.com/alice/whois-plus"); code != 0 {
 		t.Fatalf("exit %d: %s", code, out)
 	}
-	if !f.community || f.finished != "wrapper" || f.wrapper != "https://github.com/osintverse-community/whois-plus" {
-		t.Errorf("community=%v mode=%q wrapper=%q", f.community, f.finished, f.wrapper)
+	if !f.community || f.finished != "submit" || f.request != 12 || !strings.Contains(out.String(), "Submitted as #4") {
+		t.Errorf("community=%v mode=%q request=%v: %s", f.community, f.finished, f.request, out)
 	}
+	// Admins can still open a pull request in a wrapper repository.
 	a, f, out = importApp(t, "domain\n\nother\nwhois-plus {domain}\nn\nn\ny\n\n")
 	if code := run(a, "import", "--community", "--wrapper", "osintverse-community/whois", "https://github.com/alice/whois-plus"); code != 0 {
 		t.Fatalf("exit %d: %s", code, out)
 	}
 	if f.wrapper != "osintverse-community/whois" {
 		t.Errorf("wrapper = %q", f.wrapper)
+	}
+}
+
+func TestImportCommunitySubmissionBuildsImage(t *testing.T) {
+	answers := "domain\n\nother\nwhois-plus {domain}\nn\nn\ny\n\n"
+	a, f, out := importApp(t, answers)
+	f.builds = true
+	if code := run(a, "import", "--community", "https://github.com/alice/whois-plus"); code != ExitUsage {
+		t.Fatalf("without --dockerfile: exit %d: %s", code, out)
+	}
+	if f.finished != "" {
+		t.Fatalf("finished without a Dockerfile: %q", f.finished)
+	}
+	path := t.TempDir() + "/Dockerfile"
+	if err := os.WriteFile(path, []byte("FROM alpine:3.22\nUSER 65534\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a, f, out = importApp(t, answers)
+	f.builds = true
+	if code := run(a, "import", "--community", "--dockerfile", path, "https://github.com/alice/whois-plus"); code != 0 {
+		t.Fatalf("exit %d: %s", code, out)
+	}
+	if f.finished != "submit" || !strings.Contains(f.dockerfile, "USER 65534") {
+		t.Errorf("mode=%q dockerfile=%q", f.finished, f.dockerfile)
 	}
 }
 

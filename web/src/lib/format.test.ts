@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { exampleRun, formatCount, guidePageHref, hintParts, inputLabel } from "./format";
+import { exampleRun, formatCount, guidePageHref, hintParts, inputLabel, upstreamReleasesUrl } from "./format";
 import { withParam } from "./page";
 
 describe("format", () => {
@@ -40,4 +40,18 @@ describe("hintParts", () => {
     expect(hintParts("see https://otinstaller.com/docs/errors.", api)).toEqual(["see ", { href: "https://otinstaller.com/docs/errors", label: "https://otinstaller.com/docs/errors" }, "."]);
     expect(hintParts("wait a minute and try again", api)).toEqual(["wait a minute and try again"]);
   });
+});
+
+describe("upstreamReleasesUrl", () => {
+  it.each([
+    ["https://github.com/megadose/holehe", "https://github.com/megadose/holehe/releases"],
+    ["https://github.com/megadose/holehe/", "https://github.com/megadose/holehe/releases"],
+    ["https://github.com/megadose/holehe.git", "https://github.com/megadose/holehe/releases"],
+    ["https://gitlab.com/group/sub/tool", "https://gitlab.com/group/sub/tool/-/releases"],
+    ["https://github.com/megadose", null],
+    ["https://github.com/a/b/tree/main", null],
+    ["https://gitlab.com/group/tool/-/tree/main", null],
+    ["https://example.com/a/b", null],
+    [null, null],
+  ])("%s → %s", (home, want) => expect(upstreamReleasesUrl(home)).toBe(want));
 });

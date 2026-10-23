@@ -47,8 +47,9 @@ anonymous GET.
 
 ## 1. Routes
 
-Total: **112 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
-call; the `for` loop in `routes/trust.ts` registers two (`yank`, `unyank`). The mirror Worker's OCI routes are in
+Total: **168 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
+call; the `for` loops in `routes/trust.ts` (`yank`, `unyank`), `routes/community.ts` (a thread's subscription) and
+`routes/requests.ts` (a vote) register two each. The mirror Worker's OCI routes are in
 section 6 and are not in this count. There is no route for stars, although the rate-limit comment in `index.ts`
 mentions stars. Every route under a removed package answers 410 `tool_removed`.
 
@@ -70,15 +71,16 @@ in code; a Cloudflare rate-limiting rule on the zone covers `/mcp`, `/v1/tools*`
 | GET | `/tools` | none | `cached(c, 60)` | index.ts | Search. Params `q`, `input`, `output`, `category`, `runtime`, `kind`, `level`, `format`, `lang`, `sort` (relevance, installs, stars, updated, health: healthy tools by their last passing nightly check first), `no_keys`, `passive_only` (`1`/`true`: no target contact, personal data or egress), `limit` (1–100, default 25), `cursor` (offset). FTS path caps at 200 rows, non-FTS at 1000; `total_capped: true` says the total hit the cap. Summaries carry ethics and egress. A bad enum value is 400 `invalid_parameter` with the allowed values |
 | GET | `/guides` | none | 60 (inherited) | index.ts | Re-dispatches internally to `/v1/tools?kind=guide` with `app.fetch`, so the `/tools` response (and its `max-age=60`) is returned |
 | GET | `/tools/:ns/:name` | none | `cached(c, 60)` | index.ts | Follows aliases (`moved_to`); not found goes through `notFound()`: 410 `tool_removed` or 404 `tool_not_found`. `sample` is the latest version's passing `smoke` scan row's `sample` (entities or stdout from the test input) with `version` and `recorded_at`, when the scanner sent one |
-| GET | `/tools/:ns/:name/versions` | none | `cached(c, 60)` | index.ts | Published, yanked and removed versions, semver-sorted |
+| GET | `/tools/:ns/:name/versions` | none | `cached(c, 60)` | index.ts | Published, yanked and removed versions, semver-sorted, each with `changelog`, `changelog_html` (rendered by `changelog.ts:renderNotes`) and `changelog_source` |
 | GET | `/tools/:ns/:name/:version/manifest` | none | `cached(c, version === "latest" ? 60 : 3600)` | index.ts | Removed versions return status and `removed_reason` with `manifest: null`; otherwise adds `installFallbacks()` (`mirror_image` / `wheel_url`). `manifest` is `compatManifest()` (`lib/manifest.ts`): without the optional fields added after ot v0.12, whose install-time validation rejects them; `manifest_full` carries them when anything was left out |
 | GET | `/tools/:ns/:name/:version/scans` | none | `cached(c, 300)` | index.ts | PII scan summaries reduced to `{hits: <count>}` |
-| GET | `/tools/:ns/:name/:version` | none | `cached(c, 3600)` | index.ts | Also 3600 for `latest` (unlike `/manifest`, which uses 60 for `latest`) |
+| GET | `/tools/:ns/:name/:version` | none | `cached(c, 3600)` | index.ts | Also 3600 for `latest` (unlike `/manifest`, which uses 60 for `latest`); carries the same release-notes fields |
 | GET | `/namespaces` | none | `cached(c, 600)` | routes/profiles.ts | Publishers with a visible package (at most 500), most installed first, for the sitemap and llms.txt |
 | GET | `/namespaces/:ns` | none | `cached(c, 300)` | routes/profiles.ts | The profile (`effectiveProfile()`: host values with the owner's overrides), `stats` and visible tools (with `published_at`). `pending_review` namespaces answer 200 with only the handle and host links and no tools; `rejected`/`suspended` 404 |
 | GET | `/namespaces/:ns/activity` | none | `cached(c, 300)` | routes/profiles.ts | `?limit` (1–100, 30). Public audit events of visible packages: `version.published`, `version.yank`/`unyank`, `tool.deprecate`/`undeprecate`, `transfer.complete` |
 | GET | `/facets` | none | `cached(c, 600)` | index.ts | How many visible packages match each facet value: `inputs`, `outputs`, `categories`, `runtimes`, `no_keys`. `kind` is tool (default) or guide; counts ignore other filters |
 | GET | `/pivots` | none | `cached(c, 600)` | index.ts | `from=` comma list of entity types; follows `spec/pivots.json` to the input types each can feed (`inputs`, plus `unmapped` for types with none); top 10 non-broken tools per usable type |
+| GET | `/activity` | none | `cached(c, 300)` | index.ts → activity.ts | Public events from `audit_log` (published with `new_package`/`has_notes`, yanked, unyanked, deprecated with `replacement`, undeprecated, transferred) of visible, listed packages; `limit` 1–100 (30), `before` (ms), `kind`, `input`, `namespace`, `events` (`registry` default; `community` adds `issue_confirmed`/`issue_fixed` with `number` and `issue_kind`, and `request_accepted`/`request_published` with `number` and `tool`, worded from fields; `all`); `next_before` for paging. Never carries reasons, actors or anything people wrote |
 | POST | `/installs` | none | - | index.ts | `{tool, version, client?}`; 400 `invalid_body` without tool and version, else always 204 (also for unknown packages). Counts once per `cf-connecting-ip`, version and day (`overLimit` scope `install`: a salted hash of address and version in `rate_limits`, never the address itself), into `install_counts` and `install_clients` (`client` `cli`, `mcp`, `ci`, else `other`) |
 
 ### 1.2 Guides, docs, READMEs, assets, wheel copies, transparency (12)
@@ -205,6 +207,164 @@ Logic in `direct.ts`; see [architecture.md, flow a2](architecture.md#a2-publish-
 | POST | `/feedback` | none (user optional) | - | routes/beta.ts | `{kind: bug|idea|question|other, message (3–5000), email?, page?, source: cli|web, client?}`; 201; rate limited (section 3) |
 
 The beta's staff endpoints (`/admin/feedback`, `/admin/beta-metrics`, `/admin/email-test`) are in 1.10.
+
+### 1.9a Community: issues, confirmations, flags, moderation (`routes/community.ts`, 23)
+
+Logic in `community.ts`. Public reads are cached; everything a person sends is `private, no-store`. Writes by
+people (`feedback` scope) go through `poster()`: a timed-out account gets 403 `posting_blocked`, daily limits answer
+429 `too_many_posts`, and `holdReason()` holds posts from accounts under 24 hours old, posts `screen()` flags
+(`findPersonalData`, public IPv4 addresses, token and key patterns) and a first post with links.
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/tools/:ns/:name/issues` | none | `cached(c, 60)` | routes/community.ts | `status` open (open+confirmed) / closed / all, `kind`, `before`; 30 a page; `counts`; visible posts only |
+| GET | `/tools/:ns/:name/issues/:number` | none | `cached(c, 60)` | routes/community.ts | The issue and its visible comments (`renderPost`: no raw HTML or images, links `nofollow ugc`, links as text for authors under a week old); `indexable` once a maintainer replied or it was confirmed or fixed |
+| GET | `/issues` | none | `cached(c, 120)` | routes/community.ts | The board: open broken, outdated and wrong_info issues across visible packages; `kind`, `needs=confirmation`, `before` |
+| GET | `/tools/:ns/:name/issues/:number/viewer` | user | no-store | routes/community.ts | `can_triage`, `is_author`, `can_edit_issue`, `editable_comments`, `subscribed`, the viewer's own held comments |
+| POST | `/tools/:ns/:name/issues` | user, feedback | no-store | routes/community.ts | `issueInput()`; 5 a day (2 under a week old); 201 with `number` and `moderation` |
+| POST | `/tools/:ns/:name/issues/:number/comments` | user, feedback | no-store | routes/community.ts | 30 a day; locked threads 409 `issue_locked` unless the poster can triage; a triager's reply sets `maintainer_replied_at` |
+| PATCH / DELETE | `/tools/:ns/:name/issues/:number` | author, feedback | - | routes/community.ts | Edit within 24 hours (409 `edit_window_closed`; re-screened) / soft delete |
+| PATCH / DELETE | `/comments/:id` | author, feedback | - | routes/community.ts | Same for comments |
+| PUT | `/tools/:ns/:name/confirmations` | user, feedback | no-store | routes/community.ts | `{result: works|broken, version?, platform?, engine?, ot_version?, issue?}`; one per person, version and platform; 60 a day; returns 30-day counts |
+| PUT / DELETE | `/tools/:ns/:name/issues/:number/subscription` | user, feedback | - | routes/community.ts | Follow / mute a thread |
+| POST | `/flags` | user, feedback | - | routes/community.ts | 20 a day; a personal-data flag from an account over a week old, or three open flags, hides the post |
+| POST | `/tools/:ns/:name/issues/:number/status` | triage, manage | - | routes/community.ts | Maintainers, triagers, staff; the author may set `fixed` (and reopen their own fix) |
+| POST | `/tools/:ns/:name/issues/:number/lock` | triage, manage | - | routes/community.ts | `{locked}`; closed threads also lock after 30 days without activity (nightly `lockStaleThreads`) |
+| POST | `/moderation/:kind/:id` | triager or staff, manage | - | routes/community.ts | `hide`, `restore`, `approve`, `redact` (staff only; overwrites the text); maintainers may hide comments on their package's issues; resolves the post's flags |
+| GET | `/moderation/queue` | triager or staff | no-store | routes/community.ts | `view=held` (held and hidden posts) or `flags` (open, personal data first); `before` |
+| POST | `/moderation/users/:handle/timeout` | triager or staff, manage | - | routes/community.ts | Up to 7 days (`users.posting_blocked_until`) |
+| GET / POST / DELETE | `/admin/community/roles[/:handle/:role]` | admin | no-store | routes/community.ts | Grant (`{handle, role: triager|reviewer, note}`, note required) and revoke; audited `role.grant`/`role.revoke` |
+| POST | `/admin/reports/:id/publish-issue` | reviewer | - | routes/community.ts | A private `broken` report becomes a system issue written by the reviewer (no reporter attached); the report is actioned |
+
+Notifications (`routes/inbox.ts`, logic in `inbox.ts`, 6 routes):
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/me/inbox` | user | no-store | routes/inbox.ts | 50 newest items with `unread` and `before` paging |
+| POST | `/me/inbox/read` | user | - | routes/inbox.ts | `{ids?}`; all when none are given |
+| GET / PUT | `/me/email-prefs` | user | no-store | routes/inbox.ts | `community` and `owner_issues`: `immediate` / `daily` / `off` |
+| POST | `/unsubscribe` | none (signed link) | no-store | routes/inbox.ts | `u`, `s`, `t` from the query or a JSON body (RFC 8058 one-click); 400 `invalid_unsubscribe_link` |
+| GET | `/unsubscribe` | none | - | routes/inbox.ts | 302 to the site's `/unsubscribe` page, which asks before posting |
+
+Items are written by `inbox.ts:notify` with each event: new issues (to the namespace's members, scope `owner_issues`),
+replies and status changes (to the thread's unmuted subscribers, scope `community`), moderation of a post and role
+grants (to the person, scope `account`, always sent). The person who acted never gets one. `deliverInbox` runs on
+every 15-minute cron (`immediate`, items older than 2 minutes grouped into one email per person, at most 12 a day) and
+nightly (`daily` digests and anything held back); emails carry `List-Unsubscribe` and `List-Unsubscribe-Post`, and items
+are marked emailed only after a send that did not fail. `purgeInbox` (nightly) drops read items after 90 days.
+
+Internal: `fileSystemIssue(env, toolId, kind, body, dedupeKey, source)` (one issue per dedupe key; updated while open),
+`closeSystemIssue`, `announceVersion` (called by `publishVersion`: "does vX fix this?" on open broken and outdated
+issues) and `versionConfirmations`.
+
+`POST /tools/:ns/:name/run-reports` (user or anonymous, `feedback`, no-store; `community.ts:reportRun`): what `ot`'s
+failure prompt sends, `{version, exit_code | timed_out, os, arch, engine?, ot_version?}` and nothing else. Signed in
+(20 a day) it joins the version's open broken issue as a "broken" confirmation, or opens one; anonymous (10 a day per
+address) it adds to `run_signals` once per address, version and day, and 3 in a week file a system issue
+(`run_signals:<version>`, "unconfirmed"). 404 `version_not_found` for an unknown version.
+
+Tool requests (`routes/requests.ts`, logic in `requests.ts`, 7 routes):
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/requests` | none | `cached(c, 120)` | routes/requests.ts | `status` active (open, accepted, in progress) / all / one status; `sort` votes / new; `before` (`<votes>.<number>` or `<number>`); 50 a page; `counts` by status; visible requests only |
+| GET | `/requests/:number` | none | `cached(c, 60)` | routes/requests.ts | With `note`, `decision_note`, `decided_by`, `dropped_reason`, `pushed_at`; held and hidden answer 404 `request_not_found`; `indexable` once accepted |
+| GET | `/requests/:number/viewer` | user | no-store | routes/requests.ts | `voted`, `is_requester`, `can_decide`, `held`, and the requester's own note while held |
+| POST | `/requests` | user, feedback | no-store | routes/requests.ts | `{repo, note?}`; 5 a day; checks below; 201 with `request`, `held`, `notes`, `url` |
+| PUT / DELETE | `/requests/:number/vote` | user, feedback | no-store | routes/requests.ts | 60 a day; only open, accepted and in-progress requests (409 `request_closed`) |
+| POST | `/requests/:number/status` | triager or staff, manage | no-store | routes/requests.ts | `{status, decline_code?, note?, tool?}`; `published` names the package; the requester may withdraw (`declined` + `withdrawn`); 409 `request_unchanged` |
+
+`createRequest` checks, in order: `parseRepoRef` (400 `invalid_body`); an existing request for the repository (409
+`request_exists` with `number` and `status`; a withdrawn one is reopened as the new person's instead); `readUpstream`
+through `deps.fetch` with 5 s per step (503 `upstream_unreachable`), as the requester (their GitHub or GitLab token),
+else the GitHub App's installation on `osintverse-community`, else anonymously: 404 `repo_not_found` /
+`project_not_found`, 400 `repo_not_public`; the same request under its project ID (renames); a published package from
+the repository or a wrapper whose manifest `homepage` is it (409 `already_in_registry` with `ref`); an
+`otinstaller.yaml` upstream (409 `upstream_has_manifest`). A license `isRedistributable` refuses (read from the
+LICENSE file when GitHub says NOASSERTION) or an archived repository is recorded as `declined` at once. `knownRepo`
+(generated `known-repos.ts`) adds `otlite_name` and the seed survey's `dropped_reason`. Requests from accounts under
+24 hours old, or whose note `screen()` flags, are `held` and appear in `/moderation/queue?view=held` as kind
+`request`; `/moderation/request/:id` approves, hides, restores or (staff) redacts the note. `setRequestStatus`
+notifies the requester on every change and voters on published or declined (inbox, scope `community`);
+`linkPublished` (called by `publishVersion`) marks requests for the package's own repository or the upstream its
+`homepage` names as published.
+
+Community submissions (`routes/submissions.ts`, logic in `submissions.ts`, 9 routes; submitting is
+`POST /imports/:id/finish {mode: "submit", dockerfile?, request?}` in `routes/imports.ts`):
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/submissions` | none | `cached(c, 120)` | routes/submissions.ts | `status` open / published / closed / all, `before` (number); 50 a page |
+| GET | `/submissions/:number` | none | `cached(c, 60)` | routes/submissions.ts | Manifest, Dockerfile, `template_conformant`, `flags`, `dockerfile_checks`, the latest release with its scans, decision, reviewer |
+| GET | `/submissions/:number/viewer` | user | no-store | routes/submissions.ts | `is_submitter`, `can_review`, `can_edit` |
+| PUT | `/submissions/:number` | submitter, publish | no-store | routes/submissions.ts | `{manifest?, dockerfile?}` while submitted, sent back or failed: checked again, committed, released again (patch bump when the version was tagged) |
+| POST | `/submissions/:number/withdraw` | submitter, manage | - | routes/submissions.ts | Archives the wrapper repository |
+| POST | `/submissions/:number/start` | reviewer, manage | - | routes/submissions.ts | Starts the build of a non-conformant Dockerfile |
+| POST | `/submissions/:number/approve` | reviewer, manage | - | routes/submissions.ts | Publishes the release waiting for review; 403 `self_review` for the submitter, `not_reviewer` without the role |
+| POST | `/submissions/:number/request-changes` / `reject` | reviewer, manage | - | routes/submissions.ts | `{note}` required; turns the waiting release down; reject archives the repository and puts a linked request back to accepted |
+
+`submitWrapper` refuses without the community bot's secrets (503 `community_bot_missing`), with three open submissions
+(409 `too_many_submissions`), on draft problems (409 `import_not_ready`), a builds-image draft without a Dockerfile
+(400 `dockerfile_required`) and on any blocking check, as 409 with all of them in `problems`:
+`license_not_redistributable`, `license_mismatch`, `upstream_has_manifest`, `already_packaged`, `submission_exists`,
+`name_taken`, `pypi_not_upstream`, `dockerfile_too_large`. `dockerfileChecks` (base image, non-root user, `ADD` URL,
+piped shell, a pin `upstream-pin.ts:findPin` can read) only decide `template_conformant`; flags for reviewers are
+`similar_name`, `stale_upstream`, `few_stars`, `dropped_in_survey`, `archived_upstream`, `pypi_unchecked`. Then the
+bot (`COMMUNITY_*`) creates the repository, commits the files, a `sources` row links it (`connected_by` the submitter,
+the main App's installation on the namespace), and the release starts: `createTag` for pinned images and wheels, a
+`workflow_dispatch` of `otinstaller-release.yml` for conformant builds. In the pipeline: `record()` marks a new tool
+from that repository `needs_first_review` (`markSubmittedTool`), `applyScanResults` holds it in `awaiting_review`
+even in an active namespace (`firstReleaseScanned`), and `publishVersion` clears the flag and adds the submitter to
+`tool_maintainers` (`firstReleasePublished`). `/admin/versions/:id/approve` also refuses the submitter
+(`self_review`). `GET /tools/:ns/:name` gains `packaged_by` and `maintainers`. `POST /imports {community: true}` is open
+to anyone signed in (10 a day); bulk community imports stay with admins.
+
+The upstream watcher (`routes/upstream.ts`, logic in `upstream.ts`, 4 routes; the nightly cron queues
+`{upstreamCheckToolId}` for every published community wrapper with an `upstream_url`):
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/upstream/summary` | none | `cached(c, 3600)` | routes/upstream.ts | `mode` (report, issues, prs), `counts` by state, `behind` (release pins only), `checked_at` |
+| GET | `/admin/upstream` | reviewer | no-store | routes/upstream.ts | Every watch row (`state` filter), with pin kind, license, error and override |
+| PUT | `/admin/upstream/:ns/:name` | admin | no-store | routes/upstream.ts | `{pinned, pin_kind?, package?}` override or `{clear: true}`; audited `upstream.override`; checks at once |
+| POST | `/admin/upstream/:ns/:name/check` | reviewer | no-store | routes/upstream.ts | Checks now |
+
+`checkUpstream` reads the upstream repository (gone → `gone`, a different `full_name` → `renamed`, `archived`, a
+license `isRedistributable` refuses → `license_changed`), then the pin: a staff override, the pipx manifest's
+`package_version`, the Dockerfile at the version's `git_sha` (`upstream-pin.ts:findPin`; read again only when
+`latest_version_id` changes), or the manifest version for wrappers of upstream's own image. Then upstream's latest:
+PyPI JSON for pip and pipx pins; for commit pins the compare API (`commits_behind`); otherwise
+`releases/latest` with `If-None-Match` (a 304 keeps the stored answer) or, with no releases, the highest tag.
+`compareVersions` decides `behind` or `current`; names it can't compare are `unknown`. GitHub calls use the registry
+App's installation on `osintverse-community` (anonymous without one). With `UPSTREAM_WATCH=issues`, `actOn` files
+`outdated` system issues (dedupe `outdated:<release>`, three days after the release, older ones closed as superseded,
+closed as fixed when the pin catches up) and one per upstream change (`upstream:<state>`), and tells admins about a
+license that no longer allows redistribution. `GET /tools/:ns/:name` gains `upstream` (`publicWatch`, plus `bump`).
+
+Bump pull requests (`bumps.ts`, 2 routes in `routes/upstream.ts`): with `UPSTREAM_WATCH=prs` (issues mode plus this)
+and the community bot set up, `maybeOpenBump` opens `otinstaller/bump-<release>` in the wrapper repository three days
+after a release, once per release (`bump_prs`; an older open one is closed), changing only the pin: the Dockerfile
+line `findPin` points at, or the pipx manifest's `version`, `package_version` and `wheel_sha256` (from PyPI). Commit
+pins and wrappers of upstream's own image get none.
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/packages/:ns/:name/bump` | user | no-store | routes/upstream.ts | The open bump (`version`, `number`, `url`) and `can_release` |
+| POST | `/packages/:ns/:name/pulls/:number/release` | maintainer or reviewer, publish | no-store | routes/upstream.ts | `releaseBump`: 403 `not_package_maintainer`; a pull request whose files aren't `pinOnly` needs a reviewer (403 `not_pin_only`); squash-merges (409 `bump_not_mergeable`), then dispatches the release workflow with upstream's version (a patch on top when it exists) or tags `v<version>` for wheels |
+
+Maintainers are `tool_maintainers` rows (the submitter, others staff add) and the namespace's members;
+`community.ts:roleBadge` now gives tool maintainers the maintainer badge, so they triage the package's issues, and
+`inbox.ts:maintainers` sends them its new issues.
+
+Contributor profiles (`routes/people.ts`, logic in `people.ts`, 2 routes):
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/people/:handle` | none | `cached(c, 300)` | routes/people.ts | Handle (case-insensitive), avatar, `joined` (YYYY-MM), `roles` (`staff`, else `triager`/`reviewer`), `counts` from `contributor_stats`, `counted_at`, the 10 newest visible issues and requests, `indexable` (a role, a confirmed or fixed report, a published request or triage); hidden, banned and unknown people 404 `person_not_found`; never email, login or accounts |
+| PUT | `/me/community-profile` | user, manage | no-store | routes/people.ts | `{hidden}` sets `users.profile_hidden` (also on `/me` as `profile_hidden`); audited `profile.hide` / `profile.show` |
+
+`refreshContributorStats` recounts everyone who took part on the nightly cron, with one `INSERT OR REPLACE ... SELECT`
+over the author indexes from 0019.
 
 ### 1.10 Admin and staff (24)
 
@@ -375,6 +535,10 @@ GitHub 403 rate-limit bodies).
 5. `expireDrills(env)` (backups.ts): dispatched drills past 6 h finish as `expired`.
 6. `backfillBackups(env)` (backups.ts): up to `BACKFILL_PER_RUN` = 5 published versions with no image/wheel backup,
    at most once a day each.
+7. `deliverInbox(env, "immediate")` (inbox.ts): inbox items older than 2 minutes, grouped into one email per person who
+   asked for them at once (at most 12 community emails a day).
+
+`refreshDueProfiles(env)` (profiles.ts) also runs in this block, between the source poll and the stuck-job alert.
 
 Then, by `event.cron`:
 
@@ -383,7 +547,7 @@ Then, by `event.cron`:
 | `*/15 * * * *` | | none beyond the block above |
 | `41 4 * * 1` (Mondays 04:41 UTC) | `WEEKLY_BACKUP_CRON` (backups.ts) | `weeklyBackups(env)`: a git backup of every active source, dispatched 20 per call (`WEEKLY_PER_DISPATCH`) |
 | `23 5 1 * *` (1st of the month 05:23 UTC) | `RESTORE_DRILL_CRON` (backups.ts) | `startDrill(env)`: restore a random git bundle and pull a random public mirrored image |
-| `17 3 * * *` (daily 03:17 UTC) | literal string in index.ts | `queueNightlyLinkChecks(env)`, `dailyDigest(env)` (namespaces waiting > 2 business days, reports > 48 h), `purgeRateLimits(env)` (windows older than a day), `purgeBackups(env)` (due deletions, except legal holds), `purgeIdleNamespaces(env)` (direct.ts: registry namespaces still pending with no package 30 days after creation, 50 a night), `queueMirrorSweeps(env)` (backups.ts: `{mirrorSweepRepo}` for up to 50 mirror repositories with publisher pushes older than a week, and `purgeUploads` for blob uploads idle a day), then the SQL `UPDATE tools SET installs_30d = ...` over the last 30 days of `install_counts` |
+| `17 3 * * *` (daily 03:17 UTC) | literal string in index.ts | `queueNightlyLinkChecks(env)`, `dailyDigest(env)` (namespaces waiting > 2 business days, reports > 48 h), `purgeRateLimits(env)` (windows older than a day), `purgeBackups(env)` (due deletions, except legal holds), `purgeIdleNamespaces(env)` (direct.ts: registry namespaces still pending with no package 30 days after creation, 50 a night), `lockStaleThreads(env)` (closed issues quiet for 30 days), `deliverInbox(env, "daily")` (digests), `purgeInbox(env)` (read items after 90 days, all after a year), `refreshContributorStats(env)`, `queueUpstreamChecks(env)` (`{upstreamCheckToolId}` per community wrapper), `queueMirrorSweeps(env)` (backups.ts: `{mirrorSweepRepo}` for up to 50 mirror repositories with publisher pushes older than a week, and `purgeUploads` for blob uploads idle a day), then the SQL `UPDATE tools SET installs_30d = ...` over the last 30 days of `install_counts` |
 
 ## 6. Mirror Worker (`otinstaller-mirror`)
 

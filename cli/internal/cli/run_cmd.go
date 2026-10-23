@@ -45,6 +45,8 @@ type runArgs struct {
 	DryRun bool
 	// Detect turns bare targets (example.com) into typed inputs, for auto and playbooks.
 	Detect bool
+	// Machine is set by --json or -f json/jsonl: a program reads the output, so nothing asks a question.
+	Machine bool
 }
 
 func parseRunArgs(args []string) (*runArgs, error) {
@@ -85,7 +87,7 @@ func parseArgs(args []string, detect bool) (*runArgs, error) {
 			continue
 		case "json":
 			// The global --json, which `ot run` has to parse itself.
-			ra.Format = "json"
+			ra.Format, ra.Machine = "json", true
 			continue
 		case "live":
 			// otinstaller's live table; ot always shows progress with --all, playbooks and auto.
@@ -101,6 +103,7 @@ func parseArgs(args []string, detect bool) (*runArgs, error) {
 		switch name {
 		case "format", "f":
 			ra.Format = val
+			ra.Machine = val == "json" || val == "jsonl"
 		case "o", "output":
 			ra.Output = val
 		case "out-dir":
@@ -233,6 +236,10 @@ func (a *App) runCmd() *cobra.Command {
 			if meta != nil {
 				fmt.Fprintf(a.Err, "Saved %s\n", meta.OutputPath)
 			}
+			var timedOut *runner.TimeoutError
+			if errors.As(err, &timedOut) {
+				a.offerFailureReport(cmd.Context(), ra, failedRun{ref: ref, version: inst.Version, timedOut: true})
+			}
 			if err != nil {
 				return err
 			}
@@ -264,6 +271,7 @@ func (a *App) runCmd() *cobra.Command {
 				fmt.Fprintf(a.Err, "Wrote %d entities to %s\n", len(env.Entities), ra.Output)
 			}
 			if env.ExitCode != 0 {
+				a.offerFailureReport(cmd.Context(), ra, failedRun{ref: ref, version: inst.Version, exitCode: env.ExitCode, entities: len(env.Entities)})
 				return &ExitError{Code: ExitToolError, Err: fmt.Errorf("%s exited with code %d", m.Ref(), env.ExitCode)}
 			}
 			return nil

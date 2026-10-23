@@ -15,6 +15,20 @@ export function textOf(html: string): string {
 }
 
 /**
+ * The start of a rendered fragment as one line of text, for previews such as release notes: headings are left out,
+ * list items are separated by semicolons, and long text is cut at a word with an ellipsis.
+ */
+export function excerpt(html: string, max = 280): string {
+  const text = textOf(html.replace(/<h[1-6]\b[^>]*>[\s\S]*?<\/h[1-6]>/gi, " ").replace(/<\/li>/gi, "; ").replace(/<\/p>/gi, " "))
+    .replace(/;(\s*;)+/g, ";")
+    .replace(/[\s;]+$/, "");
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).replace(/[\s;,.:]+$/, "")}…`;
+}
+
+/**
  * Keeps the page's own title the only h1. When `title` is given and the body starts with an h1 that says the same
  * thing, that heading is dropped (the body's h2s are then the right level under the page title). If an h1 still
  * remains, every heading moves down one level (h1 → h2 … h5 → h6).

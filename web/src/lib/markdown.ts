@@ -1,7 +1,9 @@
 // The docs and policy pages as plain Markdown, for the .md twins, content negotiation, llms.txt and llms-full.txt.
-// The /agents page's twin (lib/agents.ts) and the otlite tool pages' twins (lib/otlite.ts) are answered here too.
+// The /agents and /learn pages' twins (lib/agents.ts, lib/learn.ts) and the otlite tool pages' twins (lib/otlite.ts) are
+// answered here too.
 import { SITE_URL } from "./api";
 import { AGENTS_PAGE } from "./agents";
+import { LEARN_PAGE } from "./learn";
 import { OTLITE_PAGES } from "./otlite";
 
 export interface MarkdownPage {
@@ -46,7 +48,7 @@ function load(files: Record<string, string>, section: MarkdownPage["section"], o
 }
 
 /** Every docs page, in the order of the docs nav; pages not in that list follow alphabetically. */
-export const DOC_PAGES = load(docs, "docs", ["index", "getting-started", "cli", "agents", "mcp-tools", "automation", "results", "api", "manifest", "publishing", "guides", "errors", "security", "faq"]);
+export const DOC_PAGES = load(docs, "docs", ["index", "getting-started", "cli", "agents", "mcp-tools", "automation", "results", "api", "manifest", "publishing", "guides", "community", "errors", "security", "faq"]);
 /** Every Markdown policy page (transparency is a live page and has no twin). */
 export const POLICY_PAGES = load(policies, "policy", ["acceptable-use", "terms", "privacy", "takedown"]);
 
@@ -54,7 +56,7 @@ export const POLICY_PAGES = load(policies, "policy", ["acceptable-use", "terms",
 export function markdownPage(path: string): MarkdownPage | null {
   const p = path.replace(/\/+$/, "").replace(/\.md$/, "") || "/";
   const norm = p === "/docs/index" ? "/docs" : p;
-  return [...DOC_PAGES, ...POLICY_PAGES, AGENTS_PAGE, ...OTLITE_PAGES].find((page) => page.path === norm) ?? null;
+  return [...DOC_PAGES, ...POLICY_PAGES, AGENTS_PAGE, LEARN_PAGE, ...OTLITE_PAGES].find((page) => page.path === norm) ?? null;
 }
 
 /** The absolute URL of a page's Markdown twin (/docs.md for the docs index). */
