@@ -2,7 +2,8 @@
 // working and the code is not lost.
 //
 //   image  each published Docker version, copied with its signatures to the mirror (mirror.otinstaller.com) by
-//          the scanner after a passing verdict (crane copy keeps the digest, so cosign verifies the same signature)
+//          the scanner after a passing verdict (crane copy keeps the digest, so cosign verifies the same signature).
+//          An image a publisher pushed to the mirror itself is not copied: its row is the image (hosted = 1)
 //   wheel  each published pipx version's wheel, in R2 at wheels/<ns>/<name>/<sha256>.whl
 //   git    a git bundle of a mirror clone (all branches and tags) at every release and weekly, in R2 at
 //          git/<provider>/<project_id>/<date>-<version|weekly>.bundle
@@ -18,7 +19,7 @@ import { requireSecret, type Env } from "./env";
 import { randomToken, sha256Hex, ulid } from "./lib/crypto";
 import type { Manifest } from "./lib/manifest";
 import { apiObjectUrl, presignSigV4 } from "./lib/presign";
-import { deleteImage, hideImage, imageExists } from "./mirror/registry";
+import { deleteImage, hideImage, imageExists, purgeUploads, releaseImage, sweepRepo } from "./mirror/registry";
 import { dispatchOps } from "./scans";
 import { audit } from "./routes/auth";
 import { ownerEmails, sendEmail, staffEmails, templates } from "./notify";
@@ -59,6 +60,14 @@ export function osiApproved(expr: string | null | undefined): boolean {
 
 export const mirrorHost = (env: Env) => env.MIRROR_HOST ?? "mirror.otinstaller.com";
 export const mirrorRepo = (ns: string, name: string, isPublic: boolean) => `${isPublic ? "" : "private/"}${ns}/${name}`;
+
+/** The mirror repository and digest of an image that lives on the mirror itself (`ot publish --image`), else null. */
+export function hostedImage(env: Env, image: string | undefined): { repo: string; digest: string } | null {
+  const prefix = `${mirrorHost(env)}/`;
+  if (!image?.startsWith(prefix) || !image.includes("@sha256:")) return null;
+  const rest = image.slice(prefix.length);
+  return { repo: rest.slice(0, rest.indexOf("@")), digest: rest.slice(rest.indexOf("@") + 1) };
+}
 const splitLocation = (loc: string) => {
   const at = loc.lastIndexOf("@");
   return { repo: loc.slice(0, at), digest: loc.slice(at + 1) };
@@ -161,7 +170,8 @@ export async function releasePlan(env: Env, versionId: string, trigger: "release
   const stored = new Set((await env.DB.prepare(`SELECT kind FROM backups WHERE version_id = ? AND status = 'stored'`).bind(v.id).all<{ kind: string }>()).results.map((r) => r.kind));
   const planned: Planned[] = [];
   const rt = m.runtime as { kind?: string; image?: string; package?: string; package_version?: string; wheel_sha256?: string } | undefined;
-  if (rt?.kind === "docker" && rt.image?.includes("@sha256:") && !stored.has("image")) {
+  // An image that lives on the mirror already is its own copy (recordHostedImage).
+  if (rt?.kind === "docker" && rt.image?.includes("@sha256:") && !stored.has("image") && !hostedImage(env, rt.image)) {
     const digest = rt.image.slice(rt.image.indexOf("@") + 1);
     const repo = mirrorRepo(t.namespace, t.name, isPublic);
     planned.push({ kind: "image", location: `${repo}@${digest}`, visibility, source: rt.image, target: `${mirrorHost(env)}/${repo}`, digest });
@@ -356,12 +366,65 @@ export async function expireRuns(env: Env, now = Date.now()) {
   return stale.length;
 }
 
+// ---------- images hosted on the mirror ----------
+
+/**
+ * A published version whose image a publisher pushed to the mirror (`ot publish --image`): the image goes public
+ * (releaseImage clears its pending marker) and gets an image backup row that is the image itself (hosted = 1), so
+ * takedowns hide it, purges delete it and legal holds keep it like any mirrored copy. Never an install fallback.
+ */
+export async function recordHostedImage(env: Env, versionId: string, toolId: string, image: string, now = Date.now()) {
+  const hosted = hostedImage(env, image);
+  if (!hosted) return false;
+  await releaseImage(env.MIRROR, hosted.repo, hosted.digest);
+  const location = `${hosted.repo}@${hosted.digest}`;
+  const have = await env.DB.prepare(`SELECT 1 FROM backups WHERE version_id = ? AND kind = 'image' AND location = ? AND status = 'stored'`).bind(versionId, location).first();
+  if (!have) {
+    await env.DB.prepare(
+      `INSERT INTO backups (id, tool_id, version_id, kind, location, visibility, status, hosted, created_at, stored_at) VALUES (?, ?, ?, 'image', ?, 'public', 'stored', 1, ?, ?)`,
+    ).bind(ulid(now), toolId, versionId, location, now, now).run();
+  }
+  return true;
+}
+
+/** Image pushes the nightly clean-up looks at once they are this old: by then the release they were for is decided. */
+export const MIRROR_SWEEP_AGE = 7 * 86_400_000;
+
+/**
+ * Nightly: queues a sweep of each mirror repository publishers pushed to more than a week ago (50 a night, one per
+ * queue message, since a sweep lists the whole repository), and clears blob uploads nobody finished.
+ */
+export async function queueMirrorSweeps(env: Env, now = Date.now()) {
+  const repos = (await env.DB.prepare(`SELECT DISTINCT repo FROM mirror_pushes WHERE created_at < ? LIMIT 50`).bind(now - MIRROR_SWEEP_AGE).all<{ repo: string }>()).results;
+  if (repos.length) await env.PUBLISH_QUEUE.sendBatch(repos.map((r) => ({ body: { mirrorSweepRepo: r.repo } })));
+  await purgeUploads(env.MIRROR, { now });
+  return repos.length;
+}
+
+/**
+ * Removes images publishers pushed to a repository that no version uses: everything but the digests of the package's
+ * versions that weren't rejected (on any host) and of its backups, with what hangs off them, is deleted once a
+ * week old. The repository's old push records go with it.
+ */
+export async function sweepMirrorRepo(env: Env, repo: string, now = Date.now()) {
+  const [ns, name] = repo.split("/");
+  const refs = (await env.DB.prepare(
+    `SELECT v.artifact_ref AS ref FROM versions v JOIN tools t ON t.id = v.tool_id JOIN namespaces n ON n.id = t.namespace_id
+     WHERE n.name = ? AND t.name = ? AND v.status != 'rejected' AND v.artifact_ref LIKE '%@sha256:%'
+     UNION SELECT location AS ref FROM backups WHERE location LIKE ? AND status != 'deleted'`,
+  ).bind(ns, name, `${repo}@sha256:%`).all<{ ref: string }>()).results;
+  const keep = new Set(refs.map((r) => r.ref.slice(r.ref.indexOf("@") + 1)));
+  const out = await sweepRepo(env.MIRROR, repo, keep, { now });
+  await env.DB.prepare(`DELETE FROM mirror_pushes WHERE repo = ? AND created_at < ?`).bind(repo, now - MIRROR_SWEEP_AGE).run();
+  return out;
+}
+
 // ---------- installs and restores ----------
 
 /** Where ot can get a version when its original registry refuses: the public mirror and the R2 copy of the wheel. */
 export async function installFallbacks(env: Env, versionId: string, ns: string, name: string, version: string) {
   const rows = (await env.DB.prepare(
-    `SELECT kind, location, filename FROM backups WHERE version_id = ? AND kind IN ('image', 'wheel') AND status = 'stored' AND visibility = 'public' AND delete_after IS NULL`,
+    `SELECT kind, location, filename FROM backups WHERE version_id = ? AND kind IN ('image', 'wheel') AND status = 'stored' AND visibility = 'public' AND delete_after IS NULL AND hosted = 0`,
   ).bind(versionId).all<{ kind: string; location: string; filename: string | null }>()).results;
   const out: { mirror_image?: string; wheel_url?: string } = {};
   for (const r of rows) {
@@ -437,7 +500,8 @@ export async function scheduleDeletion(env: Env, toolId: string, versionId: stri
 async function deleteBackup(env: Env, r: { id: string; kind: string; location: string }, now: number, why: string) {
   if (r.kind === "image") {
     const { repo, digest } = splitLocation(r.location);
-    await deleteImage(env.MIRROR, repo, digest);
+    // A publisher may be pushing another image to the same repository right now: blobs from the last day stay.
+    await deleteImage(env.MIRROR, repo, digest, { minAgeMs: 86_400_000, now });
   } else {
     await env.BACKUPS.delete(r.location);
   }

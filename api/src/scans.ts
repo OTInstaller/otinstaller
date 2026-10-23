@@ -11,6 +11,7 @@ import { updateLinkHealth } from "./guides";
 import { announceVersion } from "./community";
 import { linkPublished } from "./requests";
 import { firstReleasePublished, firstReleaseScanned } from "./submissions";
+import { recordHostedImage } from "./backups";
 
 export const SCAN_TOKEN_TTL = 60 * 60 * 1000;
 const PARAMETER_TYPES = new Set(["string", "integer", "boolean", "enum"]);
@@ -70,7 +71,7 @@ export function verdict(r: ScanResults, previouslySigned: boolean, direct = fals
   if (r.signature.status === "absent" && previouslySigned) {
     return {
       result: "fail", code: "signature_dropped",
-      message: `earlier versions were signed but this one is not; ${direct ? "sign it with the same identity as before" : "sign it with the release workflow"}`,
+      message: `earlier versions were signed but this one is not; ${direct ? "sign it with the same identity as before (`ot publish --sign`)" : "sign it with the release workflow"}`,
     };
   }
   if (r.malware.count > 0) return { result: "fail", code: "malware_suspected", message: `${r.malware.count} malicious-code heuristic(s) matched; a reviewer will look at the report` };
@@ -373,6 +374,8 @@ export async function publishVersion(env: Env, versionId: string, opts: { backup
   ];
   if (isLatest) stmts.push(...latestMetadata(db, v.tool_id, v.kind, versionId, m));
   await db.batch(stmts);
+  // An image a publisher pushed to the mirror goes public now, recorded as its own backup.
+  if (m.runtime?.kind === "docker") await recordHostedImage(env, versionId, v.tool_id, m.runtime.image ?? "");
   // People following open broken or outdated issues are asked whether the new version fixes them.
   await announceVersion(env, v.tool_id, v.version).catch((e) => console.error("announcing the version on issues failed", e));
   // A reviewed community submission is out: its submitter becomes a maintainer.
@@ -382,7 +385,8 @@ export async function publishVersion(env: Env, versionId: string, opts: { backup
   if (v.kind === "guide" && isLatest) await updateLinkHealth(env, v.tool_id);
   const scan = await db.prepare(`SELECT scan_status FROM versions WHERE id = ?`).bind(versionId).first<{ scan_status: string }>();
   await commitStatus(env, v, "success", `Published ${refOf(v)}@${v.version}`);
-  // Backups never hold up publishing: a version the scanner did not just back up gets its own backup job.
+  // Backups never hold up publishing: a version the scanner did not just back up gets its own backup job (releasePlan
+  // leaves a hosted image out; a repository's bundle may still be due).
   if (!opts.backupInline) await env.PUBLISH_QUEUE.send({ backupVersionId: versionId }).catch((e) => console.error("queueing the backup failed", e));
   await sendEmail(env, { to: await ownerEmails(env, v.namespace_id), kind: "published", key: `published:${versionId}`, ...templates.published(env, refOf(v), v.version, scan?.scan_status === "warn") });
 }

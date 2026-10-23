@@ -37,9 +37,12 @@ jobs:
           python-version: "3.12"
       - if: github.event.action == 'otinstaller-scan'
         run: pip install guarddog==3.2.0 cryptography==50.0.2
+      # Docker too: images publishers pushed to the mirror are only served to this credential until they are published.
       - name: Log in to the mirror
         if: env.MIRROR_PUSH_TOKEN != ''
-        run: printf '%s' "$MIRROR_PUSH_TOKEN" | crane auth login "$MIRROR_HOST" -u scanner --password-stdin
+        run: |
+          printf '%s' "$MIRROR_PUSH_TOKEN" | crane auth login "$MIRROR_HOST" -u scanner --password-stdin
+          printf '%s' "$MIRROR_PUSH_TOKEN" | docker login "$MIRROR_HOST" -u scanner --password-stdin
       - name: Write the request
         env:
           PAYLOAD: ${{ toJSON(github.event.client_payload) }}
