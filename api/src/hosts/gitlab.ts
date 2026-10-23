@@ -94,6 +94,7 @@ export interface GitlabProject {
   topics?: string[];
   tag_list?: string[];
   star_count?: number;
+  last_activity_at?: string | null;
   license?: { key: string } | null;
   owner?: { id: number; username: string } | null;
   permissions?: { project_access?: { access_level: number } | null; group_access?: { access_level: number } | null };
@@ -103,7 +104,7 @@ export const MAINTAINER = 40;
 export const OWNER = 50;
 
 export async function getProject(f: Fetch, token: string, project: string, withLicense = false): Promise<GitlabProject | null> {
-  const res = await f(`${GITLAB}/api/v4/projects/${encodeURIComponent(project)}${withLicense ? "?license=true" : ""}`, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await f(`${GITLAB}/api/v4/projects/${encodeURIComponent(project)}${withLicense ? "?license=true" : ""}`, { headers: auth(token) });
   if (res.status === 404 || res.status === 403) return null;
   await check(res, "reading GitLab project");
   return (await res.json()) as GitlabProject;
@@ -140,7 +141,8 @@ export async function deleteHook(f: Fetch, token: string, projectId: string, hoo
 
 // ---------- import wizard ----------
 
-const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
+// An empty token reads public projects anonymously.
+const auth = (token: string): Record<string, string> => (token ? { Authorization: `Bearer ${token}` } : {});
 const projectApi = (id: string) => `${GITLAB}/api/v4/projects/${encodeURIComponent(id)}`;
 
 /** Public projects where the user is Maintainer or above (first 300). */

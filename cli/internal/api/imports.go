@@ -46,6 +46,12 @@ type Import struct {
 		Ref       string `json:"ref"`
 		Published bool   `json:"published"`
 	} `json:"package,omitempty"`
+	// Submission is set when a community import finished as a submission.
+	Submission *struct {
+		Number int    `json:"number"`
+		Status string `json:"status"`
+		URL    string `json:"url"`
+	} `json:"submission,omitempty"`
 }
 
 type ImportBatch struct {
@@ -92,10 +98,24 @@ func (c *Client) FinishImport(ctx context.Context, id, mode string) (*Import, er
 	return &out, c.do(ctx, http.MethodPost, "/imports/"+url.PathEscape(id)+"/finish", map[string]string{"mode": mode}, &out)
 }
 
-// StartCommunityImport packages someone else's repository as a community wrapper (osintverse-community admins).
+// StartCommunityImport packages someone else's repository as a community wrapper.
 func (c *Client) StartCommunityImport(ctx context.Context, repo string) (*Import, error) {
 	var out Import
 	return &out, c.do(ctx, http.MethodPost, "/imports", map[string]any{"repo": repo, "community": true}, &out)
+}
+
+// FinishSubmission finishes a community import as a submission; dockerfile is the Dockerfile's text when the wrapper
+// builds its own image, request the tool request it answers (0 for none).
+func (c *Client) FinishSubmission(ctx context.Context, id, dockerfile string, request int) (*Import, error) {
+	var out Import
+	body := map[string]any{"mode": "submit"}
+	if dockerfile != "" {
+		body["dockerfile"] = dockerfile
+	}
+	if request > 0 {
+		body["request"] = request
+	}
+	return &out, c.do(ctx, http.MethodPost, "/imports/"+url.PathEscape(id)+"/finish", body, &out)
 }
 
 // FinishWrapper finishes a community import with a pull/merge request in the wrapper repository.

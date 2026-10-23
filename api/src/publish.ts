@@ -17,6 +17,9 @@ import { backupVersion } from "./backups";
 import { copyImages, queueContentChecks, rawFileUrl, recheckLinks, relatedToolProblems, renderRelease, runContentChecks, storeContent, type RenderedRelease } from "./guides";
 import { ownerEmails, sendEmail, templates } from "./notify";
 import { COMMUNITY_NAMESPACE, detectQueued, failImport, heldManifestFor, parseRepoRef } from "./imports";
+import { markSubmittedTool } from "./submissions";
+import { checkUpstream } from "./upstream";
+import { captureNotes } from "./changelog";
 import { bundleHost, deleteBundle } from "./direct";
 
 export const MANIFEST_FILE = "otinstaller.yaml";
@@ -158,6 +161,7 @@ export async function processJob(env: Env, jobId: string): Promise<Outcome | nul
   }
   if (outcome.status === "scanning") {
     await storeContent(env, outcome.versionId!, manifest!, content!);
+    await captureNotes(env, host, outcome.versionId!, job.tag, sha, manifest!.version);
     // The status moves on before dispatch, so a dispatch that keeps failing never leaves "Validating" behind.
     await host.setStatus(sha, "pending", manifest!.kind === "guide" ? "Valid; content checks running" : "Valid; security scans running", target);
     await startChecks(env, outcome.versionId!, job, manifest!);
@@ -260,6 +264,9 @@ async function record(env: Env, job: Job, sha: string, ns: Namespace, m: Manifes
         // A package in the community namespace whose homepage is another repository wraps someone else's tool and is
         // labelled so; the namespace's own tools (homepage is the source repository, or none) are first-party.
         upstreamOf(job, m) ? 1 : 0, now, now));
+      if (upstreamOf(job, m)) stmts.push(db.prepare(`UPDATE tools SET upstream_url = ? WHERE id = ?`).bind(m.homepage, toolId));
+      // A community submission's first release waits for a reviewer, and remembers who submitted it.
+      if (job.provider === "github") stmts.push(...markSubmittedTool(db, toolId, job.repo_id));
     } else if (repo) {
       // The first repository to release a package that was uploaded directly claims its name from now on.
       stmts.push(db.prepare(`UPDATE tools SET repo_url = ? WHERE id = ? AND repo_url IS NULL`).bind(repo, toolId));
@@ -349,6 +356,7 @@ export async function handleBatch(batch: MessageBatch<PublishMessage>, env: Env)
       else if ("publishVersionId" in body) await publishApproved(env, body.publishVersionId);
       else if ("backupVersionId" in body) await backupVersion(env, body.backupVersionId);
       else if ("profileNamespaceId" in body) await syncProfile(env, body.profileNamespaceId);
+      else if ("upstreamCheckToolId" in body) await checkUpstream(env, body.upstreamCheckToolId);
       else await processJob(env, body.jobId);
       msg.ack();
     } catch (e) {

@@ -1,8 +1,0 @@
-{
-  "description": "Names a registry namespace (one created with `ot namespace create`) can't take: the website's own top-level pages, words the mirror and API use in paths, and the project's names. GitHub and GitLab namespaces are unaffected. web/src/middleware.ts keeps its RESERVED list inside this one (a test checks).",
-  "names": [
-    "404", "500", "admin", "agents", "api", "category", "dashboard", "docs", "feedback", "guides", "import", "input",
-    "mcp", "osintverse", "otinstaller", "otlite", "policy", "private", "profile", "publish", "removed", "schema",
-    "search", "settings", "tour", "transfers", "v2", "www"
-  ]
-}

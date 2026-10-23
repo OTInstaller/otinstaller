@@ -6,7 +6,7 @@ import { apiError } from "./lib/errors";
 import { installationToken } from "./hosts/github";
 import { githubUserToken, gitlabToken } from "./hosts/repo";
 import { avatarUrl, githubProfile, gitlabProfile, social, text, uniqueSocials, webUrl, MAX_MEMBERS, type HostProfile, type Member, type Social } from "./hosts/profiles";
-import { renderPage } from "./content";
+import { imagesToAlt, renderPage } from "./content";
 
 /** How often the cron refreshes a profile from its hosts (the same pace as source sync). */
 export const PROFILE_SYNC_INTERVAL = 6 * 3600 * 1000;
@@ -320,6 +320,6 @@ export function renderAbout(env: Env, ns: string, md: string): { html: string; p
     allowHtml: false,
   });
   // Images would load from the site under the namespace's path, which serves pages, not files: keep the alt text.
-  const html = r.html.replace(/<img\b[^>]*?\balt="([^"]*)"[^>]*>/g, "$1");
+  const html = imagesToAlt(r.html);
   return { html, problems: r.problems.filter((p) => p.code !== "content_image_type").map((p) => ({ code: p.code, message: p.message })) };
 }
