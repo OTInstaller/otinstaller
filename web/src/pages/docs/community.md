@@ -35,6 +35,14 @@ takes you to a new broken issue, and **I have this problem too** on an issue add
 per version and platform, and the counts from the last 30 days appear in the tool's status line next to the
 registry's own nightly health check. They are counts, never ratings.
 
+## Notifications
+
+Your inbox at [Settings → Notifications](/settings/notifications) collects replies and status changes on issues you
+follow (yours, and ones you replied to, confirmed or chose to follow), new issues on packages you maintain, and
+moderators' decisions about your posts. Each kind can come by email within 15 minutes, once a day, or not at all;
+every email has a one-click unsubscribe link. People get at most a dozen community emails a day; the rest wait for
+the next day's digest.
+
 ## Who can do what
 
 | Who | Can |

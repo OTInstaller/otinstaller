@@ -3984,6 +3984,361 @@
         ]
       }
     },
+    "/me/inbox": {
+      "get": {
+        "operationId": "list_inbox",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Your notifications, newest first",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "summary": {
+                            "type": "string"
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "created_at": {
+                            "type": "integer"
+                          },
+                          "read_at": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "unread": {
+                      "type": "integer"
+                    },
+                    "next_before": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/me/inbox/read": {
+      "post": {
+        "operationId": "mark_inbox_read",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Mark notifications read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "The given ids, or all of them when none are given.",
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/me/email-prefs": {
+      "get": {
+        "operationId": "get_email_prefs",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "How often you get community emails",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "community": {
+                      "enum": [
+                        "immediate",
+                        "daily",
+                        "off"
+                      ]
+                    },
+                    "owner_issues": {
+                      "enum": [
+                        "immediate",
+                        "daily",
+                        "off"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [],
+        "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "set_email_prefs",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Change how often you get community emails",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "community": {
+                      "enum": [
+                        "immediate",
+                        "daily",
+                        "off"
+                      ]
+                    },
+                    "owner_issues": {
+                      "enum": [
+                        "immediate",
+                        "daily",
+                        "off"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "community": {
+                    "enum": [
+                      "immediate",
+                      "daily",
+                      "off"
+                    ]
+                  },
+                  "owner_issues": {
+                    "enum": [
+                      "immediate",
+                      "daily",
+                      "off"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "community: threads you follow; owner_issues: new issues on your packages. Moderation and role notices are always sent.",
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/unsubscribe": {
+      "get": {
+        "operationId": "unsubscribe_page",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Redirects to the site's unsubscribe page",
+        "responses": {
+          "302": {
+            "description": "To otinstaller.com/unsubscribe"
+          }
+        },
+        "parameters": [
+          {
+            "name": "u",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "s",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "t",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": []
+      },
+      "post": {
+        "operationId": "unsubscribe",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Turn one kind of community email off (RFC 8058 one-click)",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "u",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "s",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "t",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "The signed link from a community email's List-Unsubscribe header; no sign-in.",
+        "security": []
+      }
+    },
     "/removed": {
       "get": {
         "operationId": "list_removed",

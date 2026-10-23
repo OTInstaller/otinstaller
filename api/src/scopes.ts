@@ -37,7 +37,7 @@ export function parseScopes(input: unknown): string[] {
 /** The scope a request needs when it is made with a token, or null when tokens don't apply. */
 export function requiredScope(method: string, path: string): string | null {
   const p = path.replace(/^\/v1/, "");
-  if (/^\/(auth|internal|webhooks)\//.test(p) || p === "/installs" || p === "/health") return null;
+  if (/^\/(auth|internal|webhooks)\//.test(p) || p === "/installs" || p === "/health" || p === "/unsubscribe") return null;
   if (p.startsWith("/admin")) return "staff";
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") return "read";
   // Taking part: reports, feedback, issues, comments, confirmations, subscriptions and flags. Triage is "manage".

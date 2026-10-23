@@ -22,6 +22,9 @@ version and platform; the count is public, who answered is not shown on the pack
 - You can edit a post for 24 hours and withdraw it at any time; a withdrawn post's text is deleted.
 - A post a moderator redacts is overwritten for good. The database keeps a backup copy for 30 days.
 - Flags you send, and moderators' decisions, are recorded with your account and never shown publicly.
+- Your inbox lists what happened on issues you follow and packages you maintain; read items are deleted after 90
+  days and all items after a year. Community emails go to the address your sign-in provider gave us, as often as you
+  choose in [notification settings](/settings/notifications), and each has a one-click unsubscribe.
 
 ## Reports
 
