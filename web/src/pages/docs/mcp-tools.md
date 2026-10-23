@@ -20,12 +20,12 @@ These change nothing, so clients may allow them without asking.
 | `extract_indicators` | Emails, domains, IP addresses, URLs and entities found across a tool's saved runs, or a case's. | `case`, `tool` |
 | `get_batch` | The rows of a run_all or run_playbook batch: each tool's status, entity count, first entities and run_id. While it runs, finished rows are filled in and the rest are pending. | `batch_id` (required) |
 | `get_consent_status` | What would happen if run_tool were called with these arguments: allowed without asking, the person asked, or refused (and why). Asks nobody and runs nothing. | `case`, `consent_token`, `input_type`, `inputs`, `target`, `tool` (required), `wait_seconds` |
-| `get_playbook` | One playbook: its tools and which are installed. | `name` (required) |
+| `get_playbook` | One playbook: the input types it is for, its tools and which are installed. | `name` (required) |
 | `get_run` | A run's result: its status and provenance, the entities it found (paged), a deduplicated summary of the indicators, or its raw output. Also reports runs still going. | `include_raw`, `limit`, `offset`, `run_id` (required), `view` |
 | `get_tool` | Everything needed to run a tool: its inputs (names, types, defaults), what it finds, the API keys it needs and whether they are set, its ethics flags and network access, and whether a run will need the person's consent. Works for installed and registry tools. | `tool` (required) |
 | `key_setup` | The API keys the named tools (or all installed tools) declare: what each is, where to get it, what it costs, whether it is set, and the command the person runs in their own terminal to store it. You can't store keys: show the person the command, and never ask them for a key's value. | `tools` |
 | `list_installed` | The tools installed on this machine, with their versions and the exact image digest or wheel hash. | none |
-| `list_playbooks` | Named sets of tools run together against one target, bundled or the person's own, and which of their tools are installed. | none |
+| `list_playbooks` | Named sets of tools run together against one target, bundled or the person's own: the input types each is for, and which of their tools are installed. | none |
 | `list_runs` | Saved runs, newest first, optionally of one tool, against one target, or in one case. | `case`, `limit`, `target`, `tool` |
 | `list_types` | The input types tools take, the entity types they find and what each means, and the pivot map: which input types each entity type can feed. | none |
 | `read_guide` | One page of a guide, as Markdown, with the list of its pages and the tools it uses. | `guide` (required), `page` |
