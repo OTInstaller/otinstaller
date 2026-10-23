@@ -53,7 +53,7 @@ It sets `version`, checks the guide as the registry will, commits, and pushes th
    - A new namespace waits for review with its first release, like any new publisher.
    - One nobody publishes into within 30 days is removed.
 2. **The artifact.** Make it public and pin it in the manifest:
-   - **Docker:** push the image to a public registry such as GHCR, Docker Hub or Quay, and set `runtime.image` to its digest (`docker.io/acme/tool@sha256:...`). It must include `linux/amd64`.
+   - **Docker:** let the registry host the image (below), or push it to a public registry such as GHCR, Docker Hub or Quay and set `runtime.image` to its digest (`docker.io/acme/tool@sha256:...`). It must include `linux/amd64`.
    - **Python:** publish the wheel to PyPI and set `package_version` and `wheel_sha256`.
 3. **Upload.**
 
@@ -65,9 +65,29 @@ It sets `version`, checks the guide as the registry will, commits, and pushes th
 
 `ot publish` validates the manifest first and uploads nothing if it has problems. Problems found by the registry exit 2; a release a check refuses exits 1. It signs in with your `ot login` token, or `OTINSTALLER_TOKEN` in scripts (a token with the `publish` scope: `ot token create ci --scope publish`). Uploads are limited to 25 MB, 300 files and 20 an hour per namespace.
 
+### Host the image on the registry
+
+`ot publish` can push a Docker image to the registry's own mirror, `mirror.otinstaller.com/<namespace>/<name>`, and pin its digest in `otinstaller.yaml` for you. Choose where it gets the image:
+
+```
+ot publish --image acme/tool:dev            # a local image (docker or podman save)
+ot publish --image-archive image.tar        # an archive: docker save, or buildx --output type=oci
+ot publish --build --platform linux/amd64,linux/arm64   # build the folder's Dockerfile with docker buildx
+ot publish --build --sign                   # and sign it with cosign (keyless)
+```
+
+- **Permissions.** It signs in with your `ot` token. Only owners and publishers of the namespace can push to its repositories.
+- **Size.** Blobs go up in 50 MB pieces, so large layers work.
+- **Limits.**
+  - An image can be at most 2 GB, with at most 10 GB pushed per namespace a day and 30 image pushes an hour.
+  - The image must include `linux/amd64`. On Apple silicon, build with `--platform linux/amd64` (or both).
+- **Visibility.** A pushed image is not public until a version that uses it is published. Images no version uses are deleted after a week.
+- **Without `ot`.** Plain `docker push` works too, for layers under 100 MB. Run `docker login mirror.otinstaller.com` with your `ot` token as the password, then push to `mirror.otinstaller.com/<namespace>/<name>:<version>` and pin the digest yourself.
+- **Copies.** The registry keeps no separate copy of a hosted image. It is the copy: takedowns and legal holds apply to it as to any mirrored image.
+
 **Signing.** A package published directly has no repository CI to sign it, so signing is optional. Unsigned packages are labelled as such, and agents (`ot mcp`) won't install an unsigned Docker image.
 
-To sign, use keyless cosign, for example `cosign sign <image>@<digest>` before you publish. The first version that is signed pins its signer. Every later version must be signed by the same identity: the same email or account, or the same CI workflow on any branch or tag. A later version without a signature is refused. Only keyless (Sigstore) signatures count.
+To sign, use `ot publish --sign` with an image `ot publish` pushes, or keyless cosign yourself (`cosign sign <image>@<digest>`) before you publish. The first version that is signed pins its signer. Every later version must be signed by the same identity: the same email or account, or the same CI workflow on any branch or tag. A later version without a signature is refused. Only keyless (Sigstore) signatures count.
 
 **Repositories later.** A package published directly can move to a repository: the first tag from a repository in the namespace claims it. From then on it is released from that repository, and uploads are refused with `manifest_name_taken`.
 
@@ -127,7 +147,7 @@ your repository at the tagged commit. Notes longer than 20,000 characters are cu
 
 The registry keeps its own copy of every published package, so a mistaken ban or takedown on GitHub or GitLab never breaks installs or loses your code.
 
-- **Images**: after the scan passes, the image is copied with its signatures to `mirror.otinstaller.com/<namespace>/<name>`, with the same digest. If `ot` cannot pull an image by digest from its registry (403, 404, "denied"), it pulls the same digest from the mirror and cosign verifies the same signature.
+- **Images**: after the scan passes, the image is copied with its signatures to `mirror.otinstaller.com/<namespace>/<name>`, with the same digest. An image you pushed there with `ot publish` is already on the mirror and isn't copied again. If `ot` cannot pull an image by digest from its registry (403, 404, "denied"), it pulls the same digest from the mirror and cosign verifies the same signature.
 - **Wheels**: the verified wheel is kept by the registry; if PyPI no longer serves it, `ot` uses the copy, with the same SHA-256 check.
 - **Your repository**: a git bundle of all branches and tags at every release and every week. The last 4 weekly bundles and every release bundle are kept. A package published directly has no repository to bundle; its image or wheel is still backed up.
 

@@ -100,11 +100,16 @@ Deploy: `npx wrangler deploy -c wrangler.mirror.jsonc`.
 
 | Name | Kind | Required | Purpose | When unset |
 | --- | --- | --- | --- | --- |
-| `MIRROR` | R2 binding `otinstaller-mirror` | yes | all registry storage (`repos/...`, `uploads/...`, `hidden/...`) | – |
-| `MIRROR_PUSH_TOKEN` | secret (`wrangler secret put MIRROR_PUSH_TOKEN -c wrangler.mirror.jsonc`) | for pushes | the scanner credential: HTTP Basic (any user name; the scanner uses `scanner`) at `/token` gets a 300 s admin bearer token; also signs bearer tokens (HMAC) | no push, delete or `private/` pull is possible (`adm` is forced false); anonymous public pulls still work, tokens are signed with the fixed key `anonymous-pull` |
+| `MIRROR` | R2 binding `otinstaller-mirror` | yes | all registry storage (`repos/...`, `uploads/...`, `hidden/...`, `pending/...`) | – |
+| `DB` | D1 binding `otinstaller` (the API's database, same id as `api/wrangler.jsonc`) | for publisher pushes | looks up publishers' `ot_` tokens and namespace membership, counts pushes (`mirror_pushes`, `rate_limits`) | only the scanner credential can push |
+| `MIRROR_PUSH_TOKEN` | secret (`wrangler secret put MIRROR_PUSH_TOKEN -c wrangler.mirror.jsonc`) | for pushes | the scanner credential: HTTP Basic (any user name; the scanner uses `scanner`) at `/token` gets a 300 s admin bearer token; also signs bearer tokens (HMAC), including publishers' push grants | no push, delete or `private/` pull is possible (`adm` and `push` are ignored), publishers can't push either; anonymous public pulls still work, tokens are signed with the fixed key `anonymous-pull` |
 
 The same token must be set as the `MIRROR_PUSH_TOKEN` secret in registry-ops. Public repos are anonymous-pull;
-writes, deletes and `private/...` reads need admin. Taken-down images (`hidden/` markers) return 404 to non-admins.
+deletes and `private/...` reads need admin; writes need admin or, for `<namespace>/<name>`, a publisher's `ot_` token
+with the `publish` scope. Taken-down images (`hidden/` markers) return 404 to non-admins, and publishers' unreleased
+images (`pending/` markers) to everyone but admin and the repository's publishers. The API reads the same bucket to
+check, release (`releaseImage`) and sweep (`sweepRepo`) hosted images, so `MIRROR_HOST` in the API must be the mirror's
+real host for `ot publish --image` images to be recognised as hosted.
 
 ---
 
@@ -174,7 +179,7 @@ with `cache-control: public, max-age=300`. A non-OK upstream answers 502 with a 
 
 | Name | Kind | Workflow | Purpose | When unset |
 | --- | --- | --- | --- | --- |
-| `MIRROR_PUSH_TOKEN` | secret | `scan.yml` | `crane auth login <MIRROR_HOST> -u scanner`; chunked pushes of layers over 90 MB in `backup.py` | login step skipped; image backups fail at push (big layers raise immediately) |
+| `MIRROR_PUSH_TOKEN` | secret | `scan.yml` | `crane auth login` and `docker login <MIRROR_HOST> -u scanner` (Docker pulls publishers' unreleased images for scanning); chunked pushes of layers over 90 MB in `backup.py` | login step skipped; image backups fail at push (big layers raise immediately); scans of hosted images fail at pull |
 | `MIRROR_HOST` | variable | `scan.yml` | host for the crane login | `mirror.otinstaller.com` |
 | `HEALTH_TOKEN` | secret | `health.yml` | Bearer for `/v1/internal/health*`; must equal the API's `HEALTH_TOKEN` | API answers 401 and the job fails |
 | `REGISTRY_API` | variable | `health.yml` | API origin (`https://api.otinstaller.com`; `/v1` appended) | `health.py` raises `KeyError` |

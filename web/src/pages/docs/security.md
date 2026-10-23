@@ -56,7 +56,7 @@ The [privacy policy](/policy/privacy) is the full statement.
 
 ## Backups
 
-- Every published image is copied, with its signatures and the same digest, to `mirror.otinstaller.com`; every wheel and a bundle of the source repository are kept too.
+- Every published image is copied, with its signatures and the same digest, to `mirror.otinstaller.com`; every wheel and a bundle of the source repository are kept too. An image a publisher pushed to the mirror with `ot publish` lives there already. Only the namespace's owners and publishers can push to its repositories, and no one else can pull it until a version that uses it is published.
 - If an image's registry refuses it, `ot` pulls the same digest from the mirror and checks the same signature, so a backup can't be swapped for something else. Wheels from the backup are held to the same SHA-256.
 - Public mirrors exist only for OSI-approved licenses. When a package is removed for policy or legal reasons, its backups stop being served at once and are deleted 14 days later, unless a legal hold applies.
 - A restore drill each month restores a random backup and verifies a mirrored image's signature; a failure alerts the team.
