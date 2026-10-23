@@ -24,6 +24,8 @@ import { profileRoutes } from "./routes/profiles";
 import { communityRoutes } from "./routes/community";
 import { inboxRoutes } from "./routes/inbox";
 import { requestRoutes } from "./routes/requests";
+import { peopleRoutes } from "./routes/people";
+import { refreshContributorStats } from "./people";
 import { deliverInbox, purgeInbox } from "./inbox";
 import { refreshDueProfiles } from "./profiles";
 import { backfillBackups, expireDrills, expireRuns, installFallbacks, purgeBackups, RESTORE_DRILL_CRON, startDrill, WEEKLY_BACKUP_CRON, weeklyBackups } from "./backups";
@@ -77,6 +79,7 @@ profileRoutes(app);
 communityRoutes(app);
 inboxRoutes(app);
 requestRoutes(app);
+peopleRoutes(app);
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
@@ -505,6 +508,7 @@ export default {
       await lockStaleThreads(env);
       await deliverInbox(env, "daily");
       await purgeInbox(env);
+      await refreshContributorStats(env);
       await env.DB.prepare(
         `UPDATE tools SET installs_30d = COALESCE((SELECT SUM(count) FROM install_counts
            WHERE tool_id = tools.id AND day >= date('now', '-30 days')), 0)`,
