@@ -125,6 +125,11 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   prints one `warning:` line on stderr, in JSON mode too. "Nothing installed yet." goes to **stderr**.
 - Exit: 0 always on a completed check (it changes nothing and does not fail on outdated or errored rows); 1 on state
   errors.
+- Newer ot (`noteNewerOT`, `latestOT` in `cli/selfupdate.go`): after the table, also with nothing installed, a `note: ot
+  vX is out (you have vY); \`ot self-update\` installs it` on stderr when the latest release is newer. The release is
+  looked up at most once a day (`GET https://get.otinstaller.com/ot/latest`, else the GitHub API; 3 s) and kept in
+  `<ot home>/cache/ot-latest.json`, a failed lookup too. Never for a `dev` build, under `ot mcp`, with `CI` set or with
+  `OT_NO_UPDATE_CHECK=1`.
 
 #### `ot update [namespace/name ...]`
 - File: `cli/update.go` (`updateCmd`). Args: any number.
@@ -602,7 +607,9 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 #### `ot self-update`
 - File: `cli/selfupdate.go`; logic `selfupdate/selfupdate.go`. Args: `NoArgs`.
 - Flags: `--check` (bool): only say whether an update is available.
-- Network (not the registry): `GET https://api.github.com/repos/<Repo>/releases/latest`, then the release assets
+- Network (not the registry): `GET https://get.otinstaller.com/ot/latest` (`selfupdate.LatestVersion`; a tag
+  matching `^v\d+\.\d+\.\d+$`), the assets then named under `https://github.com/<Repo>/releases/download/<tag>/`;
+  if that fails, `GET https://api.github.com/repos/<Repo>/releases/latest` and its asset URLs. Then the release assets
   `checksums.txt`, `checksums.txt.sig` and `ot_<ver>_<os>_<arch>.tar.gz|.zip`. Verifies the Ed25519 signature with the
   built-in `PublicKey`, then the archive SHA-256, extracts `ot`, writes it next to the binary (`.ot-update-*`) and
   renames it in place (on Windows the old binary is moved to `<exe>.old`, removed on the next update).
@@ -694,7 +701,8 @@ Read by the CLI (`os.Getenv` calls in `cli/`, plus the keychain lookup):
 | `OT_NONINTERACTIVE` | `machine.go` `interactive` | `1`: never prompt, as if there were no terminal | prompts at a terminal |
 | `OT_CONSENT` | `consent.go` `cliConsent` | `off`: unattended runs need no `--yes` (still audited) | consent checked |
 | `OT_MAX_RAW` | `run_cmd.go` | default for `--max-raw` (bytes) | no limit |
-| `CI` | `run_cmd.go` `clientKind` | any value: the envelope's and audit log's `client` is `ci`, and the install ping says so | `cli` |
+| `CI` | `run_cmd.go` `clientKind`, `selfupdate.go` `latestOT` | any value: the envelope's and audit log's `client` is `ci`, and the install ping says so; no newer-ot check | `cli` |
+| `OT_NO_UPDATE_CHECK` | `selfupdate.go` `latestOT` | `1`: `ot outdated` never looks up the latest ot release | checked daily |
 | `<SECRET_NAME>` (any manifest `secrets[].name`) | `keys.Get` in `loadSecrets` | a tool's key; env wins over the keychain | keychain entry |
 
 Other environment handling:
@@ -732,6 +740,7 @@ Data directory (`state.Home()`): `$OT_HOME` if set; else on Windows `%APPDATA%\o
 | `<home>/config.json` | never written by ot (read only) | `api_url`, `site_url`, `telemetry` (bool), `format` (default `ot run` format); env vars override the first three |
 | `<home>/keys.json` | `keys set`, `keys rm`, `login`, `logout`, `doctor` | sorted JSON array of key names (never values), mode 0600 |
 | `<home>/cache/removed.json` | pre-run check (24 h), `ot run` (1 h) | `{"fetched_at", "removed": [...]}` from `GET /removed`, mode 0644 |
+| `<home>/cache/ot-latest.json` | `ot outdated` (24 h) | `{"checked_at", "version"}`: the latest ot release, or the last one known when the lookup failed, mode 0644 |
 | `<home>/guides/<ns>/<name>/<version>/` | `guide get` | every page as Markdown at its nav path, plus `guide.json` (the guide detail); read by `guide read` offline |
 | `<home>/pipx/`, `<home>/bin/` | native pipx installs | ot's own `PIPX_HOME` and `PIPX_BIN_DIR`; native runs execute `<home>/bin/<command>[.exe]` |
 | `<home>/agent-policy.json` | `ot mcp policy reset` (else the user) | the agent policy: `enabled`, `mode`, `allow_tools`, `deny_tools`, `auto_approve`, `consent_ttl_minutes`, `max_runs_per_hour`, `max_parallel`, `max_runs_per_target_per_hour`, `max_output_chars`, `allow_install`, `redact_targets_in_audit`; missing fields keep their defaults, a broken file is an error |
@@ -790,7 +799,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `results` | Saving runs (output, `.meta.json`, lazy `.stderr.txt`), `Dir`, `Sanitize`; `saved.go` reads them back for `extract` and `diff` |
 | `runner` | Engine detection, install (docker pull + cosign, mirror and wheel fallbacks, pipx native or sandbox image), run, container args, input resolution, typed inputs, command building, target type detection with embedded `tlds.txt` |
 | `scaffold` | Files `ot init` writes, git remote and kind detection, embedded release templates (`go generate` from `spec/templates`) |
-| `selfupdate` | GitHub release lookup, Ed25519-signed checksums, archive SHA-256, extraction, atomic replace |
+| `selfupdate` | Release lookup (get.otinstaller.com, else the GitHub API), Ed25519-signed checksums, archive SHA-256, extraction, atomic replace |
 | `specfiles` | Embedded copies of `spec/schema/{envelope,run-all,error}-v1.json`, `spec/pivots.json` and `spec/types.json` (`go generate`) |
 | `state` | Data directory, `state.json` load/atomic save, read-only `config.json` with env overrides |
 
@@ -799,8 +808,9 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 
 ### Test files
 
-`api`, `keys`, `state` and `selfupdate` have **no test files** (`selfupdate` is exercised by `TestSelfUpdate` in
-`cli/trust_test.go`; `api` through the commands' fake registries).
+`api`, `keys` and `state` have **no test files** (`api` is exercised through the commands' fake registries).
+`selfupdate_test.go` covers `LatestVersion` and the lookup order; downloads and signatures are exercised by
+`TestSelfUpdate` and `TestSelfUpdateViaLatestURL` in `cli/trust_test.go`.
 
 | File | Covers |
 | --- | --- |
@@ -817,7 +827,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `cli/release_test.go` | `ot release` with real git: happy path, refusals (dirty tree, existing tag), tools refused, `--no-push` |
 | `cli/sync_test.go` | `ot sync` and `--log` |
 | `cli/profile_test.go` | `ot profile`: show, `--set`/`--unset`, `--sync`, rate limit, `--json` |
-| `cli/trust_test.go` | report/claim/transfer against a fake registry, removed-package warnings and refusal, `self-update` with a signed fake release |
+| `cli/trust_test.go` | report/claim/transfer against a fake registry, removed-package warnings and refusal, `self-update` with a signed fake release (through the GitHub API, and through `/ot/latest` with no downgrade), the newer-ot note in `ot outdated` (daily cache, and never for dev builds, agents, CI or `OT_NO_UPDATE_CHECK=1`) |
 | `cli/feedback_test.go` | `ot feedback`: message with `--kind`/`--about`, piped stdin with `--email`, bad kind exits 2 |
 | `cli/machine_test.go` | `--json` detection, error codes, JSON errors on stderr, no prompts without a terminal, envelope provenance, `--all` JSON lines, stdout stays JSON |
 | `cli/mcp_test.go` | `ot mcp`: tool list, passive runs, consent by elicitation and by token, policy and trust, unattended CLI runs need `--yes`, `mcp install`, docs and plugin match the server, policy changes without a restart, shutdown, sandbox mode, batches |

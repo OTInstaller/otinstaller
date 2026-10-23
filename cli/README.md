@@ -25,5 +25,5 @@ server to your client. Agents ask you before any run that touches a target. See 
 Docs: https://otinstaller.com/docs/getting-started · CLI reference: https://otinstaller.com/docs/cli ·
 Bugs and ideas: https://github.com/OTInstaller/feedback/issues
 
-`ot self-update` installs new releases after checking their signature. Licensed under the Apache License 2.0
+`ot self-update` installs new releases after checking their signature; `ot outdated` says when one is out. Licensed under the Apache License 2.0
 (LICENSE).
