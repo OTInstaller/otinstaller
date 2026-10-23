@@ -4,8 +4,8 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 `api/migrations/*.sql` and the code in `api/src/`, `api/test/` and `api/scripts/`.
 
 - Binding: `DB`, database name `otinstaller`, `migrations_dir: "migrations"` (`api/wrangler.jsonc`).
-- 13 migrations, `0001` to `0013`.
-- Final schema: **34 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 35. FTS5 also creates its own shadow
+- 17 migrations, `0001` to `0017`.
+- Final schema: **38 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 39. FTS5 also creates its own shadow
   tables, which aren't listed here.
 
 ---
@@ -30,6 +30,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0014 | `0014_publisher_profiles.sql` | New tables `namespace_profiles` (host values, owner overrides, About, pins, sync state) and `namespace_hosts` (secondary GitHub or GitLab accounts shown on a profile); indexes `namespace_profiles_synced` and `audit_log_target` (for the profile's activity feed). |
 | 0015 | `0015_direct_publish.sql` | Direct publishing (`ot publish`): `publish_jobs` + `namespace_id` (FK namespaces), `bundle_key` (R2 `CONTENT` prefix of the upload), `submitted_by` (FK users), index `publish_jobs_namespace`; `namespaces` + `created_by` (FK users: who made a registry namespace). Apply before an API that selects these columns is deployed. |
 | 0016 | `0016_hosted_images.sql` | Images hosted on the mirror (`ot publish --image`): new table `mirror_pushes` (every manifest a publisher pushes: repo, digest, tag, user, token, size; indexes `mirror_pushes_repo`, `mirror_pushes_created`), for the push limits and the nightly sweep; `backups` + `hosted` (INTEGER NN default 0: the image row is the image itself, never an install fallback). The mirror Worker binds the same database from then on. |
+| 0017 | `0017_trusted_publishers.sql` | Trusted publishing (`ot publish --oidc`): new table `trusted_publishers` (indexes `trusted_publishers_repo`, `trusted_publishers_namespace`); `api_tokens` + `namespace_id` (FK namespaces, cascade), `package`, `trusted_publisher_id` (FK, set null), `oidc_json`, `jti` (unique index `api_tokens_jti`) for the restricted CI tokens; `publish_jobs` + `trusted_publisher_id` (FK, set null), `ci_json`. Apply before an API that selects these columns is deployed: `findToken` reads them on every token request, in the API and the mirror. |
 
 ---
 
@@ -76,8 +77,14 @@ Purpose: `ot_...` bearer tokens for the CLI.
 - `last_used_at`, `expires_at`, `revoked_at` INTEGER · `created_at` INTEGER NN. `expires_at` is set for `/me/tokens`
   tokens (90 days unless `expires_in_days` says otherwise) and left null for `ot login` tokens unless asked
 - Index `api_tokens_user (user_id)` (0002)
+- CI tokens (0017, trusted publishing): `namespace_id` TEXT → `namespaces(id)` ON DELETE CASCADE (set means the token
+  is restricted to that namespace) · `package` TEXT (and that package) · `trusted_publisher_id` TEXT →
+  `trusted_publishers(id)` ON DELETE SET NULL · `oidc_json` TEXT (the run: provider, repository and its id, ref, sha,
+  workflow, run, environment, event, actor) · `jti` TEXT (`<provider>:<the ID token's jti>`; unique index
+  `api_tokens_jti`, so an ID token is exchanged once). Minted with scopes `read,publish`, `scoped = 1` and a one-hour
+  `expires_at`; deleted two days after expiry (`purgeCiTokens`); not listed by `/me/tokens`
 - Audit: `token.create`, `token.revoke` and `token.write` (every successful write made with a token) rows in
-  `audit_log`
+  `audit_log`; `token.create_ci` for a CI token, with `actor_kind` `github` or `gitlab`
 
 #### `device_logins` (0010)
 Purpose: the registry's own device flow for `ot login --osintverse`.
@@ -135,6 +142,20 @@ Purpose: GitHub or GitLab accounts an owner linked to a profile besides the name
 - PK `(namespace_id, provider)` · `namespace_id` TEXT NN → `namespaces(id)` ON DELETE CASCADE
 - `provider` TEXT NN CHECK `('github', 'gitlab')` · `provider_owner_id`, `login` TEXT NN · `kind` TEXT NN CHECK
   `('user', 'org', 'group')` · `linked_by` TEXT → `users(id)` ON DELETE SET NULL · `created_at` INTEGER NN
+
+#### `trusted_publishers` (0017)
+Purpose: a GitHub Actions workflow or GitLab CI pipeline a namespace's owner trusts to publish into it with
+`ot publish --oidc` (`trusted.ts`).
+- PK `id` TEXT · `namespace_id` TEXT NN → `namespaces(id)` ON DELETE CASCADE
+- `provider` TEXT NN CHECK `('github', 'gitlab')` · `repository` TEXT NN (owner/name or group/project, lowercase)
+- `repository_id`, `owner_id` TEXT: NULL until the first run, which pins them (a repository deleted and created again
+  under the name, or moved to another owner, no longer matches)
+- `workflow`, `environment`, `package` TEXT: NULL means any; `environment` is compared without case, and a NULL one
+  refuses `pull_request_target` and `merge_request_event` runs
+- `created_by` TEXT NN → `users(id)` ON DELETE CASCADE (the CI token acts for this owner, who must still be a member) ·
+  `created_at` INTEGER NN · `last_used_at` INTEGER
+- Indexes `trusted_publishers_repo (provider, repository, namespace_id)`, `trusted_publishers_namespace (namespace_id)`
+- Audit: `trusted_publisher.add`, `trusted_publisher.remove` (removing one revokes the tokens it minted)
 
 #### `installations`
 Purpose: a GitHub App installation and which repositories it covers.
@@ -260,6 +281,9 @@ Purpose: one attempt to publish a release: a tag (from a webhook, a poll or an i
 - Bundle jobs (0015): `namespace_id` TEXT → `namespaces(id)` (tag jobs find theirs through the installation or the
   source) · `bundle_key` TEXT (`uploads/<id>` in R2 `CONTENT`; kept after the files are deleted, so it also marks the
   job as an upload) · `submitted_by` TEXT → `users(id)`. Index `publish_jobs_namespace (namespace_id, created_at)`
+- CI uploads (0017): `provider`, `repo` and `repo_id` are the repository the run's ID token proved, `delivery_id` is
+  `ci:<id>`, `tag` and `commit_sha` come from a tag ref (else `v<version>` and NULL) · `trusted_publisher_id` TEXT →
+  `trusted_publishers(id)` ON DELETE SET NULL · `ci_json` TEXT (`{workflow, ref, sha, run}`, shown on the job page)
 - `version_id` TEXT → `versions(id)` · `tool_id` TEXT → `tools(id)` (0002) · `source_id` TEXT → `sources(id)` (0004)
 - `status` TEXT NN (**no CHECK**; values in section 3)
 - `error_code`, `error_detail` TEXT · `problems_json` TEXT (0002)
