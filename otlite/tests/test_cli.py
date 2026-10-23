@@ -461,6 +461,51 @@ def test_info_shows_requires_python(monkeypatch, tmp_path):
     assert "you are running 3.14.4" in result.output
 
 
+def test_info_shows_notes(monkeypatch, tmp_path):
+    tools = [
+        {
+            "name": "logintool",
+            "display_name": "Login Tool",
+            "description": "Needs a login",
+            "install": {"method": "pip", "package": "logintool"},
+            "entrypoint": {"command": "logintool"},
+            "notes": ["Sign in once with logintool login.", "Needs Python <3.14."],
+        }
+    ]
+    reg = make_registry_yaml(tmp_path, tools)
+    monkeypatch.setenv("OTLITE_REGISTRY", str(reg))
+
+    result = runner.invoke(app, ["info", "logintool"])
+    assert result.exit_code == 0
+    assert "Notes:" in result.output
+    assert "- Sign in once with logintool login." in result.output
+    assert "- Needs Python <3.14." in result.output
+
+    result = runner.invoke(app, ["info", "logintool", "--json"])
+    assert json.loads(result.output)["notes"] == [
+        "Sign in once with logintool login.",
+        "Needs Python <3.14.",
+    ]
+
+
+def test_info_without_notes_has_no_notes_block(monkeypatch, tmp_path):
+    tools = [
+        {
+            "name": "sherlock",
+            "display_name": "Sherlock",
+            "description": "Search usernames",
+            "install": {"method": "pip", "package": "sherlock-project"},
+            "entrypoint": {"command": "sherlock"},
+        }
+    ]
+    reg = make_registry_yaml(tmp_path, tools)
+    monkeypatch.setenv("OTLITE_REGISTRY", str(reg))
+
+    result = runner.invoke(app, ["info", "sherlock"])
+    assert result.exit_code == 0
+    assert "Notes:" not in result.output
+
+
 def test_info_compatible_python_has_no_warning(monkeypatch, tmp_path):
     tools = [
         {

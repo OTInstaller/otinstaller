@@ -86,6 +86,9 @@ Every public page type, what it emits, and whether it is meant to be indexed. "C
 | `/docs`, `/docs/{page}` | Documentation: install ot, run OSINT tools, publish your own / {title} | Frontmatter | `TechArticle`, `BreadcrumbList`; `/docs/faq` also `FAQPage` built from its `##` questions | yes | 1 h |
 | `/policy/{page}` | {title} | Frontmatter | `WebPage` with `dateModified`, `BreadcrumbList` | yes | 1 h |
 | `/publish` | Publish a tool or guide | as before | none | yes | 1 h |
+| `/agents` | AI agents | Connecting an AI client, consent, no Docker on the agent side | none | yes | 1 h |
+| `/otlite`, `/otlite/tools` | otlite / otlite tools | What otlite is; all N tools by what they take | none | yes | 1 h |
+| `/otlite/tools/{name}` | {display name} with otlite: {first sentence, cut to fit about 60} | First sentence; install and run on Linux or macOS, no Docker; what it takes; keys or no key | `SoftwareApplication` (version, licence, repository, requirements, keywords), `BreadcrumbList` | yes | 1 h |
 | `/feedback`, `/import`, `/dashboard…`, `/settings…`, `/admin…`, `/transfers/…`, claim and report pages, 404, 410, 500 | — | — | — | `noindex` | — |
 
 Every docs, policy, tool and guide page also has a Markdown twin (`.md` suffix or `Accept: text/markdown`) announced

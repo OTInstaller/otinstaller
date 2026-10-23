@@ -69,6 +69,9 @@ tools:
     e: email
   interactive: true
   needs_config: true
+  notes:
+  - Needs Python older than 3.14, because its dependency Pillow 10 has no wheels for 3.14 and needs the libjpeg headers to compile.
+  - Sign in to a Google account once with `otlite run ghunt -- login` on a terminal before looking anything up.
 - name: theharvester
   display_name: theHarvester
   description: Find emails, subdomains and names for a domain
@@ -104,6 +107,8 @@ tools:
   input_types:
     d: --domain
   example: examples/theharvester.txt
+  notes:
+  - Needs Python 3.12 or newer, because its current release, 4.11.1, requires it.
 - name: spiderfoot
   display_name: Spiderfoot
   description: SpiderFoot automates OSINT for threat intelligence and mapping your attack surface.
@@ -157,6 +162,8 @@ tools:
   - -u
   - passive
   example: examples/spiderfoot.txt
+  notes:
+  - Needs Python older than 3.13, because its pinned lxml and cryptography have no wheels for 3.13 or newer.
 - name: instaloader
   display_name: Instaloader
   description: Download pictures (or videos) along with their captions and other metadata from Instagram.
@@ -826,7 +833,7 @@ tools:
     q: ''
 - name: openosint
   display_name: Openosint
-  description: 'AI-powered OSINT agent with interactive REPL, MCP server, and direct CLI modes. Direct email/username scans work without ANTHROPIC_API_KEY. AI-REPL and MCP modes require ANTHROPIC_API_KEY (or --api-key). Other features need additional keys: SHODAN_API_KEY (shodan), VIRUSTOTAL_API_KEY (virustotal), CENSYS_API_ID + CENSYS_SECRET (censys), ABUSEIPDB_API_KEY (abuseipdb), IP2LOCATION_API_KEY (ip2location), BRIGHTDATA_API_KEY + BRIGHTDATA_SERP_ZONE/BRIGHTDATA_UNLOCKER_ZONE (Bright Data tools), OPENAI_API_KEY (OpenAI provider), OPENOSINT_PROXY_URL (proxy).'
+  description: AI-powered OSINT agent with interactive REPL, MCP server, and direct CLI modes.
   repo: OpenOSINT/OpenOSINT
   license: MIT
   stars: 1630
@@ -884,6 +891,10 @@ tools:
     u: username
     e: email
     d: dns
+  notes:
+  - Direct email and username scans work without ANTHROPIC_API_KEY; the AI REPL and MCP modes need it, or --api-key.
+  - "Other features need their own keys: SHODAN_API_KEY (Shodan), VIRUSTOTAL_API_KEY (VirusTotal), CENSYS_API_ID and CENSYS_SECRET (Censys), ABUSEIPDB_API_KEY (AbuseIPDB) and IP2LOCATION_API_KEY (IP2Location)."
+  - Bright Data tools need BRIGHTDATA_API_KEY with BRIGHTDATA_SERP_ZONE or BRIGHTDATA_UNLOCKER_ZONE; OPENAI_API_KEY selects the OpenAI provider and OPENOSINT_PROXY_URL sets a proxy.
 - name: crosslinked
   display_name: Crosslinked
   description: LinkedIn enumeration tool to extract valid employee names from an organization through search engine scraping.
@@ -962,6 +973,8 @@ tools:
   accepts:
   - phone
   - name
+  notes:
+  - Needs Python 3.11 or newer, because it imports datetime.UTC.
 - name: instagram-monitor
   display_name: Instagram Monitor
   description: Track Instagram users' activities, profile changes and capture content with beautiful dashboards and instant notifications.
@@ -1533,9 +1546,11 @@ tools:
     p: --phone-numbers
     u: --usernames
   example: examples/telegram-phone-number-checker.txt
+  notes:
+  - Reads API_ID, API_HASH and PHONE_NUMBER, set with `otlite keys set`, and asks for them when they are not set.
 - name: auto-archiver
   display_name: Auto Archiver
-  description: Automatically archive web content from various sources. Requires Python <3.13 (no wheels for 3.13+; dependency pdqhash needs C++ compiler).
+  description: Automatically archive web content from various sources.
   repo: bellingcat/auto-archiver
   license: MIT
   stars: 1122
@@ -1574,6 +1589,8 @@ tools:
   input_types:
     url: --url
   example: examples/auto-archiver.txt
+  notes:
+  - Needs Python older than 3.13, because its dependency pdqhash has no wheel for 3.13 or newer and needs a C++ compiler.
 - name: edgar-tool
   display_name: EDGAR Tool
   description: Command line interface to search and retrieve corporate and financial data from the SEC EDGAR database.
@@ -1649,7 +1666,7 @@ tools:
   example: examples/instagram-location-search.txt
 - name: telepathy
   display_name: Telepathy
-  description: OSINT toolkit for investigating Telegram chats and accounts. Requires Python <3.13 (dependency googletrans/httpx uses removed cgi module).
+  description: OSINT toolkit for investigating Telegram chats and accounts.
   repo: prose-intelligence-ltd/Telepathy-Community
   license: MIT
   stars: 0
@@ -1686,6 +1703,9 @@ tools:
   input_types:
     tg: -t
   example: examples/telepathy.txt
+  notes:
+  - Needs Python older than 3.13, because its googletrans and httpx dependencies use the cgi module, which Python 3.13 removed.
+  - Asks for its Telegram credentials on the first run and stores them itself.
 - name: neutrosint
   display_name: NeutrOSINT
   description: Check if an email address or username exists on ProtonMail.
