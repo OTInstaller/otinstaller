@@ -376,15 +376,26 @@ describe("write limits", () => {
   it("limits signed-in users to 30 changes a minute, but not reviewers", async () => {
     const owner = await person();
     const p = await pkg(await namespace(owner), ["1.0.0", "1.1.0"]);
+    // The limit counts in fixed one-minute windows (rate_limits, keyed like trust.ts:overLimit). Rather than sending 31
+    // requests, which under a busy parallel run can straddle a window boundary and never meet the limit, count three
+    // real ones, then move the window's count to 29 so the 30th passes and the 31st is refused.
+    const windowOf = async (userId: string) => ({
+      key: (await sha256Hex(`${env.TOKEN_ENC_KEY}|write|${userId}`)).slice(0, 32),
+      start: Math.floor(Date.now() / 60_000) * 60_000,
+    });
+    if (Date.now() % 60_000 > 50_000) await new Promise((r) => setTimeout(r, 60_000 - (Date.now() % 60_000) + 50));
+    const change = (i: number) => post(`/tools/${p.ref}/1.1.0/${i % 2 ? "unyank" : "yank"}`, owner.auth);
     const codes: number[] = [];
-    // The limit counts in fixed one-minute windows; 31 requests that straddle a window boundary would never hit it.
-    // Under a full parallel run they can take 10s or more, so start early in a minute.
-    if (Date.now() % 60_000 > 30_000) await new Promise((r) => setTimeout(r, 60_000 - (Date.now() % 60_000) + 50));
-    for (let i = 0; i < 31; i++) codes.push((await post(`/tools/${p.ref}/1.1.0/${i % 2 ? "unyank" : "yank"}`, owner.auth)).status);
-    expect(codes.slice(0, 30).every((c) => c === 200)).toBe(true);
-    expect(codes[30]).toBe(429);
+    for (let i = 0; i < 3; i++) codes.push((await change(i)).status);
+    const w = await windowOf(owner.id);
+    expect((await DB().prepare(`SELECT count FROM rate_limits WHERE key = ? AND window_start = ?`).bind(w.key, w.start).first<{ count: number }>())?.count).toBe(3);
+    await DB().prepare(`UPDATE rate_limits SET count = 29 WHERE key = ? AND window_start = ?`).bind(w.key, w.start).run();
+    codes.push((await change(3)).status, (await change(4)).status);
+    expect(codes).toEqual([200, 200, 200, 200, 429]);
+    // Reviewers are never limited, however many changes their window holds.
     const reviewer = await person({ reviewer: true });
-    for (let i = 0; i < 31; i++) await post(`/admin/reports/none/resolve`, reviewer.auth, { status: "dismissed" });
+    const r = await windowOf(reviewer.id);
+    await DB().prepare(`INSERT INTO rate_limits (key, window_start, count) VALUES (?, ?, 100)`).bind(r.key, r.start).run();
     expect((await post(`/admin/reports/none/resolve`, reviewer.auth, { status: "dismissed" })).status).toBe(404);
-  }, 90_000);
+  }, 30_000);
 });

@@ -55,6 +55,9 @@ export default defineConfig(async () => {
         } },
       }),
     ],
-    test: { setupFiles: ["./test/setup.ts"] },
+    // Every file runs in its own workerd with the migrations and seed applied, all at once, so on a busy machine a test
+    // that makes many API calls (guides, imports, backups) can pass 5 seconds without anything being wrong. The limits
+    // are for genuinely stuck tests.
+    test: { setupFiles: ["./test/setup.ts"], testTimeout: 30_000, hookTimeout: 60_000 },
   };
 });

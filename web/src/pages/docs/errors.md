@@ -280,6 +280,10 @@ The comment does not exist or was deleted.
 The thread is locked, so only the package's maintainers, triagers and staff can comment. Open a new issue if
 something has changed.
 
+### request_locked
+Replies to this tool request are closed: a triager locked it, or it was published or declined more than 30 days ago.
+Triagers and staff can still reply. If something has changed, say so on [OTInstaller/feedback](https://github.com/OTInstaller/feedback/issues).
+
 ### edit_window_closed
 Posts can be edited for 24 hours after they are written. Add a comment with the correction instead.
 

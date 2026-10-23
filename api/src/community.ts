@@ -7,7 +7,7 @@ import { apiError, rateLimited, windowRetry } from "./lib/errors";
 import { findPersonalData, imagesToAlt, renderPage } from "./content";
 import { audit } from "./routes/auth";
 import { overLimit, type ToolRef } from "./trust";
-import { maintainers, notify, subscribers } from "./inbox";
+import { maintainers, notify, requestSubscribers, subscribers } from "./inbox";
 
 export const ISSUE_KINDS = ["broken", "outdated", "wrong_info", "feature", "question"] as const;
 export const ISSUE_STATUSES = ["open", "confirmed", "fixed", "wont_fix", "duplicate"] as const;
@@ -81,7 +81,8 @@ export async function poster(env: Env, userId: string): Promise<Poster> {
   const p = await env.DB.prepare(
     `SELECT u.created_at, u.posting_blocked_until, u.handle,
        (SELECT COUNT(*) FROM issues WHERE author_id = u.id AND moderation = 'visible' AND deleted_at IS NULL)
-       + (SELECT COUNT(*) FROM issue_comments WHERE author_id = u.id AND moderation = 'visible' AND deleted_at IS NULL) AS visible_posts
+       + (SELECT COUNT(*) FROM issue_comments WHERE author_id = u.id AND moderation = 'visible' AND deleted_at IS NULL)
+       + (SELECT COUNT(*) FROM request_comments WHERE author_id = u.id AND moderation = 'visible' AND deleted_at IS NULL) AS visible_posts
      FROM users u WHERE u.id = ?`,
   ).bind(userId).first<Poster>();
   if (!p) apiError(401, "unauthenticated", "sign in first");
@@ -129,7 +130,8 @@ export function renderPost(md: string, linksAsText = false): string {
   const html = imagesToAlt(r.html);
   return linksAsText
     ? html.replace(LINK, (_: string, href: string, text: string) => (href.startsWith("#") || text === href ? text : `${text} (${href})`))
-    : html.replace(/<a href="(https?:[^"]*)"/g, '<a rel="nofollow ugc noopener" href="$1"');
+    // The page renderer already marks external links nofollow; posts are user content too, and one rel attribute holds both.
+    : html.replace(/<a href="(https?:[^"]*)"((?:\s+(?!rel=)[a-z-]+="[^"]*")*)(?:\s+rel="[^"]*")?/g, '<a href="$1"$2 rel="nofollow ugc noopener noreferrer"');
 }
 
 /** Why a new post should wait for a moderator, or null to show it at once. */
@@ -298,13 +300,30 @@ export async function setLocked(env: Env, issue: IssueRow, actor: User, locked: 
   ]);
 }
 
+/** What people write: issues, replies on issues, and replies on tool requests. */
+export type PostKind = "issue" | "comment" | "request_comment";
+/** What can be flagged: any post, and a tool request (its note). */
+export type FlagKind = PostKind | "request";
+export const FLAG_KINDS: readonly FlagKind[] = ["issue", "comment", "request", "request_comment"];
+
+const TABLE: Record<FlagKind, string> = { issue: "issues", comment: "issue_comments", request: "tool_requests", request_comment: "request_comments" };
+const NOT_FOUND: Record<FlagKind, string> = { issue: "issue_not_found", comment: "comment_not_found", request: "request_not_found", request_comment: "comment_not_found" };
+const WORD: Record<FlagKind, string> = { issue: "issue", comment: "comment", request: "request", request_comment: "reply" };
+
+/** Updates a request's count of visible replies. */
+export const refreshRequestReplies = (db: D1Database, requestId: string) =>
+  db.prepare(`UPDATE tool_requests SET comment_count = (SELECT COUNT(*) FROM request_comments WHERE request_id = ?1 AND moderation = 'visible' AND deleted_at IS NULL) WHERE id = ?1`).bind(requestId);
+
+const refreshIssueReplies = (db: D1Database, issueId: string) =>
+  db.prepare(`UPDATE issues SET comment_count = (SELECT COUNT(*) FROM issue_comments WHERE issue_id = ?1 AND moderation = 'visible' AND deleted_at IS NULL) WHERE id = ?1`).bind(issueId);
+
 /** The author edits their issue or comment within the edit window; edits are screened again. */
-export async function editPost(env: Env, kind: "issue" | "comment", id: string, user: User, changes: { title?: string; body?: string }) {
-  const table = kind === "issue" ? "issues" : "issue_comments";
+export async function editPost(env: Env, kind: PostKind, id: string, user: User, changes: { title?: string; body?: string }) {
+  const table = TABLE[kind];
   const row = await env.DB.prepare(`SELECT author_id, created_at, moderation, deleted_at FROM ${table} WHERE id = ?`).bind(id)
     .first<{ author_id: string | null; created_at: number; moderation: string; deleted_at: number | null }>();
-  if (!row || row.deleted_at) apiError(404, `${kind}_not_found`, `no such ${kind}`);
-  if (row.author_id !== user.id) apiError(403, "forbidden", `only the author can edit this ${kind}`);
+  if (!row || row.deleted_at) apiError(404, NOT_FOUND[kind], `no such ${WORD[kind]}`);
+  if (row.author_id !== user.id) apiError(403, "forbidden", `only the author can edit this ${WORD[kind]}`);
   if (Date.now() - row.created_at > EDIT_WINDOW) apiError(409, "edit_window_closed", "posts can be edited for 24 hours", "add a comment instead");
   if (row.moderation === "hidden") apiError(409, "invalid_state", "a moderator hid this post");
   const p = await poster(env, user.id);
@@ -326,17 +345,17 @@ export async function editPost(env: Env, kind: "issue" | "comment", id: string, 
 }
 
 /** The author withdraws their issue or comment; the text is gone, the thread keeps its place. */
-export async function deletePost(env: Env, kind: "issue" | "comment", id: string, user: User) {
-  const table = kind === "issue" ? "issues" : "issue_comments";
-  const row = await env.DB.prepare(`SELECT author_id, deleted_at, ${kind === "issue" ? "tool_id" : "issue_id"} AS parent FROM ${table} WHERE id = ?`).bind(id)
+export async function deletePost(env: Env, kind: PostKind, id: string, user: User) {
+  const parent = kind === "issue" ? "tool_id" : kind === "comment" ? "issue_id" : "request_id";
+  const row = await env.DB.prepare(`SELECT author_id, deleted_at, ${parent} AS parent FROM ${TABLE[kind]} WHERE id = ?`).bind(id)
     .first<{ author_id: string | null; deleted_at: number | null; parent: string }>();
-  if (!row || row.deleted_at) apiError(404, `${kind}_not_found`, `no such ${kind}`);
-  if (row.author_id !== user.id) apiError(403, "forbidden", `only the author can delete this ${kind}`);
+  if (!row || row.deleted_at) apiError(404, NOT_FOUND[kind], `no such ${WORD[kind]}`);
+  if (row.author_id !== user.id) apiError(403, "forbidden", `only the author can delete this ${WORD[kind]}`);
   const db = env.DB;
-  const stmts = [db.prepare(`UPDATE ${table} SET deleted_at = ?, body_md = '' WHERE id = ?`).bind(Date.now(), id)];
-  if (kind === "issue") stmts.push(refreshCounts(db, row.parent));
-  else stmts.push(db.prepare(`UPDATE issues SET comment_count = (SELECT COUNT(*) FROM issue_comments WHERE issue_id = ?1 AND moderation = 'visible' AND deleted_at IS NULL) WHERE id = ?1`).bind(row.parent));
-  await db.batch(stmts);
+  await db.batch([
+    db.prepare(`UPDATE ${TABLE[kind]} SET deleted_at = ?, body_md = '' WHERE id = ?`).bind(Date.now(), id),
+    kind === "issue" ? refreshCounts(db, row.parent) : kind === "comment" ? refreshIssueReplies(db, row.parent) : refreshRequestReplies(db, row.parent),
+  ]);
 }
 
 // ---------- confirmations ----------
@@ -537,13 +556,16 @@ export async function communityStatus(env: Env, t: ToolRef, now = Date.now()) {
 // ---------- flags and moderation ----------
 
 /**
- * Flags a post. A personal-data flag from an established account hides the post at once, pending a moderator;
- * three flags of any kind do the same.
+ * Flags a post or a tool request. A personal-data flag from an established account hides it at once, pending a
+ * moderator; three flags of any kind do the same.
  */
-export async function flagPost(env: Env, user: User, kind: "issue" | "comment", id: string, reason: (typeof FLAG_REASONS)[number], note: string) {
-  const table = kind === "issue" ? "issues" : "issue_comments";
-  const row = await env.DB.prepare(`SELECT moderation, author_id FROM ${table} WHERE id = ? AND deleted_at IS NULL`).bind(id).first<{ moderation: string; author_id: string | null }>();
-  if (!row) apiError(404, `${kind}_not_found`, `no such ${kind}`);
+export async function flagPost(env: Env, user: User, kind: FlagKind, id: string, reason: (typeof FLAG_REASONS)[number], note: string) {
+  const row = await env.DB.prepare(
+    kind === "request"
+      ? `SELECT moderation, requested_by AS author_id FROM tool_requests WHERE id = ?`
+      : `SELECT moderation, author_id FROM ${TABLE[kind]} WHERE id = ? AND deleted_at IS NULL`,
+  ).bind(id).first<{ moderation: string; author_id: string | null }>();
+  if (!row) apiError(404, NOT_FOUND[kind], `no such ${WORD[kind]}`);
   await dailyLimit(env, "flag", user.id, 20);
   const p = await poster(env, user.id);
   const now = Date.now();
@@ -557,56 +579,74 @@ export async function flagPost(env: Env, user: User, kind: "issue" | "comment", 
   return { hidden: hide || row.moderation !== "visible" };
 }
 
-/** Hides a post (from the public; its author and moderators still see it). */
-async function hidePost(env: Env, actor: User | null, kind: "issue" | "comment", id: string, reason: string) {
-  const table = kind === "issue" ? "issues" : "issue_comments";
+/** Hides a post or request (from the public; its author and moderators still see it). */
+async function hidePost(env: Env, actor: User | null, kind: FlagKind, id: string, reason: string) {
   const db = env.DB;
-  const stmts = [db.prepare(`UPDATE ${table} SET moderation = 'hidden', hidden_reason = ? WHERE id = ?`).bind(reason, id), audit(db, actor?.id ?? null, actor ? "user" : "system", `${kind}.hide`, kind, id, { reason })];
+  const stmts = [db.prepare(`UPDATE ${TABLE[kind]} SET moderation = 'hidden', hidden_reason = ? WHERE id = ?`).bind(reason, id), audit(db, actor?.id ?? null, actor ? "user" : "system", `${kind}.hide`, kind, id, { reason })];
   stmts.push(...(await countsAfter(env, kind, id)));
   await db.batch(stmts);
 }
 
 /** The counter updates a change to a post's visibility needs. */
-async function countsAfter(env: Env, kind: "issue" | "comment", id: string): Promise<D1PreparedStatement[]> {
+async function countsAfter(env: Env, kind: FlagKind, id: string): Promise<D1PreparedStatement[]> {
   const db = env.DB;
+  if (kind === "request") return [];
   if (kind === "issue") {
     const i = await db.prepare(`SELECT tool_id FROM issues WHERE id = ?`).bind(id).first<{ tool_id: string }>();
     return i ? [refreshCounts(db, i.tool_id)] : [];
   }
+  if (kind === "request_comment") {
+    const c = await db.prepare(`SELECT request_id FROM request_comments WHERE id = ?`).bind(id).first<{ request_id: string }>();
+    return c ? [refreshRequestReplies(db, c.request_id)] : [];
+  }
   const c = await db.prepare(`SELECT issue_id FROM issue_comments WHERE id = ?`).bind(id).first<{ issue_id: string }>();
-  return c ? [db.prepare(`UPDATE issues SET comment_count = (SELECT COUNT(*) FROM issue_comments WHERE issue_id = ?1 AND moderation = 'visible' AND deleted_at IS NULL) WHERE id = ?1`).bind(c.issue_id)] : [];
+  return c ? [refreshIssueReplies(db, c.issue_id)] : [];
 }
 
 export type ModerationAction = "hide" | "restore" | "approve" | "redact";
 
 /**
  * A moderator's decision on a post: hide it, restore or approve it, or redact it (the text is overwritten for good;
- * for personal data). Flags on the post are resolved with it.
+ * for personal data). Flags on the post are resolved with it. Requests themselves go through moderateRequest.
  */
-export async function moderate(env: Env, actor: User, kind: "issue" | "comment", id: string, action: ModerationAction, reason: string) {
-  const table = kind === "issue" ? "issues" : "issue_comments";
+export async function moderate(env: Env, actor: User, kind: PostKind, id: string, action: ModerationAction, reason: string) {
+  const table = TABLE[kind];
   const row = await env.DB.prepare(`SELECT moderation FROM ${table} WHERE id = ?`).bind(id).first<{ moderation: string }>();
-  if (!row) apiError(404, `${kind}_not_found`, `no such ${kind}`);
+  if (!row) apiError(404, NOT_FOUND[kind], `no such ${WORD[kind]}`);
   const db = env.DB;
   const now = Date.now();
   const stmts: D1PreparedStatement[] = [];
   if (action === "hide") stmts.push(db.prepare(`UPDATE ${table} SET moderation = 'hidden', hidden_reason = ? WHERE id = ?`).bind(reason || "moderator", id));
   else if (action === "restore" || action === "approve") stmts.push(db.prepare(`UPDATE ${table} SET moderation = 'visible', hidden_reason = NULL WHERE id = ?`).bind(id));
   else stmts.push(db.prepare(`UPDATE ${table} SET body_md = ?, moderation = 'hidden', hidden_reason = 'redacted'${kind === "issue" ? ", title = '[Removed]'" : ""} WHERE id = ?`).bind(REDACTED, id));
-  const upheld = action === "hide" || action === "redact";
-  stmts.push(
-    db.prepare(`UPDATE content_flags SET status = ?, resolved_by = ?, resolved_at = ? WHERE target_kind = ? AND target_id = ? AND status = 'open'`)
-      .bind(upheld ? "upheld" : "dismissed", actor.id, now, kind, id),
-    audit(db, actor.id, "user", `${kind}.${action}`, kind, id, reason ? { reason } : undefined),
-  );
+  stmts.push(resolveFlags(db, actor, kind, id, action === "hide" || action === "redact", now), audit(db, actor.id, "user", `${kind}.${action}`, kind, id, reason ? { reason } : undefined));
   await db.batch(stmts);
   await db.batch(await countsAfter(env, kind, id));
   await afterModeration(env, kind, id, action, row.moderation);
 }
 
+/** Settles the open flags on a post or request: upheld when a moderator hid or redacted it, else dismissed. */
+export const resolveFlags = (db: D1Database, actor: User, kind: FlagKind, id: string, upheld: boolean, now = Date.now()) =>
+  db.prepare(`UPDATE content_flags SET status = ?, resolved_by = ?, resolved_at = ? WHERE target_kind = ? AND target_id = ? AND status = 'open'`)
+    .bind(upheld ? "upheld" : "dismissed", actor.id, now, kind, id);
+
+const MODERATED: Record<ModerationAction, string> = { hide: "hid", redact: "removed", approve: "approved", restore: "restored" };
+
 /** Tells the author what a moderator decided, and announces a held post once it is approved. */
-async function afterModeration(env: Env, kind: "issue" | "comment", id: string, action: ModerationAction, before: string) {
+async function afterModeration(env: Env, kind: PostKind, id: string, action: ModerationAction, before: string) {
   const db = env.DB;
+  if (kind === "request_comment") {
+    const r = await db.prepare(`SELECT c.author_id, r.id AS request_id, r.number, r.repo_path FROM request_comments c JOIN tool_requests r ON r.id = c.request_id WHERE c.id = ?`)
+      .bind(id).first<{ author_id: string | null; request_id: string; number: number; repo_path: string }>();
+    if (!r) return;
+    const about = `the request for ${r.repo_path.split("/").pop()} (#${r.number})`;
+    const path = `/requests/${r.number}`;
+    if (r.author_id) await notify(env, [r.author_id], { kind: "moderation", scope: "account", summary: `A moderator ${MODERATED[action]} your reply on ${about}`, path });
+    if (action === "approve" && before === "held") {
+      await notify(env, await requestSubscribers(env, r.request_id), { kind: "comment", scope: "community", summary: `New reply on ${about}`, path, actor_id: r.author_id });
+    }
+    return;
+  }
   const p = await db.prepare(
     kind === "issue"
       ? `SELECT i.author_id, i.id AS issue_id, i.number, i.kind, i.title, t.id AS tool_id, t.name, t.namespace_id, n.name AS namespace FROM issues i JOIN tools t ON t.id = i.tool_id JOIN namespaces n ON n.id = t.namespace_id WHERE i.id = ?`
@@ -615,10 +655,9 @@ async function afterModeration(env: Env, kind: "issue" | "comment", id: string, 
   if (!p) return;
   const t = { id: p.tool_id, name: p.name, namespace: p.namespace, namespace_id: p.namespace_id };
   const path = `/${refOf(t)}/issues/${p.number}`;
-  const words: Record<ModerationAction, string> = { hide: "hid", redact: "removed", approve: "approved", restore: "restored" };
   if (p.author_id) {
     await notify(env, [p.author_id], {
-      kind: "moderation", scope: "account", summary: `A moderator ${words[action]} your ${kind} on ${refOf(t)} #${p.number}`, path,
+      kind: "moderation", scope: "account", summary: `A moderator ${MODERATED[action]} your ${kind} on ${refOf(t)} #${p.number}`, path,
       tool_id: t.id, issue_id: p.issue_id,
     });
   }
@@ -716,7 +755,10 @@ export async function announceVersion(env: Env, toolId: string, version: string)
   ]));
 }
 
-/** Locks closed threads with no activity for AUTO_LOCK (nightly). */
+/** Locks closed threads with no activity for AUTO_LOCK (nightly): issues, and requests published or declined. */
 export async function lockStaleThreads(env: Env, now = Date.now()) {
-  await env.DB.prepare(`UPDATE issues SET locked_at = ? WHERE locked_at IS NULL AND closed_at IS NOT NULL AND last_activity_at < ?`).bind(now, now - AUTO_LOCK).run();
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE issues SET locked_at = ? WHERE locked_at IS NULL AND closed_at IS NOT NULL AND last_activity_at < ?`).bind(now, now - AUTO_LOCK),
+    env.DB.prepare(`UPDATE tool_requests SET locked_at = ? WHERE locked_at IS NULL AND status IN ('published', 'declined') AND updated_at < ?`).bind(now, now - AUTO_LOCK),
+  ]);
 }

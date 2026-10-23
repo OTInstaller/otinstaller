@@ -1,20 +1,26 @@
 ---
-// One tool request: the repository and what the registry knows about it, the requester's note, its votes and what
-// triagers decided. Islands add the vote button and, for triagers and the requester, the decision controls. Pages
-// stay out of search results until a triager has accepted the request.
+// One tool request: the repository and what the registry knows about it, the requester's note, its votes, what
+// triagers decided and the discussion. Islands add the vote button, replying and following, and for triagers and the
+// requester the decision controls; a bundled script handles flags. Pages stay out of search results until a triager
+// has accepted the request.
 import Base from "../../layouts/Base.astro";
 import RequestVote from "../../islands/RequestVote";
 import RequestDecision from "../../islands/RequestDecision";
-import { apiOrNull, type ToolRequestDetail } from "../../lib/api";
+import RequestThread from "../../islands/RequestThread";
+import FlagChoices from "../../components/FlagChoices.astro";
+import { apiOrNull, type RequestPage } from "../../lib/api";
 import { formatDate } from "../../lib/format";
+import { demoteHeadings } from "../../lib/html";
 import { DECLINE_LABEL, REQUEST_STATUS_LABEL, REQUEST_STATUS_TONE, takesVotes } from "../../lib/requests";
 import { cacheFor } from "../../lib/page";
 import { personHref } from "../../lib/community";
 
 const number = Number(Astro.params.number);
-const loaded = /^\d{1,7}$/.test(Astro.params.number ?? "") ? await apiOrNull<{ request: ToolRequestDetail }>(`/requests/${number}`) : null;
+const loaded = /^\d{1,7}$/.test(Astro.params.number ?? "") ? await apiOrNull<RequestPage>(`/requests/${number}`) : null;
 if (!loaded) return Astro.rewrite("/404");
 const r = loaded.request;
+const comments = loaded.comments ?? [];
+const roleLabel = { triager: "Triager", staff: "Staff" } as const;
 cacheFor(Astro, 60);
 const host = r.provider === "gitlab" ? "GitLab" : "GitHub";
 const facts = [
@@ -76,9 +82,45 @@ const facts = [
       <p class="notice small">When the registry was seeded in October 2026, this repository was left out: {r.dropped_reason}. A triager will look again.</p>
     )}
 
+    <details class="flag small" data-flag-target={`request:${r.id}`}>
+      <summary>Flag this request</summary>
+      <FlagChoices />
+    </details>
+
+    <section class="discussion" aria-labelledby="discussion">
+      <h2 id="discussion">Discussion{comments.length > 0 && <span class="muted"> ({comments.length})</span>}</h2>
+      {r.locked && <p class="small muted">Replies are closed.</p>}
+      {comments.length === 0 && <p class="small muted">No replies yet. Say why it's worth packaging, how you'd use it, or what to watch out for.</p>}
+      <ol class="comments">
+        {comments.map((c) => (
+          <li class:list={["reply", { system: c.author.system }]} id={`c-${c.id}`}>
+            <p class="small muted who">
+              {c.author.system ? <b>The registry</b> : <b>{c.author.profile ? <a href={personHref(c.author.handle)}>{c.author.handle}</a> : c.author.handle}</b>}
+              {c.role && <span class="badge plain role">{roleLabel[c.role]}</span>}
+              {" "}on {formatDate(c.created_at)}{c.edited_at && " (edited)"}
+            </p>
+            <div class="prose body"><Fragment set:html={demoteHeadings(c.body_html)} /></div>
+            {!c.author.system && (
+              <details class="flag small" data-flag-target={`request_comment:${c.id}`}>
+                <summary>Flag</summary>
+                <FlagChoices />
+              </details>
+            )}
+          </li>
+        ))}
+      </ol>
+      <RequestThread client:visible number={r.number} back={`${Astro.site}requests/${r.number}`} />
+    </section>
+
     <RequestDecision client:idle number={r.number} status={r.status} />
   </article>
 </Base>
+
+<script>
+  // Flagging a request or a reply for a moderator.
+  import { wireFlags } from "../../lib/flags";
+  wireFlags();
+</script>
 
 <style>
   .back { margin: 0 0 12px; }
@@ -87,15 +129,27 @@ const facts = [
   .votes { display: flex; justify-content: center; padding-top: 6px; }
   .count { font-weight: 600; font-size: var(--fs-1); text-align: center; }
   .title { margin: 0; overflow-wrap: anywhere; }
-  .num { color: var(--muted); font-weight: 400; }
+  .num { color: var(--text-faint); font-weight: 400; }
   .tags { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; margin: 6px 0; }
   .lead { margin: 6px 0 10px; }
   .facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 16px; margin: 0; }
-  .facts dt { color: var(--muted); }
+  .facts dt { color: var(--text-muted); }
   .facts dd { margin: 0; overflow-wrap: anywhere; }
   .post { border-top: 1px solid var(--border); padding-top: 12px; }
   .post h2 { margin: 0 0 6px; font-size: var(--fs-2); }
   .note { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+  .flag { color: var(--text-muted); }
+  .flag summary { cursor: pointer; }
+  .discussion { border-top: 1px solid var(--border); padding-top: 12px; display: grid; gap: 12px; }
+  .discussion h2 { margin: 0; font-size: var(--fs-2); }
+  .comments { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+  .reply { border: 1px solid var(--border); padding: 12px 14px; background: var(--bg-raised); }
+  .reply.system { background: var(--bg-subtle); }
+  .reply .flag { margin-top: 8px; }
+  .who { margin: 0 0 8px; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+  .role { font-size: var(--fs-0); }
+  .body { overflow-wrap: anywhere; }
+  .body :global(> :last-child) { margin-bottom: 0; }
   .request :global(.decision form label), .request :global(.decision form input), .request :global(.decision form select), .request :global(.decision form textarea) { display: block; width: 100%; }
   .request :global(.decision form label + *) { margin-top: 4px; }
   @media (max-width: 560px) {

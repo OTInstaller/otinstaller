@@ -75,8 +75,9 @@ Then, from the checkout:
 | otlite/ (Linux, macOS) | `cd otlite && pip install -e ".[dev,pipeline]" && ruff check . && ruff format --check . && pytest` |
 
 The API tests need no secrets: `api/vitest.config.ts` gives them fake secrets, builds the seed from
-`api/scripts/seed-lib.mjs` and the fixtures and templates from `spec/`, and sets `EDGE_CACHE: "off"`. The `week10`
-rate-limit test waits for the start of a minute and is flaky under load; rerun it alone before chasing it.
+`api/scripts/seed-lib.mjs` and the fixtures and templates from `spec/`, and sets `EDGE_CACHE: "off"`. Tests get 30
+seconds and hooks 60, because every file sets up its own D1 and they all run at once; a test that still times out is
+stuck, not slow.
 
 ## 3. Run the API locally
 

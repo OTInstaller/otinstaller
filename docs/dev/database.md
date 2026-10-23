@@ -4,8 +4,8 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 `api/migrations/*.sql` and the code in `api/src/`, `api/test/` and `api/scripts/`.
 
 - Binding: `DB`, database name `otinstaller`, `migrations_dir: "migrations"` (`api/wrangler.jsonc`).
-- 25 migrations, `0001` to `0025`.
-- Final schema: **54 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 55. FTS5 also creates its own shadow
+- 26 migrations, `0001` to `0026`.
+- Final schema: **56 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 57. FTS5 also creates its own shadow
   tables, which aren't listed here.
 
 ---
@@ -39,6 +39,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0023 | `0023_direct_publish.sql` | Direct publishing (`ot publish`): `publish_jobs` + `namespace_id` (FK namespaces), `bundle_key` (R2 `CONTENT` prefix of the upload), `submitted_by` (FK users), index `publish_jobs_namespace`; `namespaces` + `created_by` (FK users: who made a registry namespace). Apply before an API that selects these columns is deployed. |
 | 0024 | `0024_hosted_images.sql` | Images hosted on the mirror (`ot publish --image`): new table `mirror_pushes` (every manifest a publisher pushes: repo, digest, tag, user, token, size; indexes `mirror_pushes_repo`, `mirror_pushes_created`), for the push limits and the nightly sweep; `backups` + `hosted` (INTEGER NN default 0: the image row is the image itself, never an install fallback). The mirror Worker binds the same database from then on. |
 | 0025 | `0025_trusted_publishers.sql` | Trusted publishing (`ot publish --oidc`): new table `trusted_publishers` (indexes `trusted_publishers_repo`, `trusted_publishers_namespace`); `api_tokens` + `namespace_id` (FK namespaces, cascade), `package`, `trusted_publisher_id` (FK, set null), `oidc_json`, `jti` (unique index `api_tokens_jti`) for the restricted CI tokens; `publish_jobs` + `trusted_publisher_id` (FK, set null), `ci_json`. Apply before an API that selects these columns is deployed: `findToken` reads them on every token request, in the API and the mirror. |
+| 0026 | `0026_request_threads.sql` | New tables `request_comments` (replies on tool requests, moderated like issue comments) and `request_subscriptions` (backfilled with each request's requester); `tool_requests` + `comment_count`, `locked_at`; `content_flags` rebuilt so `target_kind` also takes `request` and `request_comment`; indexes `request_comments_request`, `request_comments_held` (partial), `request_comments_author`, and `content_flags_open` again. |
 
 ---
 
@@ -444,7 +445,7 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
 - `confirmations`: `tool_id`, `version_id`, `user_id`, `result` (works | broken), `platform`, `engine`, `ot_version`,
   `issue_id`; UNIQUE `(version_id, user_id, platform)`.
 - `run_signals`: anonymous daily counts of failed runs, PK `(version_id, day, platform, engine, exit_class)`.
-- `content_flags`: `target_kind` (issue | comment), `target_id`, `flagger_id`, `reason` (personal_data | spam | abuse |
+- `content_flags`: `target_kind` (issue | comment | request | request_comment, since 0026), `target_id`, `flagger_id`, `reason` (personal_data | spam | abuse |
   off_topic | other), `note`, `status` (open | upheld | dismissed); UNIQUE per target and flagger.
 - `issue_subscriptions`: `(issue_id, user_id)` with `reason` (author, commented, confirmed, manual) and `muted`.
 - `tools.open_broken` / `open_outdated` are kept by `community.ts:refreshCounts` in the same batch as every change.
@@ -462,6 +463,19 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
   `tool_requests_requester (requested_by, created_at)`.
 - `request_votes`: PK `(request_id, user_id)`, `created_at`; the requester's vote is added with the request.
   `vote_count` is recounted in the same batch as every vote.
+
+### 2.12g Request discussions (0026)
+
+- `request_comments`: `request_id` → `tool_requests(id)` (cascade), `author_id`, `author_kind` (user | system),
+  `role_badge` (triager | staff, as it was when written; requests have no maintainers), `body_md`, `moderation`
+  (visible | held | hidden), `hidden_reason`, `edited_at`, `deleted_at`, `created_at`. Written by
+  `requests.ts:addRequestComment`; edited, deleted, flagged and moderated through `community.ts` with kind
+  `request_comment`.
+- `request_subscriptions`: PK `(request_id, user_id)`, `reason` (author | commented | manual), `muted`, `created_at`.
+  The requester is added with the request; `inbox.ts:requestSubscribers` reads it.
+- `tool_requests.comment_count` (visible replies, recounted by `community.ts:refreshRequestReplies` in the same batch as
+  every change) and `locked_at` (set by a triager, or nightly by `lockStaleThreads` 30 days after a published or
+  declined request's `updated_at`; replies move `updated_at`).
 
 ### 2.12f Bump pull requests (0022)
 
