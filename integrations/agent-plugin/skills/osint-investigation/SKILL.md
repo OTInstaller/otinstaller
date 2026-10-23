@@ -28,7 +28,8 @@ installed (https://otinstaller.com/docs/getting-started) and the server added (`
 2. **Plan with read-only tools.**
    - `list_installed` and `search_tools` (with `input_type`) find tools that take the target.
    - `get_tool` shows each one's inputs, required keys, `ethics` flags, `effects` and `consent_class`.
-   - `list_playbooks` lists ready-made sets, such as `domain-recon` and `username-investigation`.
+   - `list_playbooks` lists ready-made sets and the input types each is for: `domain-recon`, `username-investigation`,
+     `email-investigation`, `phone-investigation` and `ip-investigation` are bundled, and none needs an API key.
 3. **Show the plan.** Call `run_all` with `dry_run: true` (or `get_consent_status` for single runs). Tell the user
    which tools would run and which need their consent.
 4. **Install only what's needed**, with `install_tool`. Installs ask the user; only signed, current tools install.
