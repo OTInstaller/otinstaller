@@ -46,8 +46,9 @@ anonymous GET.
 
 ## 1. Routes
 
-Total: **109 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
-call; the `for` loop in `routes/trust.ts` registers two (`yank`, `unyank`). The mirror Worker's OCI routes are in
+Total: **165 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
+call; the `for` loops in `routes/trust.ts` (`yank`, `unyank`), `routes/community.ts` (a thread's subscription) and
+`routes/requests.ts` (a vote) register two each. The mirror Worker's OCI routes are in
 section 6 and are not in this count. There is no route for stars, although the rate-limit comment in `index.ts`
 mentions stars. Every route under a removed package answers 410 `tool_removed`.
 
@@ -69,15 +70,16 @@ in code; a Cloudflare rate-limiting rule on the zone covers `/mcp`, `/v1/tools*`
 | GET | `/tools` | none | `cached(c, 60)` | index.ts | Search. Params `q`, `input`, `output`, `category`, `runtime`, `kind`, `level`, `format`, `lang`, `sort` (relevance, installs, stars, updated, health: healthy tools by their last passing nightly check first), `no_keys`, `passive_only` (`1`/`true`: no target contact, personal data or egress), `limit` (1–100, default 25), `cursor` (offset). FTS path caps at 200 rows, non-FTS at 1000; `total_capped: true` says the total hit the cap. Summaries carry ethics and egress. A bad enum value is 400 `invalid_parameter` with the allowed values |
 | GET | `/guides` | none | 60 (inherited) | index.ts | Re-dispatches internally to `/v1/tools?kind=guide` with `app.fetch`, so the `/tools` response (and its `max-age=60`) is returned |
 | GET | `/tools/:ns/:name` | none | `cached(c, 60)` | index.ts | Follows aliases (`moved_to`); not found goes through `notFound()`: 410 `tool_removed` or 404 `tool_not_found`. `sample` is the latest version's passing `smoke` scan row's `sample` (entities or stdout from the test input) with `version` and `recorded_at`, when the scanner sent one |
-| GET | `/tools/:ns/:name/versions` | none | `cached(c, 60)` | index.ts | Published, yanked and removed versions, semver-sorted |
+| GET | `/tools/:ns/:name/versions` | none | `cached(c, 60)` | index.ts | Published, yanked and removed versions, semver-sorted, each with `changelog`, `changelog_html` (rendered by `changelog.ts:renderNotes`) and `changelog_source` |
 | GET | `/tools/:ns/:name/:version/manifest` | none | `cached(c, version === "latest" ? 60 : 3600)` | index.ts | Removed versions return status and `removed_reason` with `manifest: null`; otherwise adds `installFallbacks()` (`mirror_image` / `wheel_url`). `manifest` is `compatManifest()` (`lib/manifest.ts`): without the optional fields added after ot v0.12, whose install-time validation rejects them; `manifest_full` carries them when anything was left out |
 | GET | `/tools/:ns/:name/:version/scans` | none | `cached(c, 300)` | index.ts | PII scan summaries reduced to `{hits: <count>}` |
-| GET | `/tools/:ns/:name/:version` | none | `cached(c, 3600)` | index.ts | Also 3600 for `latest` (unlike `/manifest`, which uses 60 for `latest`) |
+| GET | `/tools/:ns/:name/:version` | none | `cached(c, 3600)` | index.ts | Also 3600 for `latest` (unlike `/manifest`, which uses 60 for `latest`); carries the same release-notes fields |
 | GET | `/namespaces` | none | `cached(c, 600)` | routes/profiles.ts | Publishers with a visible package (at most 500), most installed first, for the sitemap and llms.txt |
 | GET | `/namespaces/:ns` | none | `cached(c, 300)` | routes/profiles.ts | The profile (`effectiveProfile()`: host values with the owner's overrides), `stats` and visible tools (with `published_at`). `pending_review` namespaces answer 200 with only the handle and host links and no tools; `rejected`/`suspended` 404 |
 | GET | `/namespaces/:ns/activity` | none | `cached(c, 300)` | routes/profiles.ts | `?limit` (1–100, 30). Public audit events of visible packages: `version.published`, `version.yank`/`unyank`, `tool.deprecate`/`undeprecate`, `transfer.complete` |
 | GET | `/facets` | none | `cached(c, 600)` | index.ts | How many visible packages match each facet value: `inputs`, `outputs`, `categories`, `runtimes`, `no_keys`. `kind` is tool (default) or guide; counts ignore other filters |
 | GET | `/pivots` | none | `cached(c, 600)` | index.ts | `from=` comma list of entity types; follows `spec/pivots.json` to the input types each can feed (`inputs`, plus `unmapped` for types with none); top 10 non-broken tools per usable type |
+| GET | `/activity` | none | `cached(c, 300)` | index.ts → activity.ts | Public events from `audit_log` (published with `new_package`/`has_notes`, yanked, unyanked, deprecated with `replacement`, undeprecated, transferred) of visible, listed packages; `limit` 1–100 (30), `before` (ms), `kind`, `input`, `namespace`, `events` (`registry` default; `community` adds `issue_confirmed`/`issue_fixed` with `number` and `issue_kind`, and `request_accepted`/`request_published` with `number` and `tool`, worded from fields; `all`); `next_before` for paging. Never carries reasons, actors or anything people wrote |
 | POST | `/installs` | none | - | index.ts | `{tool, version, client?}`; 400 `invalid_body` without tool and version, else always 204 (also for unknown packages). Counts once per `cf-connecting-ip`, version and day (`overLimit` scope `install`: a salted hash of address and version in `rate_limits`, never the address itself), into `install_counts` and `install_clients` (`client` `cli`, `mcp`, `ci`, else `other`) |
 
 ### 1.2 Guides, docs, READMEs, assets, wheel copies, transparency (12)
@@ -519,6 +521,10 @@ GitHub 403 rate-limit bodies).
 5. `expireDrills(env)` (backups.ts): dispatched drills past 6 h finish as `expired`.
 6. `backfillBackups(env)` (backups.ts): up to `BACKFILL_PER_RUN` = 5 published versions with no image/wheel backup,
    at most once a day each.
+7. `deliverInbox(env, "immediate")` (inbox.ts): inbox items older than 2 minutes, grouped into one email per person who
+   asked for them at once (at most 12 community emails a day).
+
+`refreshDueProfiles(env)` (profiles.ts) also runs in this block, between the source poll and the stuck-job alert.
 
 Then, by `event.cron`:
 
@@ -527,7 +533,7 @@ Then, by `event.cron`:
 | `*/15 * * * *` | | none beyond the block above |
 | `41 4 * * 1` (Mondays 04:41 UTC) | `WEEKLY_BACKUP_CRON` (backups.ts) | `weeklyBackups(env)`: a git backup of every active source, dispatched 20 per call (`WEEKLY_PER_DISPATCH`) |
 | `23 5 1 * *` (1st of the month 05:23 UTC) | `RESTORE_DRILL_CRON` (backups.ts) | `startDrill(env)`: restore a random git bundle and pull a random public mirrored image |
-| `17 3 * * *` (daily 03:17 UTC) | literal string in index.ts | `queueNightlyLinkChecks(env)`, `dailyDigest(env)` (namespaces waiting > 2 business days, reports > 48 h), `purgeRateLimits(env)` (windows older than a day), `purgeBackups(env)` (due deletions, except legal holds), then the SQL `UPDATE tools SET installs_30d = ...` over the last 30 days of `install_counts` |
+| `17 3 * * *` (daily 03:17 UTC) | literal string in index.ts | `queueNightlyLinkChecks(env)`, `dailyDigest(env)` (namespaces waiting > 2 business days, reports > 48 h), `purgeRateLimits(env)` (windows older than a day), `purgeBackups(env)` (due deletions, except legal holds), `lockStaleThreads(env)` (closed issues quiet for 30 days), `deliverInbox(env, "daily")` (digests), `purgeInbox(env)` (read items after 90 days, all after a year), `refreshContributorStats(env)`, `queueUpstreamChecks(env)` (`{upstreamCheckToolId}` per community wrapper), then the SQL `UPDATE tools SET installs_30d = ...` over the last 30 days of `install_counts` |
 
 ## 6. Mirror Worker (`otinstaller-mirror`)
 

@@ -244,6 +244,10 @@ type Version struct {
 	PublishedAt *int64 `json:"published_at"`
 	YankedAt    *int64 `json:"yanked_at"`
 	Signed      bool   `json:"signed"`
+	// Changelog is the version's release notes in Markdown (the host's release, or its CHANGELOG.md section); nil when
+	// the registry has none, or answered before it kept them.
+	Changelog       *string `json:"changelog"`
+	ChangelogSource string  `json:"changelog_source,omitempty"`
 }
 
 func (c *Client) Versions(ctx context.Context, ns, name string) ([]Version, error) {

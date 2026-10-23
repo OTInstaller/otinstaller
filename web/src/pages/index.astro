@@ -19,7 +19,7 @@ const rowHref = (t: string) => (t === "image" ? "/category/images-geo" : `/input
 const byType = await Promise.all(START_INPUTS.map((t) => api<SearchResult>(rowQuery(t)).then((r) => ({ type: t, ...r }))));
 const [updated, guides, allTools, allGuides] = await Promise.all([
   api<SearchResult>("/tools?kind=tool&sort=updated&limit=6"),
-  api<SearchResult>("/guides?sort=stars&limit=4"),
+  api<SearchResult>("/guides?sort=updated&limit=4"),
   api<SearchResult>("/tools?kind=tool&limit=1"),
   api<SearchResult>("/guides?limit=1"),
 ]);
@@ -40,7 +40,7 @@ cacheFor(Astro, 300);
     <div class="wrap">
       <p class="eyebrow">Free public registry of OSINT tools</p>
       <h1>Paste what you have.<br />Run the right tool.</h1>
-      <p class="who">A free registry of OSINT tools for investigators, journalists and security teams. One command installs <code>ot</code>; one more runs any tool here in a sandbox on your own machine. <a href="/docs/quick-start">Quick start</a> · <a href="/tour">What you can do</a> · <a href="/agents">For AI agents</a></p>
+      <p class="who">A free registry of OSINT tools for investigators, journalists and security teams. One command installs <code>ot</code>; one more runs any tool here in a sandbox on your own machine. <a href="/docs/quick-start">Quick start</a> · <a href="/learn">Learn OSINT</a> · <a href="/tour">What you can do</a> · <a href="/agents">For AI agents</a></p>
       <PasteBox id="hero-q" large />
       <p class="starts small muted">or start from:
         {START_INPUTS.map((t) => <a class="chip" href={rowHref(t)}>{inputLabel(t)}</a>)}

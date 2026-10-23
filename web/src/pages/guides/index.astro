@@ -15,7 +15,7 @@ const facets = [
   { key: "format", label: "Format", values: ["guide", "reference"], name: (v: string) => (v === "guide" ? "Guide" : "Reference") },
   { key: "category", label: "Category", values: types.categories, name: categoryLabel },
 ];
-const sorts = [["relevance", "Best match"], ["updated", "Newest"], ["stars", "Most starred"]];
+const sorts = [["relevance", "Best match"], ["updated", "Newest"]];
 const next = result.next_cursor ? `/guides?${new URLSearchParams({ ...Object.fromEntries(url.searchParams), cursor: result.next_cursor })}` : null;
 const activeFilters = facets.filter((f) => current(f.key)).map((f) => ({ key: f.key, label: f.name(current(f.key)!) }));
 const q = current("q") ?? "";

@@ -24,10 +24,10 @@ Conventions used here:
 
 ## 1. Commands
 
-Registered in `Root()` (`cli/root.go`) in this order: init, validate, search, info, install, run, playbook, auto,
-runs, issues, request, extract, diff, list, outdated, update, uninstall, keys, doctor, login, logout, whoami, import, sync,
-guide, docs, report, feedback, claim, transfer, yank, deprecate, self-update, release, mcp, pivot, token, profile. 38
-top-level commands,
+Registered in `Root()` (`cli/root.go`) in this order: init, validate, search, info, changelog, install, run, playbook,
+auto, runs, issues, request, extract, diff, list, outdated, update, uninstall, keys, doctor, login, logout, whoami, import,
+sync, guide, docs, report, feedback, claim, transfer, yank, deprecate, self-update, release, mcp, pivot, token, profile.
+39 top-level commands,
 plus subcommands `keys set|setup|list|rm`, `guide search|read|open|get|tools`, `mcp install|audit|policy|tools`
 (with `mcp policy reset`) and `token create|list|revoke`.
 
@@ -71,6 +71,21 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 - Output: kind, summary, Trust (verified publisher, signed, manifest held by registry, community-packaged, health),
   Deprecated message, License, then Inputs/Outputs/Key/Ethics and a `Run:` example (tools) or Level/Tools (guides).
 - Sign-in: no. Exit: 0; 2 for a bad reference; 1 for registry errors (4xx not wrapped) or manifest parse errors.
+
+#### `ot changelog <namespace/name>`
+- File: `cli/changelog.go` (`changelogCmd`, `releasedVersions`, `printRelease`, `cleanNotes`). Args: `ExactArgs(1)`; a
+  local manifest is exit 2.
+- Flags: `--all` (bool): every version, not only those newer than the installed one; `--limit` (int, 10; 0 for all);
+  `--json`.
+- API: `GET /tools/{ns}/{name}/versions` (anonymous): `changelog` and `changelog_source` per version (registries before
+  release notes send none: "(no release notes)").
+- Output: published and yanked versions newest first; for an installed package only the newer ones ("You have X;
+  newer versions:" on stderr), else the latest. Each as `version · date[ · yanked]` and the notes indented, always
+  through `stripControl` (they come from a publisher's repository). JSON: `{ref, installed, versions: [{version,
+  status, published_at, changelog}]}`.
+- `ot info` uses the same lookup (`whatsNew`) to print "What's new in <version>" (the first 12 lines, then a pointer
+  to `ot changelog`); its JSON gains `changelog`.
+- Sign-in: no. Exit: 0; 2 for a local manifest or a registry 4xx; 1 otherwise.
 
 #### `ot install <namespace/name[@version]> ...`
 - File: `cli/packages.go` (`installCmd`, `installMany`, `install`). Args: `MinimumNArgs(1)`; each may also be a local
@@ -853,7 +868,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | Package | One line |
 | --- | --- |
 | `agent` | Consent classes (`Classify`, `Describe`), the policy file (`LoadPolicy`, `DefaultPolicy`), sessions (`DecideRun`, approvals, limits), consent tokens (`CallHash`, `Seal`/`Open`, single use), the audit log (`Record`, `ReadAudit`, rotation) |
-| `api` | Registry HTTP client: `do`, error shape `*api.Error`, search, tool/manifest/versions, install ping, device login, `/me`, tokens, guides and docs, imports, sync, removals, reports, claims and transfers, yank/deprecate, feedback, community issues, run reports, confirmations and tool requests |
+| `api` | Registry HTTP client: `do`, error shape `*api.Error`, search, tool/manifest/versions, install ping, device login, `/me`, tokens, guides and docs, imports, sync, removals, reports, claims and transfers, yank/deprecate, feedback, community issues, run reports, confirmations and tool requests; `Version` carries `changelog` |
 | `cli` | Every cobra command, the `App` struct, exit codes, `ExitError`, `Main`, `ExitCodeFor`, JSON errors (`machine.go`), the MCP server (`mcp_*.go`) |
 | `envelope` | The result envelope (`Version = 1`), `ParseOutput` for json/jsonl/csv/text, `Write` for json/raw/csv/table |
 | `keys` | Keychain storage (service `osintverse-ot`), env-first `Get`, `keys.json` name index |
@@ -891,6 +906,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `cli/sync_test.go` | `ot sync` and `--log` |
 | `cli/profile_test.go` | `ot profile`: show, `--set`/`--unset`, `--sync`, rate limit, `--json` |
 | `cli/trust_test.go` | report/claim/transfer against a fake registry, removed-package warnings and refusal, `self-update` with a signed fake release (through the GitHub API, and through `/ot/latest` with no downgrade), the newer-ot note in `ot outdated` (daily cache, and never for dev builds, agents, CI or `OT_NO_UPDATE_CHECK=1`) |
+| `cli/changelog_test.go` | `ot changelog` newest first without removed versions, only what's newer than the installed one, JSON, control characters stripped, a local manifest refused; `ot info`'s "What's new" |
 | `cli/community_test.go` | The failure prompt (asks once a week, sends no inputs, stays quiet with telemetry off, no terminal, `--json`, CI, a passing run or a local manifest), `ot report --works` (needs a token) and `--broken`, `ot issues` table and JSON, `ot request` (sign-in, notes, voting at a terminal and with `--vote`, the request number in JSON errors) |
 | `cli/feedback_test.go` | `ot feedback`: message with `--kind`/`--about`, piped stdin with `--email`, bad kind exits 2 |
 | `cli/machine_test.go` | `--json` detection, error codes, JSON errors on stderr, no prompts without a terminal, envelope provenance, `--all` JSON lines, stdout stays JSON |

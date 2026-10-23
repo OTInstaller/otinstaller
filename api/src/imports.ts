@@ -17,6 +17,7 @@ import { audit } from "./routes/auth";
 import { connectGitlabProject, gitlabNamespaceName } from "./routes/sources";
 import { RELEASE_TEMPLATES } from "./release-templates";
 import { dailyLimit } from "./community";
+import { RESERVED_NAMESPACES } from "./lib/reserved";
 
 export const MAX_BULK = 50;
 export const IMPORT_BRANCH = "otinstaller/import";
@@ -358,7 +359,7 @@ async function githubNamespaceName(env: Env, owner: { id: number; login: string 
     .bind(String(owner.id)).first<{ id: string; name: string; status: string }>();
   if (existing) return existing;
   let name = slug(owner.login);
-  if (await env.DB.prepare(`SELECT 1 FROM namespaces WHERE name = ?`).bind(name).first()) name = `${name.slice(0, 37)}-gh`;
+  if (RESERVED_NAMESPACES.has(name) || (await env.DB.prepare(`SELECT 1 FROM namespaces WHERE name = ?`).bind(name).first())) name = `${name.slice(0, 37)}-gh`;
   return { name, status: "pending_review" };
 }
 

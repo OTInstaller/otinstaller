@@ -1,0 +1,25 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/guides
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+kind: guide
+name: osint-fundamentals
+namespace: osintverse-community
+version: 1.0.0
+title: "OSINT fundamentals"
+summary: "How an open-source investigation runs, from scope to report, and how to stay safe and lawful doing it"
+license: CC-BY-4.0
+homepage: https://github.com/osintverse-community/osint-fundamentals
+categories: [utilities]
+level: beginner
+format: guide
+language: en
+content:
+  root: docs/
+  nav:
+    - index.md
+    - 01-method.md
+    - 02-opsec.md
+    - 03-legal-and-ethics.md
+    - 04-record-and-report.md
+related_tools: []
+topics: []

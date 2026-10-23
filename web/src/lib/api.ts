@@ -149,6 +149,12 @@ export interface Version {
   published_at: number | null;
   yanked_at: number | null;
   signed: boolean;
+  /** Release notes as Markdown: untrusted text, never rendered as HTML. Absent from older API answers. */
+  changelog?: string | null;
+  /** The same notes, rendered and sanitized by the registry. */
+  changelog_html?: string | null;
+  /** Where the notes came from: the host's release for the tag, or the version's section of CHANGELOG.md. */
+  changelog_source?: "release" | "file" | null;
 }
 
 /** The manifest endpoint: what `ot install` reads, plus where it falls back to when the original host refuses. */
@@ -303,6 +309,27 @@ export interface ActivityEvent {
   version?: string;
   from?: string;
   to?: string;
+}
+
+/** GET /activity: what changed across the registry (a superset of a profile's events). */
+export interface RegistryEvent extends Omit<ActivityEvent, "type" | "kind"> {
+  type: ActivityEvent["type"] | "issue_confirmed" | "issue_fixed" | "request_accepted" | "request_published";
+  kind: ActivityEvent["kind"] | "request";
+  id: string;
+  summary: string;
+  new_package?: boolean;
+  has_notes?: boolean;
+  replacement?: string;
+  /** Community events (GET /activity?events=community): the issue's or request's number. */
+  number?: number;
+  issue_kind?: IssueKind;
+  /** request_published: the package that answers it. */
+  tool?: string;
+}
+
+export interface RegistryActivity {
+  events: RegistryEvent[];
+  next_before: number | null;
 }
 
 export interface PublisherList {
