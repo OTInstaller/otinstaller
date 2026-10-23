@@ -11,6 +11,10 @@ export function directRoutes(app: App) {
     return c.json(await createNamespace(c.env, u, body), 201);
   });
 
-  // ?namespace=&name=&version=, and the files as multipart/form-data. Answers 202 with the job to follow.
-  app.post("/publish", async (c) => c.json(await acceptUpload(c), 202));
+  // ?namespace=&name=&version=, and the files as multipart/form-data. Answers 202 with the job to follow, or 200 with
+  // the existing job when a CI run uploads a release the registry already has from its repository.
+  app.post("/publish", async (c) => {
+    const r = await acceptUpload(c);
+    return c.json(r.body, r.status);
+  });
 }

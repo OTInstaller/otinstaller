@@ -1,5 +1,7 @@
 // Queue consumer: validates a release and records it as a version. A release is a tag on GitHub or GitLab, or an
-// upload from `ot publish` (a bundle job: direct.ts), whose files are read from R2 instead of a commit.
+// upload from `ot publish` (a bundle job: direct.ts), whose files are read from R2 instead of a commit. An upload
+// from a repository's CI (trusted publishing) is a bundle job that names that repository, so it is treated like the
+// repository's tag for the name, the links and the expected signer.
 // Valid releases move to `scanning` (a security scan for tools, content checks for guides); invalid ones
 // are `rejected`, and the author sees why as a failed commit status on the tagged commit (for an upload, in
 // `ot publish` and on the dashboard). The same queue runs bulk-import detection, guide content checks and nightly
@@ -255,6 +257,9 @@ async function hostedImageProblems(env: Env, m: Manifest, hosted: { repo: string
   return [];
 }
 
+/** Who the audit log says released a job: the CI that uploaded it, the person who did, or the registry (a tag). */
+const actorKind = (job: Job) => (job.bundle_key && job.provider !== "direct" ? job.provider : job.submitted_by ? "user" : "system");
+
 /** Writes the tool, version and job outcome in one batch. */
 async function record(env: Env, job: Job, sha: string, ns: Namespace, m: Manifest | undefined, problems: Problem[], readme: string): Promise<Outcome> {
   const db = env.DB;
@@ -312,7 +317,7 @@ async function record(env: Env, job: Job, sha: string, ns: Namespace, m: Manifes
   stmts.push(
     db.prepare(`UPDATE publish_jobs SET status = ?, tool_id = ?, version_id = ?, error_code = ?, error_detail = ?, problems_json = ?, updated_at = ? WHERE id = ?`)
       .bind(status, toolId, versionId ?? null, problems[0]?.code ?? null, problems[0]?.message ?? null, JSON.stringify(problems), now, job.id),
-    audit(db, job.submitted_by, job.submitted_by ? "user" : "system", `publish.${status}`, "publish_job", job.id, { repo: job.repo, tag: job.tag, codes: problems.map((p) => p.code) }),
+    audit(db, job.submitted_by, actorKind(job), `publish.${status}`, "publish_job", job.id, { repo: job.repo, tag: job.tag, codes: problems.map((p) => p.code) }),
   );
   const results = await db.batch(stmts);
   if (versionStmt >= 0 && !results[versionStmt]?.meta.changes) {

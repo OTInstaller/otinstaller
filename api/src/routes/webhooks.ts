@@ -75,11 +75,17 @@ async function onTag(env: Env, deliveryId: string, p: Payload): Promise<{ status
   const tag: string = p.ref;
   if (!RELEASE_TAG.test(tag)) return { status: "ignored: not a vX.Y.Z tag" };
   const inst = await env.DB.prepare(
-    `SELECT repo_ids, repository_selection, suspended_at FROM installations WHERE github_installation_id = ?`,
-  ).bind(p.installation?.id ?? -1).first<{ repo_ids: string; repository_selection: string; suspended_at: number | null }>();
+    `SELECT namespace_id, repo_ids, repository_selection, suspended_at FROM installations WHERE github_installation_id = ?`,
+  ).bind(p.installation?.id ?? -1).first<{ namespace_id: string; repo_ids: string; repository_selection: string; suspended_at: number | null }>();
   if (!inst || inst.suspended_at) return { status: "ignored: app not installed" };
   const repoId = String(p.repository.id);
   if (inst.repository_selection !== "all" && !JSON.parse(inst.repo_ids).includes(repoId)) return { status: "ignored: repository not connected" };
+  // The repository's CI may have uploaded this release already (trusted publishing); a second job would only fail.
+  const uploaded = await env.DB.prepare(
+    `SELECT 1 FROM publish_jobs WHERE provider = 'github' AND repo_id = ? AND tag = ? AND namespace_id = ? AND bundle_key IS NOT NULL
+       AND status IN ('queued', 'validating', 'scanning', 'awaiting_review', 'published') LIMIT 1`,
+  ).bind(repoId, tag, inst.namespace_id).first();
+  if (uploaded) return { status: "ignored: uploaded by the repository's CI" };
 
   const jobId = ulid();
   const now = Date.now();
