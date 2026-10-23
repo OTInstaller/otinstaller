@@ -1,24 +1,18 @@
 ---
 // /otlite/tools: every tool otlite installs, from web/src/data/otlite-catalog.json, which otlite/scripts/web_catalog.py
-// generates from otlite's registry (a test there fails when it is stale). Filter buttons work with JavaScript; without
-// it every tool is listed.
+// generates from otlite's registry (a test there fails when it is stale). The list itself is OtliteCatalog, which
+// /otlite shows too.
 import Base from "../../layouts/Base.astro";
 import PageHead from "../../components/PageHead.astro";
 import CopyCommand from "../../components/CopyCommand.astro";
+import OtliteCatalog from "../../components/OtliteCatalog.astro";
 import catalog from "../../data/otlite-catalog.json";
 import { NO_DOCKER } from "../../lib/install";
 import { cacheFor } from "../../lib/page";
 
 cacheFor(Astro, 3600);
 
-const LABELS: Record<string, string> = {
-  username: "Username", email: "Email", phone: "Phone", domain: "Domain", ip: "IP address", url: "URL", name: "Name",
-};
-const ORDER = Object.keys(LABELS);
 const tools = catalog.tools;
-const counts = ORDER.map((k) => ({ key: k, label: LABELS[k]!, n: tools.filter((t) => t.accepts.includes(k)).length })).filter((c) => c.n > 0);
-const repoUrl = (repo: string) => (repo.startsWith("http") ? repo : `https://github.com/${repo}`);
-const keysOf = (t: (typeof tools)[number]) => [...t.api_keys.required, ...t.api_keys.optional];
 ---
 <Base title="otlite tools" description={`All ${tools.length} open-source OSINT tools otlite installs and runs on Linux and macOS, by what they take: usernames, emails, phones, domains, IPs, URLs and names. Each with a command to try.`}>
   <PageHead eyebrow="otlite" title={`${tools.length} tools, one command each`}>
@@ -27,60 +21,13 @@ const keysOf = (t: (typeof tools)[number]) => [...t.api_keys.required, ...t.api_
 
   <CopyCommand command={NO_DOCKER.command} label="Install otlite" />
 
-  <div class="filters" role="group" aria-label="Show tools that take">
-    <button type="button" class="chip" data-filter="" aria-pressed="true">All <span>{tools.length}</span></button>
-    {counts.map((c) => <button type="button" class="chip" data-filter={c.key} aria-pressed="false">{c.label} <span>{c.n}</span></button>)}
+  <div class="list">
+    <OtliteCatalog />
   </div>
-
-  <ul class="catalog" id="catalog">
-    {tools.map((t) => (
-      <li data-accepts={t.accepts.join(" ")}>
-        <div class="head">
-          <h2><a href={repoUrl(t.repo)} rel="noopener nofollow">{t.display_name}</a></h2>
-          <span class="small muted">{t.license}</span>
-        </div>
-        <p class="muted">{t.description}</p>
-        <p class="small meta">
-          <span>Takes {t.accepts.map((a) => LABELS[a] ?? a).join(", ")}</span>
-          {t.input_types.length > 0 && <span>· typed inputs {t.input_types.map((p) => <code>{p}:</code>)}</span>}
-          {keysOf(t).length > 0 && <span>· API keys {t.api_keys.required.length ? "needed" : "optional"}: {keysOf(t).slice(0, 3).join(", ")}{keysOf(t).length > 3 ? "…" : ""}</span>}
-          {t.interactive && <span>· asks questions while it runs</span>}
-          {t.dual_use && <span>· dual-use: accept the responsible use notice first</span>}
-        </p>
-        <CopyCommand command={t.example} label={`Try ${t.display_name}`} />
-      </li>
-    ))}
-  </ul>
   <p class="small muted after">Missing a tool? Tools are listed when they install cleanly and pass a smoke test, and attack or harassment tools are left out by policy. <a href="https://github.com/OTInstaller/otinstaller/tree/main/otlite" rel="noopener">Suggest one on GitHub →</a></p>
 </Base>
 
-<script>
-  const buttons = [...document.querySelectorAll<HTMLButtonElement>(".filters [data-filter]")];
-  const rows = [...document.querySelectorAll<HTMLLIElement>("#catalog > li")];
-  for (const button of buttons) {
-    button.addEventListener("click", () => {
-      const want = button.dataset.filter ?? "";
-      for (const b of buttons) b.setAttribute("aria-pressed", String(b === button));
-      for (const row of rows) row.hidden = !!want && !(row.dataset.accepts ?? "").split(" ").includes(want);
-    });
-  }
-</script>
-
 <style>
-  .filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0 16px; }
-  .chip { border: 1px solid var(--border-strong); background: var(--bg); color: var(--text-muted); padding: 6px 10px; font: inherit; font-size: var(--fs-1); cursor: pointer; }
-  .chip span { color: var(--text-faint); margin-left: 4px; font-variant-numeric: tabular-nums; }
-  .chip[aria-pressed="true"] { background: var(--bg-inverse); color: var(--bg); border-color: var(--bg-inverse); }
-  .chip[aria-pressed="true"] span { color: var(--bg); }
-  .catalog { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); }
-  .catalog li { background: var(--bg); padding: 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-content: start; min-width: 0; }
-  .catalog li[hidden] { display: none; }
-  .head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
-  .head h2 { margin: 0; font-size: var(--fs-3); }
-  .catalog p { margin: 0; }
-  .meta { color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 4px 6px; }
-  .meta code { margin-right: 4px; }
-  .catalog :global(.cmd) { font-size: var(--fs-1); }
+  .list { margin-top: 24px; }
   .after { margin-top: 20px; }
-  @media (max-width: 820px) { .catalog { grid-template-columns: minmax(0, 1fr); } }
 </style>
