@@ -223,3 +223,89 @@ func TestRegistryManifestPrefersTheFullOne(t *testing.T) {
 		}
 	}
 }
+
+// `ot update` installs a moved package under its new name and forgets the old one. The old image goes only when the
+// new install doesn't use it.
+func TestUpdateFollowsMove(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(fixtures, "valid", "docker-tool.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const oldDigest, newDigest = "3b1f0c2d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8e9", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	manifests := map[string]any{}
+	for name, digest := range map[string]string{"same-image": oldDigest, "new-image": newDigest} {
+		doc, _, err := manifest.Parse([]byte(strings.Replace(strings.Replace(string(raw), "name: holehe-lite", "name: "+name, 1), oldDigest, digest, 1)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		manifests[name] = doc
+	}
+	moves := map[string]string{"old-a": "same-image", "old-b": "new-image"}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rest := strings.TrimPrefix(r.URL.Path, "/v1/tools/dheeraj/")
+		name, sub, _ := strings.Cut(rest, "/")
+		switch {
+		case moves[name] != "" && sub == "":
+			json.NewEncoder(w).Encode(map[string]any{"namespace": "dheeraj", "name": moves[name], "latest_version": "1.2.0", "status": "active", "moved_to": "dheeraj/" + moves[name]})
+		case moves[name] != "" && sub == "versions":
+			json.NewEncoder(w).Encode(map[string]any{"versions": []map[string]any{{"version": "1.2.0", "status": "published"}}})
+		case manifests[name] != nil && sub == "latest/manifest":
+			json.NewEncoder(w).Encode(map[string]any{"ref": "dheeraj/" + name, "version": "1.2.0", "status": "published", "manifest": manifests[name]})
+		default:
+			w.WriteHeader(404)
+			w.Write([]byte(`{"error":{"code":"not_found","message":"not found"}}`))
+		}
+	}))
+	defer srv.Close()
+	fx := &fakeExec{}
+	a, out, errb := newTestApp(t, fx, "")
+	a.API = api.New(srv.URL+"/v1", "test")
+	for name := range moves {
+		if code := run(a, "install", writeVariant(t, name, "  - name: email\n    type: email\n    required: true\n", `"{timeout}", "{email}"]`, `{ email: "test@example.com" }`)); code != 0 {
+			t.Fatalf("install %s: exit %d: %s", name, code, errb)
+		}
+	}
+	errb.Reset()
+	if code := run(a, "outdated"); code != 0 || !strings.Contains(errb.String(), "warning: dheeraj/old-a has moved to dheeraj/same-image; `ot update dheeraj/old-a` installs it under its new name") {
+		t.Fatalf("outdated: exit %d: %s", code, errb)
+	}
+
+	out.Reset()
+	fx.calls = nil
+	if code := run(a, "update", "--all", "--json"); code != 0 {
+		t.Fatalf("update: exit %d: %s", code, errb)
+	}
+	var rows []updateRow
+	if err := json.Unmarshal(out.Bytes(), &rows); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	got := map[string]updateRow{}
+	for _, r := range rows {
+		got[r.Ref] = r
+	}
+	for old, cur := range moves {
+		if r := got["dheeraj/"+cur]; r.Status != "updated" || r.Note != "from dheeraj/"+old+" 1.2.0" || len(r.Flags) != 0 {
+			t.Errorf("%s: %+v", cur, r)
+		}
+	}
+	st, _ := state.Load()
+	if st.Installed["dheeraj/old-a"] != nil || st.Installed["dheeraj/old-b"] != nil || st.Installed["dheeraj/same-image"] == nil || st.Installed["dheeraj/new-image"] == nil {
+		t.Fatalf("installed: %v", st.Installed)
+	}
+	var removed []string
+	for _, c := range fx.calls {
+		if len(c) > 2 && c[1] == "rmi" {
+			removed = append(removed, c[2])
+		}
+	}
+	if len(removed) != 1 || !strings.Contains(removed[0], oldDigest) {
+		t.Errorf("only old-b's image should be removed: %v", removed)
+	}
+	// Nothing is left to move.
+	out.Reset()
+	errb.Reset()
+	run(a, "outdated")
+	if strings.Contains(errb.String(), "moved") {
+		t.Errorf("still moved: %s", errb)
+	}
+}

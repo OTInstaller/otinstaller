@@ -215,8 +215,9 @@ Packages installed from a local manifest show as "not in registry".
 Beside the status, each row carries lifecycle `flags`: `deprecated` (with the publisher's `replacement` when there is
 one), `possibly_broken` (failed recent health checks), `yanked` (the installed version, even when it is the latest),
 `source_unavailable` (no new versions will come) and `moved` (the package has a new name, which `replacement` gives).
-Each flag is also one `warning:` line on stderr saying what to do. The statuses, and exit 0, are unchanged, and
-`ot update` still picks what to update by status alone. The registry is asked about four packages at a time.
+Each flag is also one `warning:` line on stderr saying what to do. The statuses, and exit 0, are unchanged. `ot update`
+updates the packages with a newer version, and also moves a package that has a new name: it installs it under that
+name and forgets the old one. The registry is asked about four packages at a time.
 
 ## `ot pivot`
 

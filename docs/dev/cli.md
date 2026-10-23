@@ -135,8 +135,11 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 - File: `cli/update.go` (`updateCmd`). Args: any number.
 - Flags: `--all` (bool, false): update every installed package; `--json` (bool, false).
 - API: as `outdated`, then the `install` calls (`GET …/manifest`, `POST /installs`) for each package with an update.
-  Native installs stay native. Picks packages by `status` only (`update available`); flags never change what updates.
-  An updated row loses its `yanked` flag.
+  Native installs stay native. Picks packages by `status` (`update available`), plus packages that moved (`up to date`
+  or `update available` with a `moved_to`): those are installed under the new name, the old `state.json` entry is
+  dropped and its image removed unless the new install uses the same one (`forgetOldName`; native pipx installs share
+  their package, so nothing is uninstalled). Such a row is reported under the new name with the note `from <old ref>
+  <version>`. An updated row loses its `yanked` and `moved` flags.
 - Exit: 0; **2** when neither names nor `--all` are given, or both are, or a named package is not installed; **1** when
   any update failed, or (with named packages) any named package ends in a status other than `updated` / `up to date`
   (for example `removed` or `not in registry`).
@@ -832,7 +835,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `cli/auto_test.go` | `ot auto`: type guessing, `--dry-run`, `--type`, `--live` progress lines, and errors (bad `--type`, `--type` with two targets, no matching tool, `--all`; plus `run --dry-run` without `--all`) |
 | `cli/playbook_test.go` | `ot playbook`: `--list` with a user playbook and the TAKES column, prefixed and guessed targets, and errors (missing tools, no matching inputs, no typed input, unknown playbook, `--all`) |
 | `cli/saved_test.go` | `ot extract` and `ot diff` against saved runs |
-| `cli/update_test.go` | `ot outdated --json` and `ot update` (named, `--all`) against a fake registry (update available, removed, not in registry), plus usage errors; lifecycle flags, their warnings and the table, and `yanked` cleared by an update |
+| `cli/update_test.go` | `ot outdated --json` and `ot update` (named, `--all`) against a fake registry (update available, removed, not in registry), plus usage errors; lifecycle flags, their warnings and the table, `yanked` cleared by an update, and moved packages installed under their new name (old image removed only when not shared) |
 | `cli/guide_test.go` | Guide search and read, terminal rewriting (`forTerminal`), Glamour rendering, `guide get` then offline read, `guide tools`, `guide open` and `docs`, request IDs on server errors, guide content validation |
 | `cli/import_test.go` | Import wizard completing a draft and opening a PR, `--registry` with `--yes`, community wrapper, bulk import and `--list` |
 | `cli/login_test.go` | Device-flow login (GitHub) and `--osintverse` |
