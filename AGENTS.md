@@ -658,6 +658,10 @@ Astro 7 with `output: "server"` on `@astrojs/cloudflare`, Preact islands, no CSS
   envelope, run-all and error schemas). Only `schema/v1.json.ts` is prerendered.
 - Markdown twins for agents: `<ns>/<name>.md`, guide pages and docs and policy pages as `.md` (`docs/[page].md.ts`,
   `policy/[page].md.ts`, `lib/twins.ts`); `src/middleware.ts` serves them for `Accept: text/markdown` too.
+- `/agents` (`agents.astro`): the homepage for AI agents. Its Markdown twin (`agents.md.ts`, and
+  `Accept: text/markdown` on `/agents`) is built from the same content in `lib/agents.ts`, which `agents.test.ts`
+  keeps in step with `docs/agents.md` and `docs/mcp-tools.md`. `agents` must stay in the middleware's `RESERVED`,
+  or `/agents.md` is taken for a publisher's twin.
 - `/otlite` and `/otlite/tools`: the no-Docker edition and its tool catalog, read at build time from
   `src/data/otlite-catalog.json`, which `otlite/scripts/web_catalog.py` generates from otlite's registry (a test in
   `otlite/tests/test_web_catalog.py` fails when it is stale; regenerate it, don't edit it).
@@ -1047,6 +1051,8 @@ change. Keep this list current when you fix one or find another.
 - `ot login --osintverse` ignores `--scope` and token expiry: the OSINTverse device poll (`pollOsintverseDevice` in
   `routes/device.ts`) mints with the default four scopes and never reads `scopes` or `expires_in_days`, unlike the
   GitHub and GitLab path. It also writes `token.create` to the audit log twice (once in `mintApiToken`, once itself).
+- The API reserves no namespace names, so a namespace called `agents`, `tour`, `otlite`, `search` or another site
+  section would have its publisher page hidden by the site's own page.
 
 **Docs debt**
 
