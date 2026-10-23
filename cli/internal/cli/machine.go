@@ -67,6 +67,9 @@ func writeJSONError(w io.Writer, err error, exitCode int) {
 	if errors.As(err, &ee) && len(ee.Problems) > 0 {
 		je.Problems = ee.Problems
 	}
+	if ee != nil && ee.Hint != "" {
+		je.Hint = ee.Hint
+	}
 	if je.Docs == "" {
 		je.Docs = errorDocs + je.Code
 	}

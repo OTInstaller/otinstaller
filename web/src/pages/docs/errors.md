@@ -450,8 +450,16 @@ The command line is wrong: an unknown command or flag, a missing argument, or in
 `OT_NONINTERACTIVE=1`). `ot` never prompts then. Pass the flag the message names, usually `--yes`. Exit code 2.
 
 ### not_installed
-`ot run` was given a tool that isn't installed, with no terminal to ask whether to install it. Run `ot install` first, or
-pass `--yes`. Exit code 2.
+A tool the command needs isn't installed, and there is no terminal to ask whether to install it (or you said no). Exit
+code 2. The `hint` names the command that fixes it:
+
+- `ot run` on a tool that isn't installed: run `ot install` first, or pass `--yes`.
+- `ot playbook` with tools missing: `ot install` them, or pass `--yes`.
+- `ot run --all` or `ot auto` when no installed tool takes the target, as on a fresh machine:
+  `ot playbook <playbook> <type>:<value> --yes` installs a bundled playbook's tools for that type and runs them. At a
+  terminal, `ot` offers this itself. For a URL there is no bundled playbook; find tools with `ot search --input url`.
+- Through `ot mcp`, `run_all` and `run_playbook` never install anything: install the tools with `install_tool`, which
+  asks the person. `run_all` lists the bundled playbook's tools in `suggested_tools`.
 
 ### not_signed_in
 The command needs a registry token. Run `ot login`, or set `OTINSTALLER_TOKEN`. Exit code 2.

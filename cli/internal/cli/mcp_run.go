@@ -8,6 +8,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -782,6 +783,23 @@ func (s *mcpServer) runPlaybook(ctx context.Context, req *mcp.CallToolRequest, i
 		wait: in.WaitSeconds, token: in.ConsentToken, selection: selection, missing: missing, what: "playbook " + p.Name})
 }
 
+// noToolsToolError is run_all's answer when no installed tool takes the target. An agent never gets tools installed
+// for it: it is pointed at install_tool, which asks the person, with the bundled playbook's tools as suggestions.
+func noToolsToolError(nt *noToolsError) error {
+	e := &toolError{Code: "not_installed", Message: nt.Error(),
+		Hint: "search_tools with input_type finds tools that take it; install the ones the person wants with install_tool (get_tool shows what each does first)"}
+	if picks := starters(nt.typed); len(picks) > 0 {
+		var names []string
+		for _, s := range picks {
+			names = append(names, s.playbook.Name)
+		}
+		e.Hint = "install tools that take it with install_tool (get_tool shows what each does first); the bundled playbook " +
+			strings.Join(names, " and ") + " uses the ones in suggested_tools"
+		e.Extra = map[string]any{"suggested_tools": starterTools(picks), "playbooks": names}
+	}
+	return e
+}
+
 type batchSpec struct {
 	target, inputType, caseName, token, what string
 	parallel, wait                           int
@@ -823,6 +841,10 @@ func (s *mcpServer) batch(ctx context.Context, req *mcp.CallToolRequest, b batch
 	if len(b.selection) > 0 || b.what == "run_all" {
 		var err error
 		if rows, jobs, err = s.a.planAll(ra, b.what, b.selection); err != nil && !(b.dryRun && len(b.missing) > 0) {
+			var nt *noToolsError
+			if errors.As(err, &nt) {
+				return nil, nil, noToolsToolError(nt)
+			}
 			return nil, nil, asToolError(err)
 		}
 	}

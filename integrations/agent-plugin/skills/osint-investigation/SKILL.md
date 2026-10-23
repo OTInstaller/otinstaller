@@ -33,6 +33,9 @@ installed (https://otinstaller.com/docs/getting-started) and the server added (`
 3. **Show the plan.** Call `run_all` with `dry_run: true` (or `get_consent_status` for single runs). Tell the user
    which tools would run and which need their consent.
 4. **Install only what's needed**, with `install_tool`. Installs ask the user; only signed, current tools install.
+   `run_all` and `run_playbook` never install anything: when nothing installed takes the target, `run_all` answers
+   `not_installed` with the bundled playbook's tools in `suggested_tools`. Show them to the user and install the ones
+   they want.
 5. **Run.** Use `run_all` or `run_playbook` for a set, `run_tool` for one. Give every run of the investigation the same
    `case`.
    - Passive tools run straight away.

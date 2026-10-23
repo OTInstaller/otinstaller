@@ -102,10 +102,9 @@ func Dirs(home string) []string {
 	return []string{filepath.Join(home, "playbooks"), "playbooks"}
 }
 
-// All loads every playbook, sorted by name. A broken file is an error, so a typo never silently
-// falls back to a bundled playbook of the same name.
-func All(dirs []string) ([]*Playbook, error) {
-	found := map[string]*Playbook{}
+// bundledPlaybooks are the playbooks shipped with ot, sorted by name.
+func bundledPlaybooks() ([]*Playbook, error) {
+	var out []*Playbook
 	entries, _ := fs.ReadDir(bundled, "bundled")
 	for _, e := range entries {
 		data, err := bundled.ReadFile("bundled/" + e.Name())
@@ -116,6 +115,33 @@ func All(dirs []string) ([]*Playbook, error) {
 		if err != nil {
 			return nil, err
 		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+// Starter is the playbook ot offers to install when no installed tool takes an input type, as on a fresh machine:
+// the first bundled one whose main input is that type, or nil. Only bundled playbooks are offered, never one from
+// <ot home>/playbooks or ./playbooks, which could have come with any folder someone downloaded.
+func Starter(typ string) *Playbook {
+	all, _ := bundledPlaybooks()
+	for _, p := range all {
+		if len(p.Inputs) > 0 && p.Inputs[0] == typ {
+			return p
+		}
+	}
+	return nil
+}
+
+// All loads every playbook, sorted by name. A broken file is an error, so a typo never silently
+// falls back to a bundled playbook of the same name.
+func All(dirs []string) ([]*Playbook, error) {
+	found := map[string]*Playbook{}
+	shipped, err := bundledPlaybooks()
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range shipped {
 		found[p.Name] = p
 	}
 	for _, dir := range dirs {
