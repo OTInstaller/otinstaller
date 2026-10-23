@@ -109,6 +109,8 @@ class Tool:
     run_from_source: bool = False
     # Tools that prompt for input (logins, menus, setup wizards) need a real terminal.
     interactive: bool = False
+    # Caveats worth knowing before installing, one sentence each: why a Python range, a login step.
+    notes: tuple[str, ...] = ()
 
 
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
@@ -128,6 +130,7 @@ _COMMAND_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _CAPABILITY_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _API_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 REQUIRES_PYTHON_RE = re.compile(r"^(<=|>=|==|!=|<|>)(\d+(?:\.\d+)+)$")
+_NOTE_MAX = 300
 
 
 def _validate_name(name: str, tool_name: str) -> None:
@@ -296,6 +299,20 @@ def _validate_requires_python(requires_python: str, tool_name: str) -> None:
         )
 
 
+def _validate_notes(notes: object, tool_name: str) -> None:
+    if not isinstance(notes, list) or not all(isinstance(n, str) for n in notes):
+        raise RegistryError(f"tool '{tool_name}': notes must be a list of strings")
+    for note in notes:
+        if not note.strip():
+            raise RegistryError(f"tool '{tool_name}': notes entries must not be empty")
+        if "\n" in note:
+            raise RegistryError(f"tool '{tool_name}': notes entries must be one line")
+        if len(note) > _NOTE_MAX:
+            raise RegistryError(
+                f"tool '{tool_name}': notes entries must be at most {_NOTE_MAX} characters"
+            )
+
+
 def _validate_input_types(input_types: dict[str, str] | None, tool_name: str) -> None:
     if input_types is None:
         return
@@ -344,6 +361,7 @@ def _validate_unknown_keys(data: dict, tool_name: str) -> None:
         "long_running",
         "run_from_source",
         "interactive",
+        "notes",
     }
     for key in data:
         if key not in known_keys:
@@ -430,6 +448,9 @@ def parse_tool(data: dict) -> Tool:
 
     interactive = data.get("interactive", False)
 
+    notes = data.get("notes", [])
+    _validate_notes(notes, tool_name)
+
     return Tool(
         name=data["name"],
         display_name=data["display_name"],
@@ -455,6 +476,7 @@ def parse_tool(data: dict) -> Tool:
         long_running=long_running,
         run_from_source=run_from_source,
         interactive=interactive,
+        notes=tuple(notes),
     )
 
 
