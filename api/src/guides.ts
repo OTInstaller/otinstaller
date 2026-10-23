@@ -9,7 +9,7 @@ import { cleanImage, kindForPath, MAX_IMAGE_BYTES, MAX_IMAGES_BYTES, sniff, CONT
 import type { RepoHost } from "./hosts/repo";
 import type { Manifest, Problem } from "./lib/manifest";
 import { findPersonalData, pageProblems, renderPage, type PiiHit, type Rendered } from "./content";
-import { commitStatus, loadVersion, publishVersion, SCAN_TOKEN_TTL } from "./scans";
+import { commitStatus, loadVersion, publishVersion, retryHint, SCAN_TOKEN_TTL } from "./scans";
 import { audit } from "./routes/auth";
 import { ownerEmails, sendEmail, templates } from "./notify";
 
@@ -64,14 +64,14 @@ export function rawFileUrl(provider: "github" | "gitlab", repo: string, sha: str
 
 /**
  * Renders a release's README and its guide content or tool docs, and applies the content rules. `files`
- * holds every file the manifest refers to, keyed by repository path.
+ * holds every file the manifest refers to, keyed by repository path. `fileUrl` is where links to other files of the
+ * release point (`rawFileUrl` at the released commit), or null to leave them as text when there is no repository.
  */
 export function renderRelease(
-  env: Env, m: Manifest, files: Map<string, string>, src: { provider: "github" | "gitlab"; repo: string; sha: string }, assets?: Map<string, string>,
+  env: Env, m: Manifest, files: Map<string, string>, fileUrl: (path: string) => string | null, assets?: Map<string, string>,
 ): RenderedRelease {
   const pagesDef = m.kind === "guide" ? m.content : m.docs;
   const nav = new Set(pagesDef?.nav ?? []);
-  const fileUrl = (p: string) => rawFileUrl(src.provider, src.repo, src.sha, p);
   const imageUrl = (p: string) => assets?.get(p) ?? null;
   const problems: Problem[] = [];
   const pages: RenderedPage[] = [];
@@ -450,7 +450,10 @@ async function settle(env: Env, v: Version, s: CheckSummary): Promise<string> {
     );
     await db.batch(stmts);
     await commitStatus(env, v, "failure", `content_link_malicious: ${message}`);
-    await sendEmail(env, { to: await ownerEmails(env, v.namespace_id), kind: "rejected", key: `rejected:${v.id}`, ...templates.rejected(env, ref, v.version, "content_link_malicious", message) });
+    await sendEmail(env, {
+      to: await ownerEmails(env, v.namespace_id), kind: "rejected", key: `rejected:${v.id}`,
+      ...templates.rejected(env, ref, v.version, "content_link_malicious", message, retryHint(v)),
+    });
     return "rejected";
   }
 

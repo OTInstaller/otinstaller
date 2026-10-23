@@ -70,13 +70,22 @@ export const templates = {
     text: `${ref} ${version} passed its checks, but ${hits} line(s) look like they contain personal data (email addresses, phone numbers, or names next to addresses). ` +
       `A reviewer checks them before the guide goes public. Examples should use fictional data, your own data, or public figures in their public role.` + footer(env),
   }),
-  rejected: (env: Env, ref: string, version: string, code: string, message: string) => ({
+  // retry: how this release is made again ("push a new tag", or "run `ot publish` again" for an upload).
+  rejected: (env: Env, ref: string, version: string, code: string, message: string, retry = "push a new tag") => ({
     subject: `${ref} ${version} was not published`,
-    text: `${ref} ${version} was not published.\n\nReason: ${code}\n${message}\n\nDocs: https://otinstaller.com/docs/errors#${code}\n\nFix it and push a new tag.` + footer(env),
+    text: `${ref} ${version} was not published.\n\nReason: ${code}\n${message}\n\nDocs: https://otinstaller.com/docs/errors#${code}\n\nFix it and ${retry}.` + footer(env),
   }),
   changesRequested: (env: Env, ns: string, notes: string) => ({
     subject: `Changes requested for ${ns}`,
-    text: `A reviewer looked at the first release from ${ns} and asked for changes before it can be published:\n\n${notes}\n\nPush a new tag once you've made them.` + footer(env),
+    text: `A reviewer looked at the first release from ${ns} and asked for changes before it can be published:\n\n${notes}\n\n` +
+      `Release again (push a new tag, or run \`ot publish\`) once you've made them.` + footer(env),
+  }),
+  // Uploads skip the repository, so the owners of a GitHub or GitLab namespace hear about every one.
+  directPublish: (env: Env, ref: string, version: string, login: string) => ({
+    subject: `${login} uploaded ${ref} ${version}`,
+    text: `${login} published ${ref} ${version} with \`ot publish\`, straight from their computer rather than from the namespace's repositories. ` +
+      `It is checked and scanned like any release: ${env.SITE_URL}/dashboard\n\n` +
+      `If you didn't expect this, yank the version from the dashboard and write to abuse@otinstaller.com.` + footer(env),
   }),
   removed: (env: Env, ref: string, version: string | null, category: string, reason: string) => ({
     subject: `${ref}${version ? ` ${version}` : ""} was removed from the registry`,

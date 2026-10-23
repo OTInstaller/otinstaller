@@ -3,7 +3,7 @@ import type { Context } from "hono";
 import type { App, AppEnv, Env } from "../env";
 import { apiError } from "../lib/errors";
 import { sha256Hex } from "../lib/crypto";
-import { applyScanResults, commitStatus, loadVersion, publishVersion, type ScanResults, trimSample } from "../scans";
+import { applyScanResults, commitStatus, loadVersion, publishVersion, retryHint, type ScanResults, trimSample } from "../scans";
 import { ownerEmails, sendEmail, templates } from "../notify";
 import { releasePlan } from "../backups";
 import { audit, requireUser } from "./auth";
@@ -20,6 +20,11 @@ export function parseResults(body: unknown): ScanResults {
   const bad = (what: string) => apiError(400, "invalid_scan_results", `scan results: ${what}`);
   if (!r || typeof r !== "object") bad("not an object");
   if (!["pass", "fail", "absent"].includes(r.signature?.status)) bad("signature.status must be pass, fail or absent");
+  const ids = r.signature.identities;
+  if (ids !== undefined && (!Array.isArray(ids) || ids.length > 20
+    || !ids.every((i) => i && typeof i.identity === "string" && i.identity.length <= 500 && typeof i.issuer === "string" && i.issuer.length <= 200))) {
+    bad("signature.identities must be at most 20 {identity, issuer} strings");
+  }
   if (!isCount(r.secrets?.count)) bad("secrets.count must be a count");
   if (!isCount(r.malware?.count)) bad("malware.count must be a count");
   if (!["pass", "fail", "skipped"].includes(r.smoke?.status)) bad("smoke.status must be pass, fail or skipped");
@@ -47,6 +52,17 @@ async function namespaceByName(env: Env, name: string) {
   const ns = await env.DB.prepare(`SELECT id, name, status, verified FROM namespaces WHERE name = ?`).bind(name).first<{ id: string; name: string; status: string; verified: number }>();
   if (!ns) apiError(404, "namespace_not_found", `${name} is not a namespace`);
   return ns;
+}
+
+/**
+ * The jobs of a namespace's waiting releases, closed with the reviewer's decision so the publisher (and `ot publish
+ * --wait`) sees it. Runs in the same batch as, and before, the update that closes the versions themselves.
+ */
+function closeWaitingJobs(env: Env, namespaceId: string, code: string, detail: string, now: number) {
+  return env.DB.prepare(
+    `UPDATE publish_jobs SET status = 'rejected', error_code = ?, error_detail = ?, updated_at = ?
+     WHERE version_id IN (SELECT v.id FROM versions v JOIN tools t ON t.id = v.tool_id WHERE t.namespace_id = ? AND v.status = 'awaiting_review')`,
+  ).bind(code, detail.slice(0, 500), now, namespaceId);
 }
 
 async function notes(c: Context<AppEnv>, field: "notes" | "reason", required: boolean): Promise<string> {
@@ -80,7 +96,9 @@ export function reviewRoutes(app: App) {
     const db = c.env.DB;
     const nss = await db.prepare(
       `SELECT n.id, n.name, n.provider, n.provider_owner_id, n.display_name, n.kind, n.review_notes, n.created_at,
-         (SELECT group_concat(u.login) FROM namespace_members m JOIN users u ON u.id = m.user_id WHERE m.namespace_id = n.id) AS members
+         (SELECT group_concat(u.login) FROM namespace_members m JOIN users u ON u.id = m.user_id WHERE m.namespace_id = n.id) AS members,
+         (SELECT u.login FROM users u WHERE u.id = n.created_by) AS created_by,
+         (SELECT group_concat(a.provider || ':' || a.login) FROM accounts a WHERE a.user_id = n.created_by) AS creator_accounts
        FROM namespaces n WHERE n.status = 'pending_review'
        AND EXISTS (SELECT 1 FROM tools t JOIN versions v ON v.tool_id = t.id WHERE t.namespace_id = n.id AND v.status = 'awaiting_review')
        ORDER BY n.created_at`,
@@ -104,6 +122,10 @@ export function reviewRoutes(app: App) {
       queue.push({
         namespace: n.name, provider: n.provider, kind: n.kind, display_name: n.display_name, members: n.members ? n.members.split(",") : [],
         profile_url: n.provider === "github" ? `https://github.com/${n.display_name}` : null,
+        // A registry namespace has no GitHub or GitLab account behind it: the reviewer sees who created it and how they sign in.
+        creator: n.provider === "registry" && n.created_by
+          ? { login: n.created_by, accounts: n.creator_accounts ? (n.creator_accounts as string).split(",").map((s) => ({ provider: s.split(":")[0], login: s.slice(s.indexOf(":") + 1) })) : [] }
+          : undefined,
         waiting_since: n.created_at, previous_notes: n.review_notes, versions: items,
       });
     }
@@ -155,6 +177,7 @@ export function reviewRoutes(app: App) {
     // The waiting versions are closed so the author can fix and re-tag; the namespace stays in review.
     await c.env.DB.batch([
       c.env.DB.prepare(`UPDATE namespaces SET review_notes = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?`).bind(note, reviewer.id, now, ns.id),
+      closeWaitingJobs(c.env, ns.id, "changes_requested", "a reviewer asked for changes; see the email from the registry", now),
       c.env.DB.prepare(
         `UPDATE versions SET status = 'rejected', rejected_reason = 'changes_requested' WHERE status = 'awaiting_review' AND tool_id IN (SELECT id FROM tools WHERE namespace_id = ?)`,
       ).bind(ns.id),
@@ -174,6 +197,7 @@ export function reviewRoutes(app: App) {
     ).bind(ns.id).all<{ id: string }>();
     await c.env.DB.batch([
       c.env.DB.prepare(`UPDATE namespaces SET status = 'rejected', reviewed_by = ?, reviewed_at = ?, review_notes = ? WHERE id = ?`).bind(reviewer.id, Date.now(), reason, ns.id),
+      closeWaitingJobs(c.env, ns.id, "namespace_rejected", reason, Date.now()),
       c.env.DB.prepare(
         `UPDATE versions SET status = 'rejected', rejected_reason = 'namespace_rejected' WHERE status = 'awaiting_review' AND tool_id IN (SELECT id FROM tools WHERE namespace_id = ?)`,
       ).bind(ns.id),
@@ -220,7 +244,7 @@ export function reviewRoutes(app: App) {
     await commitStatus(c.env, v, "failure", "review_rejected: see the email from the registry");
     await sendEmail(c.env, {
       to: await ownerEmails(c.env, v.namespace_id), kind: "rejected", key: `review_rejected:${v.id}`,
-      ...templates.rejected(c.env, `${v.namespace}/${v.name}`, v.version, "review_rejected", reason),
+      ...templates.rejected(c.env, `${v.namespace}/${v.name}`, v.version, "review_rejected", reason, retryHint(v)),
     });
     return c.json({ status: "rejected" });
   });
