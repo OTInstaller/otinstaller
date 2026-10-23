@@ -212,8 +212,8 @@ jobs:
       DO_NOT_TRACK: "1"
     steps:
       - uses: actions/checkout@v4
-      - name: Python only
-        run: apt-get update && apt-get install -y --no-install-recommends python3 ca-certificates
+      - name: Python and curl only
+        run: apt-get update && apt-get install -y --no-install-recommends python3 curl ca-certificates
       - name: Run the installer
         run: OTLITE_PACKAGE="$PWD" sh scripts/install.sh
       - name: otlite works
