@@ -23,11 +23,19 @@ export interface Problem {
 /** Calls /v1{path}; errors carry the API's code and hint. Browser calls send the session cookie. */
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const browser = typeof window !== "undefined";
-  const res = await fetch(`${API_URL}/v1${path}`, {
+  const send = () => fetch(`${API_URL}/v1${path}`, {
     ...init,
     credentials: browser ? "include" : undefined,
     headers: { Accept: "application/json", ...(init.body ? { "Content-Type": "application/json" } : {}), ...init.headers },
   });
+  let res = await send();
+  // A read that met a brief database outage on Cloudflare's side is tried once more, after the wait the API asks
+  // for (from the body: browsers can't read Retry-After across origins).
+  const wait = res.status === 503 && (init.method ?? "GET").toUpperCase() === "GET" ? await retryAfter(res) : null;
+  if (wait !== null) {
+    await new Promise((r) => setTimeout(r, wait * 1000));
+    res = await send();
+  }
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { error?: { code: string; message: string; hint?: string; problems?: Problem[]; request_id?: string } & Record<string, unknown> } | null;
     const e = body?.error;
@@ -36,6 +44,13 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new ApiError(res.status, e?.code ?? "http_error", message, e?.hint, e?.problems, extra);
   }
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
+}
+
+/** Seconds to wait before retrying a 503 database_unavailable, when the wait is short enough for a page view. */
+async function retryAfter(res: Response): Promise<number | null> {
+  const body = (await res.clone().json().catch(() => null)) as { error?: { code?: string; retry_after_s?: number } } | null;
+  const s = body?.error?.retry_after_s;
+  return body?.error?.code === "database_unavailable" && typeof s === "number" && s >= 0 && s <= 2 ? s : null;
 }
 
 /** The same, but a 404 is null (for pages that answer 404 themselves). */
