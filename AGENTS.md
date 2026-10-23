@@ -588,7 +588,7 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
   `POST /internal/drills/:id`, `/internal/health[/targets]`. Scans, backup runs and drills each use their own
   single-use token (scan 1 h, run 3 h or 12 h weekly, drill 6 h); the health endpoints use the static shared
   `HEALTH_TOKEN`.
-- The full route table (172 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
+- The full route table (178 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
   `spec/openapi/v1.json` describes the public and owner routes, each with its token scope as `x-scope`; a test in
   `api.test.ts` fails when a route and the document disagree, so add new routes to both.
 - 429s carry `Retry-After`, `RateLimit-Policy` and `retry_after_s` (`rateLimited` in `lib/errors.ts`).
@@ -675,9 +675,10 @@ migrations add publish intake (0002), scans/review and `notifications` (0003), s
 `request_votes`, 0018), `contributor_stats` (0019), community submissions (`tools.needs_first_review`,
 `tool_maintainers`, `wrapper_submissions`, 0020), the upstream watcher (`upstream_watch`, 0021), bump pull requests
 (`bump_prs`, 0022), direct publishing (`publish_jobs` `namespace_id`/`bundle_key`/`submitted_by`,
-`namespaces.created_by`, 0023), images hosted on the mirror (`mirror_pushes`, `backups.hosted`, 0024), and trusted
+`namespaces.created_by`, 0023), images hosted on the mirror (`mirror_pushes`, `backups.hosted`, 0024), trusted
 publishing (`trusted_publishers`, the CI token columns `api_tokens.namespace_id`/`package`/`trusted_publisher_id`/
-`oidc_json`/`jti`, and `publish_jobs.trusted_publisher_id`/`ci_json`, 0025). That is 54 tables plus `tools_fts`; every
+`oidc_json`/`jti`, and `publish_jobs.trusted_publisher_id`/`ci_json`, 0025), and request discussions
+(`request_comments`, `request_subscriptions`, flags on requests, 0026). That is 56 tables plus `tools_fts`; every
 table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
 
@@ -752,7 +753,9 @@ files are named by plan week (`week4` publish intake, `week5` scans/review, `wee
 `api.test.ts` (search, pivots, types, facets, OpenAPI, old-`ot` manifests, the remote MCP server), `edge-cache.test.ts`,
 `osintverse.test.ts`, `community-provenance.test.ts`, `community.test.ts` (issues, moderation, notifications, failed runs,
 community activity), `requests.test.ts`, `people.test.ts` and `upstream.test.ts` (pins, the watcher, bumps); community
-submissions are in `week7` with the imports. Add tests to the file for that area. The rate-limit test in `week10` waits for the start of a minute, so a slow run is expected.
+submissions are in `week7` with the imports. Add tests to the file for that area. Every file migrates and seeds its own D1 and they all run at once, so tests get
+30 seconds (`testTimeout`) and hooks 60: on a busy machine a test can pass Vitest's 5-second default without anything
+being wrong.
 
 ### Seed data
 
@@ -901,7 +904,11 @@ The plan is [docs/roadmap.md](docs/roadmap.md) (phase 1 built). User docs: `web/
   digest per person's preference, at most 12 a day, with a signed one-click unsubscribe (`TOKEN_ENC_KEY`).
 - **Requests** (`requests.ts`, 0018): one per repository, checked when made (public, not packaged or requested,
   no upstream manifest; a license the registry can't redistribute or an archived repository is declined at once);
-  votes; triagers decide; a published package from that repository answers it (`linkPublished`).
+  votes; triagers decide; a published package from that repository answers it (`linkPublished`). Each has a
+  discussion (0026): replies screened and moderated like issue comments through the same `community.ts` functions
+  (kind `request_comment`), followers (the requester, repliers, anyone who follows it) told of replies and decisions,
+  locks by triagers or 30 days after a decision. Requests and their replies can be flagged; they are moderated by
+  triagers and staff only.
 - **Profiles** (`people.ts`, 0019): `/people/<handle>` with roles and counts recomputed nightly; never email or
   accounts; hidden profiles 404.
 - **Submissions** (`submissions.ts`, 0020): anyone signed in finishes a community import with mode `submit`. Checks
@@ -1261,8 +1268,7 @@ change. Keep this list current when you fix one or find another.
 - Namespaces that already exist with a reserved name (`api/src/lib/reserved.ts` only affects new ones) keep it; none
   did in production as of 23 Oct 2026.
 - Stars are still never written (no route records one), though ranking and `stars` columns read them.
-- Community: request pages have no discussion thread, and flags don't cover requests (moderators can hide them);
-  maintainers can't propose changes beyond a pin through the registry; a new version's works/broken counts aren't
+- Community: maintainers can't propose changes beyond a pin through the registry; a new version's works/broken counts aren't
   highlighted for its first week; `contributor_stats` is only as fresh as the last nightly run.
 - Bump pull requests skip wrappers that pin upstream's own image (they get an outdated issue only), and commit pins.
 - The community bot creates wrapper repositories on GitHub only; a submission whose first release fails its scan
@@ -1284,7 +1290,6 @@ change. Keep this list current when you fix one or find another.
 - `api/src/env.ts` and `index.ts` miss their opening purpose comment.
 - Schema: `versions.status` allows `received`/`validating`, which nothing writes; `tools.latest_version_id` and
   `audit_log.actor_id` have no foreign key.
-- The `week10` write-limit test is flaky under load.
 
 ## Glossary
 

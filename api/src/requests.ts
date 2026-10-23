@@ -2,7 +2,9 @@
 // move each request from open to accepted, in progress, published or declined. A request is checked when it is made
 // (the repository exists and is public, isn't in the registry or requested already, doesn't publish itself, has a
 // license the registry may redistribute, isn't archived) and is linked to its package once one is published.
-// Routes live in routes/requests.ts; the tables are in migration 0018; known-repos.ts is generated.
+// Each request has a discussion thread, screened and moderated like issue comments, which its requester and the people
+// who reply follow. Routes live in routes/requests.ts; the tables are in migrations 0018 and 0026; known-repos.ts is
+// generated.
 import { deps, requireSecret, type Env, type User } from "./env";
 import { ulid } from "./lib/crypto";
 import { apiError } from "./lib/errors";
@@ -11,8 +13,10 @@ import * as gitlab from "./hosts/gitlab";
 import { githubUserToken, gitlabToken } from "./hosts/repo";
 import { COMMUNITY_NAMESPACE, gitlabLicense, isRedistributable, licenseFromText, parseRepoRef } from "./imports";
 import { audit } from "./routes/auth";
-import { communityRoles, dailyLimit, NEW_ACCOUNT, poster, REDACTED, screen } from "./community";
-import { notify } from "./inbox";
+import {
+  communityRoles, dailyLimit, holdReason, MAX_BODY, NEW_ACCOUNT, poster, REDACTED, refreshRequestReplies, renderPost, resolveFlags, screen,
+} from "./community";
+import { notify, requestSubscribers } from "./inbox";
 import { DROPPED_REASONS, DROPPED_REPOS, OTLITE_REPOS } from "./known-repos";
 
 export const REQUEST_STATUSES = ["open", "accepted", "in_progress", "published", "declined"] as const;
@@ -30,7 +34,7 @@ export type RequestRow = {
   description: string | null; license: string | null; upstream_stars: number | null; pushed_at: number | null; note: string | null;
   requested_by: string | null; status: RequestStatus; decline_code: DeclineCode | null; decision_note: string | null; decided_by: string | null;
   decided_at: number | null; tool_id: string | null; otlite_name: string | null; dropped_reason: string | null; vote_count: number;
-  moderation: "visible" | "held" | "hidden"; hidden_reason: string | null; created_at: number; updated_at: number;
+  moderation: "visible" | "held" | "hidden"; hidden_reason: string | null; comment_count: number; locked_at: number | null; created_at: number; updated_at: number;
 };
 
 const keyOf = (provider: string, path: string) => `${provider}:${path.toLowerCase()}`;
@@ -192,6 +196,7 @@ export async function createRequest(env: Env, user: User, input: { repo?: unknow
       ).bind(id, ...facts, now, now),
     db.prepare(`INSERT OR IGNORE INTO request_votes (request_id, user_id, created_at) VALUES (?, ?, ?)`).bind(id, user.id, now),
     db.prepare(`UPDATE tool_requests SET vote_count = (SELECT COUNT(*) FROM request_votes WHERE request_id = ?1) WHERE id = ?1`).bind(id),
+    db.prepare(`INSERT INTO request_subscriptions (request_id, user_id, reason, created_at) VALUES (?, ?, 'author', ?) ON CONFLICT DO UPDATE SET muted = 0`).bind(id, user.id, now),
     audit(db, user.id, "user", withdrawn ? "request.reopen" : "request.create", "request", id, { repo: `${up.provider}:${up.path}`, declined: declined?.reason ?? null, held: !!held }),
   ]);
   const row = (await db.prepare(`SELECT * FROM tool_requests WHERE id = ?`).bind(id).first<RequestRow>())!;
@@ -275,10 +280,13 @@ export async function setRequestStatus(
 async function announceDecision(env: Env, actor: User | null, r: RequestRow) {
   const name = nameOf(r.repo_path);
   const item = { kind: "status" as const, scope: "community" as const, path: `/requests/${r.number}`, actor_id: actor?.id ?? null, tool_id: r.tool_id };
-  if (r.requested_by) await notify(env, [r.requested_by], { ...item, summary: `Your request for ${name} (#${r.number}) was ${STATUS_WORDS[r.status]}` });
+  const following = await requestSubscribers(env, r.id);
+  const requester = r.requested_by && following.includes(r.requested_by) ? [r.requested_by] : [];
+  await notify(env, requester, { ...item, summary: `Your request for ${name} (#${r.number}) was ${STATUS_WORDS[r.status]}` });
+  await notify(env, following.filter((u) => u !== r.requested_by), { ...item, summary: `The request for ${name} (#${r.number}), which you follow, was ${STATUS_WORDS[r.status]}` });
   if (r.status === "published" || r.status === "declined") {
     const voters = (await env.DB.prepare(`SELECT user_id FROM request_votes WHERE request_id = ? AND user_id != COALESCE(?, '')`).bind(r.id, r.requested_by)
-      .all<{ user_id: string }>()).results.map((v) => v.user_id);
+      .all<{ user_id: string }>()).results.map((v) => v.user_id).filter((u) => !following.includes(u));
     await notify(env, voters, { ...item, summary: `${name}, which you voted for (#${r.number}), was ${STATUS_WORDS[r.status]}` });
   }
 }
@@ -297,6 +305,63 @@ export async function linkPublished(env: Env, toolId: string) {
   for (const r of rows) await setRequestStatus(env, null, r, "published", { tool: `${t.ns}/${t.name}`, note: r.decision_note ?? "" });
 }
 
+// ---------- the discussion thread ----------
+
+/** The badge a person's replies carry on requests: staff or triager; requests belong to no package. */
+export async function requestBadge(env: Env, user: User): Promise<"staff" | "triager" | null> {
+  if (user.is_admin || user.is_reviewer) return "staff";
+  return (await communityRoles(env, user)).has("triager") ? "triager" : null;
+}
+
+/**
+ * Adds a reply to a request's thread. Replies are screened like issue comments (new accounts, personal data, a first
+ * post with links); triagers and staff are trusted. On a locked thread only they may reply.
+ */
+export async function addRequestComment(env: Env, r: RequestRow, user: User, body: string): Promise<{ id: string; moderation: string; body_html: string }> {
+  const text = body.trim();
+  if (text.length < 2) apiError(400, "invalid_body", "send {body}");
+  if (text.length > MAX_BODY) apiError(400, "invalid_body", `a reply can be at most ${MAX_BODY} characters`);
+  if (r.moderation !== "visible") apiError(409, "invalid_state", "this request is not open for replies");
+  const badge = await requestBadge(env, user);
+  if (r.locked_at && !badge) apiError(409, "request_locked", "replies to this request are closed", "if something has changed, say so on https://github.com/OTInstaller/feedback/issues");
+  const p = await poster(env, user.id);
+  await dailyLimit(env, "comment", user.id, 30);
+  const now = Date.now();
+  const held = badge ? null : holdReason(p, text, now);
+  const id = ulid(now);
+  const db = env.DB;
+  await db.batch([
+    db.prepare(`INSERT INTO request_comments (id, request_id, author_id, role_badge, body_md, moderation, hidden_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id, r.id, user.id, badge, text, held ? "held" : "visible", held, now),
+    refreshRequestReplies(db, r.id),
+    db.prepare(`UPDATE tool_requests SET updated_at = ? WHERE id = ?`).bind(now, r.id),
+    db.prepare(`INSERT INTO request_subscriptions (request_id, user_id, reason, created_at) VALUES (?, ?, 'commented', ?) ON CONFLICT DO NOTHING`).bind(r.id, user.id, now),
+  ]);
+  if (!held) {
+    await notify(env, await requestSubscribers(env, r.id), {
+      kind: "comment", scope: "community", summary: `${p.handle ?? user.login} replied on the request for ${nameOf(r.repo_path)} (#${r.number})`,
+      path: `/requests/${r.number}`, actor_id: user.id,
+    });
+  }
+  return { id, moderation: held ? "held" : "visible", body_html: renderPost(text, !badge) };
+}
+
+/** Closes or reopens a request's thread to replies (triagers and staff). */
+export async function setRequestLocked(env: Env, r: RequestRow, actor: User, locked: boolean) {
+  if (!(await requestBadge(env, actor))) apiError(403, "not_triager", "only triagers and staff can lock a request's thread");
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE tool_requests SET locked_at = ? WHERE id = ?`).bind(locked ? Date.now() : null, r.id),
+    audit(env.DB, actor.id, "user", locked ? "request.lock" : "request.unlock", "request", r.id),
+  ]);
+}
+
+/** Follows or stops following a request's thread. */
+export async function followRequest(env: Env, r: RequestRow, user: User, on: boolean) {
+  await (on
+    ? env.DB.prepare(`INSERT INTO request_subscriptions (request_id, user_id, reason, created_at) VALUES (?, ?, 'manual', ?) ON CONFLICT DO UPDATE SET muted = 0`).bind(r.id, user.id, Date.now())
+    : env.DB.prepare(`UPDATE request_subscriptions SET muted = 1 WHERE request_id = ? AND user_id = ?`).bind(r.id, user.id)).run();
+}
+
 // ---------- moderation ----------
 
 /** A moderator's decision on a request's note: hide or restore the request, approve a held one, or remove the note. */
@@ -305,6 +370,7 @@ export async function moderateRequest(env: Env, actor: User, id: string, action:
   if (!r) apiError(404, "request_not_found", "no such request");
   const db = env.DB;
   await db.batch([
+    resolveFlags(db, actor, "request", id, action === "hide" || action === "redact"),
     action === "hide"
       ? db.prepare(`UPDATE tool_requests SET moderation = 'hidden', hidden_reason = ? WHERE id = ?`).bind(reason || "moderator", id)
       : action === "redact"

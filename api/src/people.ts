@@ -20,7 +20,8 @@ export async function refreshContributorStats(env: Env, now = Date.now()) {
        (SELECT COUNT(*) FROM issues i WHERE i.author_id = u.id AND i.author_kind = 'user' AND i.moderation = 'visible' AND i.deleted_at IS NULL),
        (SELECT COUNT(*) FROM issues i WHERE i.author_id = u.id AND i.author_kind = 'user' AND i.moderation = 'visible' AND i.deleted_at IS NULL
           AND i.kind IN ('broken', 'outdated', 'wrong_info') AND i.status IN ('confirmed', 'fixed')),
-       (SELECT COUNT(*) FROM issue_comments c WHERE c.author_id = u.id AND c.author_kind = 'user' AND c.moderation = 'visible' AND c.deleted_at IS NULL),
+       (SELECT COUNT(*) FROM issue_comments c WHERE c.author_id = u.id AND c.author_kind = 'user' AND c.moderation = 'visible' AND c.deleted_at IS NULL)
+         + (SELECT COUNT(*) FROM request_comments c WHERE c.author_id = u.id AND c.author_kind = 'user' AND c.moderation = 'visible' AND c.deleted_at IS NULL),
        (SELECT COUNT(*) FROM confirmations f WHERE f.user_id = u.id),
        (SELECT COUNT(*) FROM tool_requests r WHERE r.requested_by = u.id AND r.moderation = 'visible'),
        (SELECT COUNT(*) FROM tool_requests r WHERE r.requested_by = u.id AND r.moderation = 'visible' AND r.status = 'published'),
@@ -28,7 +29,9 @@ export async function refreshContributorStats(env: Env, now = Date.now()) {
        ?
      FROM users u WHERE u.id IN (
        SELECT author_id FROM issues UNION SELECT author_id FROM issue_comments UNION SELECT user_id FROM confirmations
-       UNION SELECT requested_by FROM tool_requests UNION SELECT closed_by FROM issues)`,
+       UNION SELECT requested_by FROM tool_requests UNION SELECT closed_by FROM issues)
+       -- D1 allows five parts in a compound SELECT.
+       OR u.id IN (SELECT author_id FROM request_comments)`,
   ).bind(now).run();
 }
 

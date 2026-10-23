@@ -1,10 +1,12 @@
 // Tool requests: the checks when one is made, votes, holds and moderation, triagers' decisions and who hears about
-// them, linking a request to the package that answers it, token scopes, and the generated list of known repositories.
+// them, the discussion thread (replies, holds, following, locks, flags), linking a request to the package that answers
+// it, token scopes, and the generated list of known repositories.
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { encrypt, sha256Hex, ulid } from "../src/lib/crypto";
 import { requiredScope } from "../src/scopes";
 import { knownRepo, linkPublished } from "../src/requests";
+import { lockStaleThreads } from "../src/community";
 import { DROPPED_REASONS, DROPPED_REPOS, OTLITE_REPOS } from "../src/known-repos";
 import { call, fakeHosts, testEnv } from "./helpers";
 
@@ -235,11 +237,156 @@ describe("decisions", () => {
   });
 });
 
+describe("the discussion", () => {
+  /** A request made by an established account, with its number. */
+  async function requested(asker?: Who) {
+    const path = `talk/tool${uniq()}`;
+    fakeHosts(githubRepo(path).routes);
+    const who = asker ?? (await person());
+    return { asker: who, number: (await req(who, "POST", "/requests", { repo: `https://github.com/${path}` })).body.request.number as number };
+  }
+  /** Someone who has posted before, so links in their replies aren't held. */
+  async function regular() {
+    const who = await person();
+    const { number } = await requested();
+    await req(who, "POST", `/requests/${number}/comments`, { body: "Plus one, this would help." });
+    return who;
+  }
+
+  it("lets people reply and follow, tells the people following, and lets authors edit and delete their replies", async () => {
+    const { asker, number } = await requested();
+    const replier = await regular();
+    const posted = await req(replier, "POST", `/requests/${number}/comments`, { body: "It needs **no** API key, see https://example.com/docs" });
+    expect(posted.res.status).toBe(201);
+    expect(posted.res.headers.get("cache-control")).toBe("private, no-store");
+    expect(posted.body).toMatchObject({ moderation: "visible" });
+    expect(posted.body.body_html).toContain("<strong>no</strong>");
+
+    const page = await req(null, "GET", `/requests/${number}`);
+    expect(page.res.headers.get("cache-control")).toMatch(/public/);
+    expect(page.body.request).toMatchObject({ comments: 1, locked: false });
+    expect(page.body.comments).toHaveLength(1);
+    expect(page.body.comments[0]).toMatchObject({ id: posted.body.id, author: { handle: replier.handle }, role: null });
+    // Links from established accounts render, marked as user content.
+    expect(page.body.comments[0].body_html).toContain('<a href="https://example.com/docs" rel="nofollow ugc noopener noreferrer">');
+    expect((await inbox(asker)).some((i) => i.kind === "comment" && i.summary.includes(`replied on the request`) && i.path === `/requests/${number}`)).toBe(true);
+    expect((await req(replier, "GET", `/requests/${number}/viewer`)).body).toMatchObject({ subscribed: true, can_reply: true, editable_comments: [posted.body.id] });
+
+    // Following, and stopping.
+    const follower = await person();
+    expect((await req(follower, "PUT", `/requests/${number}/subscription`)).body).toEqual({ subscribed: true });
+    await req(asker, "POST", `/requests/${number}/comments`, { body: "Thanks, that settles the key question." });
+    expect((await inbox(follower)).filter((i) => i.path === `/requests/${number}`)).toHaveLength(1);
+    expect((await inbox(replier)).some((i) => i.summary.startsWith(asker.handle))).toBe(true);
+    await req(follower, "DELETE", `/requests/${number}/subscription`);
+    await req(replier, "POST", `/requests/${number}/comments`, { body: "Glad it helps." });
+    expect((await inbox(follower)).filter((i) => i.path === `/requests/${number}`)).toHaveLength(1);
+
+    // Editing and deleting are the author's alone.
+    expect((await req(asker, "PATCH", `/requests/${number}/comments/${posted.body.id}`, { body: "Not mine to edit" })).res.status).toBe(403);
+    expect((await req(replier, "PATCH", `/requests/${number}/comments/${posted.body.id}`, { body: "It needs no API key." })).body).toMatchObject({ moderation: "visible" });
+    const other = await requested();
+    expect((await req(replier, "PATCH", `/requests/${other.number}/comments/${posted.body.id}`, { body: "Wrong request" })).body.error.code).toBe("comment_not_found");
+    expect((await req(replier, "DELETE", `/requests/${number}/comments/${posted.body.id}`)).body).toEqual({ deleted: true });
+    const after = await req(null, "GET", `/requests/${number}`);
+    expect(after.body.request.comments).toBe(2);
+    expect(after.body.comments.some((c: any) => c.id === posted.body.id)).toBe(false);
+    expect((await req(replier, "POST", `/requests/${number}/comments`, { body: "" })).body.error.code).toBe("invalid_body");
+    expect((await req(null, "POST", `/requests/${number}/comments`, { body: "Anonymous reply" })).res.status).toBe(401);
+  });
+
+  it("holds replies from new accounts and first posts with links until a triager approves them", async () => {
+    const { asker, number } = await requested();
+    const fresh = await person({ ageDays: 0 });
+    const held = await req(fresh, "POST", `/requests/${number}/comments`, { body: "I want this too." });
+    expect(held.body.moderation).toBe("held");
+    const newcomer = await person();
+    expect((await req(newcomer, "POST", `/requests/${number}/comments`, { body: "Try https://example.com/buy-followers" })).body.moderation).toBe("held");
+    expect((await req(null, "GET", `/requests/${number}`)).body.comments).toHaveLength(0);
+    expect((await req(fresh, "GET", `/requests/${number}/viewer`)).body.held_comments.map((h: any) => h.id)).toEqual([held.body.id]);
+
+    const t = await triager();
+    const items = (await req(t, "GET", "/moderation/queue?view=held")).body.items.filter((i: any) => i.kind === "request_comment" && i.number === number);
+    expect(items.map((i: any) => i.hidden_reason).sort()).toEqual(["first_post_with_links", "new_account"]);
+    expect((await req(await person(), "POST", `/moderation/request_comment/${held.body.id}`, { action: "approve" })).res.status).toBe(403);
+    expect((await req(t, "POST", `/moderation/request_comment/${held.body.id}`, { action: "approve" })).res.status).toBe(200);
+    const page = await req(null, "GET", `/requests/${number}`);
+    expect(page.body.comments.map((c: any) => c.id)).toEqual([held.body.id]);
+    expect(page.body.request.comments).toBe(1);
+    expect((await inbox(fresh)).some((i) => i.kind === "moderation" && i.summary.includes("approved your reply"))).toBe(true);
+    expect((await inbox(asker)).some((i) => i.kind === "comment" && i.summary.startsWith("New reply"))).toBe(true);
+    // Triagers' replies carry their role and are never held.
+    const answer = await req(t, "POST", `/requests/${number}/comments`, { body: "Accepted soon, see https://otinstaller.com/docs/community" });
+    expect(answer.body.moderation).toBe("visible");
+    expect((await req(null, "GET", `/requests/${number}`)).body.comments.at(-1)).toMatchObject({ role: "triager" });
+  });
+
+  it("lets triagers lock a thread, and locks settled requests after 30 days", async () => {
+    const { asker, number } = await requested();
+    const t = await triager();
+    expect((await req(asker, "POST", `/requests/${number}/lock`, { locked: true })).body.error.code).toBe("not_triager");
+    expect((await req(t, "POST", `/requests/${number}/lock`, { locked: true })).body).toEqual({ number, locked: true });
+    expect((await req(asker, "POST", `/requests/${number}/comments`, { body: "One more thing" })).body.error.code).toBe("request_locked");
+    expect((await req(asker, "GET", `/requests/${number}/viewer`)).body).toMatchObject({ locked: true, can_reply: false });
+    expect((await req(t, "POST", `/requests/${number}/comments`, { body: "Locked while we look at the license." })).res.status).toBe(201);
+    await req(t, "POST", `/requests/${number}/lock`, { locked: false });
+    expect((await req(asker, "POST", `/requests/${number}/comments`, { body: "One more thing" })).res.status).toBe(201);
+
+    const settled = await requested();
+    await req(t, "POST", `/requests/${settled.number}/status`, { status: "declined", decline_code: "not_osint" });
+    const open = await requested();
+    await DB().prepare(`UPDATE tool_requests SET updated_at = ? WHERE number IN (?, ?)`).bind(Date.now() - 31 * 86_400_000, settled.number, open.number).run();
+    await lockStaleThreads(await testEnv());
+    expect((await req(null, "GET", `/requests/${settled.number}`)).body.request.locked).toBe(true);
+    expect((await req(null, "GET", `/requests/${open.number}`)).body.request.locked).toBe(false);
+  });
+
+  it("takes flags on requests and replies, hides what is flagged enough, and lets moderators settle them from the queue", async () => {
+    const { number } = await requested();
+    const replier = await regular();
+    const reply = (await req(replier, "POST", `/requests/${number}/comments`, { body: "Here is what I found about the maintainer." })).body.id as string;
+    const flagger = await person();
+    const flagged = await req(flagger, "POST", "/flags", { target_kind: "request_comment", target_id: reply, reason: "personal_data" });
+    expect(flagged.res.status).toBe(201);
+    expect(flagged.body.hidden).toBe(true);
+    expect((await req(null, "GET", `/requests/${number}`)).body).toMatchObject({ request: { comments: 0 }, comments: [] });
+
+    const t = await triager();
+    const queue = (await req(t, "GET", "/moderation/queue?view=flags")).body.flags;
+    const flag = queue.find((f: any) => f.target_id === reply);
+    expect(flag).toMatchObject({ target_kind: "request_comment", reason: "personal_data", flagger: flagger.handle, moderation: "hidden", path: `/requests/${number}#c-${reply}` });
+    expect(flag.body_html).toContain("what I found");
+    await req(t, "POST", `/moderation/request_comment/${reply}`, { action: "restore" });
+    expect((await req(null, "GET", `/requests/${number}`)).body.comments).toHaveLength(1);
+    expect((await DB().prepare(`SELECT status FROM content_flags WHERE target_id = ?`).bind(reply).first<{ status: string }>())!.status).toBe("dismissed");
+
+    // A request itself: three flags of any kind hide it until a moderator decides.
+    const r = (await req(null, "GET", `/requests/${number}`)).body.request;
+    for (let i = 0; i < 3; i++) {
+      const out = await req(await person({ ageDays: 3 }), "POST", "/flags", { target_kind: "request", target_id: r.id, reason: "spam" });
+      expect(out.body.hidden).toBe(i === 2);
+    }
+    expect((await req(null, "GET", `/requests/${number}`)).res.status).toBe(404);
+    const requestFlag = (await req(t, "GET", "/moderation/queue?view=flags")).body.flags.find((f: any) => f.target_id === r.id);
+    expect(requestFlag).toMatchObject({ target_kind: "request", path: `/requests/${number}` });
+    await req(t, "POST", `/moderation/request/${r.id}`, { action: "restore" });
+    expect((await req(null, "GET", `/requests/${number}`)).res.status).toBe(200);
+    expect((await DB().prepare(`SELECT COUNT(*) AS n FROM content_flags WHERE target_id = ? AND status = 'open'`).bind(r.id).first<{ n: number }>())!.n).toBe(0);
+
+    expect((await req(flagger, "POST", "/flags", { target_kind: "vote", target_id: r.id, reason: "spam" })).body.error.code).toBe("invalid_body");
+    expect((await req(flagger, "POST", "/flags", { target_kind: "request_comment", target_id: "nope", reason: "spam" })).body.error.code).toBe("comment_not_found");
+  });
+});
+
 describe("requests and tokens", () => {
   it("needs the feedback scope to ask and vote, and manage to decide", () => {
     expect(requiredScope("POST", "/v1/requests")).toBe("feedback");
     expect(requiredScope("PUT", "/v1/requests/12/vote")).toBe("feedback");
     expect(requiredScope("DELETE", "/v1/requests/12/vote")).toBe("feedback");
+    expect(requiredScope("POST", "/v1/requests/12/comments")).toBe("feedback");
+    expect(requiredScope("PATCH", "/v1/requests/12/comments/01J0")).toBe("feedback");
+    expect(requiredScope("PUT", "/v1/requests/12/subscription")).toBe("feedback");
+    expect(requiredScope("POST", "/v1/requests/12/lock")).toBe("manage");
     expect(requiredScope("POST", "/v1/requests/12/status")).toBe("manage");
     expect(requiredScope("GET", "/v1/requests")).toBe("read");
   });
