@@ -3026,7 +3026,7 @@
           "Community"
         ],
         "summary": "How a package is doing: health check, confirmations and open issues",
-        "description": "One line built from facts (the nightly health check, what signed-in people said about the latest version in the last 30 days, open broken issues), plus the last 30 health checks with their failure class. Error excerpts are never included. Cached for 5 minutes.",
+        "description": "One line built from facts (the nightly health check, what signed-in people said about the latest version in the last 30 days, or since it came out while it is under a week old, open broken issues), plus the last 30 health checks with their failure class. Error excerpts are never included. Cached for 5 minutes.",
         "responses": {
           "200": {
             "description": "OK",
@@ -3065,6 +3065,39 @@
                     },
                     "issues": {
                       "type": "object"
+                    },
+                    "new_version": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "description": "While the latest version is under a week old: what people said about it since it came out (works, broken, platforms) and about the version before it (previous: version, works, broken)",
+                      "properties": {
+                        "version": {
+                          "type": "string"
+                        },
+                        "published_at": {
+                          "type": "integer"
+                        },
+                        "ends_at": {
+                          "type": "integer"
+                        },
+                        "works": {
+                          "type": "integer"
+                        },
+                        "broken": {
+                          "type": "integer"
+                        },
+                        "platforms": {
+                          "type": "object"
+                        },
+                        "previous": {
+                          "type": [
+                            "object",
+                            "null"
+                          ]
+                        }
+                      }
                     }
                   }
                 }
@@ -6054,6 +6087,842 @@
           }
         },
         "security": []
+      }
+    },
+    "/proposals": {
+      "get": {
+        "operationId": "list_proposals",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Change proposals across the registry",
+        "description": "Open proposals by default, most recently changed first, for reviewers; status=closed lists merged, turned down and withdrawn ones. Cached for a minute.",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "enum": [
+                "open",
+                "closed",
+                "all"
+              ],
+              "default": "open"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "next_before of the previous page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "proposals": {
+                      "type": "array",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/ChangeProposal"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "ref": {
+                                "type": "string",
+                                "description": "namespace/name"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "next_before": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/packages/{ns}/{name}/proposals": {
+      "get": {
+        "operationId": "list_package_proposals",
+        "tags": [
+          "Community"
+        ],
+        "summary": "A community package's change proposals",
+        "description": "Newest first, every status. Packages published from their own repository take no proposals (409 not_a_wrapper). Cached for a minute.",
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ref": {
+                      "type": "string"
+                    },
+                    "proposals": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ChangeProposal"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      },
+      "post": {
+        "operationId": "propose_change",
+        "tags": [
+          "Owners"
+        ],
+        "summary": "Propose a change to a community package",
+        "description": "The package's maintainers and reviewers. Only files that differ from the wrapper's main branch count. The manifest must validate and keep the package's identity (name, namespace, homepage, license, readme, runtime.kind, and for builds the image the release workflow pins); its version is moved past every version the package had. The Dockerfile follows the submission rules. Secrets refuse a proposal; what looks like personal data is shown to the reviewer. The community bot opens a pull request with the files; a reviewer who isn't the proposer approves it. Three open per person and package, five a day.",
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "title",
+                  "files"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 5,
+                    "maxLength": 100
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "description": "What it changes and why; plain text"
+                  },
+                  "files": {
+                    "type": "object",
+                    "description": "{path: whole file text} for otinstaller.yaml, Dockerfile and README.md; nothing else can change",
+                    "properties": {
+                      "otinstaller.yaml": {
+                        "type": "string"
+                      },
+                      "Dockerfile": {
+                        "type": "string"
+                      },
+                      "README.md": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "proposal": {
+                      "$ref": "#/components/schemas/ChangeProposalDetail"
+                    },
+                    "url": {
+                      "type": "string",
+                      "description": "The proposal's page"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "publish",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/packages/{ns}/{name}/proposals/{number}": {
+      "get": {
+        "operationId": "get_proposal",
+        "tags": [
+          "Community"
+        ],
+        "summary": "One change proposal",
+        "description": "With the proposer's note, the files it changes, what the reviewer should look at and the decision. The changes themselves are in the pull request (url). Cached for a minute.",
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The proposal's number: its pull request's number in the wrapper repository"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ref": {
+                      "type": "string"
+                    },
+                    "proposal": {
+                      "$ref": "#/components/schemas/ChangeProposalDetail"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      },
+      "patch": {
+        "operationId": "update_proposal",
+        "tags": [
+          "Owners"
+        ],
+        "summary": "Change your proposal",
+        "description": "The proposer, while it is open or sent back. The files are checked again and the pull request's branch is rewritten from main; a proposal that was sent back goes back to the reviewers.",
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The proposal's number: its pull request's number in the wrapper repository"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 5,
+                    "maxLength": 100
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "files": {
+                    "type": "object",
+                    "description": "{path: whole file text} for otinstaller.yaml, Dockerfile and README.md; nothing else can change",
+                    "properties": {
+                      "otinstaller.yaml": {
+                        "type": "string"
+                      },
+                      "Dockerfile": {
+                        "type": "string"
+                      },
+                      "README.md": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "proposal": {
+                      "$ref": "#/components/schemas/ChangeProposalDetail"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "publish",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "withdraw_proposal",
+        "tags": [
+          "Owners"
+        ],
+        "summary": "Withdraw your proposal",
+        "description": "The proposer (or an admin), while it is open or sent back; the pull request is closed.",
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The proposal's number: its pull request's number in the wrapper repository"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "number": {
+                      "type": "integer"
+                    },
+                    "status": {
+                      "const": "withdrawn"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/packages/{ns}/{name}/proposals/{number}/viewer": {
+      "get": {
+        "operationId": "get_proposal_viewer",
+        "tags": [
+          "Owners"
+        ],
+        "summary": "What you may do on a change proposal",
+        "description": "Whether you proposed it and may edit or withdraw it, or may review it. The proposer and reviewers also get the proposal's files.",
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The proposal's number: its pull request's number in the wrapper repository"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "is_proposer": {
+                      "type": "boolean"
+                    },
+                    "can_review": {
+                      "type": "boolean"
+                    },
+                    "can_edit": {
+                      "type": "boolean"
+                    },
+                    "can_withdraw": {
+                      "type": "boolean"
+                    },
+                    "files": {
+                      "type": "object",
+                      "description": "{path: content}, for the proposer and reviewers"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/packages/{ns}/{name}/proposals/{number}/review": {
+      "post": {
+        "operationId": "review_proposal",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Decide a change proposal",
+        "description": "Staff and community reviewers, never the proposer (403 self_review). approve: the community bot merges the pull request and starts the release (the release workflow for builds, a tag otherwise), which is built, signed and scanned like any other. changes_requested sends it back; reject closes the pull request. Both need a note. The proposer hears either way.",
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The proposal's number: its pull request's number in the wrapper repository"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "decision"
+                ],
+                "properties": {
+                  "decision": {
+                    "enum": [
+                      "approve",
+                      "changes_requested",
+                      "reject"
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "proposal": {
+                      "$ref": "#/components/schemas/ChangeProposalDetail"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/packages/{ns}/{name}/files": {
+      "get": {
+        "operationId": "get_wrapper_files",
+        "tags": [
+          "Owners"
+        ],
+        "summary": "A community package's files, to propose a change from",
+        "description": "The package's maintainers and reviewers: otinstaller.yaml, Dockerfile and README.md on the wrapper repository's main branch (null when it has none), whether the package builds its image, and the version a release would get.",
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ref": {
+                      "type": "string"
+                    },
+                    "repo": {
+                      "type": "string",
+                      "description": "The wrapper repository, owner/name"
+                    },
+                    "files": {
+                      "type": "object",
+                      "properties": {
+                        "otinstaller.yaml": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "Dockerfile": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "README.md": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    },
+                    "builds": {
+                      "type": "boolean"
+                    },
+                    "latest_version": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "next_version": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
       }
     },
     "/packages/{ns}/{name}/bump": {
@@ -9738,6 +10607,145 @@
           }
         }
       },
+      "ChangeProposal": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "integer",
+            "description": "The pull request's number in the wrapper repository"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "changes_requested",
+              "merged",
+              "rejected",
+              "withdrawn"
+            ]
+          },
+          "version": {
+            "type": "string",
+            "description": "The version the release will have"
+          },
+          "released_version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The version the merge released (the next free one if the proposed one was taken meanwhile)"
+          },
+          "url": {
+            "type": "string",
+            "description": "The pull request"
+          },
+          "proposed_by": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "handle": {
+                "type": "string"
+              },
+              "profile": {
+                "type": "boolean"
+              }
+            }
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "otinstaller.yaml",
+                "Dockerfile",
+                "README.md"
+              ]
+            }
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "updated_at": {
+            "type": "integer"
+          }
+        }
+      },
+      "ChangeProposalDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ChangeProposal"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "note": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The proposer's plain text: show it as text"
+              },
+              "builds": {
+                "type": "boolean",
+                "description": "The release workflow builds the image; else a tag releases it"
+              },
+              "checks": {
+                "type": "array",
+                "description": "What the reviewer should look at: fields_changed, ethics_changed, personal_data and the Dockerfile rules (https://otinstaller.com/docs/errors)",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "decision_note": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "decided_at": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "reviewed_by": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The reviewer's handle"
+              }
+            }
+          }
+        ]
+      },
+      "FirstWeek": {
+        "type": "object",
+        "description": "What signed-in people said about a version since it came out, while it is under a week old: counts, never a score",
+        "properties": {
+          "works": {
+            "type": "integer"
+          },
+          "broken": {
+            "type": "integer"
+          },
+          "ends_at": {
+            "type": "integer",
+            "description": "Unix milliseconds: when the first week ends"
+          }
+        }
+      },
       "Version": {
         "type": "object",
         "properties": {
@@ -9797,6 +10805,10 @@
               null
             ],
             "description": "release: the host's release for the tag; file: the version's section of CHANGELOG.md (or CHANGES.md, HISTORY.md)."
+          },
+          "first_week": {
+            "$ref": "#/components/schemas/FirstWeek",
+            "description": "Only while the version is under a week old (list only)"
           }
         }
       },
@@ -9911,6 +10923,10 @@
           },
           "to": {
             "type": "string"
+          },
+          "first_week": {
+            "$ref": "#/components/schemas/FirstWeek",
+            "description": "published only, while the version is under a week old"
           }
         }
       }
