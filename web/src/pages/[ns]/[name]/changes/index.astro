@@ -1,0 +1,70 @@
+---
+// A community package's change proposals: what its maintainers proposed beyond the upstream pin (the manifest, the
+// Dockerfile, the README) and where each one stands. Maintainers propose a change here (an island); a reviewer
+// decides it on its own page. Packages published from their own repository have no such page.
+import Base from "../../../../layouts/Base.astro";
+import ToolHeader from "../../../../components/ToolHeader.astro";
+import ProposeChange from "../../../../islands/ProposeChange";
+import { api, ApiError, type ChangeProposal } from "../../../../lib/api";
+import { formatDate } from "../../../../lib/format";
+import { isWrapper, PROPOSAL_STATUS_LABEL, PROPOSAL_STATUS_TONE, proposalHref } from "../../../../lib/proposals";
+import { personHref } from "../../../../lib/community";
+import { loadTool } from "../../../../lib/tool";
+import { cacheFor } from "../../../../lib/page";
+
+const loaded = await loadTool(Astro, "/changes");
+if ("response" in loaded) return loaded.response;
+const { tool: t, hasDocs } = loaded;
+const ref = `${t.namespace}/${t.name}`;
+if (!isWrapper(t)) return Astro.rewrite("/404");
+let proposals: ChangeProposal[];
+try {
+  proposals = (await api<{ proposals: ChangeProposal[] }>(`/packages/${ref}/proposals`)).proposals;
+} catch (e) {
+  if (e instanceof ApiError && (e.status === 404 || e.status === 409)) return Astro.rewrite("/404");
+  throw e;
+}
+cacheFor(Astro, 60);
+const repo = t.repo_url?.replace(/^https:\/\/github\.com\//, "") ?? null;
+---
+<Base title={`${ref} changes`} description={`Changes proposed to the community package ${ref}, and where each one stands.`} noindex jsonHref={`https://api.otinstaller.com/v1/packages/${ref}/proposals`}>
+  <ToolHeader tool={t} active="changes" hasDocs={hasDocs} />
+  <p class="small muted intro">
+    The community looks after this package{repo && <> in <a href={t.repo_url!} rel="nofollow noopener">{repo}</a></>}. Its maintainers propose changes beyond
+    the upstream pin here: the manifest, the Dockerfile or the README. A staff or community reviewer who isn't the proposer approves each one, and the
+    registry merges it and releases a new version, built, signed and scanned like any other. New upstream releases come as bump pull requests from the
+    upstream watcher. Something wrong you can't fix yourself? <a href={`/${ref}/issues`}>Open an issue</a>.
+  </p>
+
+  {proposals.length === 0 ? <p class="muted">No changes proposed yet.</p> : (
+    <ul class="proposals">
+      {proposals.map((p) => (
+        <li>
+          <span class={`badge ${PROPOSAL_STATUS_TONE[p.status]}`}>{PROPOSAL_STATUS_LABEL[p.status]}</span>
+          <div>
+            <p class="title"><a href={proposalHref(ref, p.number)}>{p.title}</a> <span class="small muted">#{p.number}</span></p>
+            <p class="small muted">
+              Changes {p.files.join(", ")} · {p.status === "merged" && p.released_version ? <>released as {p.released_version}</> : <>releases as {p.version}</>}
+              {p.proposed_by && <> · by {p.proposed_by.profile ? <a href={personHref(p.proposed_by.handle)}>{p.proposed_by.handle}</a> : p.proposed_by.handle}</>} on {formatDate(p.created_at)}
+            </p>
+          </div>
+        </li>
+      ))}
+    </ul>
+  )}
+
+  <ProposeChange client:idle refName={ref} back={`${Astro.site}${ref}/changes`} />
+</Base>
+
+<style>
+  .intro { margin: 0 0 16px; max-width: 90ch; }
+  .proposals { list-style: none; margin: 0 0 20px; padding: 0; border-top: 1px solid var(--border); }
+  .proposals li { display: grid; grid-template-columns: 11rem minmax(0, 1fr); gap: 12px; align-items: baseline; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .proposals .badge { justify-self: start; }
+  .title { margin: 0; overflow-wrap: anywhere; }
+  .proposals .small { margin: 4px 0 0; }
+  :global(.propose textarea), :global(.propose input) { display: block; width: 100%; }
+  @media (max-width: 560px) {
+    .proposals li { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  }
+</style>

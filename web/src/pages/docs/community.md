@@ -35,6 +35,12 @@ takes you to a new broken issue, and **I have this problem too** on an issue add
 per version and platform, and the counts from the last 30 days appear in the tool's status line next to the
 registry's own nightly health check. They are counts, never ratings.
 
+A new version's first week stands out: the status line says when it came out and what people said since, the tool
+page lists the reports by platform next to the counts for the version before it, the versions list and
+[What's new](/new) carry them too, and `ot outdated` mentions them when an update is in its first week. When two or
+more people say it's broken and they outnumber those who say it works, it is marked as failing, so others can wait,
+or pin the version they have.
+
 ## Requests
 
 Missing a tool? [Tool requests](/requests) is where people ask for open-source tools to be packaged, and vote for
@@ -99,6 +105,27 @@ release** on the package page: the registry merges the pull request and starts t
 and scanned like any other. A pull request that changes more than the pin waits for a reviewer. Maintainers can also
 triage their package's issues.
 
+## Changing a community package
+
+A community package's repository belongs to `osintverse-community`, so its maintainers change more than the pin
+through the registry. On the package's **Changes** tab, **Propose a change** opens its `otinstaller.yaml`, Dockerfile
+and README as they are on the repository's main branch. Edit them (a new input, a fixed command, clearer ethics
+notes, a better Dockerfile, a README that explains the output), say what the change does and why, and the registry:
+
+1. Checks it: the manifest must validate and keep the package's name, namespace, homepage, license and readme (and,
+   for a package whose image the release workflow builds, its image); its version is moved past every version the
+   package had. The Dockerfile follows the [submission rules](#submissions). Anything that looks like a token or key
+   refuses the proposal; anything that looks like personal data is shown to the reviewer.
+2. Has the community bot open a pull request in the repository with the changed files.
+3. Waits for a staff or community reviewer who isn't you. They approve it, ask for changes (edit the proposal and
+   save it again; the pull request follows), or turn it down.
+4. On approval, merges the pull request and starts the release, which is built, signed and scanned like any other
+   and published when its checks pass.
+
+You hear about each decision in your [notifications](/settings/notifications). Each person can have three proposals
+open on a package. Reviewers find what waits for them on the [submissions page](/submissions). Packages published
+from their own repository take pull requests there instead.
+
 ## From the terminal
 
 When `ot run` fails at a terminal (it timed out, or exited non-zero and found nothing), it asks:
@@ -145,9 +172,9 @@ and your avatar is left off your posts.
 | --- | --- |
 | Anyone | Read issues, the status line, the [community board](/community) and [tool requests](/requests) |
 | Signed in | Open issues, reply, say it works or is broken, follow a thread, flag a post, ask for a tool and vote for requests |
-| The package's maintainers | Triage its issues, lock threads, hide comments on its issues; for community packages, merge and release bump pull requests |
+| The package's maintainers | Triage its issues, lock threads, hide comments on its issues; for community packages, merge and release bump pull requests and propose changes |
 | Triagers | Triage any package's issues, decide tool requests, approve held posts and requests, hide posts, pause an account for up to 7 days |
-| Reviewers | What triagers can, and start, approve, send back or turn down community submissions (never their own) |
+| Reviewers | What triagers can, and start, approve, send back or turn down community submissions and change proposals (never their own) |
 | Staff | Everything, including redacting posts and granting the triager and reviewer roles |
 
 Triagers and reviewers are community members staff trust; ask at
@@ -172,7 +199,7 @@ Everything is in the [registry API](/docs/api) (OpenAPI tag "Community"):
 | --- | --- |
 | `GET /v1/tools/<ns>/<name>/issues` | A package's issues (`status`, `kind`, `before`) |
 | `GET /v1/tools/<ns>/<name>/issues/<number>` | One issue with its replies |
-| `GET /v1/tools/<ns>/<name>/status` | The status line, the health history and the confirmation counts |
+| `GET /v1/tools/<ns>/<name>/status` | The status line, the health history and the confirmation counts; `new_version` in the latest version's first week |
 | `GET /v1/issues` | Open problems across the registry (`kind`, `needs=confirmation`) |
 | `POST /v1/tools/<ns>/<name>/issues` | Open an issue (token scope `feedback`) |
 | `PUT /v1/tools/<ns>/<name>/confirmations` | Works or broken for you (scope `feedback`) |
@@ -183,5 +210,8 @@ Everything is in the [registry API](/docs/api) (OpenAPI tag "Community"):
 | `GET /v1/upstream/summary` | Community wrappers against their upstream projects: counts by state, and those behind a release |
 | `GET /v1/submissions`, `GET /v1/submissions/<number>` | Community submissions and one submission's checks, release and decision |
 | `POST /v1/imports/<id>/finish` `{"mode": "submit"}` | Submit a community import (scope `publish`); `dockerfile` and `request` are optional |
+| `GET /v1/proposals`, `GET /v1/packages/<ns>/<name>/proposals[/<number>]` | Change proposals across the registry (`status=open\|closed\|all`), a community package's, and one proposal |
+| `POST /v1/packages/<ns>/<name>/proposals` | Propose a change: `{title, note, files: {"otinstaller.yaml", "Dockerfile", "README.md"}}` (scope `publish`); `GET /v1/packages/<ns>/<name>/files` gives the files to start from |
+| `POST /v1/packages/<ns>/<name>/proposals/<number>/review` | A reviewer's `{decision: approve \| changes_requested \| reject, note}` (scope `manage`) |
 
 Error codes are on the [errors page](/docs/errors#community).

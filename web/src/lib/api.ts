@@ -155,6 +155,16 @@ export interface Version {
   changelog_html?: string | null;
   /** Where the notes came from: the host's release for the tag, or the version's section of CHANGELOG.md. */
   changelog_source?: "release" | "file" | null;
+  /** What people said about it since it came out, while it is under a week old. */
+  first_week?: FirstWeek;
+}
+
+/** "Works for me" and "broken for me" counts for a version under a week old: counts, never a score. */
+export interface FirstWeek {
+  works: number;
+  broken: number;
+  /** When the first week ends (Unix ms). */
+  ends_at: number;
 }
 
 /** The manifest endpoint: what `ot install` reads, plus where it falls back to when the original host refuses. */
@@ -302,6 +312,8 @@ export interface Namespace {
 }
 
 export interface ActivityEvent {
+  /** published, while the version is under a week old: what people said about it so far. */
+  first_week?: FirstWeek;
   type: "published" | "yanked" | "unyanked" | "deprecated" | "undeprecated" | "transferred";
   ref: string;
   kind: "tool" | "guide";
@@ -423,6 +435,16 @@ export interface CommunityStatus {
   health: { status: string; checked_at: number | null; history: { at: number; version: string; result: "pass" | "fail"; duration_ms: number | null; failure: string | null }[] };
   confirmations: { version: string | null; works: number; broken: number; platforms: Record<string, { works: number; broken: number }> };
   issues: { open_broken: number; open_outdated: number };
+  /** While the latest version is under a week old: what people said about it, beside the version before it. */
+  new_version?: {
+    version: string;
+    published_at: number;
+    ends_at: number;
+    works: number;
+    broken: number;
+    platforms: Record<string, { works: number; broken: number }>;
+    previous: { version: string; works: number; broken: number } | null;
+  } | null;
 }
 
 // ---------- tool requests ----------
@@ -526,6 +548,56 @@ export interface SubmissionDetail extends Submission {
 }
 
 export interface SubmissionViewer { is_submitter: boolean; can_review: boolean; can_edit: boolean }
+
+// ---------- change proposals ----------
+
+export type ProposalStatus = "open" | "changes_requested" | "merged" | "rejected" | "withdrawn";
+export type ProposalFile = "otinstaller.yaml" | "Dockerfile" | "README.md";
+
+export interface ChangeProposal {
+  /** The pull request's number in the wrapper repository. */
+  number: number;
+  title: string;
+  status: ProposalStatus;
+  /** The version the release will have. */
+  version: string;
+  released_version: string | null;
+  /** The pull request on GitHub. */
+  url: string;
+  proposed_by: { handle: string; profile: boolean } | null;
+  files: ProposalFile[];
+  created_at: number;
+  updated_at: number;
+}
+
+export interface ChangeProposalDetail extends ChangeProposal {
+  /** The proposer's plain text: show it as text. */
+  note: string | null;
+  builds: boolean;
+  checks: SubmissionCheck[];
+  decision_note: string | null;
+  decided_at: number | null;
+  reviewed_by: string | null;
+}
+
+export interface ProposalViewer {
+  is_proposer: boolean;
+  can_review: boolean;
+  can_edit: boolean;
+  can_withdraw: boolean;
+  /** The proposal's files, for the proposer and reviewers. */
+  files?: Partial<Record<ProposalFile, string>>;
+}
+
+/** GET /packages/:ns/:name/files: what a maintainer starts a proposal from. */
+export interface WrapperFiles {
+  ref: string;
+  repo: string;
+  files: Record<ProposalFile, string | null>;
+  builds: boolean;
+  latest_version: string | null;
+  next_version: string;
+}
 
 // ---------- the upstream watcher ----------
 

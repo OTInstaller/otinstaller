@@ -36,6 +36,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0020 | `0020_community_wrappers.sql` | `tools` + `needs_first_review` (default 0), `submitted_by`, `upstream_url` (backfilled for community-packaged tools from the latest manifest's `homepage`); new tables `tool_maintainers` and `wrapper_submissions`; indexes `tool_maintainers_user`, `wrapper_submissions_status`, `wrapper_submissions_upstream`, `wrapper_submissions_repo`, `wrapper_submissions_user`. |
 | 0021 | `0021_upstream_watch.sql` | New table `upstream_watch` (per community wrapper: the pin and how it was read, upstream's latest release, state, license, the releases ETag, a staff override, the last error) and index `upstream_watch_state`. |
 | 0022 | `0022_bump_prs.sql` | New table `bump_prs` (one per community package and upstream release: the pull request's number, URL and branch, `open`/`merged`/`closed`, the version the merge released, who merged it) and index `bump_prs_open`. |
+| 0024 | `0024_change_proposals.sql` | New table `change_proposals` (a maintainer's change to a community package beyond its pin: the pull request, the proposer's title and note, the files it writes, the version, whether it builds, the reviewer's checks, status, decision and released version); indexes `change_proposals_status`, `change_proposals_tool`, `change_proposals_proposer`. 0023 is request threads, on its own branch. |
 
 ---
 
@@ -425,6 +426,18 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
   closed), `released_version`, `merged_by`, `created_at`, `updated_at`. Written by `bumps.ts:maybeOpenBump` and
   `releaseBump`.
 
+### 2.12g Change proposals (0024)
+
+- `change_proposals`: PK `id` (ULID), `tool_id` → `tools(id)` (cascade), `pr_number` NN (the pull request in the
+  wrapper repository; UNIQUE with `tool_id`), `url`, `branch` (`otinstaller/proposal-<id>`), `proposer_id` → `users`
+  (set null), `title`, `note` (plain text), `files_json` (`{path: content}` for `otinstaller.yaml`, `Dockerfile`,
+  `README.md`), `version`, `builds` (0/1: the release workflow builds it, else a tag), `checks_json` (`[{code,
+  message}]` for the reviewer), `status` (open | changes_requested | merged | rejected | withdrawn), `reviewer_id` →
+  `users` (set null), `decision_note`, `decided_at`, `released_version`, `created_at`, `updated_at`. Indexes
+  `change_proposals_status (status, updated_at DESC)`, `change_proposals_tool (tool_id, created_at DESC)`,
+  `change_proposals_proposer (proposer_id, status)`. Written by `proposals.ts`.
+- A new version's first-week counts (`first-week.ts`) are read from `confirmations`; nothing new is stored.
+
 ### 2.12e Upstream watch (0021)
 
 - `upstream_watch`: PK `tool_id` → `tools(id)` (cascade), `provider`, `upstream_path`, `pin_kind` (an
@@ -632,6 +645,17 @@ There is no guard on the current status, so a resolved report can be resolved ag
 | open → `changes_requested` / `rejected` | `decideSubmission` |
 | open → `withdrawn` | `withdrawSubmission` |
 | `submitted` / `changes_requested` / `failed` → `submitted` or `releasing` | `updateSubmission` (the submitter) |
+
+### 3.8c `change_proposals.status`
+
+| Transition | Where |
+| --- | --- |
+| (new) → `open` | `proposals.ts:createProposal` |
+| `open` → `changes_requested` | `reviewProposal` (a reviewer, never the proposer) |
+| `open` / `changes_requested` → `open` | `updateProposal` (the proposer) |
+| `open` → `merged` (the pull request merged and the release started) | `reviewProposal` approve |
+| `open` / `changes_requested` → `rejected` | `reviewProposal` reject |
+| `open` / `changes_requested` → `withdrawn` | `withdrawProposal` (the proposer or an admin) |
 
 ### 3.9 Others
 - **`feedback.status`**: `open` (insert, `routes/beta.ts`) ↔ `done` / `dismissed` / `open` in `routes/beta.ts`

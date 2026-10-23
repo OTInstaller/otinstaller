@@ -6,6 +6,7 @@ import { api, type RegistryActivity, type RegistryEvent } from "../lib/api";
 import { formatDate } from "../lib/format";
 import { eventEntry, feedLinks, packageHref } from "../lib/feeds";
 import { cacheFor } from "../lib/page";
+import { firstWeekSaid, firstWeekTone } from "../lib/first-week";
 
 const beforeRaw = Astro.url.searchParams.get("before");
 const before = beforeRaw && /^\d{1,15}$/.test(beforeRaw) ? beforeRaw : null;
@@ -57,6 +58,7 @@ const badge = (e: RegistryEvent) => (e.type === "published" && e.new_package ? {
                       <a href={entry.url}>{entry.title}</a>
                       <span class="small muted sum">{e.summary}</span>
                       {e.type === "deprecated" && e.replacement && <span class="small">Use <a href={packageHref(e.kind, e.replacement)}>{e.replacement}</a> instead.</span>}
+                      {e.first_week && <span class={`small status ${firstWeekTone(e.first_week)}`}>First week: {firstWeekSaid(e.first_week)}.</span>}
                     </div>
                   </li>
                 );

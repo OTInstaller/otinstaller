@@ -502,11 +502,13 @@ and beta work, so `R2_*`, `ISSUES_REPO`/`ISSUES_TOKEN` and `EDGE_CACHE` are only
 | `people.ts` | Contributor profiles and the nightly `contributor_stats` recount |
 | `submissions.ts` | Community wrapper submissions: checks, `dockerfileChecks`, the community bot (`COMMUNITY_*`), the first-release review gate |
 | `upstream-pin.ts` / `upstream.ts` / `bumps.ts` | Reading a wrapper's upstream pin from its Dockerfile; the nightly upstream watcher (`UPSTREAM_WATCH`); bump pull requests and "merge and release" |
+| `proposals.ts` | Change proposals: a wrapper's maintainers change its manifest, Dockerfile or README beyond the pin (`checkProposal`), the community bot opens the pull request, a reviewer who isn't the proposer approves it and the bot merges and releases it |
+| `first-week.ts` | A new version's first week: its works/broken counts (`firstWeekCounts`) for the status line, the versions list and the activity feed |
 | `known-repos.ts` | **Generated** from otlite's catalog and `seed/candidates.md`; don't edit |
 | `mirror/` | The mirror Worker: `index.ts` (entry) and `registry.ts` (OCI API, `imageExists`, `hideImage`, `deleteImage`) |
 | `hosts/` | External services: `github.ts`, `gitlab.ts`, `osintverse.ts` (OIDC), `repo.ts` (`RepoHost` over both), `artifacts.ts` (OCI digest and PyPI wheel checks) |
 | `lib/` | `errors.ts` (`apiError`), `crypto.ts` (hashing, AES-GCM, RS256 JWT, `ulid()`), `manifest.ts` (validator), `images.ts` (metadata stripping, SVG sanitizing), `presign.ts` (R2 SigV4 URLs), `reserved.ts` (namespace names the site's sections take) |
-| `routes/` | One `xxxRoutes(app)` registrar per area: auth, device, webhooks, review, sources, imports, guides, trust, transfers, backups, beta, ops, profiles, community, inbox, requests, people, submissions, upstream |
+| `routes/` | One `xxxRoutes(app)` registrar per area: auth, device, webhooks, review, sources, imports, guides, trust, transfers, backups, beta, ops, profiles, community, inbox, requests, people, submissions, upstream, proposals |
 | `release-templates.ts` | **Generated** from `spec/templates`; don't edit |
 
 Routes only parse input, check permissions and shape responses; domain logic lives in the top-level modules. Route
@@ -551,7 +553,8 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
   `/admin/community/roles`; `/me/inbox`, `/me/email-prefs`, `/unsubscribe`; `/requests[/:n[/vote|/status|/viewer]]`;
   `/people/:handle`, `/me/community-profile`; `/submissions[/:n[/approve|/request-changes|/reject|/start|/withdraw|
   /viewer]]` (submitting is `POST /imports/:id/finish {mode: "submit"}`); `/upstream/summary`, `/admin/upstream...`,
-  `/packages/:ns/:name/bump`, `/packages/:ns/:name/pulls/:n/release`; `/activity` (`events=registry|community|all`).
+  `/packages/:ns/:name/bump`, `/packages/:ns/:name/pulls/:n/release`; `/proposals`, `/packages/:ns/:name/files`,
+  `/packages/:ns/:name/proposals[/:n[/review|/viewer]]`; `/activity` (`events=registry|community|all`).
 - Staff (`/admin/...`): review queue, namespace approve/request-changes/reject/verify/suspend, version approve/reject,
   reports, removals, legal holds, audit log, transfers, bans, feedback triage, beta metrics, manual backups, restore
   drills, `POST /admin/email-test` (checks the Resend key).
@@ -560,7 +563,7 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
   `POST /internal/drills/:id`, `/internal/health[/targets]`. Scans, backup runs and drills each use their own
   single-use token (scan 1 h, run 3 h or 12 h weekly, drill 6 h); the health endpoints use the static shared
   `HEALTH_TOKEN`.
-- The full route table (165 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
+- The full route table (174 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
   `spec/openapi/v1.json` describes the public and owner routes, each with its token scope as `x-scope`; a test in
   `api.test.ts` fails when a route and the document disagree, so add new routes to both.
 - 429s carry `Retry-After`, `RateLimit-Policy` and `retry_after_s` (`rateLimited` in `lib/errors.ts`).
@@ -629,8 +632,9 @@ migrations add publish intake (0002), scans/review and `notifications` (0003), s
 (handles, `community_roles`, `issues`, `issue_comments`, `confirmations`, `run_signals`, `content_flags`,
 `issue_subscriptions`, 0016), notifications (`email_prefs`, `inbox`, 0017), tool requests (`tool_requests`,
 `request_votes`, 0018), `contributor_stats` (0019), community submissions (`tools.needs_first_review`,
-`tool_maintainers`, `wrapper_submissions`, 0020), the upstream watcher (`upstream_watch`, 0021) and bump pull requests
-(`bump_prs`, 0022). That is 52 tables plus `tools_fts`; every table, column, CHECK value set and status transition is in
+`tool_maintainers`, `wrapper_submissions`, 0020), the upstream watcher (`upstream_watch`, 0021), bump pull requests
+(`bump_prs`, 0022) and change proposals (`change_proposals`, 0024; 0023 is request threads, on its own branch). That
+is 53 tables plus `tools_fts`; every table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
 
 - IDs are ULIDs (`ulid()`), timestamps are Unix **milliseconds**, booleans are 0/1, JSON columns end in `_json`
@@ -696,7 +700,8 @@ files are named by plan week (`week4` publish intake, `week5` scans/review, `wee
 `week8` guides/content, `week10` trust/ops, `week11` backups and mirror, `week12` feedback/beta/test email) plus
 `api.test.ts` (search, pivots, types, facets, OpenAPI, old-`ot` manifests, the remote MCP server), `edge-cache.test.ts`,
 `osintverse.test.ts`, `community-provenance.test.ts`, `community.test.ts` (issues, moderation, notifications, failed runs,
-community activity), `requests.test.ts`, `people.test.ts` and `upstream.test.ts` (pins, the watcher, bumps); community
+community activity), `requests.test.ts`, `people.test.ts`, `upstream.test.ts` (pins, the watcher, bumps) and
+`proposals.test.ts` (change proposals, first-week counts); community
 submissions are in `week7` with the imports. Add tests to the file for that area. The rate-limit test in `week10` waits for the start of a minute, so a slow run is expected.
 
 ### Seed data
@@ -759,7 +764,8 @@ Astro 7 with `output: "server"` on `@astrojs/cloudflare`, Preact islands, no CSS
   `/dashboard/publish/{jobId}` pages); Backups (used by Dashboard and PackageDetail); ImportWizard (four steps; its
   forms write YAML blocks through `lib/yaml-blocks.ts`), Accounts, ClaimFlow, TransferView, ReportForm, FeedbackForm,
   VersionActions, SearchDialog; for the community IssueComposer, IssueThread, WorksForMe, CommunityModeration,
-  NotificationSettings, RequestForm, RequestVote, RequestDecision, SubmissionActions, UpstreamWatch, BumpRelease).
+  NotificationSettings, RequestForm, RequestVote, RequestDecision, SubmissionActions, UpstreamWatch, BumpRelease,
+  ProposeChange and ProposalActions (a community package's Changes tab, `[ns]/[name]/changes/`)).
   The import wizard also packages someone else's tool ("Someone else's tool", with `lib/dockerfile-templates.ts`).
   `shared.tsx` has `useMe`, `SignIn`, `ErrorNote`, `Status`, `Loading`, `Confirm`.
 - `src/lib/`: `api.ts` (the only fetch helper: `api<T>()`, `apiOrNull`, `ApiError`, `signInUrl`, response types, and the
@@ -768,8 +774,9 @@ Astro 7 with `output: "server"` on `@astrojs/cloudflare`, Preact islands, no CSS
   `detect.ts` (the paste box's type detection, the CLI's rules; `/search` redirects typed values to `/input/{type}`),
   `evidence.ts` (the tool page's evidence lines and sample envelope), `install.ts` (the install commands; a test
   keeps `docs/getting-started.md` equal to them), `yaml-blocks.ts`, `feeds.ts` (Atom, JSON Feed, event wording),
-  `learn.ts`, `compare.ts` (the input pages' comparison table), `community.ts`, `requests.ts` and `submissions.ts`
-  (labels), `twins.ts` (Markdown twins and `RESERVED`).
+  `learn.ts`, `compare.ts` (the input pages' comparison table), `community.ts`, `requests.ts`, `submissions.ts` and
+  `proposals.ts` (labels), `first-week.ts` (wording a new version's first-week counts), `twins.ts` (Markdown twins and
+  `RESERVED`).
 - `src/styles/`: `tokens.css` (all colours, radii, motion, type scale; light and dark), `global.css` (shared classes),
   `admin.css` (admin console only).
 
@@ -856,6 +863,16 @@ The plan is [docs/roadmap.md](docs/roadmap.md) (phase 1 built). User docs: `web/
 - **Upstream watcher** (`upstream.ts`, 0021; pins from `upstream-pin.ts`): nightly, at most three requests per
   wrapper. `UPSTREAM_WATCH=report` (default) records; `issues` opens and closes outdated issues; `prs` also has the
   bot open pin-only bump pull requests (`bumps.ts`, 0022), which maintainers merge and release from the package page.
+- **Change proposals** (`proposals.ts`, 0024): a wrapper's maintainers and reviewers edit its `otinstaller.yaml`,
+  Dockerfile or README on the package's Changes tab. `checkProposal` keeps only what differs from main, validates the
+  manifest, refuses identity changes (`protected_field`) and secrets, moves the version past every version the package
+  had, and lists for the reviewer the fields changed, ethics changes, Dockerfile rules missed and personal data. The
+  bot opens the pull request; a reviewer who isn't the proposer approves it, and the bot merges it and dispatches the
+  release workflow (builds) or tags it. Reviewers find open ones on `/submissions`.
+- **A new version's first week** (`first-week.ts`): for seven days after a version is published, the status line
+  says when it came out and what people said since, `GET /tools/:ns/:name/status` has `new_version` (by platform,
+  beside the previous version), and the versions list and `/v1/activity` carry `first_week`, which the tool page,
+  versions page, `/new` and `ot outdated` (a `note:` line and `latest_first_week`) show.
 - **Activity and feeds**: `/v1/activity` (registry events; `events=community` adds confirmed and fixed issues and
   accepted and published requests, worded from fields), `/new`, and Atom/JSON feeds at the root, per publisher, per
   tool (release notes) and per input type.
@@ -1197,8 +1214,12 @@ change. Keep this list current when you fix one or find another.
   did in production as of 23 Oct 2026.
 - Stars are still never written (no route records one), though ranking and `stars` columns read them.
 - Community: request pages have no discussion thread, and flags don't cover requests (moderators can hide them);
-  maintainers can't propose changes beyond a pin through the registry; a new version's works/broken counts aren't
-  highlighted for its first week; `contributor_stats` is only as fresh as the last nightly run.
+  `contributor_stats` is only as fresh as the last nightly run.
+- Change proposals cover `otinstaller.yaml`, the Dockerfile and the README only (not docs pages or other files). A
+  proposal or bump pull request merged or closed on GitHub directly stays open in the registry (nothing reads
+  `pull_request` webhooks), and a merged proposal whose release fails its scan still shows as merged.
+- A new version's first-week counts are signed-in confirmations only; anonymous failed-run reports (`run_signals`)
+  only reach it once they open an issue.
 - Bump pull requests skip wrappers that pin upstream's own image (they get an outdated issue only), and commit pins.
 - The community bot creates wrapper repositories on GitHub only; a submission whose first release fails its scan
   stays `failed` until the submitter changes it.
@@ -1245,9 +1266,11 @@ change. Keep this list current when you fix one or find another.
 | Maintainer | Someone who looks after a package: its namespace's members, plus `tool_maintainers` (a submission's submitter, others staff add) |
 | Tool request | A request to package a repository (`tool_requests`), with votes; open → accepted → in progress → published, or declined |
 | Submission | A community wrapper someone packaged through the wizard (`wrapper_submissions`); its first release waits for a reviewer |
-| Community bot | The second GitHub App (`COMMUNITY_APP_*`), installed only on `osintverse-community`, that creates wrapper repositories and opens bump pull requests |
+| Community bot | The second GitHub App (`COMMUNITY_APP_*`), installed only on `osintverse-community`, that creates wrapper repositories and opens bump pull requests and change proposals' pull requests |
 | Upstream watcher | The nightly check of each wrapper's pin against its upstream's latest release (`upstream_watch`, `UPSTREAM_WATCH`) |
 | Bump pull request | The community bot's pull request changing only a wrapper's pin; maintainers merge and release it (`bump_prs`) |
+| Change proposal | A wrapper maintainer's change to its manifest, Dockerfile or README, opened as a pull request by the community bot; a reviewer who isn't the proposer approves it (`change_proposals`) |
+| First week | The seven days after a version is published, when its works/broken counts are shown beside the previous version's |
 | Failure prompt | `ot run`'s "Report it as broken?" after a run that failed; sends no inputs or output |
 | Awaiting review | A passing version of a not-yet-approved namespace, or a guide with PII hits |
 | Yank / deprecate / remove | Owner takes a version off `@latest` (an exact `@version` still installs) / owner marks a package as superseded / staff takedown (410, backups deleted after 14 days unless a legal hold) |

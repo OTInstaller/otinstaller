@@ -365,3 +365,19 @@ export async function mergePull(f: Fetch, token: string, repo: string, number: n
   if (res.status === 405 || res.status === 409) throw new HostError(`the pull request can't be merged (${res.status})`, res.status, false);
   return ((await (await check(res, "merging the pull request")).json()) as { sha: string }).sha;
 }
+
+/** Changes an open pull request's title and description. */
+export async function updatePull(f: Fetch, token: string, repo: string, number: number, change: { title: string; body: string }): Promise<void> {
+  await check(
+    await f(`${GITHUB_API}/repos/${repo}/pulls/${number}`, { method: "PATCH", headers: { ...apiHeaders(token), "Content-Type": "application/json" }, body: JSON.stringify(change) }),
+    "updating the pull request",
+  );
+}
+
+/** Closes a pull request without merging it. */
+export async function closePull(f: Fetch, token: string, repo: string, number: number): Promise<void> {
+  await check(
+    await f(`${GITHUB_API}/repos/${repo}/pulls/${number}`, { method: "PATCH", headers: { ...apiHeaders(token), "Content-Type": "application/json" }, body: JSON.stringify({ state: "closed" }) }),
+    "closing the pull request",
+  );
+}

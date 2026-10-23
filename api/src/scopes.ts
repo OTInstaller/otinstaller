@@ -48,6 +48,8 @@ export function requiredScope(method: string, path: string): string | null {
   if (/^\/(imports|sources)(\/|$)/.test(p) || /^\/packages\/[^/]+\/[^/]+\/(manifest|sync|source|pulls)(\/|$)/.test(p)) return "publish";
   // A submitter changing their submission publishes; withdrawing it and reviewers' decisions are "manage".
   if (method === "PUT" && /^\/submissions\/\d+$/.test(p)) return "publish";
+  // So do proposing and editing a change to a community package; withdrawing and reviewing it are "manage".
+  if ((method === "POST" && /^\/packages\/[^/]+\/[^/]+\/proposals$/.test(p)) || (method === "PATCH" && /^\/packages\/[^/]+\/[^/]+\/proposals\/\d+$/.test(p))) return "publish";
   return "manage";
 }
 

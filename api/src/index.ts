@@ -30,6 +30,7 @@ import { refreshContributorStats } from "./people";
 import { publicWatch, queueUpstreamChecks, type WatchRow } from "./upstream";
 import { openBumpFor } from "./bumps";
 import { upstreamRoutes } from "./routes/upstream";
+import { proposalRoutes } from "./routes/proposals";
 import { deliverInbox, purgeInbox } from "./inbox";
 import { refreshDueProfiles } from "./profiles";
 import { backfillBackups, expireDrills, expireRuns, installFallbacks, purgeBackups, RESTORE_DRILL_CRON, startDrill, WEEKLY_BACKUP_CRON, weeklyBackups } from "./backups";
@@ -44,6 +45,7 @@ import { edgeCached } from "./edge-cache";
 import { compatManifest } from "./lib/manifest";
 import { renderNotes } from "./changelog";
 import { siteActivity } from "./activity";
+import { firstWeekCounts } from "./first-week";
 import { mcpEndpoint } from "./mcp";
 import { lockStaleThreads } from "./community";
 
@@ -88,6 +90,7 @@ requestRoutes(app);
 peopleRoutes(app);
 submissionRoutes(app);
 upstreamRoutes(app);
+proposalRoutes(app);
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
@@ -304,19 +307,22 @@ app.get("/tools/:ns/:name/versions", async (c) => {
   const { row } = await findTool(c.env.DB, ns, name);
   if (!row) return notFound(c.env.DB, ns, name);
   const versions = await c.env.DB.prepare(
-    `SELECT version, status, scan_status, published_at, yanked_at, signer_identity IS NOT NULL AS signed, changelog, changelog_source, git_sha
+    `SELECT id, version, status, scan_status, published_at, yanked_at, signer_identity IS NOT NULL AS signed, changelog, changelog_source, git_sha
      FROM versions WHERE tool_id = ? AND status IN ('published', 'yanked', 'removed')
      ORDER BY semver_major DESC, semver_minor DESC, semver_patch DESC, semver_pre = '' DESC, semver_pre DESC`,
   )
     .bind(row.id)
-    .all();
+    .all<{ id: string; status: string; published_at: number | null; [k: string]: any }>();
+  // What people said about versions still in their first week.
+  const firstWeek = await firstWeekCounts(c.env.DB, versions.results.filter((v) => v.status !== "removed"));
   cached(c, 60);
   return c.json({
-    versions: versions.results.map(({ git_sha, changelog, changelog_source, ...v }: any) => ({
+    versions: versions.results.map(({ id, git_sha, changelog, changelog_source, ...v }) => ({
       ...v,
       signed: v.signed === 1 && row.manifest_mode !== "registry",
       // A removed version's notes go with it.
       ...releaseNotes(v.status === "removed" ? null : changelog, changelog_source, row.repo_url, git_sha),
+      ...(firstWeek.has(id) ? { first_week: firstWeek.get(id) } : {}),
     })),
   });
 });
