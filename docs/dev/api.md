@@ -46,9 +46,9 @@ anonymous GET.
 
 ## 1. Routes
 
-Total: **165 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
+Total: **171 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
 call; the `for` loops in `routes/trust.ts` (`yank`, `unyank`), `routes/community.ts` (a thread's subscription) and
-`routes/requests.ts` (a vote) register two each. The mirror Worker's OCI routes are in
+`routes/requests.ts` (a vote, a request's subscription) register two each. The mirror Worker's OCI routes are in
 section 6 and are not in this count. There is no route for stars, although the rate-limit comment in `index.ts`
 mentions stars. Every route under a removed package answers 410 `tool_removed`.
 
@@ -216,11 +216,11 @@ people (`feedback` scope) go through `poster()`: a timed-out account gets 403 `p
 | PATCH / DELETE | `/comments/:id` | author, feedback | - | routes/community.ts | Same for comments |
 | PUT | `/tools/:ns/:name/confirmations` | user, feedback | no-store | routes/community.ts | `{result: works|broken, version?, platform?, engine?, ot_version?, issue?}`; one per person, version and platform; 60 a day; returns 30-day counts |
 | PUT / DELETE | `/tools/:ns/:name/issues/:number/subscription` | user, feedback | - | routes/community.ts | Follow / mute a thread |
-| POST | `/flags` | user, feedback | - | routes/community.ts | 20 a day; a personal-data flag from an account over a week old, or three open flags, hides the post |
+| POST | `/flags` | user, feedback | - | routes/community.ts | `target_kind` issue, comment, request or request_comment; 20 a day; a personal-data flag from an account over a week old, or three open flags, hides the target |
 | POST | `/tools/:ns/:name/issues/:number/status` | triage, manage | - | routes/community.ts | Maintainers, triagers, staff; the author may set `fixed` (and reopen their own fix) |
 | POST | `/tools/:ns/:name/issues/:number/lock` | triage, manage | - | routes/community.ts | `{locked}`; closed threads also lock after 30 days without activity (nightly `lockStaleThreads`) |
-| POST | `/moderation/:kind/:id` | triager or staff, manage | - | routes/community.ts | `hide`, `restore`, `approve`, `redact` (staff only; overwrites the text); maintainers may hide comments on their package's issues; resolves the post's flags |
-| GET | `/moderation/queue` | triager or staff | no-store | routes/community.ts | `view=held` (held and hidden posts) or `flags` (open, personal data first); `before` |
+| POST | `/moderation/:kind/:id` | triager or staff, manage | - | routes/community.ts | `kind` issue, comment, request or request_comment; `hide`, `restore`, `approve`, `redact` (staff only; overwrites the text); maintainers may hide comments on their package's issues (requests and their replies are for triagers and staff only); resolves the target's flags |
+| GET | `/moderation/queue` | triager or staff | no-store | routes/community.ts | `view=held` (held and hidden issues, comments, requests and request replies) or `flags` (open, personal data first, each with the target's site `path`, `moderation` and text as `body_html`); `before` |
 | POST | `/moderation/users/:handle/timeout` | triager or staff, manage | - | routes/community.ts | Up to 7 days (`users.posting_blocked_until`) |
 | GET / POST / DELETE | `/admin/community/roles[/:handle/:role]` | admin | no-store | routes/community.ts | Grant (`{handle, role: triager|reviewer, note}`, note required) and revoke; audited `role.grant`/`role.revoke` |
 | POST | `/admin/reports/:id/publish-issue` | reviewer | - | routes/community.ts | A private `broken` report becomes a system issue written by the reviewer (no reporter attached); the report is actioned |
@@ -252,16 +252,20 @@ failure prompt sends, `{version, exit_code | timed_out, os, arch, engine?, ot_ve
 address) it adds to `run_signals` once per address, version and day, and 3 in a week file a system issue
 (`run_signals:<version>`, "unconfirmed"). 404 `version_not_found` for an unknown version.
 
-Tool requests (`routes/requests.ts`, logic in `requests.ts`, 7 routes):
+Tool requests (`routes/requests.ts`, logic in `requests.ts`, 13 routes):
 
 | Method | Path | Auth | Caching | Defined in | Notes |
 | --- | --- | --- | --- | --- | --- |
 | GET | `/requests` | none | `cached(c, 120)` | routes/requests.ts | `status` active (open, accepted, in progress) / all / one status; `sort` votes / new; `before` (`<votes>.<number>` or `<number>`); 50 a page; `counts` by status; visible requests only |
-| GET | `/requests/:number` | none | `cached(c, 60)` | routes/requests.ts | With `note`, `decision_note`, `decided_by`, `dropped_reason`, `pushed_at`; held and hidden answer 404 `request_not_found`; `indexable` once accepted |
-| GET | `/requests/:number/viewer` | user | no-store | routes/requests.ts | `voted`, `is_requester`, `can_decide`, `held`, and the requester's own note while held |
+| GET | `/requests/:number` | none | `cached(c, 60)` | routes/requests.ts | With `id`, `note`, `decision_note`, `decided_by`, `dropped_reason`, `pushed_at`, `locked`, and `comments` (visible replies, oldest first, at most 500; links as text for authors under a week old); held and hidden answer 404 `request_not_found`; `indexable` once accepted |
+| GET | `/requests/:number/viewer` | user | no-store | routes/requests.ts | `voted`, `is_requester`, `can_decide`, `held`, the requester's own note while held, `subscribed`, `locked`, `can_reply`, `editable_comments`, `held_comments` |
 | POST | `/requests` | user, feedback | no-store | routes/requests.ts | `{repo, note?}`; 5 a day; checks below; 201 with `request`, `held`, `notes`, `url` |
 | PUT / DELETE | `/requests/:number/vote` | user, feedback | no-store | routes/requests.ts | 60 a day; only open, accepted and in-progress requests (409 `request_closed`) |
 | POST | `/requests/:number/status` | triager or staff, manage | no-store | routes/requests.ts | `{status, decline_code?, note?, tool?}`; `published` names the package; the requester may withdraw (`declined` + `withdrawn`); 409 `request_unchanged` |
+| POST | `/requests/:number/comments` | user, feedback | no-store | routes/requests.ts | `{body}` (2 to 8000 characters); 30 replies a day, shared with issue comments; held like issue comments (`holdReason`) unless a triager or staff wrote it; 409 `invalid_state` on a held or hidden request, `request_locked` on a locked one unless a triager or staff replies; follows the request |
+| PATCH / DELETE | `/requests/:number/comments/:id` | author, feedback | - | routes/requests.ts | `editPost` / `deletePost` with kind `request_comment`: 24 hours to edit (409 `edit_window_closed`), edits screened again; 404 `comment_not_found` for a reply on another request |
+| PUT / DELETE | `/requests/:number/subscription` | user, feedback | - | routes/requests.ts | Follow, or mute (`request_subscriptions.muted`) |
+| POST | `/requests/:number/lock` | triager or staff, manage | - | routes/requests.ts | `{locked}` (default true); 403 `not_triager` |
 
 `createRequest` checks, in order: `parseRepoRef` (400 `invalid_body`); an existing request for the repository (409
 `request_exists` with `number` and `status`; a withdrawn one is reopened as the new person's instead); `readUpstream`
@@ -273,8 +277,10 @@ the repository or a wrapper whose manifest `homepage` is it (409 `already_in_reg
 LICENSE file when GitHub says NOASSERTION) or an archived repository is recorded as `declined` at once. `knownRepo`
 (generated `known-repos.ts`) adds `otlite_name` and the seed survey's `dropped_reason`. Requests from accounts under
 24 hours old, or whose note `screen()` flags, are `held` and appear in `/moderation/queue?view=held` as kind
-`request`; `/moderation/request/:id` approves, hides, restores or (staff) redacts the note. `setRequestStatus`
-notifies the requester on every change and voters on published or declined (inbox, scope `community`);
+`request`; `/moderation/request/:id` approves, hides, restores or (staff) redacts the note, and settles its flags.
+`setRequestStatus` notifies the people following the request (the requester, people who replied or followed it) on
+every change and voters on published or declined (inbox, scope `community`); replies notify the followers too.
+`lockStaleThreads` (nightly) locks published and declined requests 30 days after `updated_at`, which replies move;
 `linkPublished` (called by `publishVersion`) marks requests for the package's own repository or the upstream its
 `homepage` names as published.
 

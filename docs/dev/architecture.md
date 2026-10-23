@@ -686,7 +686,9 @@ The remote server is separate and runs nothing:
 
  POST /requests {repo} --> readUpstream (as the requester, else the App on osintverse-community, else anonymous)
                             refuse: exists, packaged, upstream manifest; record declined: license, archived
-                            -> tool_requests (+ the requester's vote); triagers: setRequestStatus -> inbox
+                            -> tool_requests (+ the requester's vote and subscription); triagers: setRequestStatus -> inbox
+ POST /requests/:n/comments --> addRequestComment: holdReason() like issue comments -> request_comments visible | held
+                            -> inbox for request_subscriptions; edits, deletes, flags, moderation: community.ts
  publishVersion --> linkPublished: requests for the package's repository or its homepage's upstream -> published
 
  POST /imports {repo, community: true} --> detection --> POST /imports/:id/finish {mode: "submit", dockerfile?}
