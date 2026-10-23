@@ -5,7 +5,8 @@ import { api } from "../lib/api";
 import { issueHref } from "../lib/community";
 import { ErrorNote, Loading, SignIn, useMe, when } from "./shared";
 
-interface Held { kind: "issue" | "comment"; id: string; title: string | null; body_html: string; hidden_reason: string | null; created_at: number; ref: string; number: number; handle: string | null }
+/** A held post: an issue or comment (on a package, ref), or a tool request (ref is null, title is the repository). */
+interface Held { kind: "issue" | "comment" | "request"; id: string; title: string | null; body_html: string; hidden_reason: string | null; created_at: number; ref: string | null; number: number; handle: string | null }
 interface Flag { id: string; target_kind: "issue" | "comment"; target_id: string; reason: string; note: string | null; created_at: number; flagger: string }
 interface Role { handle: string; login: string; role: string; note: string | null; granted_at: number; granted_by: string | null }
 
@@ -56,7 +57,10 @@ function Queue({ staff, onError }: { staff: boolean; onError: (e: unknown) => vo
         <ul class="list-plain stack">
           {held.map((h) => (
             <li class="card stack">
-              <p class="small muted"><a href={issueHref(h.ref, h.number)}>{h.ref} #{h.number}</a> · {h.kind} by {h.handle ?? "deleted account"} · {when(h.created_at)} · {why(h.hidden_reason)}</p>
+              <p class="small muted">
+                {h.ref ? <a href={issueHref(h.ref, h.number)}>{h.ref} #{h.number}</a> : <a href={`/requests/${h.number}`}>Request #{h.number}</a>}
+                {" "}· {h.kind === "request" ? "tool request" : h.kind} by {h.handle ?? "deleted account"} · {when(h.created_at)} · {why(h.hidden_reason)}
+              </p>
               {h.title && <p><b>{h.title}</b></p>}
               <div class="prose small" dangerouslySetInnerHTML={{ __html: h.body_html }} />
               <div class="row">

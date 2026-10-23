@@ -3879,6 +3879,650 @@
         "security": []
       }
     },
+    "/requests": {
+      "get": {
+        "operationId": "list_requests",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Tool requests, most wanted first",
+        "description": "Requests to package an open-source tool, with their votes and status. Cached for 2 minutes.",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "all",
+                "open",
+                "accepted",
+                "in_progress",
+                "published",
+                "declined"
+              ],
+              "default": "active"
+            },
+            "description": "active: open, accepted and in progress"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "votes",
+                "new"
+              ],
+              "default": "votes"
+            },
+            "description": "Most votes, or newest first"
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Paging: next_before from the last page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "requests": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "number": {
+                            "type": "integer"
+                          },
+                          "provider": {
+                            "enum": [
+                              "github",
+                              "gitlab"
+                            ]
+                          },
+                          "repo": {
+                            "type": "string",
+                            "description": "owner/name as the host spells it"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "license": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "upstream_stars": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "status": {
+                            "enum": [
+                              "open",
+                              "accepted",
+                              "in_progress",
+                              "published",
+                              "declined"
+                            ]
+                          },
+                          "decline_code": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "votes": {
+                            "type": "integer"
+                          },
+                          "requested_by": {
+                            "type": [
+                              "object",
+                              "null"
+                            ]
+                          },
+                          "tool": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "The published package that answers it"
+                          },
+                          "otlite": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "otlite's name for it, when otlite installs it"
+                          },
+                          "created_at": {
+                            "type": "integer"
+                          },
+                          "updated_at": {
+                            "type": "integer"
+                          },
+                          "indexable": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "counts": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "integer"
+                      }
+                    },
+                    "next_before": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      },
+      "post": {
+        "operationId": "request_tool",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Ask for a tool to be packaged",
+        "description": "Checks the repository first: it must be public, not in the registry or requested already (409 request_exists carries the number to vote for), and not publish itself. A license the registry can't redistribute, or an archived repository, is recorded as declined at once. Requests from new accounts, and notes that look like personal data, wait for a moderator. Five a day.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "repo"
+                ],
+                "properties": {
+                  "repo": {
+                    "type": "string",
+                    "description": "A GitHub or GitLab repository URL"
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 500,
+                    "description": "Why it's worth packaging; plain text"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "request": {
+                      "type": "object",
+                      "properties": {
+                        "number": {
+                          "type": "integer"
+                        },
+                        "provider": {
+                          "enum": [
+                            "github",
+                            "gitlab"
+                          ]
+                        },
+                        "repo": {
+                          "type": "string",
+                          "description": "owner/name as the host spells it"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "license": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "upstream_stars": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "status": {
+                          "enum": [
+                            "open",
+                            "accepted",
+                            "in_progress",
+                            "published",
+                            "declined"
+                          ]
+                        },
+                        "decline_code": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "votes": {
+                          "type": "integer"
+                        },
+                        "requested_by": {
+                          "type": [
+                            "object",
+                            "null"
+                          ]
+                        },
+                        "tool": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "The published package that answers it"
+                        },
+                        "otlite": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "otlite's name for it, when otlite installs it"
+                        },
+                        "created_at": {
+                          "type": "integer"
+                        },
+                        "updated_at": {
+                          "type": "integer"
+                        },
+                        "indexable": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "held": {
+                      "type": "boolean"
+                    },
+                    "notes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "url": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "feedback",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/requests/{number}": {
+      "get": {
+        "operationId": "get_request",
+        "tags": [
+          "Community"
+        ],
+        "summary": "One tool request",
+        "description": "With the requester's note, the decision and what the registry already knew about the repository. Cached for a minute.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Request number"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/requests/{number}/viewer": {
+      "get": {
+        "operationId": "request_viewer",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Whether you voted for a request, asked for it, or can decide it",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Request number"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/requests/{number}/vote": {
+      "put": {
+        "operationId": "vote_for_request",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Vote for a request",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Request number"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-scope": "feedback",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "unvote_request",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Take your vote back",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Request number"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "feedback",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/requests/{number}/status": {
+      "post": {
+        "operationId": "decide_request",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Accept, start, publish, decline or reopen a request",
+        "description": "Triagers and staff. The requester may withdraw their own (status declined, decline_code withdrawn). Publishing names the package; the registry also does this itself when a package from the repository is published.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Request number"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "open",
+                      "accepted",
+                      "in_progress",
+                      "published",
+                      "declined"
+                    ]
+                  },
+                  "decline_code": {
+                    "enum": [
+                      "license",
+                      "archived",
+                      "not_osint",
+                      "not_cli",
+                      "needs_login",
+                      "acceptable_use",
+                      "unmaintained",
+                      "duplicate",
+                      "withdrawn",
+                      "other"
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "tool": {
+                    "type": "string",
+                    "description": "namespace/name, for published"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/moderation/{kind}/{id}": {
       "post": {
         "operationId": "moderate_post",

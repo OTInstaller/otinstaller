@@ -230,8 +230,28 @@ A moderator stopped this account posting for a few days. Read the [community gui
 Only the package's maintainers, the registry's triagers and staff can triage issues or moderate posts.
 
 ### too_many_posts
-There is a daily limit per account: 5 issues (2 for accounts under a week old), 30 comments, 60 confirmations and
-20 flags. Try again tomorrow.
+There is a daily limit per account: 5 issues (2 for accounts under a week old), 30 comments, 60 confirmations,
+20 flags, 5 tool requests and 60 votes. Try again tomorrow.
+
+### request_not_found
+There is no [tool request](/requests) with that number, or a moderator hid it.
+
+### request_exists
+Someone asked for this repository already. The error carries the request's `number`: vote for it on its page or
+with `ot request <repo> --vote`.
+
+### already_in_registry
+A package of this repository is in the registry already; the error's `ref` names it. Install it with `ot install`.
+If it is broken or out of date, open an issue on its page instead.
+
+### request_closed
+The request was published or declined, so it takes no more votes.
+
+### request_unchanged
+The request already has that status.
+
+### upstream_unreachable
+GitHub or GitLab took too long to answer while the registry checked the repository. Try again in a minute.
 
 ### invalid_unsubscribe_link
 The unsubscribe link was changed or cut short. Change what you get at [notification settings](/settings/notifications).

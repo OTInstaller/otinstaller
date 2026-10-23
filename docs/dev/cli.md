@@ -25,8 +25,9 @@ Conventions used here:
 ## 1. Commands
 
 Registered in `Root()` (`cli/root.go`) in this order: init, validate, search, info, install, run, playbook, auto,
-runs, issues, extract, diff, list, outdated, update, uninstall, keys, doctor, login, logout, whoami, import, sync, guide,
-docs, report, feedback, claim, transfer, yank, deprecate, self-update, release, mcp, pivot, token, profile. 37 top-level commands,
+runs, issues, request, extract, diff, list, outdated, update, uninstall, keys, doctor, login, logout, whoami, import, sync,
+guide, docs, report, feedback, claim, transfer, yank, deprecate, self-update, release, mcp, pivot, token, profile. 38
+top-level commands,
 plus subcommands `keys set|setup|list|rm`, `guide search|read|open|get|tools`, `mcp install|audit|policy|tools`
 (with `mcp policy reset`) and `token create|list|revoke`.
 
@@ -337,6 +338,20 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 - Output: table `# KIND STATUS VERSION REPLIES TITLE`, then `N open, M closed: <site>/<ns>/<name>/issues` on stderr;
   with none, a line with the issues page. JSON is the API's answer (`ref`, `counts`, `issues`).
 - Sign-in: no. Exit: 0; 2 for a bad reference or a registry 4xx (unknown package); 1 otherwise.
+
+#### `ot request <repository-url>`
+- File: `cli/request.go` (`requestCmd`, `askVote`). Args: `ExactArgs(1)`: a GitHub or GitLab repository URL (the
+  registry parses it).
+- Flags: `--note` (string): why it's worth packaging, plain text; `--vote` (bool): vote for the existing request
+  instead of failing when someone asked already; `--json`.
+- API: `POST /requests` `{repo, note?}`. On 409 `request_exists` (the error carries `number`): with `--vote`, or a yes
+  (the default) to `... Vote for it instead? [Y/n]` at a terminal, `PUT /requests/{number}/vote`; otherwise exit 2.
+- Output: "Asked for <repo> as request #N ..." (or declined at once, or waiting for a moderator) with the page's URL,
+  then each of the registry's notes as a `note:` line on stderr (otlite has it already, why the seed survey left it
+  out); after a vote, "Voted for request #N (M votes): <url>". JSON is the API's answer (`request`, `held`, `notes`,
+  `url`) or the vote (`number`, `votes`, `voted`); a JSON error carries `number` (and `ref` for `already_in_registry`).
+- Sign-in: **yes, client-side** (exit 2). Exit: 0; 2 for no token, an existing request not voted for, or a registry
+  4xx; 1 otherwise.
 
 #### `ot extract <tool | path>`
 - File: `cli/saved.go` (`extractCmd`); logic in `results/saved.go`. Args: `MaximumNArgs(1)`.
@@ -835,7 +850,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | Package | One line |
 | --- | --- |
 | `agent` | Consent classes (`Classify`, `Describe`), the policy file (`LoadPolicy`, `DefaultPolicy`), sessions (`DecideRun`, approvals, limits), consent tokens (`CallHash`, `Seal`/`Open`, single use), the audit log (`Record`, `ReadAudit`, rotation) |
-| `api` | Registry HTTP client: `do`, error shape `*api.Error`, search, tool/manifest/versions, install ping, device login, `/me`, tokens, guides and docs, imports, sync, removals, reports, claims and transfers, yank/deprecate, feedback, community issues, run reports and confirmations |
+| `api` | Registry HTTP client: `do`, error shape `*api.Error`, search, tool/manifest/versions, install ping, device login, `/me`, tokens, guides and docs, imports, sync, removals, reports, claims and transfers, yank/deprecate, feedback, community issues, run reports, confirmations and tool requests |
 | `cli` | Every cobra command, the `App` struct, exit codes, `ExitError`, `Main`, `ExitCodeFor`, JSON errors (`machine.go`), the MCP server (`mcp_*.go`) |
 | `envelope` | The result envelope (`Version = 1`), `ParseOutput` for json/jsonl/csv/text, `Write` for json/raw/csv/table |
 | `keys` | Keychain storage (service `osintverse-ot`), env-first `Get`, `keys.json` name index |
@@ -873,7 +888,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `cli/sync_test.go` | `ot sync` and `--log` |
 | `cli/profile_test.go` | `ot profile`: show, `--set`/`--unset`, `--sync`, rate limit, `--json` |
 | `cli/trust_test.go` | report/claim/transfer against a fake registry, removed-package warnings and refusal, `self-update` with a signed fake release (through the GitHub API, and through `/ot/latest` with no downgrade), the newer-ot note in `ot outdated` (daily cache, and never for dev builds, agents, CI or `OT_NO_UPDATE_CHECK=1`) |
-| `cli/community_test.go` | The failure prompt (asks once a week, sends no inputs, stays quiet with telemetry off, no terminal, `--json`, CI, a passing run or a local manifest), `ot report --works` (needs a token) and `--broken`, `ot issues` table and JSON |
+| `cli/community_test.go` | The failure prompt (asks once a week, sends no inputs, stays quiet with telemetry off, no terminal, `--json`, CI, a passing run or a local manifest), `ot report --works` (needs a token) and `--broken`, `ot issues` table and JSON, `ot request` (sign-in, notes, voting at a terminal and with `--vote`, the request number in JSON errors) |
 | `cli/feedback_test.go` | `ot feedback`: message with `--kind`/`--about`, piped stdin with `--email`, bad kind exits 2 |
 | `cli/machine_test.go` | `--json` detection, error codes, JSON errors on stderr, no prompts without a terminal, envelope provenance, `--all` JSON lines, stdout stays JSON |
 | `cli/mcp_test.go` | `ot mcp`: tool list, passive runs, consent by elicitation and by token, policy and trust, unattended CLI runs need `--yes`, `mcp install`, docs and plugin match the server, policy changes without a restart, shutdown, sandbox mode, batches |

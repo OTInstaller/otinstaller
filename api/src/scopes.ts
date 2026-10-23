@@ -40,8 +40,10 @@ export function requiredScope(method: string, path: string): string | null {
   if (/^\/(auth|internal|webhooks)\//.test(p) || p === "/installs" || p === "/health" || p === "/unsubscribe") return null;
   if (p.startsWith("/admin")) return "staff";
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") return "read";
-  // Taking part: reports, feedback, issues, comments, confirmations, subscriptions and flags. Triage is "manage".
+  // Taking part: reports, feedback, issues, comments, confirmations, subscriptions, flags, requests and votes.
+  // Triage, including deciding requests, is "manage".
   if (p === "/feedback" || p === "/flags" || /^\/comments\/[^/]+$/.test(p)) return "feedback";
+  if (p === "/requests" || /^\/requests\/\d+\/vote$/.test(p)) return "feedback";
   if (/^\/tools\/[^/]+\/[^/]+\/(reports|confirmations|run-reports|issues(\/\d+(\/(comments|subscription))?)?)$/.test(p)) return "feedback";
   if (/^\/(imports|sources)(\/|$)/.test(p) || /^\/packages\/[^/]+\/[^/]+\/(manifest|sync|source)(\/|$)/.test(p)) return "publish";
   return "manage";

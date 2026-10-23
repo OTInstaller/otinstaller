@@ -244,6 +244,38 @@ Internal: `fileSystemIssue(env, toolId, kind, body, dedupeKey, source)` (one iss
 `closeSystemIssue`, `announceVersion` (called by `publishVersion`: "does vX fix this?" on open broken and outdated
 issues) and `versionConfirmations`.
 
+`POST /tools/:ns/:name/run-reports` (user or anonymous, `feedback`, no-store; `community.ts:reportRun`): what `ot`'s
+failure prompt sends, `{version, exit_code | timed_out, os, arch, engine?, ot_version?}` and nothing else. Signed in
+(20 a day) it joins the version's open broken issue as a "broken" confirmation, or opens one; anonymous (10 a day per
+address) it adds to `run_signals` once per address, version and day, and 3 in a week file a system issue
+(`run_signals:<version>`, "unconfirmed"). 404 `version_not_found` for an unknown version.
+
+Tool requests (`routes/requests.ts`, logic in `requests.ts`, 7 routes):
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/requests` | none | `cached(c, 120)` | routes/requests.ts | `status` active (open, accepted, in progress) / all / one status; `sort` votes / new; `before` (`<votes>.<number>` or `<number>`); 50 a page; `counts` by status; visible requests only |
+| GET | `/requests/:number` | none | `cached(c, 60)` | routes/requests.ts | With `note`, `decision_note`, `decided_by`, `dropped_reason`, `pushed_at`; held and hidden answer 404 `request_not_found`; `indexable` once accepted |
+| GET | `/requests/:number/viewer` | user | no-store | routes/requests.ts | `voted`, `is_requester`, `can_decide`, `held`, and the requester's own note while held |
+| POST | `/requests` | user, feedback | no-store | routes/requests.ts | `{repo, note?}`; 5 a day; checks below; 201 with `request`, `held`, `notes`, `url` |
+| PUT / DELETE | `/requests/:number/vote` | user, feedback | no-store | routes/requests.ts | 60 a day; only open, accepted and in-progress requests (409 `request_closed`) |
+| POST | `/requests/:number/status` | triager or staff, manage | no-store | routes/requests.ts | `{status, decline_code?, note?, tool?}`; `published` names the package; the requester may withdraw (`declined` + `withdrawn`); 409 `request_unchanged` |
+
+`createRequest` checks, in order: `parseRepoRef` (400 `invalid_body`); an existing request for the repository (409
+`request_exists` with `number` and `status`; a withdrawn one is reopened as the new person's instead); `readUpstream`
+through `deps.fetch` with 5 s per step (503 `upstream_unreachable`), as the requester (their GitHub or GitLab token),
+else the GitHub App's installation on `osintverse-community`, else anonymously: 404 `repo_not_found` /
+`project_not_found`, 400 `repo_not_public`; the same request under its project ID (renames); a published package from
+the repository or a wrapper whose manifest `homepage` is it (409 `already_in_registry` with `ref`); an
+`otinstaller.yaml` upstream (409 `upstream_has_manifest`). A license `isRedistributable` refuses (read from the
+LICENSE file when GitHub says NOASSERTION) or an archived repository is recorded as `declined` at once. `knownRepo`
+(generated `known-repos.ts`) adds `otlite_name` and the seed survey's `dropped_reason`. Requests from accounts under
+24 hours old, or whose note `screen()` flags, are `held` and appear in `/moderation/queue?view=held` as kind
+`request`; `/moderation/request/:id` approves, hides, restores or (staff) redacts the note. `setRequestStatus`
+notifies the requester on every change and voters on published or declined (inbox, scope `community`);
+`linkPublished` (called by `publishVersion`) marks requests for the package's own repository or the upstream its
+`homepage` names as published.
+
 ### 1.10 Admin and staff (24)
 
 | Method | Path | Auth | Caching | Defined in | Notes |
