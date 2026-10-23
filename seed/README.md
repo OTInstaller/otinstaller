@@ -10,7 +10,7 @@ content checks → review → published). Never seed production from `api/script
 | --- | --- | --- |
 | [`first-party/`](first-party) | Tools written for the registry, on the result envelope, namespace `osintverse-community` | 11 |
 | [`community/`](community) | Wrapper repositories for third-party tools, namespace `osintverse-community` (27 for launch, 26 published and `instaloader-profile` dropped; 11 converted from `otinstaller`; 65 open-source tools with more than 100 stars added in October 2026) | 103 |
-| [`guides/`](guides) | Launch guides, namespace `osintverse-community` | 10 |
+| [`guides/`](guides) | Launch guides, namespace `osintverse-community` (10 published; `osint-fundamentals` is a draft primer for `/learn`, not published yet) | 11 |
 | [`outreach/`](outreach) | Issue and pull request texts for maintainer outreach | 2 |
 
 Two more tools are **outreach only**: `p1ngul1n0/blackbird` (now `antoniaci/blackbird`), whose author removed its
