@@ -21,12 +21,13 @@ Items marked **(you)** need the owner of the GitHub, GitLab, Cloudflare, Resend,
 
 The roadmap's phase 1 ([roadmap.md](roadmap.md)) is built as pull requests: #58 (roadmap, stars), #61 (release notes),
 #63 (activity and feeds), #66 (learn hub), and the community stack #68 → #74 → #76 → #78 → #79 → #80 → #81 → #82 → #83,
-with the close-out (#84) on top, and two follow-ups on the close-out: request threads and flags
-(`claude/phase1-gaps`, migration 0023) and change proposals with the first-week counts (`claude/change-proposals`,
-migration 0024). Nothing is merged or deployed. In order, the owner's steps:
+with the close-out (#84) on top. The stack is merged into `main` (23 Oct) but not deployed. Two follow-ups are open
+against `main`: request threads and flags (`claude/phase1-gaps`, migration 0026) and change proposals with the
+first-week counts (`claude/change-proposals`, migration 0027); 0023 to 0025 are left for the direct-publishing stack
+(#86 → #88). In order, the owner's steps:
 
-- [ ] **(you)** Review and merge the pull requests (the side ones and then the stack, bottom first).
-- [ ] **(you)** Apply migrations 0015 to 0024 remotely before deploying the API
+- [ ] **(you)** Review and merge the follow-ups and any side pull requests still open.
+- [ ] **(you)** Apply migrations 0015 to 0027 remotely before deploying the API
       (`npx wrangler d1 migrations apply otinstaller --remote`), then deploy the API and the site.
 - [ ] **(you)** Grant the first triager and reviewer roles (Admin console → Community).
 - [ ] **(you)** Set up the community bot for submissions, bump pull requests and change proposals (publishing-setup.md section 6,

@@ -633,7 +633,7 @@ migrations add publish intake (0002), scans/review and `notifications` (0003), s
 `issue_subscriptions`, 0016), notifications (`email_prefs`, `inbox`, 0017), tool requests (`tool_requests`,
 `request_votes`, 0018), `contributor_stats` (0019), community submissions (`tools.needs_first_review`,
 `tool_maintainers`, `wrapper_submissions`, 0020), the upstream watcher (`upstream_watch`, 0021), bump pull requests
-(`bump_prs`, 0022) and change proposals (`change_proposals`, 0024; 0023 is request threads, on its own branch). That
+(`bump_prs`, 0022) and change proposals (`change_proposals`, 0027; 0023 to 0026 are on other branches). That
 is 53 tables plus `tools_fts`; every table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
 
@@ -863,7 +863,7 @@ The plan is [docs/roadmap.md](docs/roadmap.md) (phase 1 built). User docs: `web/
 - **Upstream watcher** (`upstream.ts`, 0021; pins from `upstream-pin.ts`): nightly, at most three requests per
   wrapper. `UPSTREAM_WATCH=report` (default) records; `issues` opens and closes outdated issues; `prs` also has the
   bot open pin-only bump pull requests (`bumps.ts`, 0022), which maintainers merge and release from the package page.
-- **Change proposals** (`proposals.ts`, 0024): a wrapper's maintainers and reviewers edit its `otinstaller.yaml`,
+- **Change proposals** (`proposals.ts`, 0027): a wrapper's maintainers and reviewers edit its `otinstaller.yaml`,
   Dockerfile or README on the package's Changes tab. `checkProposal` keeps only what differs from main, validates the
   manifest, refuses identity changes (`protected_field`) and secrets, moves the version past every version the package
   had, and lists for the reviewer the fields changed, ethics changes, Dockerfile rules missed and personal data. The

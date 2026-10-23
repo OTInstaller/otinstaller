@@ -24,8 +24,8 @@ when a phase changes. Production steps (migrations, deploys, releases) happen se
 
 Built on 23 October 2026 as pull requests; not merged or deployed yet ([launch-checklist.md](launch-checklist.md)
 lists the owner's steps). Left from phase 1: a request's discussion thread and flags on requests. Maintainers
-proposing changes beyond a pin, and highlighting a new version's works/broken counts for its first week, are built on
-top of the close-out.
+proposing changes beyond a pin, and highlighting a new version's works/broken counts for its first week, are built in
+their own pull request.
 
 **Community**
 - Issues and discussion on every tool page: broken, outdated, wrong information, feature requests and questions,

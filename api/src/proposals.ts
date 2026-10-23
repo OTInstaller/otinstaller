@@ -4,7 +4,7 @@
 // community bot opens a pull request with them, and a staff or community reviewer who isn't the proposer approves it:
 // the bot merges it and starts the release (the release workflow for builds, a tag otherwise), which is built, signed
 // and scanned like any other. Pin-only bumps the upstream watcher opens stay in bumps.ts. Routes live in
-// routes/proposals.ts; the table is in migration 0024.
+// routes/proposals.ts; the table is in migration 0027.
 import { deps, type Env, type User } from "./env";
 import { ulid } from "./lib/crypto";
 import { apiError } from "./lib/errors";
