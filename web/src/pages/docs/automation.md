@@ -39,6 +39,8 @@ setting for an agent or a CI job. `ot run` prints the JSON [result envelope](/do
 | `ot list` | a list of install records |
 | `ot run` | the [envelope](/docs/results) |
 | `ot run --all`, `ot playbook`, `ot auto` | an array of rows, or `-f jsonl` lines |
+| `ot runs` | `[{run_id, tool, version, target, case, status, exit_code, entities, started_at, output_path}]`, newest first, the same rows as MCP's `list_runs` |
+| `ot runs <run-id>` | the run's `.meta.json` sidecar (see [Results](/docs/results)) |
 | `ot extract`, `ot diff` | indicators by type; new and gone entities |
 | `ot outdated`, `ot update` | `[{ref, installed, latest, status, note}]` |
 | `ot keys list` | `[{name, set, source, required_by, optional_for}]`, never values |

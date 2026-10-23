@@ -714,11 +714,15 @@ func idFromPath(p string) string {
 
 // findSavedRun looks a run up by id among the saved runs.
 func findSavedRun(id string) (*savedRun, error) {
+	return findSavedRunIn(resultDirs(), id)
+}
+
+// findSavedRunIn looks a run up by id among the runs saved under dirs.
+func findSavedRunIn(dirs []string, id string) (*savedRun, error) {
 	id = strings.TrimSpace(id)
 	if len(id) != 8 {
 		return nil, &toolError{Code: "run_not_found", Message: fmt.Sprintf("%q is not a run id", id)}
 	}
-	dirs := resultDirs()
 	for _, dir := range dirs {
 		files, _ := results.Outputs(dir)
 		for i := len(files) - 1; i >= 0; i-- {
@@ -743,31 +747,8 @@ func resultDirs() []string {
 }
 
 func (s *mcpServer) listRuns(ctx context.Context, in runsIn) (*runsOut, error) {
-	dir := results.Dir("")
-	if in.Case != "" {
-		dir = filepath.Join(dir, "cases", results.Sanitize(in.Case))
-	}
-	files, _ := results.Outputs(dir)
-	out := &runsOut{Runs: []runSummary{}}
-	limit := orInt(in.Limit, 20)
-	tool := ""
-	if in.Tool != "" {
-		tool = toolDir(in.Tool)
-	}
-	for i := len(files) - 1; i >= 0 && len(out.Runs) < limit; i-- {
-		m := results.MetaFor(files[i])
-		if m == nil {
-			continue
-		}
-		if tool != "" && results.Sanitize(m.Tool) != tool {
-			continue
-		}
-		if in.Target != "" && results.Sanitize(m.Target) != results.Sanitize(in.Target) {
-			continue
-		}
-		out.Runs = append(out.Runs, summaryOf(files[i], m))
-	}
-	return out, nil
+	f := runFilter{Tool: in.Tool, Target: in.Target, Case: in.Case, Limit: orInt(in.Limit, 20)}
+	return &runsOut{Runs: listSavedRuns([]string{results.Dir("")}, f)}, nil
 }
 
 func (s *mcpServer) getRun(ctx context.Context, in getRunIn) (*getRunOut, error) {
