@@ -56,8 +56,8 @@ const link = (key: string) => (key ? `/submissions?view=${key}` : "/submissions"
   {!before && view.key === "" && (
     <section class="changes" aria-labelledby="changes-h">
       <h2 id="changes-h">Changes to community packages</h2>
-      <p class="small muted">What maintainers proposed beyond a package's upstream pin, waiting for a reviewer who isn't the proposer. <a href="/docs/community#changing-a-community-package">How change proposals work</a>.</p>
-      {proposals.length === 0 ? <p class="muted small">Nothing waits for a reviewer.</p> : (
+      <p class="small muted">Open proposals: what maintainers want to change beyond a package's upstream pin. A reviewer who isn't the proposer decides each one. <a href="/docs/community#changing-a-community-package">How change proposals work</a>.</p>
+      {proposals.length === 0 ? <p class="muted small">No open proposals.</p> : (
         <ul class="subs">
           {proposals.map((p) => (
             <li>
