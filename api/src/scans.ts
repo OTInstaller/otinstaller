@@ -67,7 +67,7 @@ export function verdict(r: ScanResults, previouslySigned: boolean, direct = fals
   if (r.signature.status === "absent" && previouslySigned) {
     return {
       result: "fail", code: "signature_dropped",
-      message: `earlier versions were signed but this one is not; ${direct ? "sign it as before (`ot publish --sign`)" : "sign it with the release workflow"}`,
+      message: `earlier versions were signed but this one is not; ${direct ? "sign it with the same identity as before" : "sign it with the release workflow"}`,
     };
   }
   if (r.malware.count > 0) return { result: "fail", code: "malware_suspected", message: `${r.malware.count} malicious-code heuristic(s) matched; a reviewer will look at the report` };
