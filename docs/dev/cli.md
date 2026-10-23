@@ -780,10 +780,10 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | --- | --- |
 | `cli/cli_test.go` | Shared helpers (`newTestApp`, `fakeExec`); `validate` output and exit codes, `init` then `validate`, `init` not overwriting, running a local manifest, run exit codes, `parseRunArgs` |
 | `cli/run_test.go` | Typed-input parsing, typed run saving results, `--no-save` and `--results-dir`, typed-input errors, `run --all`, Ctrl-C keeping partial output (exit 130) |
+| `cli/runs_test.go` | `ot runs`: none yet, newest first, each filter, the default `--since`, the table, one run in text and JSON, unknown ids (`run_not_found`), a bad `--status`, `--results-dir` |
 | `cli/auto_test.go` | `ot auto`: type guessing, `--dry-run`, `--type`, `--live` progress lines, and errors (bad `--type`, `--type` with two targets, no matching tool, `--all`; plus `run --dry-run` without `--all`) |
 | `cli/playbook_test.go` | `ot playbook`: `--list` with a user playbook, prefixed and guessed targets, and errors (missing tools, no matching inputs, no typed input, unknown playbook, `--all`) |
 | `cli/saved_test.go` | `ot extract` and `ot diff` against saved runs |
-| `cli/runs_test.go` | `ot runs`: none yet, newest first, each filter, the default `--since`, the table, one run in text and JSON, unknown ids (`run_not_found`), a bad `--status`, `--results-dir` |
 | `cli/update_test.go` | `ot outdated --json` and `ot update` (named, `--all`) against a fake registry (update available, removed, not in registry), plus usage errors |
 | `cli/guide_test.go` | Guide search and read, terminal rewriting (`forTerminal`), Glamour rendering, `guide get` then offline read, `guide tools`, `guide open` and `docs`, request IDs on server errors, guide content validation |
 | `cli/import_test.go` | Import wizard completing a draft and opening a PR, `--registry` with `--yes`, community wrapper, bulk import and `--list` |
