@@ -33,8 +33,9 @@ are also described in `spec/openapi/v1.json`, served at `/v1/openapi.json`, with
 scope `requiredScope(method, path)` names, or `enforceScopes` answers 403 `insufficient_scope` (with
 `required_scope` and a `WWW-Authenticate: Bearer error="insufficient_scope"` header). The rule, by path: `/auth/*`,
 `/internal/*`, `/webhooks/*`, `/installs` and `/health` need none; `/admin*` needs `staff`; any other GET, HEAD or
-OPTIONS needs `read`; `POST /feedback` and `POST /tools/:ns/:name/reports` need `feedback`; `/imports*`, `/sources*`
-and `/packages/:ns/:name/manifest|sync|source*` need `publish`; every other write needs `manage`. The session cookie,
+OPTIONS needs `read`; `POST /feedback` and `POST /tools/:ns/:name/reports` need `feedback`; `POST /publish`,
+`/imports*`, `/sources*` and `/packages/:ns/:name/manifest|sync|source*` need `publish`; every other write (including
+`POST /namespaces`) needs `manage`. The session cookie,
 and tokens from before 0013 (`scoped = 0`), are not limited. Every successful non-read request made with a token
 writes a `token.write` audit row.
 
@@ -46,7 +47,7 @@ anonymous GET.
 
 ## 1. Routes
 
-Total: **171 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
+Total: **174 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
 call; the `for` loops in `routes/trust.ts` (`yank`, `unyank`), `routes/community.ts` (a thread's subscription) and
 `routes/requests.ts` (a vote, a request's subscription) register two each. The mirror Worker's OCI routes are in
 section 6 and are not in this count. There is no route for stars, although the rate-limit comment in `index.ts`
@@ -104,7 +105,7 @@ in code; a Cloudflare rate-limiting rule on the zone covers `/mcp`, `/v1/tools*`
 | Method | Path | Auth | Caching | Defined in | Notes |
 | --- | --- | --- | --- | --- | --- |
 | GET | `/auth/:provider/login` | none | - | routes/auth.ts | `github`, `gitlab`, `osintverse` (else 404 `unknown_provider`); state cookie `ot_oauth_state` (600 s, path `/v1/auth`); `?redirect` (same-site only), `?scope=api` for GitLab |
-| GET | `/auth/:provider/callback` | state cookie | - | routes/auth.ts | Exchanges the code, signs in or links (when already signed in), sets `ot_session` (30 days, httpOnly, Secure, Lax), 302 |
+| GET | `/auth/:provider/callback` | state cookie | - | routes/auth.ts | Exchanges the code, signs in or links (when already signed in with the session cookie; an `ot_` token on the callback never links: `linkingUserId`), sets `ot_session` (30 days, httpOnly, Secure, Lax), 302 |
 | POST | `/auth/logout` | session cookie (optional) | - | routes/auth.ts | Deletes the session row and cookie; 204 |
 | POST | `/auth/device/start` | none | - | routes/auth.ts | `{provider}` (default github); osintverse uses the registry's own device flow |
 | POST | `/auth/device/token` | none (device code) | - | routes/auth.ts | `{provider, device_code, token_name, scopes?, expires_in_days?}`; on success mints a scoped `ot_` API token (default `read,publish,manage,feedback`, no expiry) and answers with its `scopes` and `expires_at`. For `osintverse` it goes to `pollOsintverseDevice` (`routes/device.ts`), which ignores `scopes` and `expires_in_days` |
@@ -112,7 +113,7 @@ in code; a Cloudflare rate-limiting rule on the zone covers `/mcp`, `/v1/tools*`
 | POST | `/auth/osintverse/device` | none (user code) | - | routes/device.ts | Form `code`; valid pending code redirects to OSINTverse sign-in (400 HTML page otherwise) |
 | POST | `/auth/osintverse/device/confirm` | one-time confirm token (form) | - | routes/device.ts | Form `id`, `confirm`, `decision`; approve or deny; 410 HTML page if expired |
 
-### 1.4 Me (8)
+### 1.4 Me (9)
 
 | Method | Path | Auth | Caching | Defined in | Notes |
 | --- | --- | --- | --- | --- | --- |
@@ -120,7 +121,8 @@ in code; a Cloudflare rate-limiting rule on the zone covers `/mcp`, `/v1/tools*`
 | GET | `/me/tokens` | user | - | routes/auth.ts | Unrevoked API tokens, with `scopes` and `expires_at` |
 | POST | `/me/tokens` | user | - | routes/auth.ts | `{name, scopes?, expires_in_days?}` (1–365, default 90); 201 with the token shown once. 400 `invalid_scope` for an unknown scope; 403 `insufficient_scope` when a token asks for more than it has, or for `staff` from anything but a reviewer's or admin's session. Audited (`token.create`) |
 | DELETE | `/me/tokens/:id` | user | - | routes/auth.ts | Revoke; 204 or 404 `token_not_found`. Audited (`token.revoke`) |
-| GET | `/me/publish-jobs` | user | - | routes/auth.ts | Last 50 jobs of the user's namespaces, found through `installations` (GitHub) or `sources` (GitLab) |
+| GET | `/me/publish-jobs` | user | `private, no-store` | routes/auth.ts | Last 50 jobs of the user's namespaces, found through `publish_jobs.namespace_id` (uploads), `installations` (GitHub) or `sources` (GitLab). Each has `method` (`tag`, `ci`, `direct`), `ref`, `version`, `version_status`, `scan_status`, `error_detail` and `url` |
+| GET | `/me/publish-jobs/:id` | user (member of the job's namespace, else 404 `not_found`) | `private, no-store` | routes/auth.ts | One job in the same shape; `ot publish` polls it |
 | GET | `/me/repos` | user | - | routes/imports.ts | `?provider=github|gitlab`, `?q`; GitHub admin or GitLab Maintainer+ public repos, with `published_as` |
 | GET | `/me/transfers` | user | - | routes/transfers.ts | Pending, verified and accepted transfers the user is party to |
 | GET | `/me/backups` | user | - | routes/backups.ts | Backup summary for up to 200 packages in the user's namespaces |
@@ -171,6 +173,15 @@ with `private, no-store`. Code in `routes/profiles.ts` and `profiles.ts`.
 | GET | `/imports/:id` | own import | - | routes/imports.ts | Wizard view |
 | PATCH | `/imports/:id` | own import | - | routes/imports.ts | `{manifest}` merge, `{yaml}` replace or `{kind}` rebuild |
 | POST | `/imports/:id/finish` | own import | - | routes/imports.ts | `{mode: pr | registry | connect | wrapper, wrapper_repo}` |
+
+### 1.7a Direct publishing (2)
+
+Logic in `direct.ts`; see [architecture.md, flow a2](architecture.md#a2-publish-directly-ot-publish).
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| POST | `/namespaces` | user (scope `manage`) | - | routes/direct.ts | `{name, kind?: user \| org}`; 201 `{name, kind, status: "pending_review"}`. 400 `invalid_body` / `namespace_reserved`, 409 `namespace_taken`, 403 `namespace_account_required` (a GitHub or GitLab user's name without that account linked, or an org's or group's) / `namespace_limit` (3 per user), 429 `too_many_requests` (5 a day), 503 `account_check_failed` |
+| POST | `/publish` | owner or publisher of `?namespace` (scope `publish`) | - | routes/direct.ts | `?namespace=&name=&version=`, body `multipart/form-data` with one part per file named by its path. Checked before the body is read: 404 `namespace_unknown`, 403 `forbidden` / `namespace_not_allowed`, 409 `manifest_name_taken` / `manifest_version_exists` / `publish_in_progress`, 429 `publish_rate_limited` (20 an hour per namespace). Then 413 `bundle_too_large` (25 MiB, Content-Length required), 400 `bundle_invalid` (300 files, `bundlePath`, a query that doesn't match the manifest), 400 `manifest_invalid` with `problems`. 202 `{job_id, status, ref, version, url}` |
 
 ### 1.8 Trust: yank, deprecate, claims, transfers (10)
 
@@ -479,6 +490,8 @@ count is greater than `limit`. Windows older than a day are deleted nightly by `
 | GitHub/GitLab device flow | whatever the provider says (`pending`, `slow_down`, ...) is passed through | | | routes/auth.ts |
 | Claims and transfers | no rate limit found in `routes/transfers.ts` or `transfers.ts` (only the global write limit) | | | |
 | Bulk imports | at most 50 repositories per request (`MAX_BULK`) | | 400 `too_many_repos` | routes/imports.ts |
+| Uploads (`ot publish`) | 20 per hour per namespace (`PUBLISHES_PER_HOUR`); 25 MiB and 300 files per upload | `publish` / namespace id | 429 `publish_rate_limited`; 413 `bundle_too_large`; 400 `bundle_invalid` | direct.ts |
+| Registry namespaces | 3 per user (`MAX_NAMESPACES_PER_USER`, counted by `created_by`); 5 attempts a day | `namespace_create` / user id | 403 `namespace_limit`; 429 `too_many_requests` | direct.ts |
 | Webhook bodies | 5 MB (`MAX_BODY`) | | 413 `payload_too_large` | routes/webhooks.ts |
 | Scan results | 256 KB by `Content-Length` (`MAX_RESULTS`) | | 413 `payload_too_large` | routes/review.ts |
 | Health results | at most 500 per call | | 400 `invalid_body` | routes/ops.ts |
@@ -539,7 +552,7 @@ Then, by `event.cron`:
 | `*/15 * * * *` | | none beyond the block above |
 | `41 4 * * 1` (Mondays 04:41 UTC) | `WEEKLY_BACKUP_CRON` (backups.ts) | `weeklyBackups(env)`: a git backup of every active source, dispatched 20 per call (`WEEKLY_PER_DISPATCH`) |
 | `23 5 1 * *` (1st of the month 05:23 UTC) | `RESTORE_DRILL_CRON` (backups.ts) | `startDrill(env)`: restore a random git bundle and pull a random public mirrored image |
-| `17 3 * * *` (daily 03:17 UTC) | literal string in index.ts | `queueNightlyLinkChecks(env)`, `dailyDigest(env)` (namespaces waiting > 2 business days, reports > 48 h), `purgeRateLimits(env)` (windows older than a day), `purgeBackups(env)` (due deletions, except legal holds), `lockStaleThreads(env)` (closed issues quiet for 30 days), `deliverInbox(env, "daily")` (digests), `purgeInbox(env)` (read items after 90 days, all after a year), `refreshContributorStats(env)`, `queueUpstreamChecks(env)` (`{upstreamCheckToolId}` per community wrapper), then the SQL `UPDATE tools SET installs_30d = ...` over the last 30 days of `install_counts` |
+| `17 3 * * *` (daily 03:17 UTC) | literal string in index.ts | `queueNightlyLinkChecks(env)`, `dailyDigest(env)` (namespaces waiting > 2 business days, reports > 48 h), `purgeRateLimits(env)` (windows older than a day), `purgeBackups(env)` (due deletions, except legal holds), `purgeIdleNamespaces(env)` (direct.ts: registry namespaces still pending with no package 30 days after creation, 50 a night), `lockStaleThreads(env)` (closed issues quiet for 30 days), `deliverInbox(env, "daily")` (digests), `purgeInbox(env)` (read items after 90 days, all after a year), `refreshContributorStats(env)`, `queueUpstreamChecks(env)` (`{upstreamCheckToolId}` per community wrapper), then the SQL `UPDATE tools SET installs_30d = ...` over the last 30 days of `install_counts` |
 
 ## 6. Mirror Worker (`otinstaller-mirror`)
 
@@ -622,12 +635,15 @@ route wrappers, so they reach clients the same way.
 | Code | Status | File(s) | Documented |
 | --- | --- | --- | --- |
 | account_already_linked | 409 | routes/auth.ts | yes |
+| account_check_failed | 503 | direct.ts | yes |
 | already_connected | 409 | routes/sources.ts | yes |
 | already_published | 409 | imports.ts | yes |
 | app_not_installed | 409 | routes/sources.ts, imports.ts | yes |
 | asset_not_found | 404 | routes/guides.ts | yes |
 | backup_not_found | 404 | routes/backups.ts | yes |
 | bad_signature | 401 | routes/webhooks.ts (apiError for GitHub, hand-built for GitLab) | yes |
+| bundle_invalid | 400 | direct.ts | yes |
+| bundle_too_large | 413 | direct.ts | yes |
 | cannot_ban_admin | 409 | routes/trust.ts | yes |
 | community_namespace_missing | 409 | imports.ts | yes |
 | destination_required | 400 | transfers.ts | yes |
@@ -664,15 +680,22 @@ route wrappers, so they reach clients the same way.
 | length_required | 400 | routes/backups.ts | yes |
 | license_not_redistributable | 400 | imports.ts | yes |
 | manifest_in_repo | 409 (routes/imports.ts, imports.ts); 400 (one `refuse` in imports.ts) | routes/imports.ts, imports.ts | yes (same code with two statuses) |
-| manifest_invalid | 400 | routes/imports.ts (hand-built, with `problems`) | yes |
+| manifest_invalid | 400 | routes/imports.ts (hand-built, with `problems`); direct.ts (apiError with `problems`) | yes |
+| manifest_name_taken | 409 | direct.ts (before an upload is read); also a problem code in `processJob` | yes |
+| manifest_version_exists | 409 | direct.ts (before an upload is read); also a problem code in `processJob` | yes |
 | manifest_name_mismatch | problem code inside `manifest_invalid` | routes/imports.ts | yes (and not in the CLI validator) |
 | manifest_namespace_mismatch | 400 | imports.ts | yes |
 | manifest_yaml_invalid | 400 | imports.ts | yes |
 | mirror_already_imported | 409 | imports.ts | yes |
 | name_taken | 409 | transfers.ts | yes |
+| namespace_account_required | 403 | direct.ts | yes |
 | namespace_in_review | 409 | routes/review.ts | yes |
-| namespace_not_allowed | 409 | transfers.ts | yes |
+| namespace_limit | 403 | direct.ts | yes |
+| namespace_not_allowed | 409 (transfers.ts); 403 (direct.ts) | transfers.ts, direct.ts | yes (same code with two statuses) |
 | namespace_not_found | 404 | index.ts, routes/review.ts, transfers.ts | yes |
+| namespace_reserved | 400 | direct.ts | yes |
+| namespace_taken | 409 | direct.ts | yes |
+| namespace_unknown | 404 | direct.ts | yes |
 | no_backup | 404 | backups.ts | yes |
 | no_email | 409 | routes/beta.ts | yes |
 | not_a_claim | 409 | transfers.ts | yes |
@@ -694,6 +717,8 @@ route wrappers, so they reach clients the same way.
 | project_not_found | 404 | routes/sources.ts, imports.ts | yes |
 | project_not_public | 400 | routes/sources.ts, imports.ts | yes |
 | provider_already_linked | 409 | routes/auth.ts | yes |
+| publish_in_progress | 409 | direct.ts | yes |
+| publish_rate_limited | 429 | direct.ts | yes |
 | readme_not_found | 404 | routes/guides.ts | yes |
 | repo_not_found | 404 | imports.ts | yes |
 | repo_not_public | 400 | imports.ts | yes |
@@ -707,7 +732,7 @@ route wrappers, so they reach clients the same way.
 | too_large | 413 | routes/backups.ts | yes |
 | too_many_reports | 429 | routes/trust.ts | yes |
 | too_many_repos | 400 | routes/imports.ts | yes |
-| too_many_requests | 429 | index.ts (30/min writes), routes/beta.ts (10/h feedback) | yes, but the doc only describes the 30-a-minute write limit |
+| too_many_requests | 429 | index.ts (30/min writes), routes/beta.ts (10/h feedback), direct.ts (5 namespace attempts a day) | yes, but the doc only describes the 30-a-minute write limit |
 | tool_not_found | 404 | catalog.ts, index.ts, routes/guides.ts, sources.ts, trust.ts, transfers.ts, backups.ts; backups.ts (`BackupError`) | yes |
 | tool_removed | 410 (catalog.ts, routes/trust.ts); 409 (routes/sources.ts, backups.ts) | catalog.ts, routes/trust.ts, routes/sources.ts, backups.ts | yes (same code with two statuses) |
 | transfer_not_found | 404 | routes/transfers.ts | yes |

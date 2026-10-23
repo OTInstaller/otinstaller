@@ -6,3 +6,8 @@ export const RESERVED_NAMESPACES = new Set([
   "dashboard", "removed", "publish", "tour", "otlite", "agents", "new", "404", "500", "learn", "community", "unsubscribe",
   "requests", "people", "submissions", "api", "mcp", "feed", "login", "logout", "about",
 ]);
+
+// A namespace made on the registry itself (`ot namespace create`, direct.ts) can't take these either: names that pass
+// for the registry's own (its brand, the mirror's private/ prefix, API and host prefixes). GitHub and GitLab accounts
+// with one of these names still get their own namespace, as before.
+export const REGISTRY_RESERVED = new Set(["osintverse", "otinstaller", "private", "profile", "v2", "www"]);

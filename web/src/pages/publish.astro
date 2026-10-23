@@ -1,15 +1,15 @@
 ---
-// /publish: what publishing is, before anyone signs in. Three ways in, what happens after the tag, and what the
-// reviewer checks. The wizard itself is /import.
+// /publish: what publishing is, before anyone signs in. Three ways to release (GitHub, GitLab, or an upload with
+// ot publish), what happens after a release, and what the reviewer checks. The wizard itself is /import.
 import Base from "../layouts/Base.astro";
 import { cacheFor } from "../lib/page";
 
 cacheFor(Astro, 3600);
 const steps = [
-  { t: "Validate", d: "Within a minute of the tag: the manifest, the files it names, and that the image or wheel exists. The tagged commit gets an otinstaller/publish status." },
+  { t: "Validate", d: "Within a minute of the tag or upload: the manifest, the files it names, and that the image or wheel exists. A tagged commit gets an otinstaller/publish status; ot publish shows it as it goes." },
   { t: "Scan", d: "Tools: signature, vulnerabilities, secrets, malware heuristics, an SBOM and a smoke test with your test input, offline. Guides: links and personal-data checks." },
   { t: "Review", d: "A new publisher's first release only: a person checks it against the acceptable-use rules, usually within 3 business days. Later releases skip this." },
-  { t: "Publish", d: "The status turns green, you get an email, and ot install works. The registry copies the artifact and a bundle of the repository as a backup." },
+  { t: "Publish", d: "You get an email and ot install works. The registry copies the artifact (and a bundle of the repository, when there is one) as a backup." },
 ];
 const checklist = [
   "The tool fits the acceptable-use rules (lawful investigation, due diligence, threat intelligence, journalism, research).",
@@ -18,37 +18,40 @@ const checklist = [
   "The namespace does not impersonate a person or project, and the account is not obviously throwaway.",
 ];
 ---
-<Base title="Publish a tool or guide" description="Publish an OSINT tool or guide from the repository you already have: import it, add a manifest, or write a guide; push a tag to release." jsonHref="https://api.otinstaller.com/v1/tools?kind=tool&limit=1">
+<Base title="Publish a tool or guide" description="Publish an OSINT tool or guide from GitHub, from GitLab, or straight from your machine with ot publish. Every release is validated, scanned and, for a new publisher, reviewed." jsonHref="https://api.otinstaller.com/v1/tools?kind=tool&limit=1">
   <header class="page-head">
     <p class="eyebrow">Publish</p>
-    <h1>From the repository you already have</h1>
-    <p class="muted">You publish by pushing a <code>vX.Y.Z</code> tag. There is no upload: the registry reads your GitHub or GitLab repository, checks the release, and lists it. Pick the way in that fits.</p>
+    <h1>From GitHub, GitLab or your own machine</h1>
+    <p class="muted">Every package has an <code>otinstaller.yaml</code> manifest. Release it with a <code>vX.Y.Z</code> tag on GitHub or GitLab, or upload it directly with <code>ot publish</code>. Every release is checked the same way. <code>ot init</code> writes the manifest, and <code>ot validate</code> checks it as the registry will.</p>
   </header>
 
   <div class="ways">
     <section class="way">
-      <p class="eyebrow">Have a repository</p>
-      <h2>Import it</h2>
-      <p class="muted">The wizard detects a Docker tool, a Python package or a guide, drafts <code>otinstaller.yaml</code>, asks you only for what it cannot guess, and opens a pull or merge request. Merge, run the release workflow, done.</p>
+      <p class="eyebrow">GitHub</p>
+      <h2>Install the App, push a tag</h2>
+      <p class="muted">The wizard detects a Docker tool, a Python package or a guide, drafts the manifest, and opens a pull request with a release workflow. The workflow builds, signs and tags; the GitHub App tells the registry.</p>
       <p><a class="btn btn-strong" href="/import">Start the import wizard →</a></p>
       <p class="small muted">Or from the terminal: <code>ot import https://github.com/you/tool</code></p>
     </section>
     <section class="way">
-      <p class="eyebrow">Prefer to write it</p>
-      <h2>Add a manifest yourself</h2>
-      <p class="muted"><code>ot init</code> writes the manifest, a README if you have none, and the release workflow. Fill in inputs, outputs, the command and the three ethics answers; <code>ot validate</code> checks it as the registry will.</p>
-      <p><a class="btn" href="/docs/publishing">How publishing works →</a> <a class="btn btn-ghost" href="/docs/manifest">Manifest reference</a></p>
+      <p class="eyebrow">GitLab</p>
+      <h2>Connect the project, run the pipeline</h2>
+      <p class="muted">The same wizard connects a GitLab project and opens a merge request with a release pipeline. Run it from the project's pipelines page; the registry hears about the tag through the project's webhook.</p>
+      <p><a class="btn" href="/import">Import from GitLab →</a></p>
+      <p class="small muted">Or: <code>ot import https://gitlab.com/you/tool</code></p>
     </section>
     <section class="way">
-      <p class="eyebrow">Teach a method</p>
-      <h2>Write a guide</h2>
-      <p class="muted">A guide is Markdown pages, versioned like a tool, with the tools it uses linked and installable in one command. <code>ot init --guide</code> scaffolds it; <code>ot release 1.0.0</code> publishes it without CI.</p>
-      <p><a class="btn" href="/docs/guides">Writing guides →</a></p>
+      <p class="eyebrow">No repository needed</p>
+      <h2>Upload it with ot publish</h2>
+      <p class="muted">Create a namespace with <code>ot namespace create</code>. Push the image to a public registry, or the wheel to PyPI, and pin it in the manifest. Then <code>ot publish</code> uploads the manifest, README and pages, and follows the release.</p>
+      <p><a class="btn" href="/docs/publishing#publish-directly">Publish directly →</a></p>
+      <p class="small muted">Signing is optional; the first signer is pinned for later versions.</p>
     </section>
   </div>
+  <p class="small muted guides-note">Guides are Markdown pages, versioned like tools: <code>ot init --guide</code> scaffolds one, then <code>ot release 1.0.0</code> tags it or <code>ot publish</code> uploads it. <a href="/docs/guides">Writing guides →</a></p>
 
   <section class="after" aria-labelledby="after-h">
-    <div class="section-head"><h2 id="after-h">What happens after the tag</h2><a href="/docs/security">Security model →</a></div>
+    <div class="section-head"><h2 id="after-h">What happens after a release</h2><a href="/docs/security">Security model →</a></div>
     <ol class="timeline">
       {steps.map((s, i) => <li><span class="n">0{i + 1}</span><div><h3>{s.t}</h3><p class="small muted">{s.d}</p></div></li>)}
     </ol>
@@ -64,7 +67,7 @@ const checklist = [
       <h2 id="keep-h">Keeping it healthy</h2>
       <ul class="checks small">
         <li>Every night the registry runs your test input again; three failures in a row mark the tool possibly broken until one passes.</li>
-        <li>New tags are picked up by webhook, and by a poll every six hours as a backstop. Your dashboard shows each release and why any failed.</li>
+        <li>New tags are picked up by webhook, and by a poll every six hours as a backstop. Your dashboard shows each release, tagged or uploaded, and why any failed.</li>
         <li>Yank a version to take it off <code>@latest</code>; deprecate a package to point people at a replacement; transfer it to another namespace when it changes hands.</li>
       </ul>
       <p class="small muted">A manifest can also be held by the registry when a repository cannot carry one; it is labelled and unsigned, and a one-click pull request moves it into the repository later.</p>
@@ -81,6 +84,7 @@ const checklist = [
   .way { background: var(--bg); padding: 20px; display: grid; gap: 8px; align-content: start; }
   .way .eyebrow, .way p { margin: 0; }
   .way h2 { margin: 0; font-size: var(--fs-4); }
+  .guides-note { margin: 12px 0 0; max-width: 72ch; }
   .after { margin-top: 40px; }
   .timeline { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); }
   .timeline li { background: var(--bg); padding: 16px; display: grid; gap: 8px; align-content: start; }

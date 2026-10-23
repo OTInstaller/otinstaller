@@ -128,12 +128,48 @@ def signer_identities(image: str) -> list[tuple[str, str]]:
     return found
 
 
-def check_image_signature(image: str, expected: dict) -> dict:
-    strict = run(["cosign", "verify", "--certificate-identity-regexp", expected["identityRegexp"],
+def verified_identities(verify_stdout: str) -> list[tuple[str, str]]:
+    """(identity, issuer) of each signature `cosign verify` verified, from its JSON output (one array, or one
+    document per line). Keyless signatures carry the certificate's subject and issuer under "optional"."""
+    docs = []
+    try:
+        docs = [json.loads(verify_stdout or "[]")]
+    except json.JSONDecodeError:
+        for line in verify_stdout.splitlines():
+            try:
+                docs.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    found = []
+    for doc in docs:
+        for item in doc if isinstance(doc, list) else [doc]:
+            opt = (item or {}).get("optional") or {}
+            subject = opt.get("Subject") or opt.get("subject")
+            if subject:
+                found.append((subject, opt.get("Issuer") or opt.get("issuer") or ""))
+    return list(dict.fromkeys(found))
+
+
+def check_any_signature(image: str) -> dict:
+    """A direct upload has no repository whose CI must have signed it: any keyless signature counts, and every
+    identity that verified is reported, so the registry can hold the package to its first signer."""
+    loose = run(["cosign", "verify", "--output", "json", "--certificate-identity-regexp", ".*", "--certificate-oidc-issuer-regexp", ".*", image])
+    if loose.returncode != 0:
+        return {"status": "absent"}
+    ids = verified_identities(loose.stdout) or list(dict.fromkeys(signer_identities(image)))
+    if not ids:
+        return {"status": "pass", "identity": None, "issuer": None, "identities": [], "detail": "verified, but the certificate identity could not be read"}
+    return {"status": "pass", "identity": ids[0][0], "issuer": ids[0][1], "identities": [{"identity": i, "issuer": s} for i, s in ids[:20]]}
+
+
+def check_image_signature(image: str, expected: dict | None) -> dict:
+    if expected is None:
+        return check_any_signature(image)
+    strict = run(["cosign", "verify", "--output", "json", "--certificate-identity-regexp", expected["identityRegexp"],
                   "--certificate-oidc-issuer", expected["issuer"], image])
     if strict.returncode == 0:
         pattern = re.compile(expected["identityRegexp"])
-        for ident, iss in signer_identities(image):
+        for ident, iss in verified_identities(strict.stdout) or signer_identities(image):
             if pattern.search(ident):
                 return {"status": "pass", "identity": ident, "issuer": iss or expected["issuer"]}
         return {"status": "pass", "identity": None, "issuer": expected["issuer"], "detail": "verified, but the certificate identity could not be read"}
@@ -146,21 +182,26 @@ def check_image_signature(image: str, expected: dict) -> dict:
 
 def check_wheel_provenance(pkg: str, version: str, filename: str, source_repo: str, upstream_repo: str = "") -> dict:
     """PyPI attestations (PEP 740): the wheel must have been published from the source repository, or for a
-    community wrapper from the upstream project it packages."""
+    community wrapper from the upstream project it packages. With neither (a direct upload) any publisher counts,
+    and all of them are reported for the registry to hold the package to its first."""
     prov = http_json(f"https://pypi.org/integrity/{pkg}/{version}/{filename}/provenance")
     if not prov:
         return {"status": "absent"}
     wanted = [re.sub(r"^(github|gitlab)\.com/", "", r).lower() for r in (source_repo, upstream_repo) if r]
     want = " or ".join(wanted)
-    seen = []
+    seen, ids = [], []
     for bundle in prov.get("attestation_bundles", []):
         pub = bundle.get("publisher", {})
         repo = (pub.get("repository") or "").lower()
         seen.append(f"{pub.get('kind', '?')}:{repo}")
+        ident = f"pypi:{pub.get('kind', 'GitHub')}:{repo}/{pub.get('workflow', '')}"
         if repo in wanted:
-            ident = f"pypi:{pub.get('kind', 'GitHub')}:{repo}/{pub.get('workflow', '')}"
             return {"status": "pass", "identity": ident, "issuer": "https://pypi.org"}
-    return {"status": "fail", "detail": f"published by {', '.join(seen) or 'an unknown publisher'}, not {want}"}
+        if repo and ident not in ids:
+            ids.append(ident)
+    if not wanted and ids:
+        return {"status": "pass", "identity": ids[0], "issuer": "https://pypi.org", "identities": [{"identity": i, "issuer": "https://pypi.org"} for i in ids[:20]]}
+    return {"status": "fail", "detail": f"published by {', '.join(seen) or 'an unknown publisher'}, not {want or 'a known repository'}"}
 
 
 # ---------- Trivy ----------
@@ -274,7 +315,8 @@ def scan_docker(req: dict) -> dict:
     pulled = run(["docker", "pull", image], timeout=1200)
     if pulled.returncode != 0:
         raise RuntimeError(f"cannot pull {image}: {pulled.stderr[-300:]}")
-    signature = check_image_signature(image, req["expected_signer"])
+    # No expected signer: a direct upload, which any keyless signer may sign (the registry pins the first).
+    signature = check_image_signature(image, req.get("expected_signer"))
     vulns, secrets, packages = trivy(["image", image])
     return {
         "signature": signature,

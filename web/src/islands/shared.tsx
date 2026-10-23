@@ -56,7 +56,7 @@ export function SignIn({ back, why }: { back: string; why: string }) {
         <a class="btn" href={signInUrl("gitlab", back)}><GitLabIcon /> Sign in with GitLab</a>
         <a class="btn" href={signInUrl("osintverse", back)}>Sign in with OSINTverse</a>
       </div>
-      <p class="small muted">The registry only reads your public repositories and opens pull requests you ask for. Publishing needs a GitHub or GitLab account; you can link one later.</p>
+      <p class="small muted">The registry only reads your public repositories and opens pull requests you ask for. Any account can publish: from GitHub or GitLab, or directly with <code>ot publish</code>.</p>
     </div>
   );
 }

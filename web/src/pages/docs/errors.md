@@ -54,7 +54,7 @@ Two secrets have the same name.
 A required input has no value in `test.input`.
 
 ### manifest_file_missing
-A file the manifest names (the README, a guide or docs page, an image) is not in the repository at the tagged commit, or `otinstaller.yaml` itself is missing. Commit it and tag again.
+A file the manifest names (the README, a guide or docs page, an image) is not in the repository at the tagged commit, or not in the upload, or `otinstaller.yaml` itself is missing. Commit it and tag again, or run `ot publish` again.
 
 ### manifest_tag_mismatch
 The tag must be `v` followed by `version`, for example `v1.2.0` for `version: 1.2.0`.
@@ -63,10 +63,10 @@ The tag must be `v` followed by `version`, for example `v1.2.0` for `version: 1.
 `namespace` must be the GitHub or GitLab owner of the repository the release comes from.
 
 ### manifest_version_exists
-This version is already published, and versions never change. Bump `version` and tag again.
+This version is already published (or being published), and versions never change. Bump `version` and tag or upload again.
 
 ### manifest_name_taken
-Another repository already publishes a package with this name in your namespace.
+Another repository already publishes a package with this name in your namespace. Uploads with `ot publish` are refused for a package a repository publishes: release it from that repository.
 
 ### namespace_not_allowed
 The namespace is suspended or was not approved. Write to abuse@otinstaller.com.
@@ -111,10 +111,13 @@ A tool in `related_tools` is not a published tool. Use `namespace/name`, and pub
 ## Scans
 
 ### signature_mismatch
-The image signature did not verify against the repository's CI identity.
+The image signature did not verify against the repository's CI identity. For a package published directly, the signature is not from the identity that signed its earlier versions.
 
 ### signature_dropped
-Earlier versions were signed and this one is not. Release it with the signing workflow.
+Earlier versions were signed and this one is not. Release it with the signing workflow, or sign it as before.
+
+### signature_ambiguous
+The first signed version of a package published directly has signatures from more than one identity. Later versions are held to the first signer, so it must have exactly one. Sign once and upload again.
 
 ### malware_suspected
 Malicious-code heuristics matched. A reviewer looks at the report.
@@ -126,10 +129,42 @@ The image or package contains embedded secrets. Rotate them and rebuild.
 The tool failed on its `test.input` (run without network unless `network.egress` is set). Try `ot validate --smoke`.
 
 ### scan_timeout
-The scan or content checks did not finish within an hour. Push the tag again.
+The scan or content checks did not finish within an hour. Push the tag again (or run `ot publish` again).
 
 ### internal_error
-Something failed on the registry's side. Push the tag again; if it keeps failing, write to support@otinstaller.com with the request ID from the message.
+Something failed on the registry's side. Push the tag again (or run `ot publish` again); if it keeps failing, write to support@otinstaller.com with the request ID from the message.
+
+## Uploading with ot publish
+
+### namespace_unknown
+The manifest's `namespace` doesn't exist on the registry. Create it with `ot namespace create <name>`, or use one you belong to.
+
+### namespace_taken
+That namespace already exists. Pick another name, or ask its owners to add you.
+
+### namespace_reserved
+The name is one the registry uses for its own pages and paths (such as `docs` or `private`). Pick another.
+
+### namespace_account_required
+The name is a GitHub or GitLab account's. A person's name needs that account linked to yours (Settings → Accounts). An organisation's or group's namespace comes from installing the GitHub App on it or connecting one of its GitLab projects.
+
+### namespace_limit
+One account can create at most three namespaces. Publish into one you have, or write to support@otinstaller.com.
+
+### account_check_failed
+The registry could not ask GitHub or GitLab whether the name is an account's. Try again in a minute.
+
+### bundle_invalid
+The upload is not what `ot publish` sends. It must be multipart, with one part per file named by its relative path and `otinstaller.yaml` among them, at most 300 files, and the query naming the manifest's namespace, name and version.
+
+### bundle_too_large
+The upload is over 25 MB. Only the manifest, its README and pages, and their images are needed; leave other files out.
+
+### publish_in_progress
+The same version is already being validated. Wait for it (`ot publish --wait`, or the dashboard).
+
+### publish_rate_limited
+A namespace can upload at most 20 releases an hour. Wait and try again.
 
 ## Review
 
