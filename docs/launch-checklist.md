@@ -31,11 +31,12 @@ read-only queries D1 had already retried. The API now answers such failures with
       `d8c4a74f-7dfa-4c23-a1e7-6be77c66c024` (23 Oct, 20:43 UTC); roll back to `d2d15efe-7c5d-4a35-9b90-aa558d9c4087`.
       Checks: `/v1/tools` and `/v1/health` answer 200, the site has no beta strip, and `/docs/errors` has
       `database_unavailable`.
-- [ ] **(you)** Merge the pull request for `claude/d1-transient-errors`; until then a deploy from `main` takes the
-      handling out of production again.
-- [ ] **(you)** Resolve OTINSTALLER-A and -B in Sentry once it's merged: new D1 failures arrive as warnings under the
-      fingerprint `d1-unavailable`. OTINSTALLER-6 (an old `otinstaller` 0.1.0 usage error otlite no longer reports),
-      -8 (the setup test) and -9 (the 21 Oct read-limit outage, fixed by the edge cache and Workers Paid) can go too.
+- [x] Merge the pull request for `claude/d1-transient-errors`, so a deploy from `main` keeps the handling. Done 23 Oct,
+      20:52 UTC: [#97](https://github.com/OTInstaller/otinstaller/pull/97), merged as `ccc59c1`.
+- [x] Resolve OTINSTALLER-A and -B in Sentry: new D1 failures arrive as warnings under the fingerprint
+      `d1-unavailable`. OTINSTALLER-6 (an old `otinstaller` 0.1.0 usage error otlite no longer reports), -8 (the setup
+      test) and -9 (the 21 Oct read-limit outage, fixed by the edge cache and Workers Paid) went too. Done 23 Oct
+      after the merge, each with a comment saying why; the project has no unresolved issues.
 
 ## Phase 1 and publishing (merged and deployed 23 October 2026)
 
