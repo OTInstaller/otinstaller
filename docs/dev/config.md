@@ -158,6 +158,7 @@ Behaviour (`worker.js`):
 | `/ot`, `/ot.sh`, `/install.sh` | `https://github.com/<RELEASE_REPO>/releases/latest/download/install.sh` |
 | `/ot.ps1`, `/install.ps1` | `.../install.ps1` |
 | `/otlite`, `/otlite.sh` | `https://raw.githubusercontent.com/<OTLITE_REPO>/main/otlite/scripts/install.sh` (pipx or uv from PyPI, so no release is involved) |
+| `/ot/latest` | `{"version": "vX.Y.Z"}`, read from the `Location` of `https://github.com/<RELEASE_REPO>/releases/latest` (`redirect: "manual"`, no GitHub API limit); only a tag matching `^v\d+\.\d+\.\d+$` is answered, with `cache-control: public, max-age=3600`; otherwise 502 `{"error": {"code": "latest_unknown", ...}}`, `no-store`. Read by `ot self-update` and `ot outdated` (`selfupdate.LatestURL`) |
 | anything else | 302 to `https://otinstaller.com/docs/getting-started` |
 
 Upstream fetches use `cf: { cacheTtl: 300, cacheEverything: true }`; responses are `text/plain; charset=utf-8`
