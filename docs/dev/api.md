@@ -47,7 +47,7 @@ anonymous GET.
 
 ## 1. Routes
 
-Total: **177 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
+Total: **181 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
 call; the `for` loops in `routes/trust.ts` (`yank`, `unyank`), `routes/community.ts` (a thread's subscription) and
 `routes/requests.ts` (a vote) register two each. The mirror Worker's OCI routes are in
 section 6 and are not in this count. There is no route for stars, although the rate-limit comment in `index.ts`
@@ -122,7 +122,7 @@ in code; a Cloudflare rate-limiting rule on the zone covers `/mcp`, `/v1/tools*`
 | POST | `/me/tokens` | user | - | routes/auth.ts | `{name, scopes?, expires_in_days?}` (1–365, default 90); 201 with the token shown once. 400 `invalid_scope` for an unknown scope; 403 `insufficient_scope` when a token asks for more than it has, or for `staff` from anything but a reviewer's or admin's session. Audited (`token.create`) |
 | DELETE | `/me/tokens/:id` | user | - | routes/auth.ts | Revoke; 204 or 404 `token_not_found`. Audited (`token.revoke`) |
 | GET | `/me/publish-jobs` | user | `private, no-store` | routes/auth.ts | Last 50 jobs of the user's namespaces, found through `publish_jobs.namespace_id` (uploads), `installations` (GitHub) or `sources` (GitLab). Each has `method` (`tag`, `ci`, `direct`), `ref`, `version`, `version_status`, `scan_status`, `error_detail` and `url` |
-| GET | `/me/publish-jobs/:id` | user (member of the job's namespace, else 404 `not_found`) | `private, no-store` | routes/auth.ts | One job in the same shape; `ot publish` polls it |
+| GET | `/me/publish-jobs/:id` | user (member of the job's namespace, else 404 `not_found`) | `private, no-store` | routes/auth.ts | One job in the same shape, plus `commit_sha` and `ci` (`{workflow, ref, sha, run}` for a CI upload); `ot publish` polls it. A CI token sees only its own repository's jobs in its namespace |
 | GET | `/me/repos` | user | - | routes/imports.ts | `?provider=github|gitlab`, `?q`; GitHub admin or GitLab Maintainer+ public repos, with `published_as` |
 | GET | `/me/transfers` | user | - | routes/transfers.ts | Pending, verified and accepted transfers the user is party to |
 | GET | `/me/backups` | user | - | routes/backups.ts | Backup summary for up to 200 packages in the user's namespaces |
@@ -181,7 +181,18 @@ Logic in `direct.ts`; see [architecture.md, flow a2](architecture.md#a2-publish-
 | Method | Path | Auth | Caching | Defined in | Notes |
 | --- | --- | --- | --- | --- | --- |
 | POST | `/namespaces` | user (scope `manage`) | - | routes/direct.ts | `{name, kind?: user \| org}`; 201 `{name, kind, status: "pending_review"}`. 400 `invalid_body` / `namespace_reserved`, 409 `namespace_taken`, 403 `namespace_account_required` (a GitHub or GitLab user's name without that account linked, or an org's or group's) / `namespace_limit` (3 per user), 429 `too_many_requests` (5 a day), 503 `account_check_failed` |
-| POST | `/publish` | owner or publisher of `?namespace` (scope `publish`) | - | routes/direct.ts | `?namespace=&name=&version=`, body `multipart/form-data` with one part per file named by its path. Checked before the body is read: 404 `namespace_unknown`, 403 `forbidden` / `namespace_not_allowed`, 409 `manifest_name_taken` / `manifest_version_exists` / `publish_in_progress`, 429 `publish_rate_limited` (20 an hour per namespace). Then 413 `bundle_too_large` (25 MiB, Content-Length required), 400 `bundle_invalid` (300 files, `bundlePath`, a query that doesn't match the manifest), 400 `manifest_invalid` with `problems`. 202 `{job_id, status, ref, version, url}` |
+| POST | `/publish` | owner or publisher of `?namespace` (scope `publish`), or a CI token for it | - | routes/direct.ts | `?namespace=&name=&version=`, body `multipart/form-data` with one part per file named by its path. Checked before the body is read: 404 `namespace_unknown`, 403 `forbidden` (also a CI token for another namespace or package) / `namespace_not_allowed`, 409 `manifest_name_taken` (for a CI token: a package another repository owns) / `manifest_version_exists` / `publish_in_progress`, 429 `publish_rate_limited` (20 an hour per namespace). Then 413 `bundle_too_large` (25 MiB, Content-Length required), 400 `bundle_invalid` (300 files, `bundlePath`, a query that doesn't match the manifest), 400 `manifest_invalid` with `problems`. 202 `{job_id, status, ref, version, url}`. With a CI token, a release already received from the same repository (a job for its `provider`, `repo_id` and tag in the namespace, queued to published) answers 200 with that job and `already_received: true` |
+
+### 1.7b Trusted publishing (4)
+
+Logic in `trusted.ts` and `lib/oidc.ts`; see [architecture.md, flow a3](architecture.md#a3-trusted-publishing-from-ci).
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| POST | `/auth/oidc/token` | none (the ID token) | `private, no-store` | routes/trusted.ts | `{id_token, namespace, package?}`. `verifyCiToken`: issuer `https://token.actions.githubusercontent.com` or `https://gitlab.com`, RS256 by the issuer's JWKS, `aud` `otinstaller`, `exp`/`nbf`/`iat` with 60 s leeway, lifetime at most a day, the workflow (`job_workflow_ref`, GitLab `ci_config_ref_uri`) in the repository itself (else 401 `oidc_token_invalid`; 503 `oidc_provider_unavailable` when the keys can't be fetched). 429 `too_many_requests` (30 an hour per repository id), 404 `namespace_unknown`, 403 `namespace_not_allowed`, 403 `publisher_not_trusted` (no match, a private repository, a changed repository or owner id, a risky event without an environment, the creator gone). The `jti` is unique: 401 `oidc_token_reused`. 200 `{token, expires_at, namespace, package, repository, workflow}`; the token is restricted (see section 2) |
+| GET | `/me/namespaces/:ns/trusted-publishers` | owner (role `owner`) | `private, no-store` | routes/trusted.ts | `{namespace, publishers: [{id, provider, repository, workflow, environment, package, pinned, created_by, created_at, last_used_at}]}`; 404 `namespace_not_found` |
+| POST | `/me/namespaces/:ns/trusted-publishers` | owner (scope `manage`) | - | routes/trusted.ts | `{provider, repository, workflow?, environment?, package?}`; repository lowercased. 400 `invalid_body`, 403 `trusted_publisher_limit` (20), 409 `trusted_publisher_exists`; 201. Audited `trusted_publisher.add` |
+| DELETE | `/me/namespaces/:ns/trusted-publishers/:id` | owner (scope `manage`) | - | routes/trusted.ts | Revokes the CI tokens it minted, deletes it; 204 or 404 `not_found`. Audited `trusted_publisher.remove` |
 
 ### 1.8 Trust: yank, deprecate, claims, transfers (10)
 
@@ -452,8 +463,10 @@ handler that returns ends the chain):
 2. **`authRoutes(app)`**, which first registers `app.use("*", authenticate)` and `app.use("*", enforceScopes)`, then
    `deviceRoutes(app)` and all `/auth/*` and `/me*` routes of `auth.ts`. `authenticate` never rejects: a
    `Bearer ot_...` token is looked up by SHA-256 in `api_tokens` (not revoked, not expired, user not banned;
-   `last_used_at` updated via `waitUntil`) and sets `c.var.token` (`id`, `scopes`, `scoped`); otherwise the `ot_session` cookie is looked up in `sessions`. Non-`ot_` bearer tokens (scan, backup,
-   health) leave `user` null. `enforceScopes` is described under [Conventions](#conventions-used-in-the-table).
+   `last_used_at` updated via `waitUntil`; `lib/tokens.ts:findToken`, shared with the mirror) and sets `c.var.token` (`id`, `scopes`, `scoped`, `restriction`); otherwise the `ot_session` cookie is looked up in `sessions`. Non-`ot_` bearer tokens (scan, backup,
+   health) leave `user` null. A CI token (a row with `namespace_id`, minted by `POST /auth/oidc/token`) counts only on
+   `POST /publish` and `GET /me/publish-jobs/:id` (`restrictedRouteAllowed`); anywhere else the request is anonymous.
+   Its writes are audited with `actor_kind` `github` or `gitlab`. `enforceScopes` is described under [Conventions](#conventions-used-in-the-table).
 3. **Write rate limit** (`app.use("*")`, lines 45–52): when there is a user who is neither `is_reviewer` nor
    `is_admin`, and the method is not `GET`, `HEAD` or `OPTIONS`, `overLimit(env, "write", user.id, 30, 60_000)`; over
    the limit throws 429 `too_many_requests` ("at most 30 changes a minute", with `Retry-After`, `RateLimit-Policy`
@@ -462,7 +475,8 @@ handler that returns ends the chain):
    `/auth/device/*`, `/auth/osintverse/device*` are **not** covered, even though the comment lists "tokens".
    Anonymous writes (installs, feedback, reports) are not covered either.
 4. Route registrars, in this order: `webhookRoutes`, `reviewRoutes`, `sourceRoutes`, `importRoutes`, `guideRoutes`,
-   `trustRoutes`, `transferRoutes`, `opsRoutes`, `betaRoutes`, `backupRoutes`.
+   `trustRoutes`, `transferRoutes`, `opsRoutes`, `betaRoutes`, `backupRoutes`, `profileRoutes`, `directRoutes`,
+   `trustedRoutes`. `POST /auth/oidc/token` is anonymous, so the write limit doesn't apply to it; it has its own (section 3).
 5. `app.onError`: an `HTTPException` (every `apiError`) returns its own response. Anything else: request ID =
    `cf-ray` header or a new ULID, `reportError` to Sentry via `waitUntil`, `console.error`, and
    `500 {error: {code: "internal_error", message: "Something went wrong on our side.", hint, docs, request_id}}`.
@@ -515,6 +529,8 @@ count is greater than `limit`. Windows older than a day are deleted nightly by `
 | Bulk imports | at most 50 repositories per request (`MAX_BULK`) | | 400 `too_many_repos` | routes/imports.ts |
 | Uploads (`ot publish`) | 20 per hour per namespace (`PUBLISHES_PER_HOUR`); 25 MiB and 300 files per upload | `publish` / namespace id | 429 `publish_rate_limited`; 413 `bundle_too_large`; 400 `bundle_invalid` | direct.ts |
 | Registry namespaces | 3 per user (`MAX_NAMESPACES_PER_USER`, counted by `created_by`); 5 attempts a day | `namespace_create` / user id | 403 `namespace_limit`; 429 `too_many_requests` | direct.ts |
+| CI token exchanges | 30 per hour per repository (`EXCHANGES_PER_HOUR`); each ID token once (`api_tokens.jti` unique) | `oidc_token` / `<provider>:<repository id>` | 429 `too_many_requests`; 401 `oidc_token_reused` | trusted.ts |
+| Trusted publishers | 20 per namespace (`MAX_PUBLISHERS`) | | 403 `trusted_publisher_limit` | trusted.ts |
 | Webhook bodies | 5 MB (`MAX_BODY`) | | 413 `payload_too_large` | routes/webhooks.ts |
 | Scan results | 256 KB by `Content-Length` (`MAX_RESULTS`) | | 413 `payload_too_large` | routes/review.ts |
 | Health results | at most 500 per call | | 400 `invalid_body` | routes/ops.ts |
@@ -576,7 +592,7 @@ Then, by `event.cron`:
 | `*/15 * * * *` | | none beyond the block above |
 | `41 4 * * 1` (Mondays 04:41 UTC) | `WEEKLY_BACKUP_CRON` (backups.ts) | `weeklyBackups(env)`: a git backup of every active source, dispatched 20 per call (`WEEKLY_PER_DISPATCH`) |
 | `23 5 1 * *` (1st of the month 05:23 UTC) | `RESTORE_DRILL_CRON` (backups.ts) | `startDrill(env)`: restore a random git bundle and pull a random public mirrored image |
-| `17 3 * * *` (daily 03:17 UTC) | literal string in index.ts | `queueNightlyLinkChecks(env)`, `dailyDigest(env)` (namespaces waiting > 2 business days, reports > 48 h), `purgeRateLimits(env)` (windows older than a day), `purgeBackups(env)` (due deletions, except legal holds), `purgeIdleNamespaces(env)` (direct.ts: registry namespaces still pending with no package 30 days after creation, 50 a night), `lockStaleThreads(env)` (closed issues quiet for 30 days), `deliverInbox(env, "daily")` (digests), `purgeInbox(env)` (read items after 90 days, all after a year), `refreshContributorStats(env)`, `queueUpstreamChecks(env)` (`{upstreamCheckToolId}` per community wrapper), `queueMirrorSweeps(env)` (backups.ts: `{mirrorSweepRepo}` for up to 50 mirror repositories with publisher pushes older than a week, and `purgeUploads` for blob uploads idle a day), then the SQL `UPDATE tools SET installs_30d = ...` over the last 30 days of `install_counts` |
+| `17 3 * * *` (daily 03:17 UTC) | literal string in index.ts | `queueNightlyLinkChecks(env)`, `dailyDigest(env)` (namespaces waiting > 2 business days, reports > 48 h), `purgeRateLimits(env)` (windows older than a day), `purgeBackups(env)` (due deletions, except legal holds), `purgeIdleNamespaces(env)` (direct.ts: registry namespaces still pending with no package 30 days after creation, 50 a night), `purgeCiTokens(env)` (trusted.ts: CI tokens expired more than two days, `CI_TOKEN_RETENTION`), `lockStaleThreads(env)` (closed issues quiet for 30 days), `deliverInbox(env, "daily")` (digests), `purgeInbox(env)` (read items after 90 days, all after a year), `refreshContributorStats(env)`, `queueUpstreamChecks(env)` (`{upstreamCheckToolId}` per community wrapper), `queueMirrorSweeps(env)` (backups.ts: `{mirrorSweepRepo}` for up to 50 mirror repositories with publisher pushes older than a week, and `purgeUploads` for blob uploads idle a day), then the SQL `UPDATE tools SET installs_30d = ...` over the last 30 days of `install_counts` |
 
 ## 6. Mirror Worker (`otinstaller-mirror`)
 
@@ -592,7 +608,7 @@ entry (`index.ts`) wraps `mirrorFetch` (`registry.ts`) and turns any throw into
 | Method | Path | Notes |
 | --- | --- | --- |
 | GET | `/` | Plain-text banner |
-| GET, POST | `/token` | Issues a token (`tokenEndpoint`): the scanner credential → admin; a publisher's `ot_` token → push rights to the scopes `canPush` allows; no credential → pull token; wrong credential → 401 `UNAUTHORIZED`. POST takes the OAuth2 password grant (other grants 400). Answers `{token, access_token, expires_in: 300, issued_at}` |
+| GET, POST | `/token` | Issues a token (`tokenEndpoint`): the scanner credential → admin; a publisher's `ot_` token → push rights to the scopes `canPush` allows (a CI token only its own namespace and package); no credential → pull token; wrong credential → 401 `UNAUTHORIZED`. POST takes the OAuth2 password grant (other grants 400). Answers `{token, access_token, expires_in: 300, issued_at}` |
 | any | `/v2/` or `/v2` | 200 `{}` if the request carries any valid credential or token (including an anonymous pull token), else the 401 Bearer challenge |
 | GET, HEAD | `/v2/<name>/manifests/<tag|digest>` | Pull; hidden repos or hidden `name@digest` answer 404 `MANIFEST_UNKNOWN` to non-admins, and pending images (a publisher's push no published version uses) to everyone but admin and the repository's publishers |
 | PUT | `/v2/<name>/manifests/<tag|digest>` | Push; ≤4 MB (`MAX_MANIFEST`, 413 `SIZE_INVALID`); digest must match; every referenced blob/manifest must already exist (400 `MANIFEST_BLOB_UNKNOWN` / `MANIFEST_UNKNOWN`); tag ref also writes `tags/<tag>`. A publisher's push also passes `publisherManifestProblem` (attached tags, 30 an hour, 2 GiB) and is marked pending and recorded |

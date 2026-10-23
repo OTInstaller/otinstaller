@@ -133,7 +133,8 @@ keychain token, which is handy with a token minted against the local API.
 | `bash scripts/e2e.sh` | Docker, Go | build, push to a local `registry:2`, `ot validate`, `validate --smoke`, `run`, `list` |
 | `bash scripts/e2e-real.sh` | Docker, cosign, the local API running and seeded | real signed image installs; wrong signer exits 4; real wheel installs; tampered hash exits 4 |
 | `bash scripts/e2e-backups.sh` | Docker, cosign, crane, git, Go, Node, Python; ports 8787 to 8789 and 5001 | install from the mirror and the wheel copy while the originals refuse; git bundle restore |
+| `bash scripts/e2e-direct.sh` | Docker, Go, Node, Python, curl, network (namespace names are checked against GitHub and GitLab); ports 8787 to 8789 | `ot namespace create`, `ot publish --image` to the local mirror, the unreleased image hidden from anonymous pulls and other users' pushes, then published and installed from the mirror |
 | `bash scripts/install/make-test-release.sh` | Go, openssl 3 (Ed25519), python3, sha256sum or shasum | a release signed with a throwaway key for testing the install scripts |
 
-The Docker VM can't reach host ports directly on Windows and macOS; `e2e-backups.sh` uses an nginx container as a
-proxy for that reason.
+The Docker VM can't reach host ports directly on Windows and macOS; `e2e-backups.sh` and `e2e-direct.sh` use an nginx
+container as a proxy for that reason.

@@ -119,6 +119,9 @@ func (a *App) initCmd() *cobra.Command {
 				fmt.Fprintln(a.Out, "\nNext: write the pages in docs/, list them under content.nav and the tools they use under related_tools, then run `ot validate`.")
 			} else {
 				fmt.Fprintln(a.Out, "\nNext: edit otinstaller.yaml (inputs, outputs, command, ethics) and README.md, then run `ot validate`.")
+				fmt.Fprintln(a.Out, "To publish with the release workflow, install the OTInstaller GitHub App (or connect the GitLab project), or let")
+				fmt.Fprintln(a.Out, "the workflow publish itself: `ot namespace trust <namespace> github:<owner>/<repo>` and set the CI variable")
+				fmt.Fprintln(a.Out, "OTINSTALLER_PUBLISH to oidc. Without a repository, `ot publish` uploads the release from here.")
 			}
 			return nil
 		},

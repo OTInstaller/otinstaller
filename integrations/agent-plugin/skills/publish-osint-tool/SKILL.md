@@ -41,11 +41,14 @@ the release, security-scans it, sends a new publisher to human review, and publi
 4. **Check it** with `validate_manifest` (MCP) or `ot validate`, then `ot validate --smoke`, which builds it and runs
    `test.input` in the sandbox. Fix every problem; each code is explained at https://otinstaller.com/docs/errors.
 5. **Release.**
-   - From a repository: the release workflow `ot init` wrote builds, signs (cosign, keyless) and tags.
+   - From a repository: the release workflow `ot init` wrote builds, signs (cosign, keyless) and tags. The GitHub App
+     (or a connected GitLab project) publishes the tag. Without either, the workflow can publish itself as a trusted
+     publisher: `ot namespace trust <namespace> github:<owner>/<repo>`, then set the CI variable `OTINSTALLER_PUBLISH`
+     to `oidc`.
    - Without one: push the image to a public registry, pin its digest in `runtime.image`, then `ot publish`.
      `ot publish --dry-run` lists what it would upload and changes nothing.
-   - Only push a release tag, run the workflow or run `ot publish` when the user explicitly says so. That publishes to
-     a public registry.
+   - Only push a release tag, run the workflow, trust a repository or run `ot publish` when the user explicitly says
+     so. That publishes to a public registry.
 
 Never put secrets in the manifest, the image or the repository. Credit the upstream project when packaging someone
 else's tool, and keep its license.
