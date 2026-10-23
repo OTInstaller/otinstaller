@@ -1,9 +1,11 @@
 ---
-// /otlite: the no-Docker edition, presented on its own. What it does, the commands, what it covers and where it
-// differs from ot. Static copy plus the install command from lib/install.ts; nothing here is personal.
+// /otlite: the no-Docker edition, presented on its own. What it does, the commands, every tool it installs (from
+// data/otlite-catalog.json, shared with /otlite/tools) and where it differs from ot. Nothing here is personal.
 import Base from "../layouts/Base.astro";
 import CopyCommand from "../components/CopyCommand.astro";
+import OtliteCatalog from "../components/OtliteCatalog.astro";
 import PageHead from "../components/PageHead.astro";
+import catalog from "../data/otlite-catalog.json";
 import { NO_DOCKER } from "../lib/install";
 import { cacheFor } from "../lib/page";
 
@@ -25,11 +27,16 @@ const features = [
   { title: "Curated, so you can relax", text: "A tool is listed only when it installs cleanly and passes a smoke test, and every release pins the versions it was tested with. Attack and harassment tools are excluded by policy.", cmd: "otlite list" },
 ];
 
-const covers = [
-  ["Username", 24], ["Domain", 19], ["Email", 14], ["URL", 11], ["IP address", 7], ["Name", 5], ["Phone", 4],
-] as const;
+const LABELS: Record<string, string> = {
+  username: "Username", email: "Email", phone: "Phone", domain: "Domain", ip: "IP address", url: "URL", name: "Name",
+};
+const total = catalog.tools.length;
+const covers = Object.keys(LABELS)
+  .map((k) => [LABELS[k]!, catalog.tools.filter((t) => t.accepts.includes(k)).length] as const)
+  .filter(([, n]) => n > 0)
+  .sort((a, b) => b[1] - a[1]);
 ---
-<Base title="otlite" description="otlite: one command line for 47 popular open-source OSINT tools on Linux and macOS. Install, run, update and remove each in its own virtualenv, with all API keys in one place and every result saved, sorted and ready for scripts and AI agents.">
+<Base title="otlite" description={`otlite: one command line for ${total} popular open-source OSINT tools on Linux and macOS. Install, run, update and remove each in its own virtualenv, with all API keys in one place and every result saved, sorted and ready for scripts and AI agents.`}>
   <PageHead eyebrow="otlite · no Docker needed" title="One CLI for popular open-source OSINT tools">
     <p class="muted">We pick, pin and test the tools, so you don't have to. One command installs, runs, updates or removes any of them, each in its own virtualenv, with every result saved and ready for scripts and AI agents. For Linux and macOS.</p>
   </PageHead>
@@ -59,11 +66,17 @@ const covers = [
   </ul>
 
   <section class="covers" aria-labelledby="covers-h">
-    <h2 id="covers-h">47 tools, by what they take</h2>
+    <h2 id="covers-h">{total} tools, by what they take</h2>
     <ul class="counts">
       {covers.map(([label, n]) => <li><b>{n}</b><span>{label}</span></li>)}
     </ul>
-    <p class="small muted">Sherlock, Maigret, Holehe, theHarvester, GHunt, SpiderFoot and more; a tool can take more than one kind of input. <a href="/otlite/tools">All 47 tools, each with a command to try →</a></p>
+    <p class="small muted">Sherlock, Maigret, Holehe, theHarvester, GHunt, SpiderFoot and more; a tool can take more than one kind of input.</p>
+  </section>
+
+  <section class="tools" id="tools" aria-labelledby="tools-h">
+    <h2 id="tools-h">Every tool, with a command to try</h2>
+    <p class="small muted">What each tool does, what it takes, the API keys it can use and anything to know before you run it. Each installs into its own virtualenv with <code>otlite install NAME</code>; this list is generated from otlite {catalog.otlite}. Tools are listed when they install cleanly and pass a smoke test, and attack or harassment tools are left out by policy.</p>
+    <OtliteCatalog level={3} />
   </section>
 
   <section class="panel compare" aria-labelledby="compare-h">
@@ -102,6 +115,9 @@ const covers = [
   .counts b { font-size: var(--fs-4); font-variant-numeric: tabular-nums; }
   .counts span { font-size: var(--fs-1); color: var(--text-muted); }
   .covers p { margin: 0; }
+  .tools { margin-top: 40px; }
+  .tools h2 { font-size: var(--fs-4); margin: 0 0 8px; }
+  .tools > p { margin: 0 0 16px; max-width: 80ch; }
   .compare { margin-top: 40px; }
   .compare dl { margin: 0 0 10px; display: grid; grid-template-columns: max-content 1fr; gap: 8px 20px; }
   .compare dt { font-weight: 650; }
