@@ -17,27 +17,50 @@ Items marked **(you)** need the owner of the GitHub, GitLab, Cloudflare, Resend,
 | otlite installer | `curl -fsSL https://get.otinstaller.com/otlite \| sh` answers 200 (`otlite/scripts/install.sh` from `main`, through `ops/get`) |
 | Site pages | `/agents`, the homepage for AI agents, with its Markdown twin `/agents.md`; `/otlite` and `/otlite/tools`, both listing every tool from `web/src/data/otlite-catalog.json`; tool pages show the sample output recorded by the scanner's smoke test |
 
-## Phase 1: the community (merged 23 October 2026, not deployed)
+## Phase 1 and publishing (merged 23 and 24 October 2026, not deployed)
 
 The roadmap's phase 1 ([roadmap.md](roadmap.md)) was merged into `main` on 23 Oct: #58 (roadmap, stars), #61 (release
 notes), #63 (activity and feeds), #66 (learn hub), the community stack #68 → #74 → #76 → #78 → #79 → #80 → #81 → #82 →
 #83 and the close-out #84. Request discussions and flags on requests followed in
-[#89](https://github.com/OTInstaller/otinstaller/pull/89) (migration 0026, merged), and change proposals with a new
-version's first-week counts in [#90](https://github.com/OTInstaller/otinstaller/pull/90) (migration 0027). Nothing of
-phase 1 is deployed. In order, the owner's steps:
+[#89](https://github.com/OTInstaller/otinstaller/pull/89) (migration 0026), and change proposals with a new version's
+first-week counts in [#90](https://github.com/OTInstaller/otinstaller/pull/90) (migration 0027, merged 24 Oct as
+`6787737`). Publishing without a tag merged the same day: the OAuth callback fix
+[#85](https://github.com/OTInstaller/otinstaller/pull/85), direct publishing with `ot publish`
+[#86](https://github.com/OTInstaller/otinstaller/pull/86) (0023), images hosted on the mirror
+[#87](https://github.com/OTInstaller/otinstaller/pull/87) (0024) and trusted publishing from CI
+[#88](https://github.com/OTInstaller/otinstaller/pull/88) (0025). None of it is deployed. In order:
 
-- [ ] **(you)** Review and merge #90 (change proposals and first-week counts).
-- [ ] **(you)** Apply every migration that has reached `main` remotely before deploying the API: 0015 to 0022 (phase 1),
-      0023 to 0025 (direct publishing, #86 to #88, merged), 0026 (request discussions) and 0027 (change proposals), with
-      `npx wrangler d1 migrations apply otinstaller --remote`; then deploy the API and the site.
+- [x] Copy the scanner to registry-ops before the API sends direct uploads. Done 24 Oct: `OTInstaller/registry-ops`
+      `068fc51` (`scan.py` accepts `expected_signer: null` and records the smoke test's sample; `scan.yml` logs Docker
+      in to the mirror too).
+- [x] Expire abandoned uploads: lifecycle rule `expire-uploads` on the R2 bucket `otinstaller-content`, prefix
+      `uploads/`, objects expire after 7 days. Done 24 Oct.
+- [ ] **(you)** Review the terms change from #87 (`web/src/pages/policy/terms.md`: images hosted on the mirror, and
+      namespaces created on the registry); the site deploy below publishes it.
+- [ ] **(you)** Apply migrations 0015 to 0027 remotely: in `api/`, `npx wrangler d1 migrations apply otinstaller
+      --remote` (13 migrations; the permission classifier refuses this to the coding agent as a production deploy).
+      The bookmark before them is `0000021a-00000008-0000510d-148af29bf74db2c6a521a2eea887be46`; restore with
+      `npx wrangler d1 time-travel restore otinstaller --bookmark=<that>`.
+- [ ] **(you)** Deploy, after the migrations:
+      1. The API: in `api/`, `npm run deploy`. Roll back to `1e5d3dac-1465-428c-bb46-45770d5e7e22`.
+      2. The mirror, which now binds the D1 database: in `api/`, `npx wrangler deploy -c wrangler.mirror.jsonc`. Roll
+         back to `b222af4e-ee1a-47b2-89d8-a411b338ec02`.
+      3. The site with `PUBLIC_BETA=0`: in `web/`, PowerShell `$env:PUBLIC_BETA = "0"; npm run deploy`. Roll back to
+         `1326b475-6249-4a94-9355-adc015f9d642`.
+      Checks: `https://api.otinstaller.com/v1/openapi.json` lists `/publish` and `/auth/oidc/token`;
+      `curl -sI https://mirror.otinstaller.com/v2/` answers 401 with a `Bearer` challenge; `/publish` on the site
+      shows three ways in and no beta strip.
 - [ ] **(you)** Grant the first triager and reviewer roles (Admin console → Community).
 - [ ] **(you)** Set up the community bot for submissions, bump pull requests and change proposals (publishing-setup.md section 6,
       "Community submissions"): the "OTInstaller Community" GitHub App, its three secrets, and the main App on all
       repositories of `osintverse-community`. Until then submitting answers 503 and the rest works.
 - [ ] **(you)** After a week of upstream watcher reports (Admin console → Upstream), decide whether to set
       `UPSTREAM_WATCH` to `issues`, and later `prs`.
-- [ ] **(you)** Release `ot` with `ot issues`, `ot request`, `ot changelog`, `ot report --works|--broken`, the failure
-      prompt, and the first-week note in `ot outdated`.
+- [ ] Release `ot` v0.15.0 once the API above is live (its new commands need it): `ot publish` (with `--image`,
+      `--sign` and `--oidc`), `ot namespace create|trust|trusted|untrust`, `ot issues`, `ot request`, `ot changelog`,
+      `ot report --works|--broken`, the failure prompt and the first-week note in `ot outdated`. Push the tag `v0.15.0`
+      on `main`. It must be out before anyone sets `OTINSTALLER_PUBLISH=oidc`, because the release workflows' last step
+      installs the latest `ot`.
 - [ ] **(you)** Publish the draft guide `seed/guides/osint-fundamentals/` (`ot release 1.0.0` in its repository).
 
 ## Left before announcing
