@@ -1079,8 +1079,7 @@ change. Keep this list current when you fix one or find another.
 - Redelivering a GitHub webhook is a no-op once the first delivery created a job.
 - `ot install` doesn't warn about deprecated packages (the manifest response doesn't carry deprecation).
 - The install scripts ask `api.github.com` for the latest release without a token (60 requests an hour per IP).
-  `ot self-update` and `ot outdated` ask `get.otinstaller.com/ot/latest` first and use the API only as a fallback, but
-  only once that route is deployed (see the launch checklist).
+  `ot self-update` and `ot outdated` ask `get.otinstaller.com/ot/latest` first and use the API only as a fallback.
 - The same error code has two statuses in places (`tool_removed` 410/409, `manifest_in_repo` 409/400,
   `unknown_provider` 404/400); `manifest_name_mismatch` exists only in the API.
 - `ot login --osintverse` ignores `--scope` and token expiry: the OSINTverse device poll (`pollOsintverseDevice` in
