@@ -647,8 +647,8 @@ migrations add publish intake (0002), scans/review and `notifications` (0003), s
 
 `authenticate` (in `routes/auth.ts`) runs on every request and sets `c.var.user` or null: first `Authorization: Bearer
 ot_...` (sha256 lookup in `api_tokens`), then the `ot_session` cookie (30 days, httpOnly, Secure, Lax). Only hashes are
-stored. Provider tokens are AES-GCM encrypted with `TOKEN_ENC_KEY`. Accounts link only by signing in while signed in,
-never by email. Use `requireUser` (401), `requireReviewer` / `requireAdmin` (403, in `routes/review.ts`) and
+stored. Provider tokens are AES-GCM encrypted with `TOKEN_ENC_KEY`. Accounts link only by signing in while signed in
+with the session cookie (an API token on an OAuth callback links nothing), never by email. Use `requireUser` (401), `requireReviewer` / `requireAdmin` (403, in `routes/review.ts`) and
 `requireMember` (`routes/sources.ts`). Staff are `users.is_reviewer` / `users.is_admin`.
 
 API tokens are scoped (`scopes.ts`, migration 0013): `read`, `publish`, `manage`, `feedback`, and `staff`, which only a
