@@ -883,7 +883,8 @@ read and the first run copies settings from `~/.otinstaller`. Users of both edit
   from its own environment (`pypi-otinstaller`, `testpypi-otinstaller`), because PyPI picks one publisher per
   environment.
 - The one-line installer `curl -fsSL https://get.otinstaller.com/otlite | sh` is `otlite/scripts/install.sh` (pipx
-  from PyPI), served from `main` by `ops/get`.
+  from PyPI when Python and pipx are there, else a pinned, hash-checked uv with its own Python 3.12, no sudo), served
+  from `main` by `ops/get`. Bumping uv means changing `UV_VERSION` and all four SHA-256 values in the script.
 - `otlite/scripts/web_catalog.py` writes `web/src/data/otlite-catalog.json` for the site's `/otlite` pages (it reads
   `seed/community/` to name each tool's registry wrapper); rerun
   it whenever the catalog changes (its test fails otherwise). This is the one place where `otlite/` writes outside its

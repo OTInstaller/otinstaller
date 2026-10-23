@@ -41,8 +41,8 @@ same kind of tools from pip or git into per-tool virtualenvs and runs them direc
 curl -fsSL https://get.otinstaller.com/otlite | sh
 ```
 
-The installer finds a supported Python, installs pipx if it is missing and installs otlite with it; with pipx
-already there, `pipx install otlite` does the same.
+The installer uses your Python and pipx when both are there, and otherwise installs otlite with uv on a Python
+of its own, so a new machine needs nothing first; with pipx already there, `pipx install otlite` does the same.
 
 Then `otlite init`, `otlite install sherlock` and `otlite run sherlock -- u:johndoe`. The rest of this page is about
 `ot`; the [otlite page](/docs/otlite) has its own walkthrough.

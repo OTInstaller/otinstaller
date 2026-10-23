@@ -14,7 +14,7 @@ nothing else. The [otlite page](/otlite) is the short version. It was called `ot
 | | `ot` | `otlite` |
 | --- | --- | --- |
 | Platforms | Linux, macOS, Windows | Linux, macOS |
-| Needs | Docker Desktop, OrbStack, Colima or Podman (pipx tools can run `--native` without one) | Python 3.10+, git, `python3-venv` |
+| Needs | Docker Desktop, OrbStack, Colima or Podman (pipx tools can run `--native` without one) | git (the installer brings Python when there is none) |
 | Where tools come from | The registry: signed, scanned, reviewed packages | A tested catalog bundled with each otlite release |
 | How a tool runs | In a container with all capabilities dropped, no host files | Directly on your machine, in its own virtualenv |
 | Tool arguments | Only the inputs the manifest declares | Anything after `--` goes to the tool |
@@ -31,7 +31,9 @@ arguments or an interactive terminal. Both can share one `results/` folder.
 curl -fsSL https://get.otinstaller.com/otlite | sh
 ```
 
-Or, with pipx already installed, `pipx install otlite`.
+It needs nothing installed first: with a Python 3.10+ and pipx on the machine it uses them, and otherwise it
+downloads uv into `~/.local/bin` and installs otlite on a Python 3.12 that uv keeps in your home directory, without
+sudo. Or, with pipx already installed, `pipx install otlite`.
 
 `pip install otlite` inside a virtualenv works too. On Debian, Ubuntu and Kali a `.deb` is built by the CI from
 [`otlite/debian`](https://github.com/OTInstaller/otinstaller/tree/main/otlite/debian). Then:

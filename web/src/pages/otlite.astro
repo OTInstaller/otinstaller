@@ -44,7 +44,7 @@ const covers = Object.keys(LABELS)
   <section class="start" aria-labelledby="start-h">
     <h2 id="start-h" class="sr-only">Install and first run</h2>
     <CopyCommand command={NO_DOCKER.command} label="Install otlite" class="install" />
-    <p class="small muted">The installer finds Python 3.10 or newer and installs pipx if it is missing; with pipx already there, <code>pipx install otlite</code> does the same. Debian, Ubuntu and Kali packages, and other ways to install, are in the <a href="/docs/otlite">otlite docs</a>.</p>
+    <p class="small muted">The installer needs nothing installed first: it uses your Python and pipx when both are there, and otherwise brings its own Python with uv, without sudo. With pipx already there, <code>pipx install otlite</code> does the same. Debian, Ubuntu and Kali packages, and other ways to install, are in the <a href="/docs/otlite">otlite docs</a>.</p>
     <ol class="steps">
       {steps.map((s) => (
         <li>

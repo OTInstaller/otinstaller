@@ -5,7 +5,7 @@ export const INSTALLS = [
 ] as const;
 
 // The no-Docker edition: a Python CLI for Linux and macOS that installs tools into per-tool virtualenvs. Its installer
-// (otlite/scripts/install.sh, served by ops/get) installs pipx first when it is missing.
+// (otlite/scripts/install.sh, served by ops/get) uses Python and pipx when both are there, else uv and its own Python.
 export const NO_DOCKER = { command: "curl -fsSL https://get.otinstaller.com/otlite | sh", label: "No Docker? otlite on Linux and macOS", docs: "/otlite" } as const;
 
 export const RELEASES_URL = "https://github.com/OTInstaller/ot/releases";

@@ -157,7 +157,7 @@ Behaviour (`worker.js`):
 | --- | --- |
 | `/ot`, `/ot.sh`, `/install.sh` | `https://github.com/<RELEASE_REPO>/releases/latest/download/install.sh` |
 | `/ot.ps1`, `/install.ps1` | `.../install.ps1` |
-| `/otlite`, `/otlite.sh` | `https://raw.githubusercontent.com/<OTLITE_REPO>/main/otlite/scripts/install.sh` (pipx from PyPI, so no release is involved) |
+| `/otlite`, `/otlite.sh` | `https://raw.githubusercontent.com/<OTLITE_REPO>/main/otlite/scripts/install.sh` (pipx or uv from PyPI, so no release is involved) |
 | anything else | 302 to `https://otinstaller.com/docs/getting-started` |
 
 Upstream fetches use `cf: { cacheTtl: 300, cacheEverything: true }`; responses are `text/plain; charset=utf-8`
