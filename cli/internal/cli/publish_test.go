@@ -76,10 +76,23 @@ type fakePublish struct {
 	statuses []string // returned in turn by GET /me/publish-jobs/:id; the last one repeats
 	polls    int
 	job      map[string]any
+	// exchanged is the body of POST /auth/oidc/token, which trades the ID token "id-token" for ot_t.
+	exchanged       map[string]string
+	alreadyReceived bool
 }
 
 func (f *fakePublish) server(t *testing.T) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" && r.URL.Path == "/v1/auth/oidc/token" {
+			json.NewDecoder(r.Body).Decode(&f.exchanged)
+			if r.Header.Get("Authorization") != "" || f.exchanged["id_token"] != "id-token" {
+				w.WriteHeader(403)
+				w.Write([]byte(`{"error":{"code":"publisher_not_trusted","message":"alice does not trust github:alice/whois-plus to publish","hint":"an owner of alice can add it"}}`))
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]any{"token": "ot_t", "expires_at": 1, "namespace": "alice", "package": "whois-plus", "repository": "github:alice/whois-plus", "workflow": "release.yml"})
+			return
+		}
 		if r.Header.Get("Authorization") != "Bearer ot_t" {
 			w.WriteHeader(401)
 			w.Write([]byte(`{"error":{"code":"unauthenticated","message":"sign in first"}}`))
@@ -96,6 +109,10 @@ func (f *fakePublish) server(t *testing.T) *httptest.Server {
 				rd, _ := fhs[0].Open()
 				b, _ := io.ReadAll(rd)
 				f.files[name] = string(b)
+			}
+			if f.alreadyReceived {
+				json.NewEncoder(w).Encode(map[string]any{"job_id": "job1", "status": "scanning", "ref": "alice/whois-plus", "version": "1.2.0", "url": "https://otinstaller.com/dashboard/publish/job1", "already_received": true})
+				return
 			}
 			w.WriteHeader(202)
 			json.NewEncoder(w).Encode(map[string]any{"job_id": "job1", "status": "queued", "ref": "alice/whois-plus", "version": "1.2.0", "url": "https://otinstaller.com/dashboard/publish/job1"})
@@ -122,6 +139,10 @@ func publishApp(t *testing.T, f *fakePublish) (*App, *strings.Builder, *strings.
 	old := pollSleep
 	pollSleep = func(context.Context, time.Duration) error { return nil }
 	t.Cleanup(func() { pollSleep = old })
+	// Not in a CI job that offers an ID token, unless a test says so.
+	for _, k := range []string{"ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "OTINSTALLER_ID_TOKEN", "GITHUB_ACTIONS"} {
+		t.Setenv(k, "")
+	}
 	srv := f.server(t)
 	t.Cleanup(srv.Close)
 	a, out, errb := newTestApp(t, &fakeExec{}, "")
@@ -369,6 +390,106 @@ func TestPublishSignsWithoutPuttingTheTokenInArgv(t *testing.T) {
 	}
 	if !strings.Contains(ce.config, base64.StdEncoding.EncodeToString([]byte("ot:ot_t"))) {
 		t.Errorf("DOCKER_CONFIG %s", ce.config)
+	}
+}
+
+// githubIDTokens stands in for GitHub Actions' ID token endpoint: it hands out "id-token" for the otinstaller audience.
+func githubIDTokens(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "bearer request-token" || r.URL.Query().Get("audience") != "otinstaller" || r.URL.Query().Get("api-version") != "2.0" {
+			w.WriteHeader(403)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"count": 1, "value": "id-token"})
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_URL", srv.URL+"/token?api-version=2.0")
+	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "request-token")
+}
+
+func TestPublishFromGitHubActionsWithoutAToken(t *testing.T) {
+	f := &fakePublish{statuses: []string{"validating", "scanning"}}
+	a, out, errb := publishApp(t, f)
+	a.API.Token = ""
+	githubIDTokens(t)
+	// No token and an ID token on offer: ot trades it for one by itself.
+	if code := run(a, "publish", publishDir(t)); code != 0 {
+		t.Fatalf("exit %d: %s %s", code, out, errb)
+	}
+	if f.exchanged["namespace"] != "alice" || f.exchanged["package"] != "whois-plus" || f.files["otinstaller.yaml"] == "" {
+		t.Errorf("exchanged %v, uploaded %d files", f.exchanged, len(f.files))
+	}
+	if !strings.Contains(errb.String(), "Publishing as github:alice/whois-plus (release.yml)") {
+		t.Errorf("err %s", errb)
+	}
+}
+
+func TestPublishFromGitLabCI(t *testing.T) {
+	f := &fakePublish{statuses: []string{"scanning"}, alreadyReceived: true}
+	a, out, errb := publishApp(t, f)
+	t.Setenv("OTINSTALLER_ID_TOKEN", "id-token")
+	// --oidc wins over a stored token.
+	a.API.Token = "ot_stored"
+	if code := run(a, "publish", "--oidc", publishDir(t)); code != 0 {
+		t.Fatalf("exit %d: %s %s", code, out, errb)
+	}
+	if !strings.Contains(errb.String(), "already has alice/whois-plus 1.2.0 from this repository") {
+		t.Errorf("err %s", errb)
+	}
+}
+
+func TestPublishOIDCNeedsAnIDToken(t *testing.T) {
+	f := &fakePublish{statuses: []string{"queued"}}
+	a, _, errb := publishApp(t, f)
+	t.Setenv("GITHUB_ACTIONS", "true")
+	if code := run(a, "publish", "--oidc", publishDir(t)); code != ExitUsage || !strings.Contains(errb.String(), "id-token: write") {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	// An ID token the registry doesn't trust: its answer, exit 2, nothing uploaded.
+	t.Setenv("OTINSTALLER_ID_TOKEN", "someone-elses")
+	if code := run(a, "publish", "--oidc", publishDir(t)); code != ExitUsage || !strings.Contains(errb.String(), "does not trust") || f.files != nil {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+}
+
+func TestNamespaceTrust(t *testing.T) {
+	var added map[string]string
+	removed := ""
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "POST" && r.URL.Path == "/v1/me/namespaces/acme/trusted-publishers":
+			json.NewDecoder(r.Body).Decode(&added)
+			w.WriteHeader(201)
+			json.NewEncoder(w).Encode(map[string]any{"id": "tp1", "provider": added["provider"], "repository": added["repository"], "workflow": added["workflow"], "pinned": false, "created_at": 1})
+		case r.Method == "GET" && r.URL.Path == "/v1/me/namespaces/acme/trusted-publishers":
+			json.NewEncoder(w).Encode(map[string]any{"namespace": "acme", "publishers": []map[string]any{
+				{"id": "tp1", "provider": "github", "repository": "acme/tool", "workflow": "release.yml", "pinned": true, "created_at": 1, "last_used_at": 1761177600000},
+			}})
+		case r.Method == "DELETE" && r.URL.Path == "/v1/me/namespaces/acme/trusted-publishers/tp1":
+			removed = "tp1"
+			w.WriteHeader(204)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+	a, out, errb := newTestApp(t, &fakeExec{}, "")
+	a.API = api.New(srv.URL+"/v1", "test")
+	a.API.Token = "ot_t"
+	if code := run(a, "namespace", "trust", "acme", "bitbucket:acme/tool"); code != ExitUsage {
+		t.Fatalf("bad repository: exit %d", code)
+	}
+	if code := run(a, "namespace", "trust", "acme", "github:acme/tool", "--workflow", "release.yml"); code != 0 {
+		t.Fatalf("trust: exit %d: %s", code, errb)
+	}
+	if added["provider"] != "github" || added["repository"] != "acme/tool" || added["workflow"] != "release.yml" || !strings.Contains(out.String(), "id-token: write") {
+		t.Errorf("sent %v, out %s", added, out)
+	}
+	if code := run(a, "namespace", "trusted", "acme"); code != 0 || !strings.Contains(out.String(), "github:acme/tool") || !strings.Contains(out.String(), "2025-10-23") {
+		t.Fatalf("trusted: exit %d: %s", code, out)
+	}
+	if code := run(a, "namespace", "untrust", "acme", "tp1"); code != 0 || removed != "tp1" {
+		t.Fatalf("untrust: exit %d: %s", code, errb)
 	}
 }
 

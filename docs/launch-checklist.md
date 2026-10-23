@@ -21,13 +21,13 @@ Items marked **(you)** need the owner of the GitHub, GitLab, Cloudflare, Resend,
 
 The roadmap's phase 1 ([roadmap.md](roadmap.md)) was merged into `main` on 23 Oct: #58 (roadmap, stars), #61 (release
 notes), #63 (activity and feeds), #66 (learn hub), the community stack #68 → #74 → #76 → #78 → #79 → #80 → #81 → #82 →
-#83 and the close-out #84. Request discussions and flags on requests followed in their own pull request
-(`claude/phase1-gaps`, migration 0026). Nothing of phase 1 is deployed. In order, the owner's steps:
+#83 and the close-out #84. Request discussions and flags on requests followed in
+[#89](https://github.com/OTInstaller/otinstaller/pull/89) (migration 0026). Nothing of phase 1 is deployed. In order,
+the owner's steps:
 
-- [ ] **(you)** Review and merge the request discussions pull request. Migrations 0023 to 0025 belong to the
-      direct-publishing pull requests (#86 to #88).
+- [ ] **(you)** Review and merge #89 (request discussions).
 - [ ] **(you)** Apply every migration that has reached `main` remotely before deploying the API: 0015 to 0022 (phase 1),
-      0023 to 0025 (direct publishing, #86 to #88), 0026 (request discussions) and 0027 (change proposals), with
+      0023 to 0025 (direct publishing, #86 to #88, merged), 0026 (request discussions) and 0027 (change proposals), with
       `npx wrangler d1 migrations apply otinstaller --remote`; then deploy the API and the site.
 - [ ] **(you)** Grant the first triager and reviewer roles (Admin console → Community).
 - [ ] **(you)** Set up the community bot for submissions and bump pull requests (publishing-setup.md section 6,
