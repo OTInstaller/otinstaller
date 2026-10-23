@@ -13,7 +13,8 @@ import { githubRepo, gitlabRepo, repoUrl, type RepoHost } from "./hosts/repo";
 import { checkImage, checkWheel } from "./hosts/artifacts";
 import { audit } from "./routes/auth";
 import { commitStatus, dispatchScan, expectedSigner, loadVersion, publishVersion, retryHint } from "./scans";
-import { backupVersion } from "./backups";
+import { backupVersion, hostedImage, sweepMirrorRepo } from "./backups";
+import { imageExists, imagePlatforms } from "./mirror/registry";
 import { copyImages, queueContentChecks, rawFileUrl, recheckLinks, relatedToolProblems, renderRelease, runContentChecks, storeContent, type RenderedRelease } from "./guides";
 import { ownerEmails, sendEmail, templates } from "./notify";
 import { COMMUNITY_NAMESPACE, detectQueued, failImport, heldManifestFor, parseRepoRef } from "./imports";
@@ -145,7 +146,7 @@ export async function processJob(env: Env, jobId: string): Promise<Outcome | nul
   if (manifest && problems.length === 0) {
     problems = await releaseProblems(env, manifest, job, ns.name, ns.status);
     if (problems.length === 0) ({ problems, readme, content } = await prepareContent(env, job, host, sha, manifest));
-    if (problems.length === 0) problems = manifest.kind === "guide" ? await relatedToolProblems(env, manifest) : await artifactProblems(manifest);
+    if (problems.length === 0) problems = manifest.kind === "guide" ? await relatedToolProblems(env, manifest) : await artifactProblems(env, manifest);
   }
 
   const outcome = await record(env, job, sha, ns, manifest, problems, readme);
@@ -229,11 +230,29 @@ async function releaseProblems(env: Env, m: Manifest, job: Job, namespace: strin
   return ps;
 }
 
-async function artifactProblems(m: Manifest): Promise<Problem[]> {
+async function artifactProblems(env: Env, m: Manifest): Promise<Problem[]> {
   const rt = m.runtime;
   if (!rt) return [];
-  if (rt.kind === "docker") return checkImage(deps.fetch, rt.image!);
-  return checkWheel(deps.fetch, rt.package!, rt.package_version!, rt.wheel_sha256!);
+  if (rt.kind === "pipx") return checkWheel(deps.fetch, rt.package!, rt.package_version!, rt.wheel_sha256!);
+  const hosted = hostedImage(env, rt.image);
+  return hosted ? hostedImageProblems(env, m, hosted) : checkImage(deps.fetch, rt.image!);
+}
+
+/**
+ * An image on the registry's own mirror is read through its bucket (a pushed image isn't public until it is
+ * published), and must be this package's: <mirror>/<namespace>/<name>, so nobody can publish another package's image.
+ */
+async function hostedImageProblems(env: Env, m: Manifest, hosted: { repo: string; digest: string }): Promise<Problem[]> {
+  const image = m.runtime!.image!;
+  if (hosted.repo !== `${m.namespace}/${m.name}`) {
+    return [{ code: "artifact_image_foreign", path: "/runtime/image", message: `${image} is not ${m.namespace}/${m.name}'s image on the mirror`, hint: "push the image with `ot publish --image`, which names it after the package" }];
+  }
+  if (!(await imageExists(env.MIRROR, hosted.repo, hosted.digest))) {
+    return [{ code: "artifact_image_not_found", path: "/runtime/image", message: `${image} was not pushed to the mirror`, hint: "push it with `ot publish --image`" }];
+  }
+  const platforms = await imagePlatforms(env.MIRROR, hosted.repo, hosted.digest);
+  if (platforms && !platforms.includes("linux/amd64")) return [{ code: "artifact_platform_missing", path: "/runtime/image", message: `${image} has no linux/amd64 variant` }];
+  return [];
 }
 
 /** Writes the tool, version and job outcome in one batch. */
@@ -349,6 +368,7 @@ export async function handleBatch(batch: MessageBatch<PublishMessage>, env: Env)
       else if ("publishVersionId" in body) await publishApproved(env, body.publishVersionId);
       else if ("backupVersionId" in body) await backupVersion(env, body.backupVersionId);
       else if ("profileNamespaceId" in body) await syncProfile(env, body.profileNamespaceId);
+      else if ("mirrorSweepRepo" in body) await sweepMirrorRepo(env, body.mirrorSweepRepo);
       else await processJob(env, body.jobId);
       msg.ack();
     } catch (e) {

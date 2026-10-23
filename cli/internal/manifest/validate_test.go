@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -76,6 +77,28 @@ func TestTagMismatch(t *testing.T) {
 	ps := Validate(doc, m, Options{Tag: "v9.9.9"})
 	if len(ps) != 1 || ps[0].Code != CodeTagMismatch {
 		t.Fatalf("expected one %s, got %v", CodeTagMismatch, ps)
+	}
+}
+
+func TestHostedImageMustBeThePackages(t *testing.T) {
+	src, _ := os.ReadFile(filepath.Join(fixtures, "valid", "docker-tool.yaml"))
+	digest := "@sha256:" + strings.Repeat("a", 64)
+	for _, tc := range []struct {
+		image string
+		want  int
+	}{
+		{"mirror.otinstaller.com/dheeraj/holehe-lite" + digest, 0},
+		{"mirror.otinstaller.com/someone/else" + digest, 1},
+		{"ghcr.io/someone/else" + digest, 0},
+	} {
+		doc, m, err := Parse([]byte(regexp.MustCompile(`(?m)^  image: .*$`).ReplaceAllString(string(src), "  image: "+tc.image)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		ps := Validate(doc, m, Options{})
+		if len(ps) != tc.want || (tc.want == 1 && ps[0].Code != CodeImageForeign) {
+			t.Errorf("%s: %v", tc.image, ps)
+		}
 	}
 }
 

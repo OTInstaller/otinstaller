@@ -289,6 +289,7 @@ stderr and returns `ExitCodeFor(err)`. `cli/README.md` ships in the release arch
 | `state` | Data dir (`OT_HOME` → `%APPDATA%\ot` → `~/.ot`), `state.json` (atomic write, 0600, records `from_backup`), read-only `config.json` |
 | `scaffold` | Files written by `ot init` (manifest, Dockerfile, starter tool, READMEs, guide pages) and embedded templates; uses `<<`/`>>` template delimiters |
 | `selfupdate` | `ot self-update`: release lookup (`get.otinstaller.com/ot/latest`, else the GitHub API), Ed25519-signed `checksums.txt`, archive SHA-256, atomic replace |
+| `oci` | `ot publish --image`: reads an OCI layout or docker-archive tar and pushes it to the mirror in 50 MiB chunks (the Worker's 100 MB request limit), standard library only |
 
 ### Commands
 
@@ -355,8 +356,11 @@ install when nothing takes a target), `runs.go` (runs), `saved.go` (extract/diff
   Tools are released by their release workflow, which builds and signs the artifact.
 - `ot publish [path]` (`publish.go`) releases without a tag. It validates, uploads the manifest, README, pages and
   images (`manifest.BundleFiles`) to `POST /v1/publish`, then polls `GET /v1/me/publish-jobs/:id` until validation
-  ends (`--wait`: the outcome). `--dry-run` lists the files. `ot namespace create <name>` (`namespace.go`) makes a
-  registry namespace to publish into.
+  ends (`--wait`: the outcome). `--dry-run` lists the files.
+  - `--image`, `--image-archive` or `--build` first push a Docker image to the mirror (`cli/internal/oci`) and pin its
+    digest in `otinstaller.yaml`.
+  - `--sign` runs `cosign sign` with the mirror credential in a temporary `DOCKER_CONFIG`, never in argv.
+  - `ot namespace create <name>` (`namespace.go`) makes a registry namespace to publish into.
 - Commands that need a sign-in (`whoami`, `import`, `publish`, `namespace create`, `sync`, `claim`, `transfer`, `token`)
   fail with exit 2 when there is no token.
 - [docs/typed-inputs-and-results.md](docs/typed-inputs-and-results.md) is the design note for typed inputs, saved
@@ -403,7 +407,8 @@ on stderr (`spec/schema/error-v1.json`, shared with the API); its `code` is the 
 
 ### Environment variables
 
-`OT_HOME`, `OT_API_URL`, `OT_SITE_URL` (`guide open`, `report`, `feedback`), `OT_NO_TELEMETRY` (any non-empty value
+`OT_HOME`, `OT_API_URL`, `OT_SITE_URL` (`guide open`, `report`, `feedback`), `OT_MIRROR_URL` (where `ot publish --image`
+pushes; default `https://mirror.otinstaller.com`), `OT_NO_TELEMETRY` (any non-empty value
 disables the install ping; the ping, like search, tool and manifest reads, goes through `api.Client.anon()` and never
 carries the token), `OT_RESULTS_DIR` (legacy
 `OTINSTALLER_RESULTS_DIR`; results default to `./results`, not the data dir), `OTINSTALLER_TOKEN` (overrides the
@@ -456,7 +461,12 @@ Two Workers from one folder:
   (`otinstaller-publish`), var `MIRROR_HOST`. Crons: `17 3 * * *` (nightly), `*/15 * * * *`, `41 4 * * 1` (weekly
   backups), `23 5 1 * *` (monthly restore drill).
 - `otinstaller-mirror` (`wrangler.mirror.jsonc`, `main: src/mirror/index.ts`): an OCI distribution registry on R2 at
-  `mirror.otinstaller.com`. Anonymous public pulls; pushes, deletes and `private/` pulls need `MIRROR_PUSH_TOKEN`.
+  `mirror.otinstaller.com`, with the API's D1 bound as `DB`.
+  - Anonymous public pulls; deletes and `private/` pulls need `MIRROR_PUSH_TOKEN`.
+  - Pushes need that credential, or a publisher's `ot_` token (publish scope) for `<namespace>/<name>` of a namespace
+    they belong to (`ot publish --image`). That makes the mirror the image's primary home.
+  - A publisher's image stays `pending/` (not public) until a published version uses it. Pushes are limited (2 GiB an
+    image, 10 GiB a namespace a day, 30 tags an hour) and swept nightly when no version uses them.
 
 There are no wrangler `env` blocks; the files are production config. Secrets are listed in the wrangler comments and
 `src/env.ts`. For local runs copy `.dev.vars.example` to `.dev.vars` (never commit it). The example predates the backup
@@ -582,6 +592,10 @@ it dispatches `otinstaller-backup` jobs to registry-ops with signed upload URLs 
 
 - Only public repositories and published or yanked versions. Mirrors are public only for OSI-approved licenses
   (`osiApproved()`); others go under `private/`. Owners can opt out of git backups.
+- An image a publisher pushed to the mirror itself (`backups.ts:hostedImage`) is never copied.
+  - At publishing, `recordHostedImage` releases it (clears its `pending/` markers) and writes a `hosted = 1` image row.
+    Takedowns, purges, legal holds and drills treat that row as a copy; install fallbacks never offer it.
+  - Nightly, `queueMirrorSweeps` → `{mirrorSweepRepo}` → `sweepMirrorRepo` deletes what no version uses.
 - Limits: bundles 500 MiB, images 2 GiB, wheels 1 GiB (over → `too_large` plus an email). Without the `R2_*`
   secrets, uploads go through the API instead of straight to R2 and are capped at about 100 MB by the Worker body
   limit.
@@ -601,7 +615,8 @@ migrations add publish intake (0002), scans/review and `notifications` (0003), s
 (0010), backups (`backup_runs`, `backups`, `restore_drills`, tool `git_backups`/`legal_hold`/`legal_hold_reason`, 0011),
 `feedback` (0012), and scoped tokens (`api_tokens.scoped`) plus the `install_clients` daily counts by client kind
 (0013), publisher profiles (`namespace_profiles`, `namespace_hosts`, 0014), and direct publishing (`publish_jobs`
-`namespace_id`/`bundle_key`/`submitted_by`, `namespaces.created_by`, 0015). That is 36 tables plus `tools_fts`; every table, column, CHECK value set and status transition is in
+`namespace_id`/`bundle_key`/`submitted_by`, `namespaces.created_by`, 0015), and images hosted on the mirror
+(`mirror_pushes`, `backups.hosted`, 0016). That is 37 tables plus `tools_fts`; every table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
 
 - IDs are ULIDs (`ulid()`), timestamps are Unix **milliseconds**, booleans are 0/1, JSON columns end in `_json`
@@ -1083,7 +1098,8 @@ change. Keep this list current when you fix one or find another.
 - Takedowns lag in the edge cache: the wheel copy route sends `max-age=86400`, exact-version manifests 3600 s and
   `/removed` 600 s (plus the CLI's own cache), though `scheduleDeletion` says serving stops at once.
 - The mirror hides a single taken-down image only partly: its blobs and `tags/list` are still served (the blob check
-  looks only at a repository-wide marker).
+  looks only at a repository-wide marker). The same goes for a publisher's unreleased (`pending/`) image: its manifest
+  is hidden, but its blobs are readable by anyone who knows their digests.
 - The write rate limit skips everything registered by `authRoutes` (`POST /me/tokens`, logout, device login), though
   its comment says tokens are covered; CORS credentials work only for the exact `SITE_URL`, not `www.`.
 - Jobs that fail after the last retry become `error` and never reach the stuck-job alert, despite `failJob`'s comment.

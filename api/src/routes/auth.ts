@@ -9,6 +9,7 @@ import * as gitlab from "../hosts/gitlab";
 import * as osintverse from "../hosts/osintverse";
 import { authorizeDevice, devicePage, deviceRoutes, pollOsintverseDevice, startOsintverseDevice } from "./device";
 import { ALL_SCOPES, enforceScopes, parseScopes, USER_SCOPES } from "../scopes";
+import { findToken, TOKEN_PREFIX } from "../lib/tokens";
 
 export type Provider = "github" | "gitlab" | "osintverse";
 const SESSION_COOKIE = "ot_session";
@@ -16,7 +17,6 @@ const STATE_COOKIE = "ot_oauth_state";
 // OSINTverse (OIDC) only: the nonce, the PKCE verifier and, for `ot login`, the device login being approved.
 const OIDC_COOKIE = "ot_oidc";
 const SESSION_TTL = 30 * 24 * 3600 * 1000;
-const TOKEN_PREFIX = "ot_";
 
 function provider(c: Context<AppEnv>): Provider {
   const p = c.req.param("provider");
@@ -55,15 +55,11 @@ export async function authenticate(c: Context<AppEnv>, next: Next) {
   const now = Date.now();
   let user: User | null = null;
   if (bearer?.startsWith(TOKEN_PREFIX)) {
-    const hash = await sha256Hex(bearer);
-    const row = await c.env.DB.prepare(
-      `SELECT u.id, u.login, u.is_admin, u.is_reviewer, t.id AS token_id, t.scopes, t.scoped FROM api_tokens t JOIN users u ON u.id = t.user_id
-       WHERE t.token_hash = ? AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at > ?) AND u.banned_at IS NULL`,
-    ).bind(hash, now).first<User & { token_id: string; scopes: string; scoped: number }>();
-    if (row) {
-      user = { id: row.id, login: row.login, is_admin: row.is_admin, is_reviewer: row.is_reviewer };
-      c.set("token", { id: row.token_id, scopes: new Set(row.scopes.split(",")), scoped: row.scoped === 1 });
-      c.executionCtx.waitUntil(c.env.DB.prepare(`UPDATE api_tokens SET last_used_at = ? WHERE token_hash = ?`).bind(now, hash).run());
+    const found = await findToken(c.env.DB, bearer, now);
+    if (found) {
+      user = found.user;
+      c.set("token", { id: found.tokenId, scopes: found.scopes, scoped: found.scoped });
+      c.executionCtx.waitUntil(c.env.DB.prepare(`UPDATE api_tokens SET last_used_at = ? WHERE token_hash = ?`).bind(now, found.hash).run());
     }
   } else {
     const cookie = getCookie(c, SESSION_COOKIE);

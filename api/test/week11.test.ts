@@ -2,7 +2,7 @@ import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { sha256Hex, toHex, ulid } from "../src/lib/crypto";
 import { presignSigV4 } from "../src/lib/presign";
-import { deleteImage, hideImage, mirrorFetch, type MirrorEnv } from "../src/mirror/registry";
+import { deleteImage, hideImage, mirrorFetch, purgeUploads, releaseImage, sweepRepo, type MirrorEnv } from "../src/mirror/registry";
 import {
   backfillBackups, completeRun, expireDrills, KEEP_WEEKLY, osiApproved, purgeBackups, releasePlan, startDrill, TAKEDOWN_GRACE, weeklyBackups, type BackupPlan,
 } from "../src/backups";
@@ -247,6 +247,204 @@ describe("image mirror", () => {
     expect((await mirror(`/v2/${name}/manifests/${a.digest}`)).status).toBe(200);
     expect((await mirror(`/v2/${name}/blobs/${a.layer}`)).status).toBe(200);
     expect(((await (await mirror(`/v2/${name}/tags/list`)).json()) as any).tags).toEqual([]);
+  });
+});
+
+// ---------- images publishers push ----------
+
+const tokenOf = (p: { auth: { authorization: string } }) => p.auth.authorization.slice("Bearer ".length);
+const mirrorWithDb = (): MirrorEnv => ({ ...mirrorEnv(), DB: env.DB });
+const pmirror = (path: string, init: RequestInit = {}) => mirrorFetch(new Request(`${M}${path}`, init), mirrorWithDb());
+
+/** A push token for a publisher's `ot_` token, for the repositories it asks for. */
+async function publisherToken(otToken: string, repo: string) {
+  const res = await pmirror(`/token?service=mirror.otinstaller.com&scope=repository:${repo}:pull,push`, { headers: { authorization: `Basic ${btoa(`ot:${otToken}`)}` } });
+  expect(res.status).toBe(200);
+  return `Bearer ${((await res.json()) as { token: string }).token}`;
+}
+
+/** Pushes a one-layer image as a publisher (blobs, then the manifest by tag) and returns its digest. */
+async function publisherPush(auth: string, name: string, tag = "1.0.0", layer = `layer ${uniq()}`) {
+  const config = JSON.stringify({ architecture: "amd64", os: "linux", rootfs: { type: "layers", diff_ids: [] } });
+  for (const blob of [layer, config]) {
+    const r = await pmirror(`/v2/${name}/blobs/uploads/?digest=${await digestOf(blob)}`, { method: "POST", headers: { authorization: auth, "content-length": String(blob.length) }, body: blob });
+    expect(r.status, await r.clone().text()).toBe(201);
+  }
+  const doc = JSON.stringify({
+    schemaVersion: 2, mediaType: "application/vnd.oci.image.manifest.v1+json",
+    config: { mediaType: "application/vnd.oci.image.config.v1+json", digest: await digestOf(config), size: config.length },
+    layers: [{ mediaType: "application/vnd.oci.image.layer.v1.tar", digest: await digestOf(layer), size: layer.length }],
+  });
+  const put = await pmirror(`/v2/${name}/manifests/${tag}`, { method: "PUT", headers: { authorization: auth, "content-type": "application/vnd.oci.image.manifest.v1+json" }, body: doc });
+  return { status: put.status, digest: put.headers.get("docker-content-digest")!, doc, body: put.status === 201 ? "" : await put.text() };
+}
+
+/** A signature-like manifest for an image: its own bytes (so its own digest), pointing at blobs the image pushed. */
+const signatureDoc = (imageDoc: string) => JSON.stringify({ ...JSON.parse(imageDoc), layers: [], annotations: { "dev.cosignproject.cosign/signature": "x" } });
+
+describe("images publishers push to the mirror", () => {
+  it("lets a namespace's members push to its repositories with their ot_ token, and nobody else", async () => {
+    const owner = await person();
+    const ns = await namespace(owner);
+    const repo = `${ns.name}/tool`;
+    const auth = await publisherToken(tokenOf(owner), repo);
+    const pushed = await publisherPush(auth, repo);
+    expect(pushed.status).toBe(201);
+    const row = await DB().prepare(`SELECT tag, user_id FROM mirror_pushes WHERE repo = ? AND digest = ?`).bind(repo, pushed.digest).first<any>();
+    expect(row).toEqual({ tag: "1.0.0", user_id: owner.id });
+
+    // Someone outside the namespace gets a token without push rights, then 403 DENIED, as with Basic auth.
+    const stranger = await person();
+    const theirs = await publisherToken(tokenOf(stranger), repo);
+    expect((await pmirror(`/v2/${repo}/blobs/uploads/`, { method: "POST", headers: { authorization: theirs } })).status).toBe(403);
+    const denied = await pmirror(`/v2/${repo}/blobs/uploads/`, { method: "POST", headers: { authorization: `Basic ${btoa(`ot:${tokenOf(stranger)}`)}` } });
+    expect(((await denied.json()) as any).errors[0].code).toBe("DENIED");
+    // Only <namespace>/<name>: not the namespace's private copies, and not deeper paths.
+    expect((await pmirror(`/v2/private/${repo}/blobs/uploads/`, { method: "POST", headers: { authorization: `Basic ${btoa(`ot:${tokenOf(owner)}`)}` } })).status).toBe(403);
+    // Deleting stays the scanner's.
+    expect((await pmirror(`/v2/${repo}/manifests/${pushed.digest}`, { method: "DELETE", headers: { authorization: auth } })).status).toBe(403);
+    // Anonymous writes still get the challenge.
+    expect((await pmirror(`/v2/${repo}/blobs/uploads/`, { method: "POST" })).status).toBe(401);
+  });
+
+  it("needs the publish scope, a namespace in good standing and a mirror secret", async () => {
+    const owner = await person();
+    const ns = await namespace(owner);
+    const repo = `${ns.name}/tool`;
+    const readOnly = `ot_test_ro_${ulid()}`;
+    await DB().prepare(`INSERT INTO api_tokens (id, user_id, name, token_hash, scopes, scoped, created_at) VALUES (?, ?, 'ro', ?, 'read', 1, ?)`)
+      .bind(ulid(), owner.id, await sha256Hex(readOnly), Date.now()).run();
+    expect((await pmirror(`/token?scope=repository:${repo}:push`, { headers: { authorization: `Basic ${btoa(`ot:${readOnly}`)}` } })).status).toBe(401);
+
+    await DB().prepare(`UPDATE namespaces SET status = 'suspended' WHERE id = ?`).bind(ns.id).run();
+    const suspended = await publisherToken(tokenOf(owner), repo);
+    expect((await pmirror(`/v2/${repo}/blobs/uploads/`, { method: "POST", headers: { authorization: suspended } })).status).toBe(403);
+
+    // Without the secret the mirror can't sign push grants, so publishers can't push at all.
+    await DB().prepare(`UPDATE namespaces SET status = 'active' WHERE id = ?`).bind(ns.id).run();
+    const noSecret = await mirrorFetch(new Request(`${M}/v2/${repo}/blobs/uploads/`, { method: "POST", headers: { authorization: `Basic ${btoa(`ot:${tokenOf(owner)}`)}` } }), { MIRROR: env.MIRROR, DB: env.DB });
+    expect(noSecret.status).toBe(401);
+  });
+
+  it("answers containerd's OAuth2 password grant, and sends other grants back to GET", async () => {
+    const owner = await person();
+    const ns = await namespace(owner);
+    const repo = `${ns.name}/tool`;
+    const form = (body: Record<string, string>) => pmirror("/token", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(body).toString() });
+    const ok = await form({ grant_type: "password", username: "ot", password: tokenOf(owner), service: "mirror.otinstaller.com", scope: `repository:${repo}:pull,push` });
+    expect(ok.status).toBe(200);
+    const auth = `Bearer ${((await ok.json()) as any).access_token}`;
+    expect((await pmirror(`/v2/${repo}/blobs/uploads/`, { method: "POST", headers: { authorization: auth } })).status).toBe(202);
+    expect((await form({ grant_type: "refresh_token", refresh_token: "x" })).status).toBe(400);
+  });
+
+  it("keeps a pushed image from the public until a published version uses it", async () => {
+    const owner = await person();
+    const ns = await namespace(owner);
+    const repo = `${ns.name}/tool`;
+    const auth = await publisherToken(tokenOf(owner), repo);
+    const { digest } = await publisherPush(auth, repo);
+    expect((await pmirror(`/v2/${repo}/manifests/${digest}`)).status).toBe(404);
+    expect((await pmirror(`/v2/${repo}/manifests/1.0.0`)).status).toBe(404);
+    // Its publishers (cosign has to read it to sign it) and the scanner can.
+    expect((await pmirror(`/v2/${repo}/manifests/${digest}`, { headers: { authorization: auth } })).status).toBe(200);
+    expect((await pmirror(`/v2/${repo}/manifests/${digest}`, { headers: { authorization: basic } })).status).toBe(200);
+    await releaseImage(env.MIRROR, repo, digest);
+    expect((await pmirror(`/v2/${repo}/manifests/1.0.0`)).status).toBe(200);
+  });
+
+  it("lets publishers sign their own images, but not replace a backup copy's signatures", async () => {
+    const owner = await person();
+    const ns = await namespace(owner);
+    const repo = `${ns.name}/tool`;
+    const auth = await publisherToken(tokenOf(owner), repo);
+    const mine = await publisherPush(auth, repo);
+    const sig = await pmirror(`/v2/${repo}/manifests/sha256-${mine.digest.slice(7)}.sig`, { method: "PUT", headers: { authorization: auth, "content-type": "application/vnd.oci.image.manifest.v1+json" }, body: signatureDoc(mine.doc) });
+    expect(sig.status).toBe(201);
+    // A signature is readable before the image is published.
+    expect((await pmirror(`/v2/${repo}/manifests/sha256-${mine.digest.slice(7)}.sig`)).status).toBe(200);
+
+    const backup = await pushImage(repo);
+    const forged = await pmirror(`/v2/${repo}/manifests/sha256-${backup.digest.slice(7)}.sig`, { method: "PUT", headers: { authorization: auth, "content-type": "application/vnd.oci.image.manifest.v1+json" }, body: signatureDoc(mine.doc) });
+    expect(forged.status).toBe(403);
+  });
+
+  it("limits what a namespace can push", async () => {
+    const owner = await person();
+    const ns = await namespace(owner);
+    const repo = `${ns.name}/tool`;
+    const auth = await publisherToken(tokenOf(owner), repo);
+    // At most 30 version tags an hour.
+    await DB().batch(Array.from({ length: 30 }, (_, i) => DB().prepare(
+      `INSERT INTO mirror_pushes (id, repo, digest, tag, created_at) VALUES (?, ?, ?, ?, ?)`,
+    ).bind(ulid(), `${ns.name}/other`, `sha256:${String(i).padStart(64, "0")}`, `0.0.${i}`, Date.now())));
+    const many = await publisherPush(auth, repo);
+    expect(many.status).toBe(429);
+    // At most 10 GiB of blobs a day.
+    const ns2 = await namespace(owner);
+    await DB().prepare(`INSERT INTO rate_limits (key, window_start, count) VALUES (?, ?, ?)`)
+      .bind(`mirror_bytes|${ns2.name}`, Math.floor(Date.now() / 86_400_000) * 86_400_000, 10 * 1024 ** 3).run();
+    const auth2 = await publisherToken(tokenOf(owner), `${ns2.name}/tool`);
+    const blob = "one more byte";
+    const over = await pmirror(`/v2/${ns2.name}/tool/blobs/uploads/?digest=${await digestOf(blob)}`, { method: "POST", headers: { authorization: auth2, "content-length": String(blob.length) }, body: blob });
+    expect(over.status).toBe(429);
+    // An image of at most 2 GiB: its blobs' sizes come from their pointers.
+    const ns3 = await namespace(owner);
+    const big = `sha256:${"9".repeat(64)}`;
+    await env.MIRROR.put(`repos/${ns3.name}/tool/blobs/${big}`, JSON.stringify({ size: 3 * 1024 ** 3, parts: [] }));
+    const doc = JSON.stringify({ schemaVersion: 2, config: { digest: big }, layers: [] });
+    const auth3 = await publisherToken(tokenOf(owner), `${ns3.name}/tool`);
+    expect((await pmirror(`/v2/${ns3.name}/tool/manifests/1.0.0`, { method: "PUT", headers: { authorization: auth3, "content-type": "application/vnd.oci.image.manifest.v1+json" }, body: doc })).status).toBe(413);
+  });
+
+  it("stores a body without a Content-Length in parts instead of buffering it", async () => {
+    const owner = await person();
+    const ns = await namespace(owner);
+    const repo = `${ns.name}/tool`;
+    const auth = await publisherToken(tokenOf(owner), repo);
+    const data = new TextEncoder().encode("streamed layer ".repeat(1000));
+    const start = await pmirror(`/v2/${repo}/blobs/uploads/`, { method: "POST", headers: { authorization: auth } });
+    const body = new ReadableStream({ start(c) { c.enqueue(data.slice(0, 5000)); c.enqueue(data.slice(5000)); c.close(); } });
+    const patch = await mirrorFetch(new Request(`${M}${start.headers.get("location")}`, { method: "PATCH", headers: { authorization: auth }, body, duplex: "half" } as RequestInit), mirrorWithDb());
+    expect(patch.status).toBe(202);
+    expect(patch.headers.get("range")).toBe(`0-${data.length - 1}`);
+    const done = await pmirror(`${patch.headers.get("location")}?digest=${await digestOf(data)}`, { method: "PUT", headers: { authorization: auth, "content-length": "0" } });
+    expect(done.status).toBe(201);
+  });
+
+  it("sweeps images no version uses, keeping published ones, their signatures and what backups hold", async () => {
+    const owner = await person();
+    const ns = await namespace(owner);
+    const repo = `${ns.name}/tool`;
+    const auth = await publisherToken(tokenOf(owner), repo);
+    const kept = await publisherPush(auth, repo, "1.0.0", "kept layer");
+    await pmirror(`/v2/${repo}/manifests/sha256-${kept.digest.slice(7)}.sig`, { method: "PUT", headers: { authorization: auth, "content-type": "application/vnd.oci.image.manifest.v1+json" }, body: signatureDoc(kept.doc) });
+    const unused = await publisherPush(auth, repo, "1.1.0", "unused layer");
+    const backup = await pushImage(repo, "backup layer");
+    const later = Date.now() + 8 * 86_400_000;
+    const out = await sweepRepo(env.MIRROR, repo, new Set([kept.digest, backup.digest]), { now: later });
+    expect(out.manifests).toBe(1);
+    const admin = { headers: { authorization: basic } };
+    expect((await pmirror(`/v2/${repo}/manifests/${unused.digest}`, admin)).status).toBe(404);
+    expect((await pmirror(`/v2/${repo}/manifests/${kept.digest}`, admin)).status).toBe(200);
+    expect((await pmirror(`/v2/${repo}/manifests/sha256-${kept.digest.slice(7)}.sig`, admin)).status).toBe(200);
+    expect((await pmirror(`/v2/${repo}/manifests/${backup.digest}`, admin)).status).toBe(200);
+    expect(((await (await pmirror(`/v2/${repo}/tags/list`, admin)).json()) as any).tags).not.toContain("1.1.0");
+    // Nothing is swept while it is young.
+    const fresh = await publisherPush(auth, repo, "1.2.0");
+    await sweepRepo(env.MIRROR, repo, new Set([kept.digest]));
+    expect((await pmirror(`/v2/${repo}/manifests/${fresh.digest}`, admin)).status).toBe(200);
+  });
+
+  it("clears blob uploads nobody finished", async () => {
+    const owner = await person();
+    const ns = await namespace(owner);
+    const auth = await publisherToken(tokenOf(owner), `${ns.name}/tool`);
+    const start = await pmirror(`/v2/${ns.name}/tool/blobs/uploads/`, { method: "POST", headers: { authorization: auth } });
+    const id = start.headers.get("docker-upload-uuid")!;
+    expect(await env.MIRROR.head(`uploads/${id}.json`)).not.toBeNull();
+    await purgeUploads(env.MIRROR, { now: Date.now() + 2 * 86_400_000 });
+    expect(await env.MIRROR.head(`uploads/${id}.json`)).toBeNull();
   });
 });
 

@@ -66,7 +66,7 @@ and `--no-save` skips saving. The result envelope still goes to stdout.
 | `ot init [--kind docker\|pipx\|guide \| --guide] [--name …] [--namespace …] [--summary …] [--license MIT] [--category …] [--input …] [--package …] [-y\|--yes] [--force]` | Create `otinstaller.yaml`, a README and a release workflow, asking for anything not given; `--package` is the PyPI name for pipx tools, `-y` takes the defaults, `--force` overwrites existing files |
 | `ot validate [path] [--tag vX.Y.Z] [--smoke]` | Check the manifest and pages as the registry will; `--smoke` runs the test input |
 | `ot release <version> [path] [--no-push] [--remote origin]` | Release a guide: set the version, check, commit, tag and push, without CI |
-| `ot publish [path] [--wait] [--timeout 5m] [--dry-run]` | [Publish directly](/docs/publishing#publish-directly): validate, upload the manifest, README, pages and images, and follow the release until validation ends (`--wait`: until it is published, rejected or held for review). `--dry-run` lists the files and uploads nothing. Exit 2 for problems with the manifest, 1 when a check refuses the release |
+| `ot publish [path] [--wait] [--timeout 5m] [--dry-run] [--image REF \| --image-archive FILE \| --build [--platform …]] [--sign]` | [Publish directly](/docs/publishing#publish-directly): validate, upload the manifest, README, pages and images, and follow the release until validation ends (`--wait`: until it is published, rejected or held for review). `--image`, `--image-archive` or `--build` first push the Docker image to the registry's mirror and pin its digest; `--sign` signs it with cosign. `--dry-run` lists the files and uploads nothing. Exit 2 for problems with the manifest, 1 when a check refuses the release |
 | `ot namespace create <name> [--org]` | Create a registry namespace to publish into without GitHub or GitLab; it waits for review with its first release |
 | `ot login [--gitlab \| --osintverse] [--print-token] [--scope …]` · `ot logout` · `ot whoami` | Sign in with GitHub, GitLab or OSINTverse; `--print-token` for machines without a keychain, `--scope` to limit the token |
 | `ot token create <name> [--scope …] [--expires 90]` · `ot token list` · `ot token revoke <id>` | Registry API tokens with [scopes](/docs/api#signing-in-tokens-and-scopes), for scripts, CI and agents |
@@ -104,6 +104,7 @@ registry's copy and checks the same SHA-256. You see a note when this happens; n
 | Variable | Effect |
 | --- | --- |
 | `OT_API_URL` | Use another registry API (for example a staging one) |
+| `OT_MIRROR_URL` | Push `ot publish --image` images to another mirror (for example `http://127.0.0.1:8789` for a local one) |
 | `OT_SITE_URL` | The website `ot guide open`, `ot report` and `ot feedback` open |
 | `OT_HOME` | Where `ot` keeps its state (default `~/.ot`, `%APPDATA%\ot` on Windows) |
 | `OT_NO_TELEMETRY` | Any value stops the install ping (one request per install, with your token when signed in) |

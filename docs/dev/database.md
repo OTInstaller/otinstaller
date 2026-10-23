@@ -29,6 +29,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0013 | `0013_agent_tokens.sql` | `api_tokens` + `scoped` (INTEGER NN default 0; tokens minted before scopes were enforced keep 0 and every power); new table `install_clients`. Must be applied before an API that reads `scoped` is deployed: `authenticate` selects it on every token request. |
 | 0014 | `0014_publisher_profiles.sql` | New tables `namespace_profiles` (host values, owner overrides, About, pins, sync state) and `namespace_hosts` (secondary GitHub or GitLab accounts shown on a profile); indexes `namespace_profiles_synced` and `audit_log_target` (for the profile's activity feed). |
 | 0015 | `0015_direct_publish.sql` | Direct publishing (`ot publish`): `publish_jobs` + `namespace_id` (FK namespaces), `bundle_key` (R2 `CONTENT` prefix of the upload), `submitted_by` (FK users), index `publish_jobs_namespace`; `namespaces` + `created_by` (FK users: who made a registry namespace). Apply before an API that selects these columns is deployed. |
+| 0016 | `0016_hosted_images.sql` | Images hosted on the mirror (`ot publish --image`): new table `mirror_pushes` (every manifest a publisher pushes: repo, digest, tag, user, token, size; indexes `mirror_pushes_repo`, `mirror_pushes_created`), for the push limits and the nightly sweep; `backups` + `hosted` (INTEGER NN default 0: the image row is the image itself, never an install fallback). The mirror Worker binds the same database from then on. |
 
 ---
 
@@ -365,7 +366,18 @@ Purpose: one backed-up item. `location` is the R2 key (git, wheel) or the mirror
 - `size_bytes` INTEGER · `sha256` TEXT · `filename` TEXT · `refs_count` INTEGER · `detail` TEXT
 - `delete_after` INTEGER (ms; set by a takedown (+14 days, `TAKEDOWN_GRACE`) or a git-backup opt-out (now); cleared by a legal hold)
 - `created_at` INTEGER NN · `stored_at`, `deleted_at` INTEGER
+- `hosted` INTEGER NN default 0 (0016): 1 for an image a publisher pushed to the mirror itself (`recordHostedImage`, at
+  publishing, with no run). Takedowns, purges, legal holds and drills treat it like any image row;
+  `installFallbacks` leaves it out.
 - Indexes `backups_tool (tool_id, kind, status, created_at DESC)`, `backups_version (version_id, kind, status)`, `backups_delete (delete_after)`
+
+#### `mirror_pushes` (0016)
+Purpose: every manifest a publisher pushed to the mirror with an `ot_` token, written by the mirror Worker.
+- PK `id` TEXT · `repo` TEXT NN (`<namespace>/<name>`) · `digest` TEXT NN · `tag` TEXT (NULL for a push by digest)
+- `user_id` TEXT → `users(id)` ON DELETE SET NULL · `token_id` TEXT · `size_bytes` INTEGER (of the manifest) · `created_at` INTEGER NN
+- Read by the mirror for the 30-tags-an-hour limit and the rule on `sha256-*` tags, and by `queueMirrorSweeps`;
+  `sweepMirrorRepo` deletes a repository's rows older than a week after sweeping it.
+- Indexes `mirror_pushes_repo (repo, digest)`, `mirror_pushes_created (created_at)`
 
 #### `restore_drills`
 Purpose: a monthly restore drill (a random git bundle plus a random public mirrored image).

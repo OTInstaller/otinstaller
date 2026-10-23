@@ -24,7 +24,7 @@ import { profileRoutes } from "./routes/profiles";
 import { directRoutes } from "./routes/direct";
 import { purgeIdleNamespaces } from "./direct";
 import { refreshDueProfiles } from "./profiles";
-import { backfillBackups, expireDrills, expireRuns, installFallbacks, purgeBackups, RESTORE_DRILL_CRON, startDrill, WEEKLY_BACKUP_CRON, weeklyBackups } from "./backups";
+import { backfillBackups, expireDrills, expireRuns, installFallbacks, purgeBackups, queueMirrorSweeps, RESTORE_DRILL_CRON, startDrill, WEEKLY_BACKUP_CRON, weeklyBackups } from "./backups";
 import { alertStuckJobs, dailyDigest, purgeRateLimits, reportError } from "./ops";
 import { queueNightlyLinkChecks } from "./guides";
 import { ulid } from "./lib/crypto";
@@ -497,6 +497,8 @@ export default {
       await purgeRateLimits(env);
       await purgeBackups(env);
       await purgeIdleNamespaces(env);
+      // Images publishers pushed to the mirror that no version uses, and unfinished uploads.
+      await queueMirrorSweeps(env);
       await env.DB.prepare(
         `UPDATE tools SET installs_30d = COALESCE((SELECT SUM(count) FROM install_counts
            WHERE tool_id = tools.id AND day >= date('now', '-30 days')), 0)`,
