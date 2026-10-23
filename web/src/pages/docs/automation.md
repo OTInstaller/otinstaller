@@ -34,7 +34,9 @@ setting for an agent or a CI job. `ot run` prints the JSON [result envelope](/do
 | --- | --- |
 | `ot search`, `ot guide search` | `{results: [...], next_cursor}` |
 | `ot info <tool>` | `{registry, manifest}`; `registry` is null for a local manifest |
-| `ot install`, `ot list` | an install record, or a list of them |
+| `ot install <tool>` | an install record, plus `example` (a command to try it) and `missing_keys` (required keys not set yet; left out when none) |
+| `ot install <tool> <tool> ...` | `[{ref, status, version, example, missing_keys, error, exit_code}]`; `status` is `installed`, `failed` or `not_tried` (after Docker or Podman was found missing) |
+| `ot list` | a list of install records |
 | `ot run` | the [envelope](/docs/results) |
 | `ot run --all`, `ot playbook`, `ot auto` | an array of rows, or `-f jsonl` lines |
 | `ot extract`, `ot diff` | indicators by type; new and gone entities |
