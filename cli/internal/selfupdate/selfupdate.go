@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -48,13 +49,21 @@ type Release struct {
 	Assets []Asset `json:"assets"`
 }
 
+// LatestURL names the latest release: get.otinstaller.com reads it from GitHub and caches it for an hour, so ot isn't
+// held to GitHub's API limit of 60 requests an hour per IP address.
+const LatestURL = "https://get.otinstaller.com/ot/latest"
+
 // Updater talks to GitHub; tests point API at a fake.
 type Updater struct {
 	HTTP *http.Client
 	API  string // https://api.github.com
-	Key  ed25519.PublicKey
-	OS   string
-	Arch string
+	// LatestURL is asked for the latest version before the GitHub API; empty skips it.
+	LatestURL string
+	// Downloads is where release assets are, for a version LatestURL named: https://github.com.
+	Downloads string
+	Key       ed25519.PublicKey
+	OS        string
+	Arch      string
 }
 
 // New returns an updater for this platform, or an error when this build carries no release key.
@@ -63,7 +72,38 @@ func New() (*Updater, error) {
 	if err != nil || len(key) != ed25519.PublicKeySize {
 		return nil, errors.New("this build of ot has no release key, so it cannot update itself; reinstall it from https://otinstaller.com/docs/getting-started")
 	}
-	return &Updater{HTTP: http.DefaultClient, API: "https://api.github.com", Key: key, OS: runtime.GOOS, Arch: runtime.GOARCH}, nil
+	u := Checker()
+	u.Key = key
+	return u, nil
+}
+
+// Checker is an updater that can find the latest release but has no key to verify one, for saying that a newer ot
+// exists.
+func Checker() *Updater {
+	return &Updater{HTTP: http.DefaultClient, API: "https://api.github.com", LatestURL: LatestURL, Downloads: "https://github.com", OS: runtime.GOOS, Arch: runtime.GOARCH}
+}
+
+// releaseTag is what a release tag must look like to be trusted from LatestURL.
+var releaseTag = regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
+
+// LatestVersion asks url (LatestURL) for the latest release's version: {"version": "vX.Y.Z"}.
+func LatestVersion(ctx context.Context, url string) (string, error) {
+	u := &Updater{HTTP: http.DefaultClient}
+	return u.latestVersion(ctx, url)
+}
+
+func (u *Updater) latestVersion(ctx context.Context, url string) (string, error) {
+	b, err := u.get(ctx, url, "application/json")
+	if err != nil {
+		return "", err
+	}
+	var out struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(b, &out); err != nil || !releaseTag.MatchString(out.Version) {
+		return "", fmt.Errorf("%s did not name a release", url)
+	}
+	return out.Version, nil
 }
 
 func (u *Updater) get(ctx context.Context, url string, accept string) ([]byte, error) {
@@ -84,8 +124,20 @@ func (u *Updater) get(ctx context.Context, url string, accept string) ([]byte, e
 	return io.ReadAll(io.LimitReader(resp.Body, maxDownload))
 }
 
-// Latest is the newest published release.
+// Latest is the newest published release. LatestURL is asked first, and the release's assets are then the ones
+// GoReleaser names under Downloads; the GitHub API is the fallback. Either way Download checks every asset against
+// the release key, so neither source is trusted with the binary itself.
 func (u *Updater) Latest(ctx context.Context) (*Release, error) {
+	if u.LatestURL != "" && u.Downloads != "" {
+		if tag, err := u.latestVersion(ctx, u.LatestURL); err == nil {
+			base := strings.TrimRight(u.Downloads, "/") + "/" + Repo + "/releases/download/" + tag + "/"
+			r := &Release{Tag: tag}
+			for _, name := range []string{"checksums.txt", "checksums.txt.sig", u.ArchiveName(tag)} {
+				r.Assets = append(r.Assets, Asset{Name: name, URL: base + name})
+			}
+			return r, nil
+		}
+	}
 	b, err := u.get(ctx, strings.TrimRight(u.API, "/")+"/repos/"+Repo+"/releases/latest", "application/vnd.github+json")
 	if err != nil {
 		return nil, fmt.Errorf("cannot find the latest release: %w", err)

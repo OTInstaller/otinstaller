@@ -83,6 +83,8 @@ func (a *App) outdatedCmd() *cobra.Command {
 		Short: "Check installed packages for newer versions (changes nothing)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// ot itself is checked too, at most once a day, and said last.
+			defer a.noteNewerOT(cmd.Context())
 			st, err := state.Load()
 			if err != nil {
 				return err

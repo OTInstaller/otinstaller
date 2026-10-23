@@ -33,7 +33,7 @@ errors as one line of JSON on stderr; see [Scripts, CI and agents](/docs/automat
 | `ot mcp policy [reset]` · `ot mcp audit [--since 24h]` · `ot mcp tools` | The rules agents run under, what they did, and what the server offers |
 | `ot report <ns/name> [--reason malware\|policy\|impersonation\|license\|broken\|other --details …] [--version X.Y.Z]` | Report a package to the reviewers (opens the form without `--reason`); `--details` is required except for `broken` |
 | `ot feedback [--kind bug\|idea\|question\|other] [--about …] [--email …] "message"` | Send feedback to the team with your `ot` version and OS; reads piped text, or opens the form with no message |
-| `ot self-update [--check]` | Update ot itself; the release signature is checked first |
+| `ot self-update [--check]` | Update ot itself; the release signature is checked first, and an older release is never installed over a newer one. `ot outdated` says when a newer ot is out |
 
 ## Saved results
 
@@ -105,6 +105,7 @@ registry's copy and checks the same SHA-256. You see a note when this happens; n
 | `OT_NO_TELEMETRY` | Any value stops the install ping (one request per install, with your token when signed in) |
 | `OT_OUTPUT=json` | JSON output and JSON errors from every command, as if `--json` were given |
 | `OT_NONINTERACTIVE=1` | Never prompt, even at a terminal (`ot` never prompts without one) |
+| `OT_NO_UPDATE_CHECK=1` | `ot outdated` doesn't look up the latest `ot` release (it does at most once a day otherwise, and never in CI or under `ot mcp`) |
 | `OT_MAX_RAW` | Default for `ot run --max-raw` |
 | `OT_CONSENT=off` | Don't stop unattended runs that need consent (see [AI agents](/docs/agents#agents-that-use-a-shell)) |
 | `OT_RESULTS_DIR` | Where runs are saved (default `./results`; the older `OTINSTALLER_RESULTS_DIR` still works) |
