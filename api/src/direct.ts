@@ -1,7 +1,8 @@
 // Direct publishing: namespaces a signed-in user creates on the registry, and releases uploaded as a bundle by
 // `ot publish` instead of read from a tagged commit. An upload becomes an ordinary publish job (publish.ts) whose
 // files come from R2 CONTENT under uploads/<jobId>/ rather than from GitHub or GitLab; scans, review, publishing
-// and backups are the same as for a tag.
+// and backups are the same as for a tag. A CI run uploads the same way with a token from trusted publishing
+// (trusted.ts), and its job names the repository the run's ID token proved instead of "direct".
 import type { Context } from "hono";
 import reserved from "../../spec/reserved-namespaces.json";
 import { deps, type AppEnv, type Env, type User } from "./env";
@@ -13,7 +14,8 @@ import { ownerEmails, sendEmail, templates } from "./notify";
 import { audit, requireUser } from "./routes/auth";
 import * as github from "./hosts/github";
 import { GITLAB } from "./hosts/gitlab";
-import { githubUserToken, type RepoHost } from "./hosts/repo";
+import { githubUserToken, repoUrl, type RepoHost } from "./hosts/repo";
+import type { Restriction } from "./lib/tokens";
 
 export const BUNDLE_FILE = "otinstaller.yaml";
 export const MAX_BUNDLE_BYTES = 25 * 1024 * 1024;
@@ -158,7 +160,9 @@ export function bundlePath(name: string): string | null {
   return name.split("/").some((p) => p === "" || p === "." || p === "..") ? null : name;
 }
 
-type Target = { nsId: string; ns: string; provider: string; name: string; version: string; user: User };
+// `ci` is set for an upload from a CI run (trusted publishing, trusted.ts): the repository its ID token proved.
+type Target = { nsId: string; ns: string; provider: string; name: string; version: string; user: User; ci: Ci | null; publisherId: string | null };
+type Ci = NonNullable<Restriction["ci"]>;
 
 /** The upload's namespace, name and version, from the query so nothing is read before the caller may publish there. */
 async function uploadTarget(c: Context<AppEnv>): Promise<Target> {
@@ -169,19 +173,39 @@ async function uploadTarget(c: Context<AppEnv>): Promise<Target> {
   }
   const row = await c.env.DB.prepare(`SELECT id, provider, status FROM namespaces WHERE name = ?`).bind(ns).first<{ id: string; provider: string; status: string }>();
   if (!row) apiError(404, "namespace_unknown", `${ns} is not a namespace on the registry`, `create it with \`ot namespace create ${ns}\``);
+  const r = c.get("token")?.restriction ?? null;
+  if (r && r.namespaceId !== row.id) apiError(403, "forbidden", `this CI token publishes only into the namespace it was issued for, not ${ns}`);
+  if (r?.pkg && r.pkg !== name) apiError(403, "forbidden", `this CI token publishes only ${r.pkg}, not ${name}`);
   const member = await c.env.DB.prepare(`SELECT role FROM namespace_members WHERE namespace_id = ? AND user_id = ?`).bind(row.id, user.id).first();
   if (!member) apiError(403, "forbidden", `you are not an owner or publisher of ${ns}`, "publish into your own namespace, or ask one of its owners to add you");
   if (row.status === "rejected" || row.status === "suspended") {
     apiError(403, "namespace_not_allowed", `namespace ${ns} is ${row.status} and cannot publish`, "contact abuse@otinstaller.com");
   }
-  return { nsId: row.id, ns, provider: row.provider, name, version, user };
+  return { nsId: row.id, ns, provider: row.provider, name, version, user, ci: r?.ci ?? null, publisherId: r?.publisherId ?? null };
+}
+
+/**
+ * A CI upload of a release the registry already has from the same repository: the App's webhook got the tag first,
+ * or this is a retry. The CLI follows that job instead.
+ */
+async function sameRelease(env: Env, t: Target): Promise<{ id: string; status: string } | null> {
+  if (!t.ci) return null;
+  return env.DB.prepare(
+    `SELECT j.id, j.status FROM publish_jobs j
+     LEFT JOIN installations i ON i.github_installation_id = j.installation_id LEFT JOIN sources s ON s.id = j.source_id
+     WHERE j.provider = ? AND j.repo_id = ? AND j.tag = ? AND COALESCE(j.namespace_id, i.namespace_id, s.namespace_id) = ?
+       AND j.status IN ('queued', 'validating', 'scanning', 'awaiting_review', 'published')
+     ORDER BY j.created_at DESC LIMIT 1`,
+  ).bind(t.ci.provider, t.ci.repository_id, `v${t.version}`, t.nsId).first<{ id: string; status: string }>();
 }
 
 /** What would stop the release anyway, answered before the upload is read. */
 async function uploadConflicts(env: Env, t: Target) {
   const tool = await env.DB.prepare(`SELECT id, repo_url FROM tools WHERE namespace_id = ? AND name = ?`).bind(t.nsId, t.name).first<{ id: string; repo_url: string | null }>();
-  if (tool?.repo_url) {
-    apiError(409, "manifest_name_taken", `${t.ns}/${t.name} is published from ${tool.repo_url}`, "release it from that repository; uploads are for packages without one");
+  // A package's name belongs to the repository that first published it; a CI run proves which repository it is.
+  if (tool?.repo_url && tool.repo_url !== (t.ci ? repoUrl(t.ci.provider, t.ci.repository) : null)) {
+    apiError(409, "manifest_name_taken", `${t.ns}/${t.name} is published from ${tool.repo_url}`,
+      t.ci ? "release it from that repository's CI" : "release it from that repository; uploads are for packages without one");
   }
   if (tool && (await env.DB.prepare(`SELECT 1 FROM versions WHERE tool_id = ? AND version = ? AND status != 'rejected'`).bind(tool.id, t.version).first())) {
     apiError(409, "manifest_version_exists", `${t.name} ${t.version} is already published; versions are immutable`, "bump the version");
@@ -224,9 +248,14 @@ async function readBundle(c: Context<AppEnv>): Promise<Map<string, File>> {
  * Accepts a release uploaded with `ot publish`: checks who is publishing and what, stores the files under
  * uploads/<jobId>/ and queues the job. Validation, checks and publishing then run as they do for a tag.
  */
-export async function acceptUpload(c: Context<AppEnv>) {
+export async function acceptUpload(c: Context<AppEnv>): Promise<{ status: 200 | 202; body: Record<string, unknown> }> {
   const env = c.env;
   const t = await uploadTarget(c);
+  const ref = `${t.ns}/${t.name}`;
+  const prior = await sameRelease(env, t);
+  if (prior) {
+    return { status: 200, body: { job_id: prior.id, status: prior.status, ref, version: t.version, url: `${env.SITE_URL}/dashboard/publish/${prior.id}`, already_received: true } };
+  }
   await uploadConflicts(env, t);
   if (await overLimit(env, "publish", t.nsId, PUBLISHES_PER_HOUR, 3_600_000)) {
     rateLimited("publish_rate_limited", `at most ${PUBLISHES_PER_HOUR} uploads an hour per namespace`, "wait and try again", windowRetry(3_600_000), PUBLISHES_PER_HOUR, 3600);
@@ -244,19 +273,28 @@ export async function acceptUpload(c: Context<AppEnv>) {
   const key = `uploads/${jobId}`;
   for (const [path, file] of files) await env.CONTENT.put(`${key}/${path}`, await file.arrayBuffer());
   const now = Date.now();
+  // An upload from CI is the repository's release: its tag and commit when the run was for a tag. On a branch (the
+  // release templates tag at the end of the run) the claim's commit is from before the release commit, so none is kept.
+  const ci = t.ci;
+  const tagged = ci?.ref_type === "tag" && ci.ref.startsWith("refs/tags/");
+  const tag = tagged ? ci!.ref.slice("refs/tags/".length) : `v${t.version}`;
   await env.DB.batch([
     env.DB.prepare(
-      `INSERT INTO publish_jobs (id, delivery_id, provider, repo, repo_id, tag, namespace_id, bundle_key, submitted_by, status, created_at, updated_at)
-       VALUES (?, ?, 'direct', ?, '', ?, ?, ?, ?, 'queued', ?, ?)`,
-    ).bind(jobId, `direct:${jobId}`, `${t.ns}/${t.name}`, `v${t.version}`, t.nsId, key, t.user.id, now, now),
-    audit(env.DB, t.user.id, "user", "publish.upload", "publish_job", jobId, { ref: `${t.ns}/${t.name}`, version: t.version, files: files.size }),
+      `INSERT INTO publish_jobs (id, delivery_id, provider, repo, repo_id, tag, commit_sha, namespace_id, bundle_key, submitted_by, trusted_publisher_id, ci_json, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)`,
+    ).bind(
+      jobId, `${ci ? "ci" : "direct"}:${jobId}`, ci?.provider ?? "direct", ci?.repository ?? ref, ci?.repository_id ?? "", tag, tagged ? ci!.sha : null,
+      t.nsId, key, t.user.id, t.publisherId, ci ? JSON.stringify({ workflow: ci.workflow, ref: ci.ref, sha: ci.sha, run: ci.run }) : null, now, now,
+    ),
+    audit(env.DB, t.user.id, ci?.provider ?? "user", "publish.upload", "publish_job", jobId, { ref, version: t.version, files: files.size, ...(ci ? { repository: ci.repository, workflow: ci.workflow, run: ci.run } : {}) }),
   ]);
   await env.PUBLISH_QUEUE.send({ jobId });
   // A member who has left the GitHub organisation or GitLab group can still upload, so its owners hear of every upload.
-  if (t.provider !== "registry") {
-    await sendEmail(env, { to: await ownerEmails(env, t.nsId), kind: "direct_publish", key: `direct_publish:${jobId}`, ...templates.directPublish(env, `${t.ns}/${t.name}`, t.version, t.user.login) });
+  // A CI run publishes only through a publisher an owner added.
+  if (t.provider !== "registry" && !ci) {
+    await sendEmail(env, { to: await ownerEmails(env, t.nsId), kind: "direct_publish", key: `direct_publish:${jobId}`, ...templates.directPublish(env, ref, t.version, t.user.login) });
   }
-  return { job_id: jobId, status: "queued", ref: `${t.ns}/${t.name}`, version: t.version, url: `${env.SITE_URL}/dashboard/publish/${jobId}` };
+  return { status: 202, body: { job_id: jobId, status: "queued", ref, version: t.version, url: `${env.SITE_URL}/dashboard/publish/${jobId}` } };
 }
 
 /** A release's files from its upload, behind the same interface as a repository at a commit (publish.ts reads both). */

@@ -5,12 +5,14 @@
 import type { Context, Next } from "hono";
 import type { AppEnv } from "./env";
 import { apiError } from "./lib/errors";
+import type { Restriction } from "./lib/tokens";
 import { audit } from "./routes/auth";
 
 export const USER_SCOPES = ["read", "publish", "manage", "feedback"] as const;
 export const ALL_SCOPES: readonly string[] = [...USER_SCOPES, "staff"];
 
-export type TokenInfo = { id: string; scopes: Set<string>; scoped: boolean };
+/** The token behind a request. `restriction` is set for a CI run's token (trusted publishing). */
+export type TokenInfo = { id: string; scopes: Set<string>; scoped: boolean; restriction: Restriction | null };
 
 /** What each scope allows, for messages and docs. */
 export const SCOPE_HELP: Record<string, string> = {
@@ -64,8 +66,10 @@ export async function enforceScopes(c: Context<AppEnv>, next: Next) {
   await next();
   const u = c.get("user");
   if (t && u && need && need !== "read" && c.res.status < 400) {
+    // A CI run's token acts for the publisher's creator, but the write is the CI's.
+    const kind = t.restriction?.ci?.provider ?? "user";
     c.executionCtx.waitUntil(
-      audit(c.env.DB, u.id, "user", "token.write", "token", t.id, { method: c.req.method, path: new URL(c.req.url).pathname, status: c.res.status }).run(),
+      audit(c.env.DB, u.id, kind, "token.write", "token", t.id, { method: c.req.method, path: new URL(c.req.url).pathname, status: c.res.status }).run(),
     );
   }
 }

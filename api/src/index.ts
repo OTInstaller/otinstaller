@@ -22,7 +22,9 @@ import { betaRoutes } from "./routes/beta";
 import { backupRoutes } from "./routes/backups";
 import { profileRoutes } from "./routes/profiles";
 import { directRoutes } from "./routes/direct";
+import { trustedRoutes } from "./routes/trusted";
 import { purgeIdleNamespaces } from "./direct";
+import { purgeCiTokens } from "./trusted";
 import { refreshDueProfiles } from "./profiles";
 import { backfillBackups, expireDrills, expireRuns, installFallbacks, purgeBackups, queueMirrorSweeps, RESTORE_DRILL_CRON, startDrill, WEEKLY_BACKUP_CRON, weeklyBackups } from "./backups";
 import { alertStuckJobs, dailyDigest, purgeRateLimits, reportError } from "./ops";
@@ -72,6 +74,7 @@ betaRoutes(app);
 backupRoutes(app);
 profileRoutes(app);
 directRoutes(app);
+trustedRoutes(app);
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
@@ -497,6 +500,7 @@ export default {
       await purgeRateLimits(env);
       await purgeBackups(env);
       await purgeIdleNamespaces(env);
+      await purgeCiTokens(env);
       // Images publishers pushed to the mirror that no version uses, and unfinished uploads.
       await queueMirrorSweeps(env);
       await env.DB.prepare(

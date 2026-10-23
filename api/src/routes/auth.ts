@@ -9,7 +9,7 @@ import * as gitlab from "../hosts/gitlab";
 import * as osintverse from "../hosts/osintverse";
 import { authorizeDevice, devicePage, deviceRoutes, pollOsintverseDevice, startOsintverseDevice } from "./device";
 import { ALL_SCOPES, enforceScopes, parseScopes, USER_SCOPES } from "../scopes";
-import { findToken, TOKEN_PREFIX } from "../lib/tokens";
+import { findToken, restrictedRouteAllowed, TOKEN_PREFIX } from "../lib/tokens";
 
 export type Provider = "github" | "gitlab" | "osintverse";
 const SESSION_COOKIE = "ot_session";
@@ -56,9 +56,10 @@ export async function authenticate(c: Context<AppEnv>, next: Next) {
   let user: User | null = null;
   if (bearer?.startsWith(TOKEN_PREFIX)) {
     const found = await findToken(c.env.DB, bearer, now);
-    if (found) {
+    // A CI run's token counts only where it may be used (lib/tokens.ts); anywhere else the request is anonymous.
+    if (found && (!found.restriction || restrictedRouteAllowed(c.req.method, new URL(c.req.url).pathname))) {
       user = found.user;
-      c.set("token", { id: found.tokenId, scopes: found.scopes, scoped: found.scoped });
+      c.set("token", { id: found.tokenId, scopes: found.scopes, scoped: found.scoped, restriction: found.restriction });
       c.executionCtx.waitUntil(c.env.DB.prepare(`UPDATE api_tokens SET last_used_at = ? WHERE token_hash = ?`).bind(now, found.hash).run());
     }
   } else {
@@ -304,9 +305,10 @@ export function authRoutes(app: App) {
 
   app.get("/me/tokens", async (c) => {
     const u = requireUser(c);
+    // The hour-long tokens CI runs get through trusted publishing aren't the user's to manage, so they aren't listed.
     const rows = await c.env.DB.prepare(
       `SELECT id, name, scopes, scoped, expires_at, last_used_at, created_at FROM api_tokens
-       WHERE user_id = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?) ORDER BY created_at DESC`,
+       WHERE user_id = ? AND namespace_id IS NULL AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?) ORDER BY created_at DESC`,
     ).bind(u.id, Date.now()).all<{ id: string; scopes: string; scoped: number }>();
     c.header("Cache-Control", "private, no-store");
     return c.json({
@@ -344,7 +346,7 @@ export function authRoutes(app: App) {
   // Jobs for every namespace the user belongs to: uploads name theirs, GitHub jobs are found through the installation,
   // GitLab jobs through the source. `method` says how the release came in: a tag, an upload from CI, or a direct upload.
   const jobs = (where: string) =>
-    `SELECT j.id, j.provider, j.repo, j.tag, j.status, j.error_code, j.error_detail, j.problems_json, j.created_at, j.updated_at,
+    `SELECT j.id, j.provider, j.repo, j.tag, j.commit_sha, j.ci_json, j.status, j.error_code, j.error_detail, j.problems_json, j.created_at, j.updated_at,
        CASE WHEN j.provider = 'direct' THEN 'direct' WHEN j.bundle_key IS NOT NULL THEN 'ci' ELSE 'tag' END AS method,
        n.name AS namespace, t.name AS name, v.version, v.status AS version_status, v.scan_status
      FROM publish_jobs j
@@ -360,6 +362,9 @@ export function authRoutes(app: App) {
     ref: j.name ? `${j.namespace}/${j.name}` : null,
     problems: j.problems_json ? JSON.parse(j.problems_json) : [],
     problems_json: undefined,
+    // The CI run an upload came from (trusted publishing): workflow, ref, run and actor.
+    ci: j.ci_json ? JSON.parse(j.ci_json) : null,
+    ci_json: undefined,
     url: `${env.SITE_URL}/dashboard/publish/${j.id}`,
   });
 
@@ -373,7 +378,12 @@ export function authRoutes(app: App) {
   // One job, for `ot publish --wait` and the job page. Someone else's job is "not found", not "forbidden".
   app.get("/me/publish-jobs/:id", async (c) => {
     const u = requireUser(c);
-    const j = await c.env.DB.prepare(`${jobs("AND j.id = ?")} LIMIT 1`).bind(u.id, c.req.param("id")).first<any>();
+    // A CI run's token follows only its own repository's jobs in its namespace (the App's tag job for the release too).
+    const r = c.get("token")?.restriction;
+    const j = r
+      ? await c.env.DB.prepare(`${jobs("AND j.id = ? AND n.id = ? AND j.provider = ? AND j.repo_id = ?")} LIMIT 1`)
+        .bind(u.id, c.req.param("id"), r.namespaceId, r.ci?.provider ?? "", r.ci?.repository_id ?? "").first<any>()
+      : await c.env.DB.prepare(`${jobs("AND j.id = ?")} LIMIT 1`).bind(u.id, c.req.param("id")).first<any>();
     if (!j) apiError(404, "not_found", "no such publish job in your namespaces");
     c.header("Cache-Control", "private, no-store");
     return c.json(jobView(c.env, j));
