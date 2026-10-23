@@ -42,7 +42,7 @@ setting for an agent or a CI job. `ot run` prints the JSON [result envelope](/do
 | `ot runs` | `[{run_id, tool, version, target, case, status, exit_code, entities, started_at, output_path}]`, newest first, the same rows as MCP's `list_runs` |
 | `ot runs <run-id>` | the run's `.meta.json` sidecar (see [Results](/docs/results)) |
 | `ot extract`, `ot diff` | indicators by type; new and gone entities |
-| `ot outdated`, `ot update` | `[{ref, installed, latest, status, note}]` |
+| `ot outdated`, `ot update` | `[{ref, installed, latest, status, note, flags, replacement}]`; `flags` lists any of `deprecated`, `possibly_broken`, `yanked`, `source_unavailable` and `moved` |
 | `ot keys list` | `[{name, set, source, required_by, optional_for}]`, never values |
 | `ot doctor` | `{ok, checks: [{name, status, detail}], data_dir, version}` |
 | `ot validate` | `{valid, problems}` |

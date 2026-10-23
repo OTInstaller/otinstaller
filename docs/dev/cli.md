@@ -115,9 +115,14 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 #### `ot outdated`
 - File: `cli/update.go` (`outdatedCmd`). Args: `NoArgs`.
 - Flags: `--json` (bool, false).
-- API: `GET /tools/{ns}/{name}/latest/manifest` per installed package.
-- Output: table `PACKAGE INSTALLED LATEST STATUS`; statuses `up to date`, `update available`, `removed`, `not in
-  registry` (404), `error`, with notes (`moved to …`). "Nothing installed yet." goes to **stderr**.
+- API: `GET /tools/{ns}/{name}` and `GET /tools/{ns}/{name}/versions` per installed package (`api.Client.Tool` and
+  `Versions`), four packages at a time (`checkConcurrency`); rows keep the installed order.
+- Output: table `PACKAGE INSTALLED LATEST STATUS`; statuses `up to date`, `update available`, `removed` (410 for the
+  package, or the installed version listed as `removed`), `not in registry` (404), `error`, with notes (`moved to
+  …`) and flags in brackets. JSON rows: `{ref, installed, latest, status, note, flags, replacement}`. `flags` is always
+  an array of `deprecated`, `possibly_broken` (health `broken`), `yanked` (the installed version), `source_unavailable`
+  and `moved`, whatever the status; `replacement` is the deprecation's replacement, else `moved_to`. Each flag also
+  prints one `warning:` line on stderr, in JSON mode too. "Nothing installed yet." goes to **stderr**.
 - Exit: 0 always on a completed check (it changes nothing and does not fail on outdated or errored rows); 1 on state
   errors.
 
@@ -125,7 +130,8 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 - File: `cli/update.go` (`updateCmd`). Args: any number.
 - Flags: `--all` (bool, false): update every installed package; `--json` (bool, false).
 - API: as `outdated`, then the `install` calls (`GET …/manifest`, `POST /installs`) for each package with an update.
-  Native installs stay native.
+  Native installs stay native. Picks packages by `status` only (`update available`); flags never change what updates.
+  An updated row loses its `yanked` flag.
 - Exit: 0; **2** when neither names nor `--all` are given, or both are, or a named package is not installed; **1** when
   any update failed, or (with named packages) any named package ends in a status other than `updated` / `up to date`
   (for example `removed` or `not in registry`).
@@ -775,7 +781,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | Package | One line |
 | --- | --- |
 | `agent` | Consent classes (`Classify`, `Describe`), the policy file (`LoadPolicy`, `DefaultPolicy`), sessions (`DecideRun`, approvals, limits), consent tokens (`CallHash`, `Seal`/`Open`, single use), the audit log (`Record`, `ReadAudit`, rotation) |
-| `api` | Registry HTTP client: `do`, error shape `*api.Error`, search, tool/manifest, install ping, device login, `/me`, tokens, guides and docs, imports, sync, removals, reports, claims and transfers, yank/deprecate, feedback |
+| `api` | Registry HTTP client: `do`, error shape `*api.Error`, search, tool/manifest/versions, install ping, device login, `/me`, tokens, guides and docs, imports, sync, removals, reports, claims and transfers, yank/deprecate, feedback |
 | `cli` | Every cobra command, the `App` struct, exit codes, `ExitError`, `Main`, `ExitCodeFor`, JSON errors (`machine.go`), the MCP server (`mcp_*.go`) |
 | `envelope` | The result envelope (`Version = 1`), `ParseOutput` for json/jsonl/csv/text, `Write` for json/raw/csv/table |
 | `keys` | Keychain storage (service `osintverse-ot`), env-first `Get`, `keys.json` name index |
@@ -804,7 +810,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `cli/auto_test.go` | `ot auto`: type guessing, `--dry-run`, `--type`, `--live` progress lines, and errors (bad `--type`, `--type` with two targets, no matching tool, `--all`; plus `run --dry-run` without `--all`) |
 | `cli/playbook_test.go` | `ot playbook`: `--list` with a user playbook and the TAKES column, prefixed and guessed targets, and errors (missing tools, no matching inputs, no typed input, unknown playbook, `--all`) |
 | `cli/saved_test.go` | `ot extract` and `ot diff` against saved runs |
-| `cli/update_test.go` | `ot outdated --json` and `ot update` (named, `--all`) against a fake registry (update available, removed, not in registry), plus usage errors |
+| `cli/update_test.go` | `ot outdated --json` and `ot update` (named, `--all`) against a fake registry (update available, removed, not in registry), plus usage errors; lifecycle flags, their warnings and the table, and `yanked` cleared by an update |
 | `cli/guide_test.go` | Guide search and read, terminal rewriting (`forTerminal`), Glamour rendering, `guide get` then offline read, `guide tools`, `guide open` and `docs`, request IDs on server errors, guide content validation |
 | `cli/import_test.go` | Import wizard completing a draft and opening a PR, `--registry` with `--yes`, community wrapper, bulk import and `--list` |
 | `cli/login_test.go` | Device-flow login (GitHub) and `--osintverse` |
