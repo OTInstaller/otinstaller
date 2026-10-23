@@ -7,6 +7,7 @@ import { apiError, rateLimited, windowRetry } from "./lib/errors";
 import { findPersonalData, imagesToAlt, renderPage } from "./content";
 import { audit } from "./routes/auth";
 import { overLimit, type ToolRef } from "./trust";
+import { maintainers, notify, subscribers } from "./inbox";
 
 export const ISSUE_KINDS = ["broken", "outdated", "wrong_info", "feature", "question"] as const;
 export const ISSUE_STATUSES = ["open", "confirmed", "fixed", "wont_fix", "duplicate"] as const;
@@ -202,7 +203,20 @@ export async function createIssue(env: Env, t: ToolRef, user: User, input: Issue
     refreshCounts(db, t.id),
     audit(db, user.id, "user", "issue.create", "issue", id, { tool: t.id, kind: input.kind, held: !!held }),
   ]);
-  return (await issueById(env, id))!;
+  const created = (await issueById(env, id))!;
+  if (!held) await announceIssue(env, t, created, user.id);
+  return created;
+}
+
+const refOf = (t: Pick<ToolRef, "namespace" | "name">) => `${t.namespace}/${t.name}`;
+const KIND_WORDS: Record<IssueKind, string> = { broken: "broken", outdated: "outdated", wrong_info: "wrong-information", feature: "feature request", question: "question" };
+
+/** Tells a package's maintainers about a new issue on it. */
+async function announceIssue(env: Env, t: Pick<ToolRef, "namespace" | "name" | "namespace_id" | "id">, i: Pick<IssueRow, "id" | "number" | "kind" | "title">, actorId: string | null) {
+  await notify(env, await maintainers(env, t.namespace_id), {
+    kind: "issue_opened", scope: "owner_issues", summary: `New ${KIND_WORDS[i.kind]} issue on ${refOf(t)}: ${i.title}`,
+    path: `/${refOf(t)}/issues/${i.number}`, tool_id: t.id, issue_id: i.id, actor_id: actorId,
+  });
 }
 
 export async function issueById(env: Env, id: string): Promise<IssueRow | null> {
@@ -240,6 +254,12 @@ export async function addComment(env: Env, t: ToolRef, issue: IssueRow, user: Us
     ).bind(issue.id, now, badge && !held ? now : null),
     db.prepare(`INSERT INTO issue_subscriptions (issue_id, user_id, reason, created_at) VALUES (?, ?, 'commented', ?) ON CONFLICT DO NOTHING`).bind(issue.id, user.id, now),
   ]);
+  if (!held) {
+    await notify(env, await subscribers(env, issue.id), {
+      kind: "comment", scope: "community", summary: `${p.handle ?? user.login} replied on ${refOf(t)} #${issue.number}: ${issue.title}`,
+      path: `/${refOf(t)}/issues/${issue.number}`, tool_id: t.id, issue_id: issue.id, actor_id: user.id,
+    });
+  }
   // The poster sees their reply at once; the public thread is cached for a minute.
   return { id, moderation: held ? "held" : "visible", body_html: renderPost(text, !badge) };
 }
@@ -262,6 +282,10 @@ export async function setStatus(env: Env, t: ToolRef, issue: IssueRow, actor: Us
     refreshCounts(db, t.id),
     audit(db, actor.id, "user", "issue.status", "issue", issue.id, { from: issue.status, to: status }),
   ]);
+  await notify(env, await subscribers(env, issue.id), {
+    kind: "status", scope: "community", summary: `${refOf(t)} #${issue.number} is now ${status.replace("_", " ")}: ${issue.title}`,
+    path: `/${refOf(t)}/issues/${issue.number}`, tool_id: t.id, issue_id: issue.id, actor_id: actor.id,
+  });
 }
 
 /** Locks or unlocks a thread. */
@@ -493,6 +517,36 @@ export async function moderate(env: Env, actor: User, kind: "issue" | "comment",
   );
   await db.batch(stmts);
   await db.batch(await countsAfter(env, kind, id));
+  await afterModeration(env, kind, id, action, row.moderation);
+}
+
+/** Tells the author what a moderator decided, and announces a held post once it is approved. */
+async function afterModeration(env: Env, kind: "issue" | "comment", id: string, action: ModerationAction, before: string) {
+  const db = env.DB;
+  const p = await db.prepare(
+    kind === "issue"
+      ? `SELECT i.author_id, i.id AS issue_id, i.number, i.kind, i.title, t.id AS tool_id, t.name, t.namespace_id, n.name AS namespace FROM issues i JOIN tools t ON t.id = i.tool_id JOIN namespaces n ON n.id = t.namespace_id WHERE i.id = ?`
+      : `SELECT c.author_id, i.id AS issue_id, i.number, i.kind, i.title, t.id AS tool_id, t.name, t.namespace_id, n.name AS namespace FROM issue_comments c JOIN issues i ON i.id = c.issue_id JOIN tools t ON t.id = i.tool_id JOIN namespaces n ON n.id = t.namespace_id WHERE c.id = ?`,
+  ).bind(id).first<{ author_id: string | null; issue_id: string; number: number; kind: IssueKind; title: string; tool_id: string; name: string; namespace_id: string; namespace: string }>();
+  if (!p) return;
+  const t = { id: p.tool_id, name: p.name, namespace: p.namespace, namespace_id: p.namespace_id };
+  const path = `/${refOf(t)}/issues/${p.number}`;
+  const words: Record<ModerationAction, string> = { hide: "hid", redact: "removed", approve: "approved", restore: "restored" };
+  if (p.author_id) {
+    await notify(env, [p.author_id], {
+      kind: "moderation", scope: "account", summary: `A moderator ${words[action]} your ${kind} on ${refOf(t)} #${p.number}`, path,
+      tool_id: t.id, issue_id: p.issue_id,
+    });
+  }
+  // A post that waited for review reaches the people it would have reached when written.
+  if (action === "approve" && before === "held") {
+    if (kind === "issue") await announceIssue(env, t, { id: p.issue_id, number: p.number, kind: p.kind, title: p.title }, p.author_id);
+    else {
+      await notify(env, await subscribers(env, p.issue_id), {
+        kind: "comment", scope: "community", summary: `New reply on ${refOf(t)} #${p.number}: ${p.title}`, path, tool_id: t.id, issue_id: p.issue_id, actor_id: p.author_id,
+      });
+    }
+  }
 }
 
 /** Stops someone posting for up to 7 days. */
@@ -534,6 +588,11 @@ export async function fileSystemIssue(env: Env, toolId: string, kind: IssueKind,
     audit(db, null, "system", "issue.create", "issue", id, { tool: toolId, kind, source }),
   ]);
   const row = await db.prepare(`SELECT id, number FROM issues WHERE tool_id = ? AND dedupe_key = ?`).bind(toolId, dedupeKey).first<{ id: string; number: number }>();
+  if (row!.id === id) {
+    const t = await db.prepare(`SELECT t.id, t.name, t.namespace_id, n.name AS namespace FROM tools t JOIN namespaces n ON n.id = t.namespace_id WHERE t.id = ?`).bind(toolId)
+      .first<{ id: string; name: string; namespace_id: string; namespace: string }>();
+    if (t) await announceIssue(env, t, { id, number: row!.number, kind, title: body.title }, null);
+  }
   return { id: row!.id, number: row!.number, created: row!.id === id };
 }
 

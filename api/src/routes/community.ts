@@ -7,6 +7,7 @@ import { cached } from "../catalog";
 import { audit, requireUser } from "./auth";
 import { requireAdmin, requireReviewer } from "./review";
 import { toolByRef, type ToolRef } from "../trust";
+import { notify } from "../inbox";
 import {
   addComment, canTriage, communityRoles, communityStatus, confirm, createIssue, deletePost, editPost, EDIT_WINDOW, fileSystemIssue, flagPost, FLAG_REASONS,
   indexable, ISSUE_KINDS, ISSUE_STATUSES, issueByNumber, issueInput, moderate, OPEN_STATUSES, renderPost, requireModerator, requireTriage,
@@ -363,6 +364,9 @@ export function communityRoutes(app: App) {
         .bind(target.id, b.role, admin.id, note, Date.now()),
       audit(c.env.DB, admin.id, "user", "role.grant", "user", target.id, { role: b.role, note }),
     ]);
+    await notify(c.env, [target.id], {
+      kind: "role", scope: "account", summary: `You are now a ${b.role} on OTInstaller: thank you for helping`, path: "/docs/community", actor_id: admin.id,
+    });
     return c.json({ handle: b.handle, role: b.role }, 201);
   });
 

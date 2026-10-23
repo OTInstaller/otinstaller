@@ -6,7 +6,7 @@ import { guideTwin, profileTwin, SLUG, toolTwin } from "./lib/twins";
 import { canonicalRedirect } from "./lib/redirects";
 
 /** First path segments that are site sections, not namespaces. */
-const RESERVED = new Set(["docs", "policy", "schema", "admin", "category", "input", "settings", "transfers", "guides", "search", "import", "feedback", "dashboard", "removed", "publish", "tour", "otlite", "agents", "community"]);
+const RESERVED = new Set(["docs", "policy", "schema", "admin", "category", "input", "settings", "transfers", "guides", "search", "import", "feedback", "dashboard", "removed", "publish", "tour", "otlite", "agents", "community", "unsubscribe"]);
 
 type Route = { kind: "tool"; ns: string; name: string } | { kind: "guide"; ns: string; name: string; page: string } | { kind: "profile"; ns: string };
 

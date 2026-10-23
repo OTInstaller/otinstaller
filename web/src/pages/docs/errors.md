@@ -233,6 +233,9 @@ Only the package's maintainers, the registry's triagers and staff can triage iss
 There is a daily limit per account: 5 issues (2 for accounts under a week old), 30 comments, 60 confirmations and
 20 flags. Try again tomorrow.
 
+### invalid_unsubscribe_link
+The unsubscribe link was changed or cut short. Change what you get at [notification settings](/settings/notifications).
+
 ## Signing in and accounts
 
 ### unknown_provider

@@ -1,0 +1,19 @@
+---
+// /settings/notifications: the inbox and how often community emails come (an island; signed in only).
+import Base from "../../layouts/Base.astro";
+import NotificationSettings from "../../islands/NotificationSettings";
+import PageHead from "../../components/PageHead.astro";
+
+Astro.response.headers.set("Cache-Control", "private, no-store");
+---
+<Base title="Notifications" noindex>
+  <PageHead eyebrow="Settings" title="Notifications" />
+  <NotificationSettings client:load back={`${Astro.site}settings/notifications`} />
+</Base>
+
+<style>
+  :global(.notifications .inbox li) { padding: 8px 0; border-bottom: 1px solid var(--border); }
+  :global(.notifications .inbox li.unread a) { font-weight: 600; }
+  :global(.notifications .between) { justify-content: space-between; }
+  :global(.notifications h2) { margin: 0; font-size: var(--fs-3); }
+</style>
