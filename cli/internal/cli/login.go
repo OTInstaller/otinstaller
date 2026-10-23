@@ -33,7 +33,7 @@ func (a *App) loginCmd() *cobra.Command {
 	var scopes []string
 	cmd := &cobra.Command{
 		Use:   "login",
-		Short: "Sign in with GitHub (or GitLab, or OSINTverse) to star tools and publish",
+		Short: "Sign in with GitHub (or GitLab, or OSINTverse) to publish and manage packages",
 		Long: "Signs in with a device code: open the link on any device and enter the code. The token is saved to the OS keychain.\n" +
 			"With --json the link and code come first as one line of JSON and the result as a second. On a machine without a\n" +
 			"keychain (CI, containers), use --print-token and pass the token in OTINSTALLER_TOKEN instead.",
