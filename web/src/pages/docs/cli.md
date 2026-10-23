@@ -43,6 +43,8 @@ and `--no-save` skips saving. The result envelope still goes to stdout.
 
 | Command | What it does |
 | --- | --- |
+| `ot runs [--tool …] [--target …] [--case …] [--status complete\|failed\|timeout\|interrupted] [--since 168h] [--limit 20] [--results-dir DIR]` | List saved runs, newest first: by default the last 20 from the past week (`--since 0` and `--limit 0` for all). Reads `./results` (or `OT_RESULTS_DIR`) and `<ot home>/results`, where `ot mcp` saves |
+| `ot runs <run-id>` | One saved run: what ran, how it ended, what it found and where it is saved; `--json` prints its `.meta.json` |
 | `ot extract <tool \| path> [--case …] [--results-dir DIR]` | Pull emails, domains, IPs, URLs and entities out of saved runs |
 | `ot diff <tool> <target> [--case …] [--results-dir DIR]` | What changed between the two most recent runs of a tool against a target |
 

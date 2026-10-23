@@ -514,7 +514,8 @@ The session reached one of the policy's run limits (`max_runs_per_hour`, `max_ru
 The policy is in sandbox mode, which runs tools only on their own test input, and this tool has none.
 
 ### run_not_found
-No saved run, or no run in this session, has that `run_id`. `list_runs` lists them.
+No saved run, or no run in this session, has that `run_id` (eight letters and digits, as `ot run` and `run_tool` print
+it). `ot runs` lists the saved runs, and so does `list_runs` through `ot mcp`. From `ot runs <run-id>`, exit code 2.
 
 ### batch_not_found
 No batch in this session has that `batch_id`. Its runs are still saved; `list_runs` with the batch's case lists them.
