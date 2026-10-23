@@ -13,6 +13,7 @@ Find and run a tool:
 ```sh
 ot search email
 ot run osintverse-community/holehe e:someone@example.com
+ot runs     # every run is saved under ./results; `ot runs <run-id>` shows one
 ```
 
 Or let `ot` pick: `ot auto someone@example.com` runs every installed tool that takes an email address, and on a fresh
@@ -27,5 +28,5 @@ server to your client. Agents ask you before any run that touches a target. See 
 Docs: https://otinstaller.com/docs/getting-started · CLI reference: https://otinstaller.com/docs/cli ·
 Bugs and ideas: https://github.com/OTInstaller/feedback/issues
 
-`ot self-update` installs new releases after checking their signature. Licensed under the Apache License 2.0
+`ot self-update` installs new releases after checking their signature; `ot outdated` says when one is out. Licensed under the Apache License 2.0
 (LICENSE).

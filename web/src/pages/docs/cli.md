@@ -23,7 +23,7 @@ errors as one line of JSON on stderr; see [Scripts, CI and agents](/docs/automat
 | `ot auto <target> [--type username\|email\|domain\|phone\|ip\|url] [--dry-run] [-f table\|json] [--parallel 4] [--results-dir DIR] [--case NAME]` | Guess the target's type (URL, IP, email, phone, domain, else username) and run every installed tool that takes it, offering a bundled playbook's tools first when none does |
 | `ot playbook -l\|--list` · `ot playbook <name> <type>:<value> [-y] [--native] [--dry-run] [-f table\|json] [--parallel 4] [--results-dir DIR] [--case NAME]` | Run a named set of tools against the same inputs (bundled, none needing a key: `domain-recon`, `username-investigation`, `email-investigation`, `phone-investigation`, `ip-investigation`; `--list` shows what each takes; your own go in `./playbooks` or `<ot home>/playbooks`); it asks before installing the tools it needs, and `-y` installs them without asking; runs are saved under the case `playbook-<name>` unless `--case` says otherwise |
 | `ot list` | Installed tools |
-| `ot outdated` · `ot update <ns/name …> \| --all` | Check for and install newer versions, with the same signature and trust checks as `ot install` |
+| `ot outdated` · `ot update <ns/name …> \| --all` | Check for and install newer versions, with the same signature and trust checks as `ot install`. `ot outdated` also warns about installed tools that are deprecated (and what replaces them), possibly broken, yanked, moved, or whose source repository is gone |
 | `ot uninstall <ns/name>` | Remove a tool |
 | `ot keys set\|list\|rm <NAME>` | API keys in the OS keychain (`set --from-env VAR`); an environment variable of the same name always wins |
 | `ot keys setup [tool...]` | Walks through the keys the named tools (or every installed tool) need: what each is, where to get it, what it costs; opens the sign-up page if you want, and asks for each value with typing hidden. Needs a terminal. `--all` also replaces keys already set |
@@ -33,7 +33,7 @@ errors as one line of JSON on stderr; see [Scripts, CI and agents](/docs/automat
 | `ot mcp policy [reset]` · `ot mcp audit [--since 24h]` · `ot mcp tools` | The rules agents run under, what they did, and what the server offers |
 | `ot report <ns/name> [--reason malware\|policy\|impersonation\|license\|broken\|other --details …] [--version X.Y.Z]` | Report a package to the reviewers (opens the form without `--reason`); `--details` is required except for `broken` |
 | `ot feedback [--kind bug\|idea\|question\|other] [--about …] [--email …] "message"` | Send feedback to the team with your `ot` version and OS; reads piped text, or opens the form with no message |
-| `ot self-update [--check]` | Update ot itself; the release signature is checked first |
+| `ot self-update [--check]` | Update ot itself; the release signature is checked first, and an older release is never installed over a newer one. `ot outdated` says when a newer ot is out |
 
 ## Saved results
 
@@ -43,6 +43,8 @@ and `--no-save` skips saving. The result envelope still goes to stdout.
 
 | Command | What it does |
 | --- | --- |
+| `ot runs [--tool …] [--target …] [--case …] [--status complete\|failed\|timeout\|interrupted] [--since 168h] [--limit 20] [--results-dir DIR]` | List saved runs, newest first: by default the last 20 from the past week (`--since 0` and `--limit 0` for all). Reads `./results` (or `OT_RESULTS_DIR`) and `<ot home>/results`, where `ot mcp` saves |
+| `ot runs <run-id>` | One saved run: what ran, how it ended, what it found and where it is saved; `--json` prints its `.meta.json` |
 | `ot extract <tool \| path> [--case …] [--results-dir DIR]` | Pull emails, domains, IPs, URLs and entities out of saved runs |
 | `ot diff <tool> <target> [--case …] [--results-dir DIR]` | What changed between the two most recent runs of a tool against a target |
 
@@ -105,6 +107,7 @@ registry's copy and checks the same SHA-256. You see a note when this happens; n
 | `OT_NO_TELEMETRY` | Any value stops the install ping (one request per install, with your token when signed in) |
 | `OT_OUTPUT=json` | JSON output and JSON errors from every command, as if `--json` were given |
 | `OT_NONINTERACTIVE=1` | Never prompt, even at a terminal (`ot` never prompts without one) |
+| `OT_NO_UPDATE_CHECK=1` | `ot outdated` doesn't look up the latest `ot` release (it does at most once a day otherwise, and never in CI or under `ot mcp`) |
 | `OT_MAX_RAW` | Default for `ot run --max-raw` |
 | `OT_CONSENT=off` | Don't stop unattended runs that need consent (see [AI agents](/docs/agents#agents-that-use-a-shell)) |
 | `OT_RESULTS_DIR` | Where runs are saved (default `./results`; the older `OTINSTALLER_RESULTS_DIR` still works) |

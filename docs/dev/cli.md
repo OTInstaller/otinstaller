@@ -25,8 +25,8 @@ Conventions used here:
 ## 1. Commands
 
 Registered in `Root()` (`cli/root.go`) in this order: init, validate, search, info, install, run, playbook, auto,
-extract, diff, list, outdated, update, uninstall, keys, doctor, login, logout, whoami, import, sync, guide, docs,
-report, feedback, claim, transfer, yank, deprecate, self-update, release, mcp, pivot, token. 34 top-level commands,
+runs, extract, diff, list, outdated, update, uninstall, keys, doctor, login, logout, whoami, import, sync, guide, docs,
+report, feedback, claim, transfer, yank, deprecate, self-update, release, mcp, pivot, token, profile. 36 top-level commands,
 plus subcommands `keys set|setup|list|rm`, `guide search|read|open|get|tools`, `mcp install|audit|policy|tools`
 (with `mcp policy reset`) and `token create|list|revoke`.
 
@@ -115,17 +115,28 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 #### `ot outdated`
 - File: `cli/update.go` (`outdatedCmd`). Args: `NoArgs`.
 - Flags: `--json` (bool, false).
-- API: `GET /tools/{ns}/{name}/latest/manifest` per installed package.
-- Output: table `PACKAGE INSTALLED LATEST STATUS`; statuses `up to date`, `update available`, `removed`, `not in
-  registry` (404), `error`, with notes (`moved to …`). "Nothing installed yet." goes to **stderr**.
+- API: `GET /tools/{ns}/{name}` and `GET /tools/{ns}/{name}/versions` per installed package (`api.Client.Tool` and
+  `Versions`), four packages at a time (`checkConcurrency`); rows keep the installed order.
+- Output: table `PACKAGE INSTALLED LATEST STATUS`; statuses `up to date`, `update available`, `removed` (410 for the
+  package, or the installed version listed as `removed`), `not in registry` (404), `error`, with notes (`moved to
+  …`) and flags in brackets. JSON rows: `{ref, installed, latest, status, note, flags, replacement}`. `flags` is always
+  an array of `deprecated`, `possibly_broken` (health `broken`), `yanked` (the installed version), `source_unavailable`
+  and `moved`, whatever the status; `replacement` is the deprecation's replacement, else `moved_to`. Each flag also
+  prints one `warning:` line on stderr, in JSON mode too. "Nothing installed yet." goes to **stderr**.
 - Exit: 0 always on a completed check (it changes nothing and does not fail on outdated or errored rows); 1 on state
   errors.
+- Newer ot (`noteNewerOT`, `latestOT` in `cli/selfupdate.go`): after the table, also with nothing installed, a `note: ot
+  vX is out (you have vY); \`ot self-update\` installs it` on stderr when the latest release is newer. The release is
+  looked up at most once a day (`GET https://get.otinstaller.com/ot/latest`, else the GitHub API; 3 s) and kept in
+  `<ot home>/cache/ot-latest.json`, a failed lookup too. Never for a `dev` build, under `ot mcp`, with `CI` set or with
+  `OT_NO_UPDATE_CHECK=1`.
 
 #### `ot update [namespace/name ...]`
 - File: `cli/update.go` (`updateCmd`). Args: any number.
 - Flags: `--all` (bool, false): update every installed package; `--json` (bool, false).
 - API: as `outdated`, then the `install` calls (`GET …/manifest`, `POST /installs`) for each package with an update.
-  Native installs stay native.
+  Native installs stay native. Picks packages by `status` only (`update available`); flags never change what updates.
+  An updated row loses its `yanked` flag.
 - Exit: 0; **2** when neither names nor `--all` are given, or both are, or a named package is not installed; **1** when
   any update failed, or (with named packages) any named package ends in a status other than `updated` / `up to date`
   (for example `removed` or `not in registry`).
@@ -292,6 +303,20 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   `spec/pivots.json`, lists for each entity worth following the input type it fits and the installed tools that take
   it, with an `ot run` line for each. The run's own inputs are left out. Nothing is run.
 - API: only with `--registry` (`GET /pivots`). Exit: 0; 2 when the run or its sidecar can't be found.
+
+#### `ot runs [run-id]`
+- File: `cli/runs.go` (`runsCmd`, `listSavedRuns`, `showRun`). Args: `MaximumNArgs(1)`.
+- Flags: `--tool` (`ns/name` or `name`), `--target`, `--case` (reads `<dir>/cases/<case>`), `--status` (`complete`,
+  `failed`, `timeout` or `interrupted`; anything else exit 2), `--since` (duration, default `168h`; `0` for all),
+  `--limit` (int, 20; `0` for all), `--results-dir` (read only that folder), `--json`.
+- Reads `resultDirs()`: the results dir (`$OT_RESULTS_DIR`, else `./results`) and `<ot home>/results`, merged newest
+  first by the time stamp in the file names. `listSavedRuns` is also what MCP's `list_runs` uses (with only the results
+  dir, as before).
+- Output: table `RUN STARTED TOOL TARGET STATUS ENTITIES CASE` (a `note:` on stderr when `--limit` cut it, and a line
+  pointing at `ot runs <run-id>` and `ot pivot`), or "No saved runs from the last 7 days under …"; JSON is an array of
+  `list_runs` rows. With a run id (`findSavedRunIn`): tool, target, status, exit code, entity count, duration, start
+  time, case, saved path, warnings, the first ten distinct entities and, when it found any, a line suggesting `ot pivot <id>`; JSON is the sidecar.
+- No API. Exit: 0, also when nothing is found; 2 for a bad flag value or an unknown run id (`run_not_found`).
 
 #### `ot extract <tool | path>`
 - File: `cli/saved.go` (`extractCmd`); logic in `results/saved.go`. Args: `MaximumNArgs(1)`.
@@ -593,7 +618,9 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 #### `ot self-update`
 - File: `cli/selfupdate.go`; logic `selfupdate/selfupdate.go`. Args: `NoArgs`.
 - Flags: `--check` (bool): only say whether an update is available.
-- Network (not the registry): `GET https://api.github.com/repos/<Repo>/releases/latest`, then the release assets
+- Network (not the registry): `GET https://get.otinstaller.com/ot/latest` (`selfupdate.LatestVersion`; a tag
+  matching `^v\d+\.\d+\.\d+$`), the assets then named under `https://github.com/<Repo>/releases/download/<tag>/`;
+  if that fails, `GET https://api.github.com/repos/<Repo>/releases/latest` and its asset URLs. Then the release assets
   `checksums.txt`, `checksums.txt.sig` and `ot_<ver>_<os>_<arch>.tar.gz|.zip`. Verifies the Ed25519 signature with the
   built-in `PublicKey`, then the archive SHA-256, extracts `ot`, writes it next to the binary (`.ot-update-*`) and
   renames it in place (on Windows the old binary is moved to `<exe>.old`, removed on the next update).
@@ -686,7 +713,8 @@ Read by the CLI (`os.Getenv` calls in `cli/`, plus the keychain lookup):
 | `OT_NONINTERACTIVE` | `machine.go` `interactive` | `1`: never prompt, as if there were no terminal | prompts at a terminal |
 | `OT_CONSENT` | `consent.go` `cliConsent` | `off`: unattended runs need no `--yes` (still audited) | consent checked |
 | `OT_MAX_RAW` | `run_cmd.go` | default for `--max-raw` (bytes) | no limit |
-| `CI` | `run_cmd.go` `clientKind` | any value: the envelope's and audit log's `client` is `ci`, and the install ping says so | `cli` |
+| `CI` | `run_cmd.go` `clientKind`, `selfupdate.go` `latestOT` | any value: the envelope's and audit log's `client` is `ci`, and the install ping says so; no newer-ot check | `cli` |
+| `OT_NO_UPDATE_CHECK` | `selfupdate.go` `latestOT` | `1`: `ot outdated` never looks up the latest ot release | checked daily |
 | `<SECRET_NAME>` (any manifest `secrets[].name`) | `keys.Get` in `loadSecrets` | a tool's key; env wins over the keychain | keychain entry |
 
 Other environment handling:
@@ -724,6 +752,7 @@ Data directory (`state.Home()`): `$OT_HOME` if set; else on Windows `%APPDATA%\o
 | `<home>/config.json` | never written by ot (read only) | `api_url`, `site_url`, `telemetry` (bool), `format` (default `ot run` format); env vars override the first three |
 | `<home>/keys.json` | `keys set`, `keys rm`, `login`, `logout`, `doctor` | sorted JSON array of key names (never values), mode 0600 |
 | `<home>/cache/removed.json` | pre-run check (24 h), `ot run` (1 h) | `{"fetched_at", "removed": [...]}` from `GET /removed`, mode 0644 |
+| `<home>/cache/ot-latest.json` | `ot outdated` (24 h) | `{"checked_at", "version"}`: the latest ot release, or the last one known when the lookup failed, mode 0644 |
 | `<home>/guides/<ns>/<name>/<version>/` | `guide get` | every page as Markdown at its nav path, plus `guide.json` (the guide detail); read by `guide read` offline |
 | `<home>/pipx/`, `<home>/bin/` | native pipx installs | ot's own `PIPX_HOME` and `PIPX_BIN_DIR`; native runs execute `<home>/bin/<command>[.exe]` |
 | `<home>/agent-policy.json` | `ot mcp policy reset` (else the user) | the agent policy: `enabled`, `mode`, `allow_tools`, `deny_tools`, `auto_approve`, `consent_ttl_minutes`, `max_runs_per_hour`, `max_parallel`, `max_runs_per_target_per_hour`, `max_output_chars`, `allow_install`, `redact_targets_in_audit`; missing fields keep their defaults, a broken file is an error |
@@ -773,7 +802,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | Package | One line |
 | --- | --- |
 | `agent` | Consent classes (`Classify`, `Describe`), the policy file (`LoadPolicy`, `DefaultPolicy`), sessions (`DecideRun`, approvals, limits), consent tokens (`CallHash`, `Seal`/`Open`, single use), the audit log (`Record`, `ReadAudit`, rotation) |
-| `api` | Registry HTTP client: `do`, error shape `*api.Error`, search, tool/manifest, install ping, device login, `/me`, tokens, guides and docs, imports, sync, removals, reports, claims and transfers, yank/deprecate, feedback |
+| `api` | Registry HTTP client: `do`, error shape `*api.Error`, search, tool/manifest/versions, install ping, device login, `/me`, tokens, guides and docs, imports, sync, removals, reports, claims and transfers, yank/deprecate, feedback |
 | `cli` | Every cobra command, the `App` struct, exit codes, `ExitError`, `Main`, `ExitCodeFor`, JSON errors (`machine.go`), the MCP server (`mcp_*.go`) |
 | `envelope` | The result envelope (`Version = 1`), `ParseOutput` for json/jsonl/csv/text, `Write` for json/raw/csv/table |
 | `keys` | Keychain storage (service `osintverse-ot`), env-first `Get`, `keys.json` name index |
@@ -782,7 +811,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `results` | Saving runs (output, `.meta.json`, lazy `.stderr.txt`), `Dir`, `Sanitize`; `saved.go` reads them back for `extract` and `diff` |
 | `runner` | Engine detection, install (docker pull + cosign, mirror and wheel fallbacks, pipx native or sandbox image), run, container args, input resolution, typed inputs, command building, target type detection with embedded `tlds.txt` |
 | `scaffold` | Files `ot init` writes, git remote and kind detection, embedded release templates (`go generate` from `spec/templates`) |
-| `selfupdate` | GitHub release lookup, Ed25519-signed checksums, archive SHA-256, extraction, atomic replace |
+| `selfupdate` | Release lookup (get.otinstaller.com, else the GitHub API), Ed25519-signed checksums, archive SHA-256, extraction, atomic replace |
 | `specfiles` | Embedded copies of `spec/schema/{envelope,run-all,error}-v1.json`, `spec/pivots.json` and `spec/types.json` (`go generate`) |
 | `state` | Data directory, `state.json` load/atomic save, read-only `config.json` with env overrides |
 
@@ -791,24 +820,26 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 
 ### Test files
 
-`api`, `keys`, `state` and `selfupdate` have **no test files** (`selfupdate` is exercised by `TestSelfUpdate` in
-`cli/trust_test.go`; `api` through the commands' fake registries).
+`api`, `keys` and `state` have **no test files** (`api` is exercised through the commands' fake registries).
+`selfupdate_test.go` covers `LatestVersion` and the lookup order; downloads and signatures are exercised by
+`TestSelfUpdate` and `TestSelfUpdateViaLatestURL` in `cli/trust_test.go`.
 
 | File | Covers |
 | --- | --- |
 | `cli/cli_test.go` | Shared helpers (`newTestApp`, `fakeExec`); `validate` output and exit codes, `init` then `validate`, `init` not overwriting, running a local manifest, run exit codes, `parseRunArgs` |
 | `cli/run_test.go` | Typed-input parsing, typed run saving results, `--no-save` and `--results-dir`, typed-input errors, `run --all`, Ctrl-C keeping partial output (exit 130) |
+| `cli/runs_test.go` | `ot runs`: none yet, newest first, each filter, the default `--since`, the table, one run in text and JSON, unknown ids (`run_not_found`), a bad `--status`, `--results-dir` |
 | `cli/auto_test.go` | `ot auto`: type guessing, `--dry-run`, `--type`, `--live` progress lines, and errors (bad `--type`, `--type` with two targets, no matching tool, `--all`; plus `run --dry-run` without `--all`) |
 | `cli/playbook_test.go` | `ot playbook`: `--list` with a user playbook and the TAKES column, prefixed and guessed targets, and errors (missing tools, no matching inputs, no typed input, unknown playbook, `--all`) |
 | `cli/saved_test.go` | `ot extract` and `ot diff` against saved runs |
-| `cli/update_test.go` | `ot outdated --json` and `ot update` (named, `--all`) against a fake registry (update available, removed, not in registry), plus usage errors |
+| `cli/update_test.go` | `ot outdated --json` and `ot update` (named, `--all`) against a fake registry (update available, removed, not in registry), plus usage errors; lifecycle flags, their warnings and the table, and `yanked` cleared by an update |
 | `cli/guide_test.go` | Guide search and read, terminal rewriting (`forTerminal`), Glamour rendering, `guide get` then offline read, `guide tools`, `guide open` and `docs`, request IDs on server errors, guide content validation |
 | `cli/import_test.go` | Import wizard completing a draft and opening a PR, `--registry` with `--yes`, community wrapper, bulk import and `--list` |
 | `cli/login_test.go` | Device-flow login (GitHub) and `--osintverse` |
 | `cli/release_test.go` | `ot release` with real git: happy path, refusals (dirty tree, existing tag), tools refused, `--no-push` |
 | `cli/sync_test.go` | `ot sync` and `--log` |
 | `cli/profile_test.go` | `ot profile`: show, `--set`/`--unset`, `--sync`, rate limit, `--json` |
-| `cli/trust_test.go` | report/claim/transfer against a fake registry, removed-package warnings and refusal, `self-update` with a signed fake release |
+| `cli/trust_test.go` | report/claim/transfer against a fake registry, removed-package warnings and refusal, `self-update` with a signed fake release (through the GitHub API, and through `/ot/latest` with no downgrade), the newer-ot note in `ot outdated` (daily cache, and never for dev builds, agents, CI or `OT_NO_UPDATE_CHECK=1`) |
 | `cli/feedback_test.go` | `ot feedback`: message with `--kind`/`--about`, piped stdin with `--email`, bad kind exits 2 |
 | `cli/machine_test.go` | `--json` detection, error codes, JSON errors on stderr, no prompts without a terminal, envelope provenance, `--all` JSON lines, stdout stays JSON |
 | `cli/mcp_test.go` | `ot mcp`: tool list, passive runs, consent by elicitation and by token, policy and trust, unattended CLI runs need `--yes`, `mcp install`, docs and plugin match the server, policy changes without a restart, shutdown, sandbox mode, batches |
