@@ -130,6 +130,8 @@ export interface ToolDetail extends ToolSummary {
   deprecated_replacement?: string;
   manifest: Manifest;
   moved_to?: string;
+  /** Open issues people filed; older API answers omit it. */
+  community?: { open_broken: number; open_outdated: number };
 }
 
 export interface Version {
@@ -316,3 +318,74 @@ export interface ProfileSettings {
 }
 
 export type ProfileField = "display_name" | "bio" | "location" | "website" | "company" | "avatar_url" | "socials";
+
+// ---------- community ----------
+
+export type IssueKind = "broken" | "outdated" | "wrong_info" | "feature" | "question";
+export type IssueStatus = "open" | "confirmed" | "fixed" | "wont_fix" | "duplicate";
+
+export interface IssueAuthor {
+  handle: string;
+  avatar_url?: string | null;
+  system?: boolean;
+  profile?: boolean;
+}
+
+export interface IssueSummary {
+  number: number;
+  kind: IssueKind;
+  status: IssueStatus;
+  title: string;
+  author: IssueAuthor;
+  version: string | null;
+  platform: string | null;
+  comments: number;
+  me_too: number;
+  locked: boolean;
+  created_at: number;
+  last_activity_at: number;
+  closed_at: number | null;
+  indexable: boolean;
+  /** On the registry-wide board only. */
+  ref?: string;
+}
+
+export interface IssueList {
+  ref: string;
+  counts: { open: number; closed: number };
+  issues: IssueSummary[];
+  next_before: number | null;
+}
+
+export interface IssueComment {
+  id: string;
+  author: IssueAuthor;
+  role: "maintainer" | "triager" | "staff" | null;
+  body_html: string;
+  created_at: number;
+  edited_at: number | null;
+}
+
+export interface IssueThread {
+  ref: string;
+  issue: IssueSummary & { id: string; body_html: string; engine: string | null; exit_code: number | null; fixed_in: string | null; duplicate_of: number | null; deleted: boolean; edited_at: number | null };
+  comments: IssueComment[];
+}
+
+export interface IssueViewer {
+  can_triage: boolean;
+  is_author: boolean;
+  can_edit_issue: boolean;
+  editable_comments: string[];
+  subscribed: boolean;
+  held_comments: { id: string; created_at: number; body_html: string }[];
+}
+
+export interface CommunityStatus {
+  ref: string;
+  version: string | null;
+  line: { state: "working" | "mixed" | "failing" | "unknown"; text: string };
+  health: { status: string; checked_at: number | null; history: { at: number; version: string; result: "pass" | "fail"; duration_ms: number | null; failure: string | null }[] };
+  confirmations: { version: string | null; works: number; broken: number; platforms: Record<string, { works: number; broken: number }> };
+  issues: { open_broken: number; open_outdated: number };
+}

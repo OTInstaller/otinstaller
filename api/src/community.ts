@@ -218,7 +218,7 @@ export const indexable = (i: Pick<IssueRow, "moderation" | "deleted_at" | "maint
   i.moderation === "visible" && !i.deleted_at && (!!i.maintainer_replied_at || i.status === "confirmed" || i.status === "fixed");
 
 /** Adds a comment. On a locked thread only people who can triage may comment. */
-export async function addComment(env: Env, t: ToolRef, issue: IssueRow, user: User, body: string): Promise<{ id: string; moderation: string }> {
+export async function addComment(env: Env, t: ToolRef, issue: IssueRow, user: User, body: string): Promise<{ id: string; moderation: string; body_html: string }> {
   const text = body.trim();
   if (text.length < 2) apiError(400, "invalid_body", "send {body}");
   if (text.length > MAX_BODY) apiError(400, "invalid_body", `a comment can be at most ${MAX_BODY} characters`);
@@ -240,7 +240,8 @@ export async function addComment(env: Env, t: ToolRef, issue: IssueRow, user: Us
     ).bind(issue.id, now, badge && !held ? now : null),
     db.prepare(`INSERT INTO issue_subscriptions (issue_id, user_id, reason, created_at) VALUES (?, ?, 'commented', ?) ON CONFLICT DO NOTHING`).bind(issue.id, user.id, now),
   ]);
-  return { id, moderation: held ? "held" : "visible" };
+  // The poster sees their reply at once; the public thread is cached for a minute.
+  return { id, moderation: held ? "held" : "visible", body_html: renderPost(text, !badge) };
 }
 
 /** Changes an issue's status (triage). Closing a thread records who and when. */
@@ -361,6 +362,68 @@ export async function versionConfirmations(env: Env, versionId: string, now = Da
     else broken += r.n;
   }
   return { works, broken, platforms };
+}
+
+// ---------- the status line ----------
+
+export type StatusState = "working" | "mixed" | "failing" | "unknown";
+
+const ago = (ms: number, now: number) => {
+  const days = Math.floor((now - ms) / 86_400_000);
+  return days <= 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`;
+};
+
+/**
+ * How a package is doing, in one honest line: the registry's nightly health check first, then what signed-in people
+ * said about the latest version in the last 30 days, then open broken issues. Facts with counts, never a score.
+ */
+export function statusLine(input: {
+  health: string; checked_at: number | null; works: number; broken: number; platforms: string[]; open_broken: number; version: string;
+}, now = Date.now()): { state: StatusState; text: string } {
+  const parts: string[] = [];
+  if (input.health === "healthy") parts.push(`Passed the registry's health check${input.checked_at ? ` ${ago(input.checked_at, now)}` : ""}`);
+  else if (input.health === "broken") parts.push("Failing the registry's health check");
+  else parts.push("Not health-checked yet");
+  if (input.works || input.broken) {
+    const people = (n: number) => `${n} ${n === 1 ? "person" : "people"}`;
+    const said = [input.works ? `works for ${people(input.works)}` : null, input.broken ? `broken for ${people(input.broken)}` : null].filter(Boolean).join(", ");
+    parts.push(`${input.version} ${said}${input.platforms.length ? ` (${input.platforms.slice(0, 3).join(", ")})` : ""} in the last 30 days`);
+  }
+  if (input.open_broken) parts.push(`${input.open_broken} open broken ${input.open_broken === 1 ? "issue" : "issues"}`);
+  const state: StatusState =
+    input.health === "broken" || (input.broken >= 2 && input.broken > input.works) ? "failing"
+      : input.open_broken > 0 || input.broken > 0 ? "mixed"
+        : input.health === "healthy" || input.works > 0 ? "working" : "unknown";
+  return { state, text: `${parts.join("; ")}.` };
+}
+
+/** Everything the status line is made of, for GET /tools/:ns/:name/status. The error excerpts stay private. */
+export async function communityStatus(env: Env, t: ToolRef, now = Date.now()) {
+  const db = env.DB;
+  const [tool, history, version] = await Promise.all([
+    db.prepare(`SELECT health_status, health_checked_at, open_broken, open_outdated FROM tools WHERE id = ?`).bind(t.id)
+      .first<{ health_status: string; health_checked_at: number | null; open_broken: number; open_outdated: number }>(),
+    db.prepare(
+      `SELECT h.ran_at, v.version, h.result, h.duration_ms, h.failure_class FROM health_checks h JOIN versions v ON v.id = h.version_id WHERE h.tool_id = ? ORDER BY h.ran_at DESC LIMIT 30`,
+    ).bind(t.id).all<{ ran_at: number; version: string; result: string; duration_ms: number | null; failure_class: string | null }>(),
+    db.prepare(`SELECT id, version FROM versions WHERE id = ?`).bind(t.latest_version_id).first<{ id: string; version: string }>(),
+  ]);
+  const counts = version ? await versionConfirmations(env, version.id, now) : { works: 0, broken: 0, platforms: {} };
+  const platforms = Object.entries(counts.platforms).filter(([p, c]) => p !== "unknown" && c.works > 0).sort((a, b) => b[1].works - a[1].works).map(([p]) => p);
+  const line = statusLine({
+    health: tool?.health_status ?? "unknown", checked_at: tool?.health_checked_at ?? null, works: counts.works, broken: counts.broken, platforms,
+    open_broken: tool?.open_broken ?? 0, version: version?.version ?? "",
+  }, now);
+  return {
+    version: version?.version ?? null,
+    line,
+    health: {
+      status: tool?.health_status ?? "unknown", checked_at: tool?.health_checked_at ?? null,
+      history: history.results.map((h) => ({ at: h.ran_at, version: h.version, result: h.result, duration_ms: h.duration_ms, failure: h.failure_class })),
+    },
+    confirmations: { version: version?.version ?? null, ...counts },
+    issues: { open_broken: tool?.open_broken ?? 0, open_outdated: tool?.open_outdated ?? 0 },
+  };
 }
 
 // ---------- flags and moderation ----------

@@ -29,4 +29,4 @@ Each tool declares whether it contacts the target, logs in to accounts and colle
 
 ## Enforcement
 
-Reviewers check every new publisher's first release. After that, reports from anyone can lead to a fix request, a yanked or removed version, a suspended namespace or a banned account. See [reports and takedowns](/policy/takedown).
+Reviewers check every new publisher's first release. After that, reports from anyone can lead to a fix request, a yanked or removed version, a suspended namespace or a banned account. See [reports and takedowns](/policy/takedown). Issues and comments follow the [community guidelines](/policy/community).

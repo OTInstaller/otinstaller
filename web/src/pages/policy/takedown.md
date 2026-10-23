@@ -2,12 +2,16 @@
 layout: ../../layouts/Policy.astro
 title: Reports and takedowns
 description: How to report a tool or guide, and what the registry does about it.
-updated: 2026-10-20
+updated: 2026-10-23
 ---
 
 ## Reporting
 
 Use **Report this tool** on any tool page, or `ot report <namespace/name>`. You don't need an account. Reasons: malware or suspicious behaviour, a policy violation, impersonation, copyright or license problems, broken or misleading, or something else.
+
+A tool that simply doesn't work is better reported as a public **issue** on its Issues tab, so others can confirm
+it and the maintainers can answer. Posts in issues can be flagged to a moderator; personal data in a post is hidden
+at once and removed by staff (see the [community guidelines](/policy/community)).
 
 For copyright notices, legal requests, or anything you can't put in the form, write to [abuse@otinstaller.com](mailto:abuse@otinstaller.com). Security problems in the registry or `ot` go to [security@otinstaller.com](mailto:security@otinstaller.com).
 

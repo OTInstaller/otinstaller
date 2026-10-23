@@ -283,3 +283,31 @@ describe("system issues", () => {
     expect((await req(null, "GET", "/issues?needs=confirmation")).body.issues.every((i: any) => i.kind === "broken" && i.status === "open")).toBe(true);
   });
 });
+
+describe("community status", () => {
+  it("puts the health check, confirmations and open issues in one line, without error excerpts", async () => {
+    const p = await person();
+    await req(p, "PUT", `/tools/${TOOL}/confirmations`, { result: "works", platform: "linux/amd64" });
+    const v = (await DB().prepare(`SELECT latest_version_id FROM tools WHERE id = ?`).bind(TOOL_ID).first<{ latest_version_id: string }>())!;
+    await DB().prepare(`INSERT INTO health_checks (id, tool_id, version_id, result, duration_ms, error_excerpt, failure_class, ran_at) VALUES (?, ?, ?, 'fail', 900, 'secret output about a target', 'timeout', ?)`)
+      .bind(ulid(), TOOL_ID, v.latest_version_id, Date.now() - 1000).run();
+    const s = await req(null, "GET", `/tools/${TOOL}/status`);
+    expect(s.res.headers.get("cache-control")).toMatch(/public.*max-age=300/);
+    expect(s.body.line.text).toMatch(/works for \d+ (person|people)[^(]*\([^)]*linux\/amd64/);
+    expect(s.body.health.history[0]).toMatchObject({ result: "fail", failure: "timeout" });
+    expect(JSON.stringify(s.body)).not.toContain("secret output");
+    const detail = await req(null, "GET", `/tools/${TOOL}`);
+    expect(detail.body.community).toEqual({ open_broken: expect.any(Number), open_outdated: expect.any(Number) });
+  });
+
+  it("says failing, mixed, working or unknown from the facts", async () => {
+    const { statusLine } = await import("../src/community");
+    const now = Date.now();
+    const base = { health: "healthy", checked_at: now - 3600_000, works: 0, broken: 0, platforms: [], open_broken: 0, version: "1.0.0" };
+    expect(statusLine(base, now)).toEqual({ state: "working", text: "Passed the registry's health check today." });
+    expect(statusLine({ ...base, health: "broken" }, now).state).toBe("failing");
+    expect(statusLine({ ...base, broken: 3, works: 1 }, now).state).toBe("failing");
+    expect(statusLine({ ...base, open_broken: 1 }, now)).toMatchObject({ state: "mixed", text: expect.stringContaining("1 open broken issue") });
+    expect(statusLine({ ...base, health: "unknown", checked_at: null }, now)).toEqual({ state: "unknown", text: "Not health-checked yet." });
+  });
+});

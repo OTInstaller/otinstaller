@@ -1,0 +1,79 @@
+---
+// A package's issues: what people found broken, outdated or wrong, feature requests and questions, with the
+// community status line on top and the form to open one at the bottom (an island; reading needs no account).
+import Base from "../../../../layouts/Base.astro";
+import ToolHeader from "../../../../components/ToolHeader.astro";
+import IssueRow from "../../../../components/IssueRow.astro";
+import IssueComposer from "../../../../islands/IssueComposer";
+import { api, apiOrNull, type CommunityStatus, type IssueKind, type IssueList, type Version } from "../../../../lib/api";
+import { KIND_LABEL, STATE_TONE } from "../../../../lib/community";
+import { loadTool } from "../../../../lib/tool";
+import { cacheFor, withParam } from "../../../../lib/page";
+
+const loaded = await loadTool(Astro, "/issues");
+if ("response" in loaded) return loaded.response;
+const { tool: t, hasDocs } = loaded;
+const ref = `${t.namespace}/${t.name}`;
+const status = ["open", "closed", "all"].includes(Astro.url.searchParams.get("status") ?? "") ? Astro.url.searchParams.get("status")! : "open";
+const kind = (Object.keys(KIND_LABEL) as IssueKind[]).find((k) => k === Astro.url.searchParams.get("kind")) ?? null;
+const before = /^\d{1,15}$/.test(Astro.url.searchParams.get("before") ?? "") ? Astro.url.searchParams.get("before") : null;
+const query = new URLSearchParams({ status, ...(kind ? { kind } : {}), ...(before ? { before } : {}) });
+const [list, state, versions] = await Promise.all([
+  api<IssueList>(`/tools/${ref}/issues?${query}`),
+  apiOrNull<CommunityStatus>(`/tools/${ref}/status`).catch(() => null),
+  api<{ versions: Version[] }>(`/tools/${ref}/versions`).then((r) => r.versions.filter((v) => v.status !== "removed").map((v) => v.version), () => [t.latest_version]),
+]);
+cacheFor(Astro, 60);
+// Kept out of search results until at least one issue has an answer worth finding.
+const indexable = list.issues.some((i) => i.indexable);
+// A filter link: one parameter changed, back to the first page.
+const href = (k: string, v: string | null) => {
+  const u = new URL(Astro.url);
+  if (v === null) u.searchParams.delete(k);
+  else u.searchParams.set(k, v);
+  u.searchParams.delete("before");
+  return `${u.pathname}${u.search}`;
+};
+---
+<Base title={`${ref} issues`} description={`Problems, questions and requests people raised about ${ref}.`} noindex={!indexable} jsonHref={`https://api.otinstaller.com/v1/tools/${ref}/issues`}>
+  <ToolHeader tool={t} active="issues" hasDocs={hasDocs} />
+
+  {state && (
+    <p class={`status-line small ${STATE_TONE[state.line.state]}`}><span class={`status ${STATE_TONE[state.line.state]}`}>{state.line.text}</span></p>
+  )}
+
+  <div class="bar">
+    <nav class="row" aria-label="Filter issues">
+      <a class="chip" aria-current={status === "open" ? "page" : undefined} href={href("status", null)} rel="nofollow">Open ({list.counts.open})</a>
+      <a class="chip" aria-current={status === "closed" ? "page" : undefined} href={href("status", "closed")} rel="nofollow">Closed ({list.counts.closed})</a>
+      {(Object.entries(KIND_LABEL) as [IssueKind, string][]).map(([k, label]) => (
+        <a class="chip" aria-current={kind === k ? "page" : undefined} href={href("kind", kind === k ? null : k)} rel="nofollow">{label}</a>
+      ))}
+    </nav>
+    <a class="btn btn-primary btn-sm" href="#new">Open an issue</a>
+  </div>
+
+  {list.issues.length === 0 ? (
+    <p class="muted empty">{status === "open" ? "No open issues." : "Nothing here."} If something doesn't work, <a href="#new">tell the community</a>: others may have the same problem.</p>
+  ) : (
+    <ul class="issues">{list.issues.map((i) => <IssueRow issue={i} refName={ref} />)}</ul>
+  )}
+  {list.next_before && <p><a class="btn btn-sm" href={withParam(Astro.url, "before", String(list.next_before))} rel="nofollow">Older</a></p>}
+
+  <section id="new" class="new" aria-labelledby="new-h">
+    <h2 id="new-h">Open an issue</h2>
+    <p class="small muted">Issues are public. The package's maintainers and the registry's triagers see them, and people who follow the package can confirm them. Follow the <a href="/policy/community">community guidelines</a>; for malware or abuse, <a href={`/${ref}/report`}>report it privately</a> instead.</p>
+    <IssueComposer client:visible refName={ref} versions={versions} back={`${Astro.site}${ref}/issues#new`} />
+  </section>
+</Base>
+
+<style>
+  .status-line { margin: 0 0 16px; }
+  .bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+  .bar .chip { text-transform: none; letter-spacing: 0; font-size: var(--fs-1); }
+  .issues { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border); }
+  .empty { margin: 16px 0; }
+  .new { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--border); max-width: 760px; }
+  .new h2 { margin: 0 0 6px; }
+  .new > p { margin: 0 0 16px; }
+</style>
