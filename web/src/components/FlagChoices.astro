@@ -1,0 +1,18 @@
+---
+// The reasons a post can be flagged for, as buttons; the issue page's script sends the choice to the API.
+const reasons: [string, string][] = [
+  ["personal_data", "Personal data about someone"],
+  ["spam", "Spam"],
+  ["abuse", "Abuse or harassment"],
+  ["off_topic", "Off topic"],
+  ["other", "Something else"],
+];
+---
+<div class="choices">{reasons.map(([r, label]) => <button class="btn btn-sm" type="button" data-reason={r}>{label}</button>)}</div>
+<p class="small muted out" data-flag-out role="status"></p>
+
+<style>
+  .choices { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .out { margin: 6px 0 0; }
+  .out:empty { display: none; }
+</style>

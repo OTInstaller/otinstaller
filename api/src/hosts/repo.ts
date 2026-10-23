@@ -31,6 +31,15 @@ export interface RepoHost {
   listTags(etag?: string | null): Promise<{ notModified: boolean; tags: string[]; etag: string | null }>;
   /** Current metadata, or null when the repository is gone or no longer accessible. */
   metadata(): Promise<RepoMeta | null>;
+  /** The notes of the release for a tag, or null when there is no release (or it cannot be read). */
+  releaseNotes(tag: string): Promise<string | null>;
+}
+
+/** A release's notes from a JSON response, or null for anything else. */
+async function notesFrom(res: Response, field: "body" | "description"): Promise<string | null> {
+  if (!res.ok) return null;
+  const r = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  return typeof r?.[field] === "string" ? (r[field] as string) : null;
 }
 
 async function check(res: Response, what: string): Promise<Response> {
@@ -74,6 +83,10 @@ export function githubRepo(env: Env, installationId: number, repo: string, repoI
         path: r.full_name, url: r.html_url, defaultBranch: r.default_branch ?? null, description: r.description ?? null,
         topics: r.topics ?? [], stars: r.stargazers_count ?? 0, archived: !!r.archived, visibility: r.private ? "private" : "public",
       };
+    },
+    async releaseNotes(tag) {
+      const res = await deps.fetch(`${github.GITHUB_API}/repositories/${repoId}/releases/tags/${encodeURIComponent(tag)}`, { headers: await headers() });
+      return notesFrom(res, "body");
     },
   };
 }
@@ -167,6 +180,10 @@ export function gitlabRepo(env: Env, projectId: string, userId: string): RepoHos
         path: p.path_with_namespace, url: p.web_url, defaultBranch: p.default_branch ?? null, description: p.description ?? null,
         topics: p.topics ?? p.tag_list ?? [], stars: p.star_count ?? 0, archived: !!p.archived, visibility: p.visibility ?? "private",
       };
+    },
+    async releaseNotes(tag) {
+      const res = await deps.fetch(`${api}/releases/${encodeURIComponent(tag)}`, { headers: await auth() });
+      return notesFrom(res, "description");
     },
   };
 }

@@ -1,0 +1,14 @@
+---
+// /community/moderation: the moderation queue for triagers (staff also have it as the Admin console's Community tab).
+import Base from "../../layouts/Base.astro";
+import PageHead from "../../components/PageHead.astro";
+import CommunityModeration from "../../islands/CommunityModeration";
+
+Astro.response.headers.set("Cache-Control", "private, no-store");
+---
+<Base title="Moderation" noindex>
+  <PageHead eyebrow="Community" title="Moderation">
+    <p class="small muted">Posts waiting for a check, and posts people flagged. Approve what is fine, keep hidden what breaks the <a href="/policy/community">guidelines</a>; staff redact personal data.</p>
+  </PageHead>
+  <CommunityModeration client:load back={`${Astro.site}community/moderation`} />
+</Base>

@@ -10,12 +10,31 @@ Items marked **(you)** need the owner of the GitHub, GitLab, Cloudflare, Resend,
 | Thing | State |
 |-------|-------|
 | `ot` | v0.14.0 is the latest release on `OTInstaller/ot` (23 Oct, 11:31 UTC, tag `v0.14.0` on `374d3a6`), with archives, `.deb`/`.rpm`, signed checksums, six `.mcpb` bundles and `server.json`; `get.otinstaller.com/ot` and `/ot.ps1` serve its install scripts. Checked: a downloaded v0.13.1 on Windows saw it with `ot self-update --check`, then updated to it ("Updated ot from v0.13.1 to v0.14.0") |
-| API and site | Deployed from `main` with `PUBLIC_BETA=0` (no beta strip); migrations up to 0014 applied in production. The site was last deployed on 23 Oct ("Homepage for AI agents" below) |
+| API and site | Deployed from `main` with `PUBLIC_BETA=0` (no beta strip); migrations up to 0014 applied in production. The site was last deployed on 23 Oct ("Every otlite tool on /otlite" below) |
 | Agents | `ot mcp` (since v0.13.0), the remote MCP server at `https://api.otinstaller.com/mcp`, the plugin `OTInstaller/agent-plugin` v0.1.1 (23 Oct; `claude plugin validate --strict` passes); MCP Registry entries `com.otinstaller/ot` 0.14.0 and `com.otinstaller/registry` 1.0.0 |
 | otlite | 1.0.0, 1.1.0 and 1.2.0 released to PyPI on 22 Oct (09:23, 09:39 and 10:51 UTC) by `release-otlite.yml`, each with a GitHub release `otlite-vX.Y.Z` on `OTInstaller/otinstaller`. 1.2.1 ([PR #48](https://github.com/OTInstaller/otinstaller/pull/48)) followed on 22 Oct at 18:54 UTC and is the latest on PyPI |
 | `otinstaller` shim | 0.2.0 is on PyPI (22 Oct, 11:23 UTC), and its files are on the `otlite-v1.2.0` GitHub release. The workflow publishes it from its own environment `pypi-otinstaller` ([PR #44](https://github.com/OTInstaller/otinstaller/pull/44)), but in the `otlite-v1.2.0` run that job failed with `invalid-publisher` (10:52 UTC), so the Actions history doesn't show how 0.2.0 was uploaded. **(you)** Check that PyPI's trusted publisher for `otinstaller` names the environment `pypi-otinstaller` before the next release |
 | otlite installer | `curl -fsSL https://get.otinstaller.com/otlite \| sh` answers 200 (`otlite/scripts/install.sh` from `main`, through `ops/get`) |
-| Site pages | `/agents`, the homepage for AI agents, with its Markdown twin `/agents.md`; `/otlite` and `/otlite/tools` (the catalog from `web/src/data/otlite-catalog.json`); tool pages show the sample output recorded by the scanner's smoke test |
+| Site pages | `/agents`, the homepage for AI agents, with its Markdown twin `/agents.md`; `/otlite` and `/otlite/tools`, both listing every tool from `web/src/data/otlite-catalog.json`; tool pages show the sample output recorded by the scanner's smoke test |
+
+## Phase 1: the community (built 23 October 2026, not deployed)
+
+The roadmap's phase 1 ([roadmap.md](roadmap.md)) is built as pull requests: #58 (roadmap, stars), #61 (release notes),
+#63 (activity and feeds), #66 (learn hub), and the community stack #68 → #74 → #76 → #78 → #79 → #80 → #81 → #82 → #83,
+with the close-out on top. Nothing is merged or deployed. In order, the owner's steps:
+
+- [ ] **(you)** Review and merge the pull requests (the side ones and then the stack, bottom first).
+- [ ] **(you)** Apply migrations 0015 to 0022 remotely before deploying the API
+      (`npx wrangler d1 migrations apply otinstaller --remote`), then deploy the API and the site.
+- [ ] **(you)** Grant the first triager and reviewer roles (Admin console → Community).
+- [ ] **(you)** Set up the community bot for submissions and bump pull requests (publishing-setup.md section 6,
+      "Community submissions"): the "OTInstaller Community" GitHub App, its three secrets, and the main App on all
+      repositories of `osintverse-community`. Until then submitting answers 503 and the rest works.
+- [ ] **(you)** After a week of upstream watcher reports (Admin console → Upstream), decide whether to set
+      `UPSTREAM_WATCH` to `issues`, and later `prs`.
+- [ ] **(you)** Release `ot` with `ot issues`, `ot request`, `ot changelog`, `ot report --works|--broken` and the failure
+      prompt.
+- [ ] **(you)** Publish the draft guide `seed/guides/osint-fundamentals/` (`ot release 1.0.0` in its repository).
 
 ## Left before announcing
 
@@ -68,6 +87,19 @@ These would have stopped testers on day one. **All done as of 21 Oct.** The beta
 | PR #2 (Python package manager merge) | Merged into main on 20 Oct (`6b8f6a6`). Deployed with this branch. | Nothing. |
 | Site docs that went live "at the next deploy" | Live since today's deploy. | Nothing. |
 | API `total` on `/v1/tools` and `/v1/guides` | Live (`/v1/tools?kind=tool` total 38, `/v1/guides` total 10). | Nothing. |
+
+## Every otlite tool on /otlite (23 October 2026)
+
+[PR #54](https://github.com/OTInstaller/otinstaller/pull/54), merged as `52f5b97`, is live. `/otlite` lists every tool
+otlite installs, with the filter buttons from `/otlite/tools` (both pages now share `components/OtliteCatalog.astro`),
+and computes its counts from the catalog instead of hard-coding them.
+
+| Step | Result |
+|------|--------|
+| Site | Deployed from `main` (`52f5b97`) with `PUBLIC_BETA=0` as version `293e9aa9-7a73-470f-bc0b-ed99318692ae`. Roll back to `7c4ed6de-df20-483e-88a7-706e0a79ce54`. The first deploy of this commit, `cb77262c-1a93-496e-a167-d5851902da4f`, was built without `PUBLIC_BETA=0` and showed the beta strip for about 80 seconds (07:08:57 to 07:10:17 UTC) before `293e9aa9` replaced it. |
+| API | Not deployed; nothing changed there. |
+| Checks | `/`, `/otlite`, `/otlite/tools` and `/agents` answer 200 with no beta strip. `/otlite` and `/otlite/tools` each list 47 tools, and `/otlite` shows the same counts by input type as before (24 username, 19 domain, 14 email, 11 URL, 7 IP, 5 name, 4 phone). In the production preview the filter buttons work under the CSP and both pages fit a 375px phone. |
+| Still to do | Nothing. |
 
 ## Homepage for AI agents (23 October 2026)
 
