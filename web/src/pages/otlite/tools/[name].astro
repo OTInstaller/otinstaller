@@ -1,0 +1,500 @@
+---
+// /otlite/tools/<name>: one otlite tool in full. Installing and running it (with a command builder whose value stays
+// in the browser), what each typed input becomes on the tool's own command line, caveats, keys, what a run leaves,
+// how it joins batch runs, and related tools. Data from data/otlite-catalog.json through lib/otlite.ts, which builds
+// the Markdown twin too.
+import Base from "../../../layouts/Base.astro";
+import CopyCommand from "../../../components/CopyCommand.astro";
+import InlineText from "../../../components/InlineText.astro";
+import { apiOrNull, type ToolDetail } from "../../../lib/api";
+import { formatCount } from "../../../lib/format";
+import { NO_DOCKER } from "../../../lib/install";
+import { cacheFor } from "../../../lib/page";
+import { shellQuote } from "../../../lib/otlite-args";
+import {
+  ACCEPT_LABELS, OTLITE_TOOLS, PREFIX_LABELS, batchUse, findOtliteTool, firstSentence, inputLabel, keysOf, licence,
+  neighbours, notices, otherNotes, pin, pythonRange, receives, relatedTools, repoUrl, resultFiles, sampleTarget,
+  toolCommand, toolPath, verifiedOn,
+} from "../../../lib/otlite";
+import { breadcrumbs, clip, graph, softwareApplication } from "../../../lib/seo";
+
+const t = findOtliteTool(Astro.params.name ?? "");
+if (!t) return Astro.rewrite("/404");
+
+// The same tool on the registry, sandboxed with ot: only for a launch-seed wrapper that is published. A slow or
+// failing registry just leaves the section out.
+let registry: ToolDetail | null = null;
+if (t.registry) {
+  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500));
+  registry = await Promise.race([apiOrNull<ToolDetail>(`/tools/${t.registry}`), timeout]).catch(() => null);
+  if (registry && registry.status === "removed") registry = null;
+}
+
+const p = pin(t);
+const keys = keysOf(t);
+const cautions = notices(t);
+const notes = otherNotes(t);
+const batch = batchUse(t);
+const related = relatedTools(t);
+const { prev, next } = neighbours(t);
+const target = sampleTarget(t);
+const files = resultFiles(t);
+const verified = verifiedOn(t);
+const version = t.install.version ?? t.verified?.version ?? null;
+const command = toolCommand(t);
+const install = `otlite install ${t.name}`;
+const md = `${toolPath(t.name)}.md`;
+// "Username" reads as "username" in a sentence; URL, IP address and Telegram keep their capitals.
+const lower = (label: string) => (/^(URL|IP|Telegram)/.test(label) ? label : label.toLowerCase());
+const takes = t.accepts.map((a) => ACCEPT_LABELS[a] ?? a);
+const capabilities = t.capabilities.filter((c) => c !== "dual-use").map((c) => c.replace(/-/g, " "));
+const lead = firstSentence(t.description);
+const envelope = [
+  "{",
+  '  "envelope": 1,',
+  `  "tool": "${t.name}@${version ?? "<version>"}",`,
+  '  "runtime": "otlite",',
+  `  "input": { "target": ${JSON.stringify(target)} },`,
+  '  "case": null,',
+  '  "started_at": "…", "ended_at": "…", "duration_ms": …,',
+  '  "exit_code": 0,',
+  '  "status": "complete",',
+  '  "entities": [{ "type": "url", "value": "…" }, …],',
+  '  "warnings": [],',
+  `  "output": { "path": "${files[0]}", "sha256": "…", "bytes": … }`,
+  "}",
+].join("\n");
+
+cacheFor(Astro, 3600);
+const title = `${t.display_name} with otlite: ${clip(lead, Math.max(24, 60 - t.display_name.length - 13))}`;
+const description = [
+  `${lead}.`,
+  `Install and run ${t.display_name} on Linux or macOS with otlite, no Docker needed.`,
+  takes.length ? `Takes ${takes.map(lower).join(", ")}.` : "",
+  t.api_keys.required.length ? `Needs ${t.api_keys.required.join(", ")}.` : keys.length ? `Optional API keys: ${keys.slice(0, 3).join(", ")}${keys.length > 3 ? "…" : ""}.` : "No API key needed.",
+].filter(Boolean).join(" ");
+const jsonLd = graph(
+  softwareApplication({
+    name: t.display_name,
+    description: t.description,
+    path: toolPath(t.name),
+    operatingSystem: "Linux, macOS",
+    version,
+    license: t.license,
+    repository: repoUrl(t.repo),
+    requirements: `otlite, Python ${t.requires_python ? pythonRange(t.requires_python) : "3.10 or newer"}`,
+    keywords: [...t.topics, "OSINT tool"],
+  }),
+  breadcrumbs([["otlite", "/otlite"], ["Tools", "/otlite/tools"], [t.display_name, toolPath(t.name)]]),
+);
+---
+<Base title={title} description={description} jsonLd={jsonLd} markdown={md}>
+  <header class="tool-head">
+    <nav class="small crumbs" aria-label="Breadcrumb">
+      <a href="/otlite">otlite</a> <span aria-hidden="true">/</span> <a href="/otlite/tools">Tools</a> <span aria-hidden="true">/</span> <span aria-current="page">{t.display_name}</span>
+    </nav>
+    <div class="title-row">
+      <h1>{t.display_name}</h1>
+      {version && <span class="ver">{version}</span>}
+    </div>
+    <p class="lead">{t.description}</p>
+    <ul class="badges list-plain" aria-label="At a glance">
+      {verified && <li class="badge ok" title={`Installed and passed its smoke test on ${t.verified!.os}`}>Verified {verified}</li>}
+      <li class="badge">{p.short}</li>
+      <li class="badge">{licence(t) === "Not stated" ? "Licence not stated" : licence(t)}</li>
+      {t.stars ? <li class="badge">{formatCount(t.stars)} stars</li> : null}
+      {keys.length > 0 && <li class="badge">{t.api_keys.required.length ? "API key needed" : "Optional API keys"}</li>}
+      {t.dual_use && <li class="badge warn">Dual-use</li>}
+      {t.interactive && <li class="badge warn">Interactive</li>}
+      {t.needs_config && <li class="badge warn">Needs setup</li>}
+      {t.long_running && <li class="badge warn">Runs until stopped</li>}
+    </ul>
+    <p class="small head-links">
+      <a href={repoUrl(t.repo)} rel="noopener nofollow">Source on GitHub</a> · <a href={p.url} rel="noopener nofollow">{t.install.method === "pip" ? "PyPI release" : "Pinned commit"}</a> · <a href={md}>Markdown</a>
+    </p>
+  </header>
+
+  <section class="run" aria-labelledby="run-h" data-otlite-run data-name={t.name} data-command={command} data-default-args={JSON.stringify(t.default_args)}>
+    <div class="run-head">
+      <h2 class="eyebrow" id="run-h">Install and run</h2>
+      {t.inputs.length > 1 && (
+        <div class="rtabs" role="radiogroup" aria-label="Run it on">
+          {t.inputs.map((e, i) => (
+            <>
+              <input type="radio" name="otlite-input" id={`in-${i}`} value={String(i)} checked={i === 0} class="sr-only" />
+              <label for={`in-${i}`}>{inputLabel(e)}</label>
+            </>
+          ))}
+        </div>
+      )}
+    </div>
+    <ol class="steps list-plain">
+      <li>
+        <span class="n" aria-hidden="true">1</span>
+        <div class="step">
+          <CopyCommand command={install} label={`Install ${t.display_name}`} />
+          <p class="note small">Installs <code>{p.label}</code> into its own virtualenv{t.install.extra_packages.length > 0 && <>, with {t.install.extra_packages.map((x, i) => <>{i > 0 && ", "}<code>{x}</code></>)}</>}. otlite lists what it will install and asks before it starts.</p>
+        </div>
+      </li>
+      <li>
+        <span class="n" aria-hidden="true">2</span>
+        <div class="step">
+          {t.inputs.length > 0 ? t.inputs.map((e, i) => (
+            <div class:list={["rpane", { only: t.inputs.length === 1 }]} data-pane={String(i)} data-entry>
+              <div class="cmd" role="group" aria-label={`Run ${t.display_name} on ${lower(inputLabel(e))}`}>
+                <code data-run-line aria-live="polite">{e.command}</code>
+                <button class="btn copy" type="button" data-copy={e.command} aria-label="Copy the run command"><span class="label">Copy</span></button>
+              </div>
+              <div class="values" data-values hidden>
+                {e.parts.map((part) => (
+                  <label class="value">
+                    <span>Your {lower(PREFIX_LABELS[part.prefix] ?? part.prefix)}</span>
+                    <input type="text" value={part.sample} data-prefix={part.prefix} data-flag={part.flag} autocomplete="off" autocapitalize="off" spellcheck="false" />
+                  </label>
+                ))}
+                <p class="note small">Type your own value to rewrite the commands. It stays in this page: nothing is sent or saved.</p>
+              </div>
+              <p class="note small receives"><code>{command}</code> receives <code data-receives>{receives(t, e.tool_args)}</code></p>
+            </div>
+          )) : (
+            <div class="rpane only" data-pane="0">
+              <CopyCommand command={`otlite run ${t.name} -- --help`} label={`Show ${t.display_name}'s own help`} />
+              <p class="note small">{t.display_name} has no typed inputs. Everything after <code>--</code> goes to <code>{command}</code> unchanged, so pass its own arguments there.</p>
+            </div>
+          )}
+        </div>
+      </li>
+    </ol>
+    <details class="noot">
+      <summary class="small">No otlite yet? Install it in one line</summary>
+      <CopyCommand command={NO_DOCKER.command} label="Install otlite" />
+      <p class="note small">Linux and macOS, Python 3.10 or newer, no Docker. It finds a supported Python and installs pipx if it is missing. <a href="/otlite">About otlite</a> · <a href="/docs/otlite">otlite docs</a></p>
+    </details>
+  </section>
+
+  <div class="two-col">
+    <div class="main">
+      {(cautions.length > 0 || notes.length > 0) && (
+        <section aria-labelledby="before-h">
+          <h2 id="before-h">Before you run it</h2>
+          {cautions.length > 0 && (
+            <ul class="cautions list-plain">
+              {cautions.map((c) => <li class:list={["notice", c.kind]}><b>{c.title}</b> <InlineText text={c.text} /></li>)}
+            </ul>
+          )}
+          {notes.length > 0 && (
+            <div class="notes">
+              <h3>Notes</h3>
+              <ul>{notes.map((n) => <li><InlineText text={n} /></li>)}</ul>
+            </div>
+          )}
+        </section>
+      )}
+
+      <section aria-labelledby="takes-h">
+        <h2 id="takes-h">What it takes</h2>
+        {t.inputs.length > 0 ? (
+          <>
+            <p class="muted">Typed inputs after <code>--</code> become {t.display_name}'s own arguments. Anything else after <code>--</code> passes through unchanged, so every option of the tool still works.</p>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th scope="col">Input</th><th scope="col">With otlite</th><th scope="col"><code>{command}</code> receives</th></tr></thead>
+                <tbody>
+                  {t.inputs.map((e) => (
+                    <tr>
+                      <th scope="row">{inputLabel(e)}<span class="prefix">{e.parts.map((part) => <code>{part.prefix}:</code>)}</span></th>
+                      <td><code>{e.command}</code></td>
+                      <td><code>{receives(t, e.tool_args)}</code></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {t.default_args.length > 0 && <p class="small muted">otlite always passes <code>{t.default_args.map(shellQuote).join(" ")}</code> first.</p>}
+          </>
+        ) : (
+          <p class="muted">{t.display_name} has no typed inputs{takes.length > 0 && <>, though it works on {takes.map(lower).join(", ")}</>}. Pass its own arguments after <code>--</code>; <code>otlite run {t.name} -- --help</code> lists them.</p>
+        )}
+      </section>
+
+      {keys.length > 0 && (
+        <section aria-labelledby="keys-h">
+          <h2 id="keys-h">API keys</h2>
+          <p class="muted">{t.api_keys.required.length ? `${t.display_name} needs the required keys to run; the optional ones add sources.` : `All optional: ${t.display_name} runs without them and uses each one you set.`} <code>otlite keys set</code> asks for the value without showing it and saves it in <code>~/.otlite/.env</code>, readable only by you. Each tool receives only the keys it declares, and values never appear in logs or results.</p>
+          <div class="table-wrap">
+            <table class="data keys">
+              <thead><tr><th scope="col">Key</th><th scope="col">Needed</th><th scope="col">Set it</th></tr></thead>
+              <tbody>
+                {keys.map((k) => (
+                  <tr>
+                    <th scope="row"><code>{k}</code></th>
+                    <td>{t.api_keys.required.includes(k) ? "Required" : "Optional"}</td>
+                    <td><span class="keycmd"><code>otlite keys set {k}</code><button class="btn btn-sm copy" type="button" data-copy={`otlite keys set ${k}`} aria-label={`Copy: otlite keys set ${k}`}><span class="label">Copy</span></button></span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      <section aria-labelledby="leaves-h">
+        <h2 id="leaves-h">What a run leaves</h2>
+        <p class="muted">Every run is saved under <code>results/</code> where you run otlite (or <code>--output</code>, or <code>OTLITE_RESULTS_DIR</code>): what the tool printed, a sidecar with how it ran, and an envelope.</p>
+        <ul class="files list-plain small">{files.map((f) => <li><code>{f}</code></li>)}</ul>
+        <figure class="envelope">
+          <pre><code>{envelope}</code></pre>
+          <figcaption class="small muted">The envelope's shape, the same for every tool; values elided. Its entities are the emails, domains, IP addresses and URLs found in the output, or the tool's own when it prints them.</figcaption>
+        </figure>
+        <div class="cmd-list">
+          <CopyCommand command={`otlite results --tool ${t.name}`} label="List saved runs of this tool" />
+          <CopyCommand command={`otlite extract ${t.name}`} label="Pull out indicators" />
+          <CopyCommand command={`otlite diff ${t.name} ${shellQuote(target)}`} label="Compare the two latest runs" />
+        </div>
+        <p class="small muted">List the saved runs, pull out every indicator, or compare the two latest runs against the same target.</p>
+      </section>
+
+      <section aria-labelledby="with-h">
+        <h2 id="with-h">With other tools</h2>
+        {batch.skip ? (
+          <p class="muted">Batch runs skip it: {batch.skip}.</p>
+        ) : batch.all ? (
+          <>
+            <p class="muted">These run it with every other installed tool that takes the same input, a few at a time, and save each run:</p>
+            <div class="cmd-list">
+              <CopyCommand command={batch.all} label="Run every matching tool" />
+              <CopyCommand command={batch.auto!} label="Detect the type and run every matching tool" />
+            </div>
+          </>
+        ) : (
+          <p class="muted">Batch runs can't pass it a value, so run it on its own.</p>
+        )}
+        {t.playbooks.length > 0 && (
+          <>
+            <p class="muted">It is in the {t.playbooks.map((pb, i) => <>{i > 0 && " and "}<code>{pb}</code></>)} playbook{t.playbooks.length > 1 ? "s" : ""}:</p>
+            <div class="cmd-list">{t.playbooks.map((pb) => <CopyCommand command={`otlite playbook ${pb} ${shellQuote(target)}`} label={`Run the ${pb} playbook`} />)}</div>
+          </>
+        )}
+      </section>
+
+      {registry && (
+        <section class="sandboxed" aria-labelledby="ot-h">
+          <h2 id="ot-h">Also on the OTInstaller registry</h2>
+          <p class="muted">Prefer a sandbox? <a href={`/${t.registry}`}>{t.registry}</a> runs {t.display_name} with <code>ot</code>: pinned and scanned, in a locked-down container with no access to your files and no network unless it needs one. Linux, macOS and Windows, with Docker or Podman.</p>
+          <CopyCommand command={`ot install ${t.registry}`} label={`Install ${t.registry} with ot`} />
+        </section>
+      )}
+
+      {related.length > 0 && (
+        <section aria-labelledby="rel-h">
+          <div class="section-head"><h2 id="rel-h">Related tools</h2><a href="/otlite/tools">All {OTLITE_TOOLS.length} tools →</a></div>
+          <ul class="related list-plain">
+            {related.map((r) => (
+              <li>
+                <a href={toolPath(r.name)}>
+                  <b>{r.display_name}</b>
+                  <span class="small muted">{clip(firstSentence(r.description), 90)}</span>
+                  <span class="small faint">Takes {r.accepts.map((a) => lower(ACCEPT_LABELS[a] ?? a)).join(", ")}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <nav class="pager" aria-label="Previous and next otlite tool">
+        {prev ? <a href={toolPath(prev.name)} rel="prev"><span class="small faint">← Previous</span><b>{prev.display_name}</b></a> : <span />}
+        {next ? <a class="next" href={toolPath(next.name)} rel="next"><span class="small faint">Next →</span><b>{next.display_name}</b></a> : <span />}
+      </nav>
+    </div>
+
+    <aside class="panel facts" aria-label="Facts">
+      <section>
+        <h3>Install</h3>
+        <dl class="small">
+          <dt>From</dt><dd>{t.install.method === "pip" ? "PyPI, with pip" : "GitHub, with git"}</dd>
+          <dt>Pinned</dt><dd><a href={p.url} rel="noopener nofollow">{p.label}</a></dd>
+          {t.install.playwright_browsers.length > 0 && <><dt>Browser</dt><dd>Chromium, for Playwright</dd></>}
+          <dt>Command</dt><dd><code>{command}</code></dd>
+          <dt>Python</dt><dd>{t.requires_python ? pythonRange(t.requires_python) : "3.10 or newer"}</dd>
+        </dl>
+      </section>
+      <section>
+        <h3>Verified</h3>
+        {t.verified ? (
+          <p class="small">{verified}: version {t.verified.version} installed and passed its smoke test on {t.verified.os}, Python {t.verified.python}.</p>
+        ) : <p class="small muted">Not yet.</p>}
+      </section>
+      <section>
+        <h3>Takes</h3>
+        {takes.length > 0 ? <p class="chips">{takes.map((l) => <span class="chip">{l}</span>)}</p> : <p class="small muted">Its own arguments.</p>}
+        {t.inputs.length > 0 && <p class="small muted hint">Typed inputs: {t.inputs.flatMap((e) => e.parts).map((part, i) => <>{i > 0 && " "}<code>{part.prefix}:</code></>)}</p>}
+      </section>
+      {capabilities.length > 0 && (
+        <section>
+          <h3>Does</h3>
+          <p class="chips">{capabilities.map((c) => <span class="chip quiet">{c}</span>)}</p>
+        </section>
+      )}
+      <section>
+        <h3>Project</h3>
+        <dl class="small">
+          <dt>Source</dt><dd><a href={repoUrl(t.repo)} rel="noopener nofollow">{t.repo}</a></dd>
+          <dt>Licence</dt><dd>{licence(t)}</dd>
+          {t.stars ? <><dt>Stars</dt><dd>{t.stars.toLocaleString("en-US")}</dd></> : null}
+          {keys.length > 0 && <><dt>Keys</dt><dd>{keys.length} {t.api_keys.required.length ? "" : "optional"}</dd></>}
+        </dl>
+      </section>
+      <section class="links small">
+        <a href={md}>Markdown</a> · <a href="/otlite/tools">All tools</a> · <a href="/docs/otlite">otlite docs</a>
+      </section>
+    </aside>
+  </div>
+</Base>
+
+<script>
+  import { runLine, shellLine, toolArgs } from "../../../lib/otlite-args";
+
+  // The value fields rewrite the run command and what the tool receives as you type. The value stays in this page:
+  // it is never sent, stored or put in the address.
+  const run = document.querySelector<HTMLElement>("[data-otlite-run]");
+  if (run) {
+    const name = run.dataset.name ?? "";
+    const command = run.dataset.command ?? "";
+    const defaults = JSON.parse(run.dataset.defaultArgs ?? "[]") as string[];
+    for (const pane of run.querySelectorAll<HTMLElement>("[data-entry]")) {
+      const fields = [...pane.querySelectorAll<HTMLInputElement>("input[data-prefix]")];
+      const line = pane.querySelector<HTMLElement>("[data-run-line]");
+      const copy = pane.querySelector<HTMLButtonElement>("button[data-copy]");
+      const receives = pane.querySelector<HTMLElement>("[data-receives]");
+      const values = pane.querySelector<HTMLElement>("[data-values]");
+      if (!fields.length || !line || !copy || !receives || !values) continue;
+      values.hidden = false;
+      const update = () => {
+        const parts = fields.map((f) => ({ prefix: f.dataset.prefix ?? "", flag: f.dataset.flag ?? "", value: f.value.trim() || f.defaultValue }));
+        const cmd = runLine(name, parts);
+        line.textContent = cmd;
+        copy.dataset.copy = cmd;
+        receives.textContent = `${command} ${shellLine(toolArgs(defaults, parts))}`;
+      };
+      for (const f of fields) f.addEventListener("input", update);
+    }
+  }
+</script>
+
+<style>
+  .tool-head { margin-bottom: 24px; }
+  .crumbs { margin: 0 0 8px; color: var(--text-faint); display: flex; flex-wrap: wrap; gap: 8px; }
+  .crumbs a { color: var(--text-muted); text-decoration: none; }
+  .crumbs a:hover { color: var(--text); text-decoration: underline; }
+  .crumbs [aria-current] { color: var(--text-muted); }
+  .title-row { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: var(--fs-6); word-break: break-word; }
+  .ver { color: var(--text-muted); }
+  .tool-head .lead { margin: 8px 0 14px; overflow-wrap: anywhere; }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; }
+  .badges li + li { margin-top: 0; }
+  .head-links { margin: 14px 0 0; color: var(--text-faint); }
+  .head-links a { color: var(--text-muted); }
+
+  /* The run box reads the terminal palette in both themes, its links and fields included. */
+  .run {
+    --text: var(--code-text); --text-muted: var(--code-muted); --text-faint: var(--code-muted); --bg: var(--code-bg);
+    --bg-inverse: var(--code-text); --border: var(--code-border); --border-strong: var(--code-muted); --bg-subtle: var(--code-raised);
+    background: var(--code-bg); color: var(--code-text); border: 1px solid var(--border-strong); padding: 16px; display: grid; gap: 14px;
+  }
+  .run a { color: var(--code-text); }
+  .run-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .run-head h2 { margin: 0; }
+  .rtabs { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--code-border); }
+  .rtabs label { cursor: pointer; padding: 4px 10px; color: var(--code-muted); font-size: var(--fs-1); }
+  .rtabs label:hover { color: var(--code-text); }
+  .rtabs input:focus-visible + label { outline: 2px solid var(--code-text); outline-offset: -2px; }
+  .rtabs:has(#in-0:checked) label[for="in-0"], .rtabs:has(#in-1:checked) label[for="in-1"], .rtabs:has(#in-2:checked) label[for="in-2"],
+  .rtabs:has(#in-3:checked) label[for="in-3"], .rtabs:has(#in-4:checked) label[for="in-4"], .rtabs:has(#in-5:checked) label[for="in-5"] { background: var(--code-text); color: var(--code-bg); }
+  .rpane { display: none; }
+  .rpane.only,
+  .run:has(#in-0:checked) [data-pane="0"], .run:has(#in-1:checked) [data-pane="1"], .run:has(#in-2:checked) [data-pane="2"],
+  .run:has(#in-3:checked) [data-pane="3"], .run:has(#in-4:checked) [data-pane="4"], .run:has(#in-5:checked) [data-pane="5"] { display: grid; gap: 10px; }
+  .steps { display: grid; gap: 14px; }
+  .steps > li { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 12px; align-items: start; }
+  .steps > li + li { margin-top: 0; }
+  .n { display: grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--code-border); color: var(--code-muted); font-size: var(--fs-0); margin-top: 6px; }
+  .step { display: grid; gap: 8px; min-width: 0; }
+  .note { margin: 0; color: var(--code-muted); overflow-wrap: anywhere; }
+  .note code { color: var(--code-text); }
+  .receives code[data-receives] { color: var(--code-text); }
+  .values { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: end; }
+  .values[hidden] { display: none; }
+  .values .note { flex-basis: 100%; }
+  .value { display: grid; gap: 4px; color: var(--code-muted); flex: 1 1 220px; max-width: 420px; }
+  .value input { background: var(--code-raised); color: var(--code-text); border-color: var(--code-border); font: inherit; font-size: var(--fs-2); width: 100%; }
+  .value input:focus-visible { border-color: var(--code-text); }
+  .noot summary { cursor: pointer; color: var(--code-muted); }
+  .noot summary:hover { color: var(--code-text); }
+  .noot[open] summary { margin-bottom: 10px; }
+  .noot > * + * { margin-top: 8px; }
+
+  .two-col { margin-top: 32px; }
+  .main { min-width: 0; }
+  .main > * + * { margin-top: 40px; }
+  .main h2 { font-size: var(--fs-4); margin: 0 0 12px; }
+  .main p { margin: 0 0 12px; max-width: 75ch; }
+  .cautions { display: grid; gap: 8px; }
+  .cautions li + li { margin-top: 0; }
+  .cautions b { font-weight: 600; color: var(--text); }
+  .notes { margin-top: 16px; }
+  .notes h3 { margin: 0 0 6px; font-size: var(--fs-2); }
+  .notes ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 75ch; }
+  .data th[scope="row"] { white-space: nowrap; }
+  .data code { overflow-wrap: anywhere; }
+  .prefix { display: block; margin-top: 2px; }
+  .prefix code { margin-right: 4px; color: var(--text-muted); }
+  .keycmd { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .files { margin: 0 0 12px; }
+  .files li + li { margin-top: 4px; }
+  .files code { overflow-wrap: anywhere; }
+  .envelope { margin: 0 0 12px; border: 1px solid var(--border); background: var(--bg-raised); }
+  .envelope pre { margin: 0; padding: 12px 14px; font-size: var(--fs-1); line-height: 1.55; overflow-x: auto; color: var(--text-muted); }
+  .envelope figcaption { padding: 10px 14px; border-top: 1px solid var(--border); }
+  .cmd-list { display: grid; gap: 8px; margin: 0 0 12px; }
+  .cmd-list :global(.cmd) { font-size: var(--fs-1); }
+  .sandboxed { border: 1px solid var(--border); border-left: 3px solid var(--info); background: var(--bg-subtle); padding: 16px; }
+  .sandboxed :global(.cmd) { font-size: var(--fs-1); }
+  .related { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); }
+  .related li + li { margin-top: 0; }
+  .related a { display: grid; gap: 4px; padding: 14px 16px; height: 100%; background: var(--bg); color: var(--text); text-decoration: none; transition: background var(--dur-1); }
+  .related a:hover, .related a:focus-visible { background: var(--bg-subtle); }
+  .related a:hover b { text-decoration: underline; }
+  .pager { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; border-top: 1px solid var(--border); padding-top: 16px; }
+  .pager a { display: grid; gap: 2px; color: var(--text); text-decoration: none; }
+  .pager a:hover b { text-decoration: underline; }
+  .pager .next { text-align: right; }
+
+  .facts { padding: 0; position: sticky; top: 76px; }
+  .facts section { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .facts section:last-child { border-bottom: 0; }
+  .facts h3 { margin: 0 0 8px; font-size: var(--fs-0); text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-faint); font-weight: 600; }
+  .facts p { margin: 0; }
+  .facts dl { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 12px; }
+  .facts dt { color: var(--text-muted); }
+  .facts dd { margin: 0; overflow-wrap: anywhere; }
+  .facts .hint { margin-top: 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { cursor: default; }
+  .chip.quiet { text-transform: none; letter-spacing: 0; font-size: var(--fs-1); color: var(--text-muted); border-color: var(--border); }
+  .links { color: var(--text-faint); }
+  .links a { color: var(--text-muted); }
+
+  @media (max-width: 960px) {
+    .facts { position: static; }
+  }
+  @media (max-width: 640px) {
+    /* On a phone the whole command matters more than one line: wrap it instead of scrolling inside its box. */
+    .run :global(.cmd code) { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .related { grid-template-columns: minmax(0, 1fr); }
+    .pager { grid-template-columns: minmax(0, 1fr); }
+    .pager .next { text-align: left; }
+    .data th[scope="row"] { white-space: normal; }
+  }
+</style>

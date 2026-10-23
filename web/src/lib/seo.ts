@@ -38,6 +38,35 @@ export function itemList(name: string, items: ToolSummary[]): Record<string, unk
   };
 }
 
+/** A free SoftwareApplication for a tool page, with only what the page itself shows. */
+export function softwareApplication(app: {
+  name: string;
+  description: string;
+  path: string;
+  operatingSystem: string;
+  version?: string | null;
+  license?: string | null;
+  repository?: string | null;
+  requirements?: string;
+  keywords?: string[];
+}): Record<string, unknown> {
+  return {
+    "@type": "SoftwareApplication",
+    name: app.name,
+    description: app.description,
+    url: `${SITE_URL}${app.path}`,
+    applicationCategory: "SecurityApplication",
+    operatingSystem: app.operatingSystem,
+    ...(app.version ? { softwareVersion: app.version } : {}),
+    ...(app.license && app.license !== "NOASSERTION" ? { license: app.license } : {}),
+    ...(app.repository ? { codeRepository: app.repository } : {}),
+    ...(app.requirements ? { softwareRequirements: app.requirements } : {}),
+    ...(app.keywords?.length ? { keywords: app.keywords.join(", ") } : {}),
+    offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+    isAccessibleForFree: true,
+  };
+}
+
 /** Wraps one or more schema.org objects in a graph with the context, the shape Base.astro prints. */
 export function graph(...nodes: Record<string, unknown>[]): Record<string, unknown> {
   return { "@context": "https://schema.org", "@graph": nodes };

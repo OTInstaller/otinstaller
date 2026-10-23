@@ -666,6 +666,13 @@ Astro 7 with `output: "server"` on `@astrojs/cloudflare`, Preact islands, no CSS
   `components/OtliteCatalog.astro`, and `/otlite` computes its counts from it), read at build time from
   `src/data/otlite-catalog.json`, which `otlite/scripts/web_catalog.py` generates from otlite's registry (a test in
   `otlite/tests/test_web_catalog.py` fails when it is stale; regenerate it, don't edit it).
+- `/otlite/tools/<name>` (`otlite/tools/[name].astro`): one page per otlite tool, from the same JSON through
+  `lib/otlite.ts`. It shows install and run commands with a value builder (the value never leaves the page), what each
+  typed input becomes on the tool's command line (`tool_args`, computed by otlite's own `_build_tool_args`; the
+  browser's `lib/otlite-args.ts` must agree, which `otlite.test.ts` checks for every tool), caveats from the registry's
+  flags and `notes`, keys, results, batch runs and playbooks, and a link to the registry wrapper when the launch seed has
+  one and it is published. Its Markdown twin is `otlite/tools/[name].md.ts`; there is no sample output on purpose,
+  because otlite's example files are illustrative.
 - Tool pages show sample output: the envelope the scanner's smoke test recorded (`sample` from the API,
   `recordedEnvelope` in `lib/evidence.ts`), else one shaped from the declared output types, with a caption saying
   which.
@@ -877,7 +884,8 @@ read and the first run copies settings from `~/.otinstaller`. Users of both edit
   environment.
 - The one-line installer `curl -fsSL https://get.otinstaller.com/otlite | sh` is `otlite/scripts/install.sh` (pipx
   from PyPI), served from `main` by `ops/get`.
-- `otlite/scripts/web_catalog.py` writes `web/src/data/otlite-catalog.json` for the site's `/otlite/tools` page; rerun
+- `otlite/scripts/web_catalog.py` writes `web/src/data/otlite-catalog.json` for the site's `/otlite` pages (it reads
+  `seed/community/` to name each tool's registry wrapper); rerun
   it whenever the catalog changes (its test fails otherwise). This is the one place where `otlite/` writes outside its
   folder.
 - **Read [otlite/AGENTS.md](otlite/AGENTS.md) before touching anything in `otlite/`.** Its rules apply there and differ

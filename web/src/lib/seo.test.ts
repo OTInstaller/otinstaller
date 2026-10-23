@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { ToolSummary } from "./api";
-import { breadcrumbs, clip, faqFromMarkdown, faqPage, graph, itemList } from "./seo";
+import { breadcrumbs, clip, faqFromMarkdown, faqPage, graph, itemList, softwareApplication } from "./seo";
+
+describe("softwareApplication", () => {
+  it("is free, absolute and leaves out what is unknown", () => {
+    const app = softwareApplication({ name: "Ghunt", description: "Offensive Google framework", path: "/otlite/tools/ghunt", operatingSystem: "Linux, macOS", version: "2.3.4", license: "NOASSERTION", repository: "https://github.com/mxrch/GHunt" });
+    expect(app.url).toBe("https://otinstaller.com/otlite/tools/ghunt");
+    expect(app.softwareVersion).toBe("2.3.4");
+    expect(app.codeRepository).toBe("https://github.com/mxrch/GHunt");
+    expect(app).not.toHaveProperty("license");
+    expect(app).not.toHaveProperty("keywords");
+    expect(app.isAccessibleForFree).toBe(true);
+  });
+});
 
 describe("faqFromMarkdown", () => {
   it("pairs question headings with their answers, links and code flattened", () => {
