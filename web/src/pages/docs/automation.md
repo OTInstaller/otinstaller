@@ -38,7 +38,7 @@ setting for an agent or a CI job. `ot run` prints the JSON [result envelope](/do
 | `ot run` | the [envelope](/docs/results) |
 | `ot run --all`, `ot playbook`, `ot auto` | an array of rows, or `-f jsonl` lines |
 | `ot extract`, `ot diff` | indicators by type; new and gone entities |
-| `ot outdated`, `ot update` | `[{ref, installed, latest, status, note}]` |
+| `ot outdated`, `ot update` | `[{ref, installed, latest, status, note, flags, replacement}]`; `flags` lists any of `deprecated`, `possibly_broken`, `yanked`, `source_unavailable` and `moved` |
 | `ot keys list` | `[{name, set, source, required_by, optional_for}]`, never values |
 | `ot doctor` | `{ok, checks: [{name, status, detail}], data_dir, version}` |
 | `ot validate` | `{valid, problems}` |
