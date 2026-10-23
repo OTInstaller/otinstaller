@@ -84,24 +84,36 @@ func (a *App) playbookCmd() *cobra.Command {
 			}
 			var selection []*state.Installed
 			var missing []string
+			var todo []pkgRef
 			for _, ref := range p.Tools {
 				if inst := st.Installed[ref]; inst != nil {
 					selection = append(selection, inst)
-					continue
-				}
-				if !ra.Yes {
-					missing = append(missing, ref)
 					continue
 				}
 				pr, err := parseRef(ref)
 				if err != nil {
 					return err
 				}
-				inst, err := a.install(cmd.Context(), pr, ra.Native)
+				missing, todo = append(missing, ref), append(todo, pr)
+			}
+			if len(missing) > 0 && ra.Yes {
+				res, err := a.installMany(cmd.Context(), todo, ra.Native)
 				if err != nil {
-					return fmt.Errorf("installing %s for playbook %s: %w", ref, p.Name, err)
+					what := "tools"
+					if len(todo) == 1 {
+						what = missing[0]
+					}
+					return fmt.Errorf("installing %s for playbook %s: %w", what, p.Name, err)
 				}
-				selection = append(selection, inst)
+				// The playbook's own order is the order of the summary. A package that moved is installed under its new
+				// name, so the results are matched by position.
+				for i, r := range res {
+					st.Installed[missing[i]] = r.inst
+				}
+				selection, missing = nil, nil
+				for _, ref := range p.Tools {
+					selection = append(selection, st.Installed[ref])
+				}
 			}
 			if len(missing) > 0 {
 				var how []string
