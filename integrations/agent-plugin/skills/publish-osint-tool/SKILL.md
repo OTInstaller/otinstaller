@@ -6,9 +6,10 @@ license: Apache-2.0
 
 # Publishing a tool to OTInstaller
 
-A tool is published from its own GitHub or GitLab repository. The repository gets an `otinstaller.yaml` manifest, a
-Dockerfile (or a PyPI package) and a release workflow. Pushing a `vX.Y.Z` tag makes the registry validate the release,
-security-scan it, send a new publisher to human review, and publish it. Read these first:
+A tool gets an `otinstaller.yaml` manifest and a Dockerfile (or a PyPI package). From a GitHub or GitLab repository it
+also gets a release workflow, and pushing a `vX.Y.Z` tag releases it. Without a repository, `ot publish` uploads the
+release straight to the registry, into a namespace made with `ot namespace create`. Either way the registry validates
+the release, security-scans it, sends a new publisher to human review, and publishes it. Read these first:
 
 - https://otinstaller.com/docs/publishing.md
 - https://otinstaller.com/docs/manifest.md (and the schema, https://otinstaller.com/schema/v1.json)
@@ -39,8 +40,12 @@ security-scan it, send a new publisher to human review, and publish it. Read the
      `{"entities": [{"type": "account", "value": "...", "source": "site"}]}`.
 4. **Check it** with `validate_manifest` (MCP) or `ot validate`, then `ot validate --smoke`, which builds it and runs
    `test.input` in the sandbox. Fix every problem; each code is explained at https://otinstaller.com/docs/errors.
-5. **Release.** The release workflow `ot init` wrote builds, signs (cosign, keyless) and tags. Only push a release tag
-   or run the workflow when the user explicitly says so. That publishes to a public registry.
+5. **Release.**
+   - From a repository: the release workflow `ot init` wrote builds, signs (cosign, keyless) and tags.
+   - Without one: push the image to a public registry, pin its digest in `runtime.image`, then `ot publish`.
+     `ot publish --dry-run` lists what it would upload and changes nothing.
+   - Only push a release tag, run the workflow or run `ot publish` when the user explicitly says so. That publishes to
+     a public registry.
 
 Never put secrets in the manifest, the image or the repository. Credit the upstream project when packaging someone
 else's tool, and keep its license.

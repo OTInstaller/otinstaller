@@ -207,6 +207,47 @@ Step by step:
     'internal_error'`; an undispatched `scanning` version becomes `rejected` (`internal_error`) and the commit status
     is set to `error "The registry could not start the checks; push the tag again"`.
 
+### a2. Publish directly (`ot publish`)
+
+```
+ ot publish [path]                                   (cli/internal/cli/publish.go)
+   manifest.LoadFile + Validate -> manifest.BundleFiles (manifest, README, pages, every image under the folder)
+   POST /v1/publish?namespace=&name=&version=  multipart, one part per file named by its path
+     direct.ts:acceptUpload
+       uploadTarget: owner/publisher of the namespace (404 namespace_unknown, 403 forbidden, namespace_not_allowed)
+       uploadConflicts: manifest_name_taken (repo_url set), manifest_version_exists, publish_in_progress
+       overLimit("publish", ns, 20/h)  -> 429 publish_rate_limited
+       readBundle: Content-Length <= 25 MiB (413 bundle_too_large), <= 300 files, bundlePath() (400 bundle_invalid)
+       parseManifest (400 manifest_invalid with problems); must name the query's ns/name/version
+       R2 CONTENT uploads/<jobId>/<path> per file
+       INSERT publish_jobs (provider 'direct', repo '<ns>/<name>', tag 'v<version>', namespace_id, bundle_key,
+                            submitted_by) + PUBLISH_QUEUE.send({jobId}); email the owners of a GitHub/GitLab namespace
+   GET /v1/me/publish-jobs/:id  (polled every 3 s until validation ends, or the outcome with --wait)
+```
+
+`processJob` treats a job with `bundle_key` as an upload:
+- `jobContext` takes the namespace from `namespace_id` and reads files through `direct.ts:bundleHost`, a `RepoHost`
+  over the R2 objects. `tagCommit` returns `""` and `setStatus` does nothing, so the rest of the flow is unchanged.
+- No held manifest is looked up and no `sources` row is written. `tools.repo_url` stays NULL: the namespace owns the
+  name. Links to other files in the pages render as text (`fileUrlFor` returns null).
+- `releaseProblems` gives `manifest_name_taken` when the tool has a `repo_url`. In the other direction, the first
+  git job that releases a direct package sets its `repo_url` (`record`), and from then on uploads are refused.
+- The version upsert only reuses a `rejected` row. When it changes nothing (two releases of one version at once), the
+  job is rejected with `manifest_version_exists`.
+- `startChecks` dispatches with `signer: null` and `sourceRepo: ""`; see the scan flow for pinning.
+- The upload is deleted after the checks start, on rejection, and in `failJob`. An R2 lifecycle rule on `uploads/`
+  removes anything left over.
+
+Registry namespaces come from `POST /v1/namespaces` (`direct.ts:createNamespace`, `ot namespace create`):
+- Name rules: the slug; no name in `RESERVED_NAMESPACES` or `REGISTRY_RESERVED` (`api/src/lib/reserved.ts`;
+  `namespace_reserved`); not taken.
+- Accounts: a GitHub or GitLab user's name needs that account linked to the creator; an organisation's or group's is
+  refused (`namespace_account_required`). The lookups are `GET api.github.com/users/<name>` (the user's GitHub token,
+  else the ops installation's) and GitLab `users?username=` and `groups/<name>`.
+- Limits: 3 per user (`namespace_limit`), 5 attempts a day.
+- The row is `provider 'registry'`, `provider_owner_id = id`, `pending_review`, `created_by`, plus an owner member.
+- `purgeIdleNamespaces` (nightly) deletes ones with no tools, transfers or running jobs after 30 days.
+
 ### b. Scan
 
 ```
@@ -250,14 +291,22 @@ Step by step:
 4. `routes/review.ts POST /internal/scans`: 413 over 256 KB; `scans.ts:loadVersion` with
    `scan_token_hash = sha256(token) AND scan_token_expires_at > now AND status = 'scanning'` (else 401
    `invalid_scan_token`); `parseResults` (400 `invalid_scan_results`); `scans.ts:applyScanResults`.
-5. `scans.ts:verdict(results, previouslySigned)`:
+5. Direct uploads first go through `scans.ts:pinSigner`. The scanner was sent `expected_signer: null`, so it verified
+   any keyless signature (`check_any_signature`) and reported every identity in `signature.identities`.
+   - The pin is the signer of the tool's first non-rejected signed version. `signerKey` drops a trailing `@refs/...`,
+     so a CI identity stays the same across tags and branches.
+   - A reported identity equal to the pin (and with the same issuer) is recorded. If none matches, the signature
+     becomes `fail` (`signature_mismatch`).
+   - With no pin yet, more than one distinct signer fails as `signature_ambiguous`.
+   - Wheels work the same way, with `pypi:<kind>:<repo>/<workflow>` identities.
+6. `scans.ts:verdict(results, previouslySigned)`:
    - fail `signature_mismatch` (signature status `fail`)
    - fail `signature_dropped` (unsigned while an earlier published/yanked version was signed)
    - fail `malware_suspected` (`malware.count > 0`)
    - fail `secrets_found` (`secrets.count > 0`)
    - fail `smoke_test_failed`
    - warn when `fixable_critical + fixable_high > 0`, else pass.
-6. `applyScanResults` inserts `scans` rows (`signature`, `vuln`, `malware` (malware+secrets), `smoke`, optional
+7. `applyScanResults` inserts `scans` rows (`signature`, `vuln`, `malware` (malware+secrets), `smoke`, optional
    `sbom`) and clears the token (single use). On fail: `versions.status = 'rejected'`, `scan_status = 'fail'`,
    `rejected_reason = <code>`; `publish_jobs` `rejected` with `error_code/error_detail`; audit `scan.rejected`;
    `commitStatus(failure, "<code>: <message>")`; email `templates.rejected` (key `rejected:<versionId>`).
@@ -265,12 +314,12 @@ Step by step:
    - namespace `active` → `scans.ts:publishVersion(env, id, { backupInline: true })`;
    - otherwise `versions`/`publish_jobs` → `awaiting_review`, `commitStatus(pending, "Scans passed; new publisher
      awaiting review")`, email `templates.inReview`.
-7. `publishVersion`: `versions.status = 'published'`, `published_at`; `publish_jobs` `published`;
+8. `publishVersion`: `versions.status = 'published'`, `published_at`; `publish_jobs` `published`;
    `tools.latest_version_id = pickLatest(...)` (highest stable, else highest prerelease); if latest,
    `latestMetadata` rewrites `tools` summary/categories/tags/readme_text, `tool_io`, `tool_secrets`,
    `tool_guides`; `commitStatus(success, "Published <ref>@<v>")`; when not `backupInline`, queues
    `{ backupVersionId }`; email `templates.published` (mentions fixable vulns when `scan_status = 'warn'`).
-8. The callback answers `{ status, verdict, backup? }`; `backup` comes from `backups.ts:releasePlan` only when the
+9. The callback answers `{ status, verdict, backup? }`; `backup` comes from `backups.ts:releasePlan` only when the
    status is `published`. `scan.py:main` then calls `backup.run_job(answer["backup"], work)` (see flow d).
 
 ### c. Guide publish
@@ -541,11 +590,13 @@ Step by step:
 ```
 
 1. `routes/review.ts GET /admin/review-queue`: namespaces `pending_review` with awaiting versions (members, scans,
-   license, ethics), plus `content_review` (awaiting versions in active namespaces: guides with PII).
+   license, ethics), plus `content_review` (awaiting versions in active namespaces: guides with PII). A registry
+   namespace carries `creator` (its creator's login and linked accounts) instead of a `profile_url`.
 2. Decisions on a namespace: `POST /admin/namespaces/:ns/approve` (above), `/request-changes {notes}` (awaiting
    versions → `rejected` `changes_requested`, email `templates.changesRequested`; namespace stays in review),
    `/reject {reason}` (namespace `rejected`, versions `namespace_rejected`, commit failure, email
-   `templates.namespaceRejected`). All 409 `not_pending` unless the namespace is `pending_review`.
+   `templates.namespaceRejected`). Both close the versions' `publish_jobs` too (`closeWaitingJobs`), so the dashboard
+   and `ot publish --wait` see the decision. All 409 `not_pending` unless the namespace is `pending_review`.
 3. Single versions (active namespaces only, else 409 `namespace_in_review`): `POST /admin/versions/:id/approve`
    (`publishVersion` inline) or `/reject {reason}` (`review_rejected`, commit failure, email).
 4. Admin only: `/admin/namespaces/:ns/verify` (`verified = 1`), `/admin/namespaces/:ns/suspend {reason}`.
