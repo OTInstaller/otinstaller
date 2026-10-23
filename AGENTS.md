@@ -630,7 +630,7 @@ migrations add publish intake (0002), scans/review and `notifications` (0003), s
 `issue_subscriptions`, 0016), notifications (`email_prefs`, `inbox`, 0017), tool requests (`tool_requests`,
 `request_votes`, 0018), `contributor_stats` (0019), community submissions (`tools.needs_first_review`,
 `tool_maintainers`, `wrapper_submissions`, 0020), the upstream watcher (`upstream_watch`, 0021) and bump pull requests
-(`bump_prs`, 0022), and request discussions (`request_comments`, `request_subscriptions`, flags on requests, 0023).
+(`bump_prs`, 0022), and request discussions (`request_comments`, `request_subscriptions`, flags on requests, 0026).
 That is 54 tables plus `tools_fts`; every table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
 
@@ -850,7 +850,7 @@ The plan is [docs/roadmap.md](docs/roadmap.md) (phase 1 built). User docs: `web/
 - **Requests** (`requests.ts`, 0018): one per repository, checked when made (public, not packaged or requested,
   no upstream manifest; a license the registry can't redistribute or an archived repository is declined at once);
   votes; triagers decide; a published package from that repository answers it (`linkPublished`). Each has a
-  discussion (0023): replies screened and moderated like issue comments through the same `community.ts` functions
+  discussion (0026): replies screened and moderated like issue comments through the same `community.ts` functions
   (kind `request_comment`), followers (the requester, repliers, anyone who follows it) told of replies and decisions,
   locks by triagers or 30 days after a decision. Requests and their replies can be flagged; they are moderated by
   triagers and staff only.
