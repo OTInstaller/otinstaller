@@ -394,7 +394,7 @@ Only staff and community reviewers can start, approve, send back or turn down a 
 
 ### not_package_maintainer
 Only a community package's maintainers (whoever submitted it, others staff added, and the namespace's members) and
-reviewers can merge and release its bump pull requests.
+reviewers can merge and release its bump pull requests, or propose changes to it.
 
 ### bump_not_found
 The package has no open bump pull request with that number. It may have been merged, or replaced by a newer one.
@@ -408,13 +408,85 @@ GitHub won't merge the bump pull request, usually because the branch conflicts w
 GitHub, or ask a reviewer.
 
 ### self_review
-Someone other than the submitter has to review a submission's first release.
+Someone other than the submitter has to review a submission's first release, and someone other than the proposer a
+change proposal.
 
 ### too_many_submissions
 Each person can have three submissions waiting at a time. Finish or withdraw one first.
 
 ### invalid_unsubscribe_link
 The unsubscribe link was changed or cut short. Change what you get at [notification settings](/settings/notifications).
+
+## Change proposals
+
+A community package's maintainers changing more than its pin from the package's Changes tab (see
+[community packages](/docs/community#changing-a-community-package)). The codes marked *for reviewers* never stop a
+proposal; they are listed on its page.
+
+### proposal_not_found
+The package has no change proposal with that number. A proposal's number is its pull request's number in the
+wrapper repository.
+
+### not_a_wrapper
+The package is published from its own repository, so changes go there as a pull request; only community packages in
+`osintverse-community` take proposals. Also sent when the wrapper repository has no `otinstaller.yaml` on its main
+branch, which a reviewer has to look at.
+
+### proposal_unchanged
+Nothing in the proposal differs from the wrapper repository's main branch.
+
+### proposal_file_too_large
+`otinstaller.yaml` can be at most 64 KB, the Dockerfile 16 KB and the README 100 KB.
+
+### proposal_invalid
+The proposed `otinstaller.yaml` doesn't validate; the problems list says where. `ot validate` reports the same
+problems.
+
+### protected_field
+A proposal can't change what makes the package itself: `name`, `namespace`, `homepage`, `license`, `readme`,
+`schema`, `kind` and `runtime.kind`, nor, for a package whose image the release workflow builds, `runtime.image`.
+Ask a reviewer if one of them is wrong.
+
+### no_dockerfile
+The package pins upstream's own image or wheel, so it has no Dockerfile to change. Change `runtime` in
+`otinstaller.yaml` instead.
+
+### secret_in_proposal
+A proposed file looks like it holds a token, key or password. Take it out: keys belong in `ot keys`, never in a
+package.
+
+### note_screened
+The proposal's note looks like it holds personal data or a secret. Say what the change does and why, without data
+about anyone.
+
+### too_many_proposals
+Each person can have three proposals open on a package at a time. Finish or withdraw one first.
+
+### proposal_closed
+The proposal was merged, turned down or withdrawn, so it can't change any more. A proposal that was sent back has to
+be saved again before it can be approved.
+
+### version_taken
+Someone released the version the proposal would release while it waited. The proposer saves the proposal again, which
+moves it to the next version.
+
+### proposal_not_mergeable
+GitHub won't merge the pull request, usually because the wrapper's main branch changed since. The proposer saves the
+proposal again to rebuild it on the newest files.
+
+### github_failed
+GitHub refused or failed a request from the community bot. Try again in a few minutes; if it keeps failing, ask on
+[OTInstaller/feedback](https://github.com/OTInstaller/feedback).
+
+### fields_changed
+*For reviewers.* Which fields of `otinstaller.yaml` the proposal changes.
+
+### ethics_changed
+*For reviewers.* The proposal changes what the package says about contacting targets, personal data, network use or
+keys. Check it against the tool: agents and `ot` decide what to ask the person from these fields.
+
+### personal_data
+*For reviewers.* A proposed file looks like it holds an email address, phone number, street address or IP address.
 
 ## Signing in and accounts
 

@@ -9,6 +9,7 @@ import CopyCode from "../../../components/CopyCode.astro";
 import ToolRow from "../../../components/ToolRow.astro";
 import { apiOrNull, type CommunityStatus, type ManifestResponse, type Pivots, type Scans, type SearchResult, type Version } from "../../../lib/api";
 import { STATE_TONE } from "../../../lib/community";
+import { firstWeekPlatforms, firstWeekSaid, firstWeekTone } from "../../../lib/first-week";
 import WorksForMe from "../../../islands/WorksForMe";
 import { entityLabel, formatDate, inputLabel } from "../../../lib/format";
 import { ethicsLines, evidence, inputExample, prefixFor, recordedEnvelope, sampleEnvelope } from "../../../lib/evidence";
@@ -39,6 +40,9 @@ const [readme, guides, scans, manifest, latest, pivots, similar, community] = aw
   apiOrNull<CommunityStatus>(`/tools/${ref}/status`).catch(() => null),
 ]);
 const alternatives = (similar?.results ?? []).filter((s) => `${s.namespace}/${s.name}` !== ref).slice(0, 5);
+// In the latest version's first week, what people said since it came out stands out, beside the version before it.
+const fresh = community?.new_version ?? null;
+const freshPlatforms = fresh ? firstWeekPlatforms(fresh.platforms) : [];
 // The latest version's release notes, as a preview that links to the full notes on the versions page.
 const whatsNew = latest?.changelog_html ? excerpt(latest.changelog_html) : "";
 const e = m.ethics;
@@ -153,6 +157,12 @@ const jsonLd = graph(software, breadcrumbs([["Tools", "/search"], [t.namespace, 
         <section class="panel community" aria-labelledby="com-h">
           <div class="ph"><h2 id="com-h">From the community</h2><a href={`/${ref}/issues`}>Issues →</a></div>
           <p class="line"><span class={`status ${STATE_TONE[community.line.state]}`}>{community.line.text}</span></p>
+          {fresh && (
+            <div class={`notice fresh ${firstWeekTone(fresh)}`}>
+              <p class="small"><b>{fresh.version} is in its first week.</b> {freshPlatforms.length > 0 ? <>Reports so far: {freshPlatforms.join(", ")}.</> : <>Nobody has said whether it works yet.</>}</p>
+              {fresh.previous && <p class="small muted">For comparison, {fresh.previous.version}: {firstWeekSaid(fresh.previous)} in the last 30 days.</p>}
+            </div>
+          )}
           <div class="pad"><WorksForMe client:visible refName={ref} version={t.latest_version} back={`${Astro.site}${ref}`} /></div>
         </section>
       )}
@@ -326,6 +336,9 @@ const jsonLd = graph(software, breadcrumbs([["Tools", "/search"], [t.namespace, 
   .pad { padding: 10px 14px; margin: 0; border-top: 1px solid var(--border); }
   .community { padding: 0; }
   .community .line { margin: 0; padding: 12px 14px; font-size: var(--fs-2); }
+  .community .fresh { margin: 0 14px 12px; }
+  .community .fresh p { margin: 0; }
+  .community .fresh p + p { margin-top: 4px; }
   .whats-new { margin: 0; padding: 12px 14px; font-size: var(--fs-2); }
   .readme { padding-top: 4px; }
   .pivots { gap: 8px; }

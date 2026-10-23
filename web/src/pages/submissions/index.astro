@@ -3,7 +3,8 @@
 // waits for them here; anyone can follow a submission from the Dockerfile to the published package.
 import Base from "../../layouts/Base.astro";
 import PageHead from "../../components/PageHead.astro";
-import { api, type Submission } from "../../lib/api";
+import { api, type ChangeProposal, type Submission } from "../../lib/api";
+import { PROPOSAL_STATUS_LABEL, PROPOSAL_STATUS_TONE, proposalHref } from "../../lib/proposals";
 import { formatDate } from "../../lib/format";
 import { SUBMISSION_STATUS_LABEL, SUBMISSION_STATUS_TONE, submissionHref } from "../../lib/submissions";
 import { cacheFor } from "../../lib/page";
@@ -16,7 +17,11 @@ const views = [
 const view = views.find((v) => v.key === (Astro.url.searchParams.get("view") ?? "")) ?? views[0]!;
 const before = /^\d{1,7}$/.test(Astro.url.searchParams.get("before") ?? "") ? Astro.url.searchParams.get("before") : null;
 const params = [view.query, before ? `before=${before}` : ""].filter(Boolean).join("&");
-const list = await api<{ submissions: Submission[]; next_before: number | null }>(`/submissions${params ? `?${params}` : ""}`);
+const [list, proposals] = await Promise.all([
+  api<{ submissions: Submission[]; next_before: number | null }>(`/submissions${params ? `?${params}` : ""}`),
+  // Change proposals to published community packages wait for the same reviewers.
+  api<{ proposals: (ChangeProposal & { ref: string })[] }>("/proposals").then((r) => r.proposals, () => []),
+]);
 cacheFor(Astro, 120);
 const link = (key: string) => (key ? `/submissions?view=${key}` : "/submissions");
 ---
@@ -47,6 +52,26 @@ const link = (key: string) => (key ? `/submissions?view=${key}` : "/submissions"
   )}
   {list.next_before && <p><a class="btn btn-sm" href={`${link(view.key)}${view.key ? "&" : "?"}before=${list.next_before}`} rel="nofollow">Older</a></p>}
   <p class="small muted">Package one yourself in the <a href="/import?community=1">import wizard</a> or with <code>ot import --community &lt;repo-url&gt;</code>. <a href="/docs/community#submissions">How submissions work</a>.</p>
+
+  {!before && view.key === "" && (
+    <section class="changes" aria-labelledby="changes-h">
+      <h2 id="changes-h">Changes to community packages</h2>
+      <p class="small muted">Open proposals: what maintainers want to change beyond a package's upstream pin. A reviewer who isn't the proposer decides each one. <a href="/docs/community#changing-a-community-package">How change proposals work</a>.</p>
+      {proposals.length === 0 ? <p class="muted small">No open proposals.</p> : (
+        <ul class="subs">
+          {proposals.map((p) => (
+            <li>
+              <div>
+                <p class="title"><a href={proposalHref(p.ref, p.number)}>{p.title}</a> <span class="small muted">#{p.number}</span></p>
+                <p class="small muted"><a href={`/${p.ref}`}>{p.ref}</a> · changes {p.files.join(", ")}{p.proposed_by && <> · by <a href={`/people/${p.proposed_by.handle}`}>{p.proposed_by.handle}</a></>} on {formatDate(p.created_at)}</p>
+              </div>
+              <span class={`badge ${PROPOSAL_STATUS_TONE[p.status]}`}>{PROPOSAL_STATUS_LABEL[p.status]}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )}
 </Base>
 
 <style>
@@ -56,6 +81,8 @@ const link = (key: string) => (key ? `/submissions?view=${key}` : "/submissions"
   .subs li { display: flex; gap: 16px; justify-content: space-between; align-items: baseline; padding: 12px 0; border-bottom: 1px solid var(--border); }
   .title { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
   .subs p { margin: 2px 0 0; overflow-wrap: anywhere; }
+  .changes { margin-top: 32px; }
+  .changes h2 { margin: 0 0 4px; }
   @media (max-width: 640px) {
     .subs li { flex-direction: column; gap: 6px; }
   }

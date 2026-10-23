@@ -4,6 +4,7 @@
 // namespace's own activity (routes/profiles.ts) uses the same event names. Nothing here exposes reasons, reports, who
 // acted, or anything people wrote: community events are worded from fields, never from issue titles or notes.
 import { LISTED, VISIBLE } from "./catalog";
+import { firstWeekCounts, type FirstWeek } from "./first-week";
 
 /** Audit actions that are public events, and the event type each becomes. */
 export const ACTIVITY: Record<string, string> = {
@@ -55,11 +56,13 @@ export interface ActivityEvent {
   issue_kind?: string;
   /** request_published: the package that answers it. */
   tool?: string;
+  /** published, in the version's first week: what signed-in people said about it so far (first-week.ts). */
+  first_week?: FirstWeek;
 }
 
 type Row = {
   id: string; action: string; created_at: number; namespace: string; name: string; kind: string; summary: string;
-  version: string | null; first: number | null; notes: number | null; replacement: string | null; meta: string | null;
+  version: string | null; first: number | null; notes: number | null; replacement: string | null; meta: string | null; version_id: string | null;
 };
 
 /** The newest public events across the registry, newest first, with where the next page starts. */
@@ -91,12 +94,12 @@ export async function siteActivity(db: D1Database, q: ActivityQuery): Promise<{ 
     parts.push({
       sql: `SELECT a.id AS id, a.action AS action, a.created_at AS created_at, n.name AS namespace, t.name AS name, t.kind AS kind, t.summary AS summary, v.version AS version,
          NOT EXISTS (SELECT 1 FROM versions p WHERE p.tool_id = t.id AND p.status IN ('published', 'yanked') AND p.published_at < v.published_at) AS first,
-         COALESCE(v.changelog, '') != '' AS notes, NULL AS replacement, NULL AS meta
+         COALESCE(v.changelog, '') != '' AS notes, NULL AS replacement, NULL AS meta, v.id AS version_id
        FROM audit_log a JOIN versions v ON v.id = a.target_id JOIN tools t ON t.id = v.tool_id JOIN namespaces n ON n.id = t.namespace_id
        WHERE a.target_kind = 'version' AND a.action IN (${list(VERSION_ACTIONS)}) AND v.status != 'removed' AND ${VISIBLE} AND ${LISTED}${extra}`,
       binds,
     }, {
-      sql: `SELECT a.id, a.action, a.created_at, n.name, t.name, t.kind, t.summary, NULL, NULL, NULL, t.deprecated_replacement, a.metadata_json
+      sql: `SELECT a.id, a.action, a.created_at, n.name, t.name, t.kind, t.summary, NULL, NULL, NULL, t.deprecated_replacement, a.metadata_json, NULL
        FROM audit_log a JOIN tools t ON t.id = a.target_id JOIN namespaces n ON n.id = t.namespace_id
        WHERE a.target_kind = 'tool' AND a.action IN (${list(TOOL_ACTIONS)}) AND ${VISIBLE} AND ${LISTED}${extra}`,
       binds,
@@ -107,7 +110,7 @@ export async function siteActivity(db: D1Database, q: ActivityQuery): Promise<{ 
     parts.push({
       sql: `SELECT a.id AS id, a.action AS action, a.created_at AS created_at, n.name AS namespace, t.name AS name, t.kind AS kind, t.summary AS summary,
          NULL AS version, NULL AS first, NULL AS notes, NULL AS replacement,
-         json_object('number', i.number, 'to', json_extract(a.metadata_json, '$.to'), 'issue_kind', i.kind) AS meta
+         json_object('number', i.number, 'to', json_extract(a.metadata_json, '$.to'), 'issue_kind', i.kind) AS meta, NULL AS version_id
        FROM audit_log a JOIN issues i ON i.id = a.target_id JOIN tools t ON t.id = i.tool_id JOIN namespaces n ON n.id = t.namespace_id
        WHERE a.target_kind = 'issue' AND a.action = 'issue.status' AND json_extract(a.metadata_json, '$.to') IN ('confirmed', 'fixed')
          AND i.moderation = 'visible' AND i.deleted_at IS NULL AND ${VISIBLE} AND ${LISTED}${extra}`,
@@ -117,7 +120,7 @@ export async function siteActivity(db: D1Database, q: ActivityQuery): Promise<{ 
     if (!q.namespace && !q.input && q.kind !== "guide") {
       parts.push({
         sql: `SELECT a.id AS id, a.action AS action, a.created_at AS created_at, '' AS namespace, r.repo_path AS name, 'request' AS kind, '' AS summary,
-           NULL AS version, NULL AS first, NULL AS notes, tn.name || '/' || tt.name AS replacement, json_object('number', r.number) AS meta
+           NULL AS version, NULL AS first, NULL AS notes, tn.name || '/' || tt.name AS replacement, json_object('number', r.number) AS meta, NULL AS version_id
          FROM audit_log a JOIN tool_requests r ON r.id = a.target_id LEFT JOIN tools tt ON tt.id = r.tool_id LEFT JOIN namespaces tn ON tn.id = tt.namespace_id
          WHERE a.target_kind = 'request' AND a.action IN ('request.accepted', 'request.published') AND r.moderation = 'visible'${q.before ? " AND a.created_at < ?" : ""}`,
         binds: q.before ? [q.before] : [],
@@ -126,6 +129,7 @@ export async function siteActivity(db: D1Database, q: ActivityQuery): Promise<{ 
   }
   const rows = (await db.prepare(`${parts.map((p) => p.sql).join("\n UNION ALL\n ")}\n ORDER BY created_at DESC LIMIT ?`)
     .bind(...parts.flatMap((p) => p.binds), q.limit).all<Row>()).results;
+  const firstWeek = await firstWeekCounts(db, rows.filter((r) => r.action === "version.published" && r.version_id).map((r) => ({ id: r.version_id!, published_at: r.created_at })));
   const events = rows.map((r): ActivityEvent => {
     if (r.action === "issue.status") {
       const m = JSON.parse(r.meta ?? "{}") as { number: number; to: string; issue_kind: string };
@@ -145,6 +149,7 @@ export async function siteActivity(db: D1Database, q: ActivityQuery): Promise<{ 
       id: r.id, type, ref: `${r.namespace}/${r.name}`, kind: r.kind, summary: r.summary, at: r.created_at,
       ...(r.version ? { version: r.version } : {}),
       ...(r.action === "version.published" ? { new_package: r.first === 1, has_notes: r.notes === 1 } : {}),
+      ...(r.action === "version.published" && r.version_id && firstWeek.has(r.version_id) ? { first_week: firstWeek.get(r.version_id) } : {}),
       ...(type === "deprecated" && r.replacement ? { replacement: r.replacement } : {}),
       ...(meta.from ? { from: meta.from, to: meta.to } : {}),
     };

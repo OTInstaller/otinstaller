@@ -1,0 +1,94 @@
+---
+// One change proposal: what it changes, the proposer's note, what the reviewer should look at, and the decision,
+// server-rendered for everyone with the pull request a click away. An island adds the review controls for reviewers
+// and editing or withdrawing for the proposer.
+import Base from "../../../../layouts/Base.astro";
+import ToolHeader from "../../../../components/ToolHeader.astro";
+import ProposalActions from "../../../../islands/ProposalActions";
+import { apiOrNull, ApiError, type ChangeProposalDetail } from "../../../../lib/api";
+import { formatDate } from "../../../../lib/format";
+import { isWrapper, PROPOSAL_STATUS_LABEL, PROPOSAL_STATUS_TONE } from "../../../../lib/proposals";
+import { personHref } from "../../../../lib/community";
+import { loadTool } from "../../../../lib/tool";
+import { cacheFor } from "../../../../lib/page";
+
+const loaded = await loadTool(Astro, `/changes/${Astro.params.number}`);
+if ("response" in loaded) return loaded.response;
+const { tool: t, hasDocs } = loaded;
+const ref = `${t.namespace}/${t.name}`;
+const number = Number(Astro.params.number);
+if (!isWrapper(t) || !Number.isInteger(number) || number <= 0) return Astro.rewrite("/404");
+let p: ChangeProposalDetail | null;
+try {
+  p = (await apiOrNull<{ proposal: ChangeProposalDetail }>(`/packages/${ref}/proposals/${number}`))?.proposal ?? null;
+} catch (e) {
+  if (e instanceof ApiError && e.status === 409) return Astro.rewrite("/404");
+  throw e;
+}
+if (!p) return Astro.rewrite("/404");
+cacheFor(Astro, 60);
+---
+<Base title={`${p.title} · ${ref} change #${p.number}`} description={`A change proposed to the community package ${ref}: ${p.title}`} noindex jsonHref={`https://api.otinstaller.com/v1/packages/${ref}/proposals/${p.number}`}>
+  <ToolHeader tool={t} active="changes" hasDocs={hasDocs} />
+  <p class="small back"><a href={`/${ref}/changes`}>← All changes</a></p>
+
+  <article class="proposal">
+    <header>
+      <h2 class="title">{p.title} <span class="num">#{p.number}</span></h2>
+      <p class="tags">
+        <span class={`badge ${PROPOSAL_STATUS_TONE[p.status]}`}>{PROPOSAL_STATUS_LABEL[p.status]}</span>
+        <a class="btn btn-sm" href={p.url} rel="nofollow noopener">See the pull request</a>
+      </p>
+    </header>
+
+    <dl class="facts small">
+      <dt>Changes</dt><dd>{p.files.map((f, i) => <>{i > 0 && ", "}<code>{f}</code></>)}</dd>
+      <dt>{p.status === "merged" ? "Released as" : "Releases as"}</dt><dd>{p.released_version ?? p.version}{p.builds ? ", built by the release workflow" : ", tagged from the merged files"}</dd>
+      <dt>Proposed</dt>
+      <dd>{formatDate(p.created_at)} by {p.proposed_by ? (p.proposed_by.profile ? <a href={personHref(p.proposed_by.handle)}>{p.proposed_by.handle}</a> : p.proposed_by.handle) : "a deleted account"}</dd>
+    </dl>
+
+    {p.note && (
+      <section class="post">
+        <h3>Why</h3>
+        <p class="note">{p.note}</p>
+      </section>
+    )}
+
+    {p.checks.length > 0 && (
+      <section class="post">
+        <h3>For the reviewer</h3>
+        <ul class="checks small">{p.checks.map((c) => <li><a href={`/docs/errors#${c.code}`}><code>{c.code}</code></a> {c.message}</li>)}</ul>
+      </section>
+    )}
+
+    {p.decided_at && (
+      <section class="post">
+        <h3>Decision</h3>
+        <p class="small muted">{PROPOSAL_STATUS_LABEL[p.status]}{p.reviewed_by && <> by <a href={personHref(p.reviewed_by)}>{p.reviewed_by}</a></>} on {formatDate(p.decided_at)}</p>
+        {p.decision_note && <p class="note">{p.decision_note}</p>}
+      </section>
+    )}
+
+    <ProposalActions client:idle refName={ref} number={p.number} status={p.status} title={p.title} note={p.note} back={`${Astro.site}${ref}/changes/${p.number}`} />
+  </article>
+</Base>
+
+<style>
+  .back { margin: 0 0 12px; }
+  .proposal { max-width: 820px; display: grid; gap: 16px; }
+  .title { margin: 0; font-size: var(--fs-5); overflow-wrap: anywhere; }
+  .num { color: var(--text-faint); font-weight: 400; }
+  .tags { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0 0; }
+  .facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 16px; margin: 0; }
+  .facts dt { color: var(--text-muted); }
+  .facts dd { margin: 0; overflow-wrap: anywhere; }
+  .post { border-top: 1px solid var(--border); padding-top: 12px; }
+  .post h3 { margin: 0 0 6px; font-size: var(--fs-2); }
+  .note { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+  .checks { margin: 0; padding-left: 18px; }
+  .checks li + li { margin-top: 4px; }
+  .proposal :global(.files pre) { max-height: 420px; overflow: auto; font-size: var(--fs-1); }
+  .proposal :global(.files h4) { margin: 12px 0 4px; font-size: var(--fs-1); }
+  .proposal :global(.propose textarea), .proposal :global(.propose input), .proposal :global(.proposal-actions textarea) { display: block; width: 100%; }
+</style>

@@ -8,6 +8,7 @@ import { demoteHeadings } from "../../../lib/html";
 import { loadTool } from "../../../lib/tool";
 import { cacheFor } from "../../../lib/page";
 import { feedLinks } from "../../../lib/feeds";
+import { firstWeekCounts, firstWeekTone } from "../../../lib/first-week";
 
 const loaded = await loadTool(Astro, "/versions");
 if ("response" in loaded) return loaded.response;
@@ -25,6 +26,8 @@ const upstream = t.community_packaged ? upstreamReleasesUrl(t.homepage) : null;
 const noteSource: Record<string, string> = { release: "From the release", file: "From CHANGELOG.md" };
 // Release notes show under their version, open for the newest one that has any.
 const openNotes = versions.find((v) => v.changelog_html && v.status !== "removed")?.version;
+// A version's first-week counts as a badge in the tone the status line would give them.
+const BADGE = { ok: "ok", warn: "warn", bad: "bad", none: "plain" } as const;
 ---
 <Base title={`${ref} versions`} description={`Version history of ${ref}.`} jsonHref={`https://api.otinstaller.com/v1/tools/${ref}/versions`} feeds={feedLinks({ title: `${ref} releases`, path: `/${ref}/feed` })}>
   <ToolHeader tool={t} active="versions" hasDocs={hasDocs} />
@@ -45,6 +48,11 @@ const openNotes = versions.find((v) => v.changelog_html && v.status !== "removed
                 {latest && <span class="badge info">latest</span>}
                 {v.status === "yanked" && <span class="badge warn" title={v.yanked_at ? `Yanked ${formatDate(v.yanked_at)}` : undefined}>yanked</span>}
                 {v.status === "removed" && <span class="badge bad">removed</span>}
+                {v.first_week && (
+                  <span class={`badge ${BADGE[firstWeekTone(v.first_week)]}`} title={`What signed-in people said since it came out; shown until ${formatDate(v.first_week.ends_at)}`}>
+                    first week: {firstWeekCounts(v.first_week)}
+                  </span>
+                )}
               </td>
               <td>{formatDate(v.published_at)}</td>
               <td><a href={`/${ref}/security?v=${encodeURIComponent(v.version)}`} class={`status ${scanClass[v.scan_status] ?? "none"}`}>{scanLabel[v.scan_status] ?? v.scan_status}</a></td>

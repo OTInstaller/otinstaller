@@ -4,8 +4,8 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 `api/migrations/*.sql` and the code in `api/src/`, `api/test/` and `api/scripts/`.
 
 - Binding: `DB`, database name `otinstaller`, `migrations_dir: "migrations"` (`api/wrangler.jsonc`).
-- 26 migrations, `0001` to `0026`.
-- Final schema: **56 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 57. FTS5 also creates its own shadow
+- 27 migrations, `0001` to `0027`.
+- Final schema: **57 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 58. FTS5 also creates its own shadow
   tables, which aren't listed here.
 
 ---
@@ -40,6 +40,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0024 | `0024_hosted_images.sql` | Images hosted on the mirror (`ot publish --image`): new table `mirror_pushes` (every manifest a publisher pushes: repo, digest, tag, user, token, size; indexes `mirror_pushes_repo`, `mirror_pushes_created`), for the push limits and the nightly sweep; `backups` + `hosted` (INTEGER NN default 0: the image row is the image itself, never an install fallback). The mirror Worker binds the same database from then on. |
 | 0025 | `0025_trusted_publishers.sql` | Trusted publishing (`ot publish --oidc`): new table `trusted_publishers` (indexes `trusted_publishers_repo`, `trusted_publishers_namespace`); `api_tokens` + `namespace_id` (FK namespaces, cascade), `package`, `trusted_publisher_id` (FK, set null), `oidc_json`, `jti` (unique index `api_tokens_jti`) for the restricted CI tokens; `publish_jobs` + `trusted_publisher_id` (FK, set null), `ci_json`. Apply before an API that selects these columns is deployed: `findToken` reads them on every token request, in the API and the mirror. |
 | 0026 | `0026_request_threads.sql` | New tables `request_comments` (replies on tool requests, moderated like issue comments) and `request_subscriptions` (backfilled with each request's requester); `tool_requests` + `comment_count`, `locked_at`; `content_flags` rebuilt so `target_kind` also takes `request` and `request_comment`; indexes `request_comments_request`, `request_comments_held` (partial), `request_comments_author`, and `content_flags_open` again. |
+| 0027 | `0027_change_proposals.sql` | New table `change_proposals` (a maintainer's change to a community package beyond its pin: the pull request, the proposer's title and note, the files it writes, the version, whether it builds, the reviewer's checks, status, decision and released version); indexes `change_proposals_status`, `change_proposals_tool`, `change_proposals_proposer`. |
 
 ---
 
@@ -483,6 +484,18 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
   closed), `released_version`, `merged_by`, `created_at`, `updated_at`. Written by `bumps.ts:maybeOpenBump` and
   `releaseBump`.
 
+### 2.12g Change proposals (0027)
+
+- `change_proposals`: PK `id` (ULID), `tool_id` → `tools(id)` (cascade), `pr_number` NN (the pull request in the
+  wrapper repository; UNIQUE with `tool_id`), `url`, `branch` (`otinstaller/proposal-<id>`), `proposer_id` → `users`
+  (set null), `title`, `note` (plain text), `files_json` (`{path: content}` for `otinstaller.yaml`, `Dockerfile`,
+  `README.md`), `version`, `builds` (0/1: the release workflow builds it, else a tag), `checks_json` (`[{code,
+  message}]` for the reviewer), `status` (open | changes_requested | merged | rejected | withdrawn), `reviewer_id` →
+  `users` (set null), `decision_note`, `decided_at`, `released_version`, `created_at`, `updated_at`. Indexes
+  `change_proposals_status (status, updated_at DESC)`, `change_proposals_tool (tool_id, created_at DESC)`,
+  `change_proposals_proposer (proposer_id, status)`. Written by `proposals.ts`.
+- A new version's first-week counts (`first-week.ts`) are read from `confirmations`; nothing new is stored.
+
 ### 2.12e Upstream watch (0021)
 
 - `upstream_watch`: PK `tool_id` → `tools(id)` (cascade), `provider`, `upstream_path`, `pin_kind` (an
@@ -690,6 +703,17 @@ There is no guard on the current status, so a resolved report can be resolved ag
 | open → `changes_requested` / `rejected` | `decideSubmission` |
 | open → `withdrawn` | `withdrawSubmission` |
 | `submitted` / `changes_requested` / `failed` → `submitted` or `releasing` | `updateSubmission` (the submitter) |
+
+### 3.8c `change_proposals.status`
+
+| Transition | Where |
+| --- | --- |
+| (new) → `open` | `proposals.ts:createProposal` |
+| `open` → `changes_requested` | `reviewProposal` (a reviewer, never the proposer) |
+| `open` / `changes_requested` → `open` | `updateProposal` (the proposer) |
+| `open` → `merged` (the pull request merged and the release started) | `reviewProposal` approve |
+| `open` / `changes_requested` → `rejected` | `reviewProposal` reject |
+| `open` / `changes_requested` → `withdrawn` | `withdrawProposal` (the proposer or an admin) |
 
 ### 3.9 Others
 - **`feedback.status`**: `open` (insert, `routes/beta.ts`) ↔ `done` / `dismissed` / `open` in `routes/beta.ts`

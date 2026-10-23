@@ -23,8 +23,9 @@ when a phase changes. Production steps (migrations, deploys, releases) happen se
 ## Phase 1: the community loop
 
 Built on 23 October 2026 as pull requests; not merged or deployed yet ([launch-checklist.md](launch-checklist.md)
-lists the owner's steps). Left from phase 1: maintainers proposing changes beyond a pin, and highlighting a new version's
-works/broken counts for its first week. Request discussions and flags on requests were added on 23 October.
+lists the owner's steps). Request discussions and flags on requests were added on 23 October; maintainers proposing
+changes beyond a pin, and highlighting a new version's works/broken counts for its first week, followed in
+[#90](https://github.com/OTInstaller/otinstaller/pull/90).
 
 **Community**
 - Issues and discussion on every tool page: broken, outdated, wrong information, feature requests and questions,
@@ -34,7 +35,8 @@ works/broken counts for its first week. Request discussions and flags on request
 - Tool requests: anyone signed in can ask for a tool by its repository, with licence and duplicate checks; others
   upvote.
 - Community submissions: anyone signed in can package someone else's open-source tool through the import wizard.
-  A staff or community reviewer approves its first release.
+  A staff or community reviewer approves its first release. Its maintainers then propose changes beyond the pin
+  (manifest, Dockerfile, README) through the registry, and a reviewer approves each one.
 - `ot` offers to report a run that failed through the tool's fault. It sends the tool, version, exit code, OS and
   `ot` version, never inputs or output. It never asks agents or scripts, and is off when telemetry is off.
 - Triager and reviewer roles for trusted community members, contributor profiles, and email notifications people
@@ -48,6 +50,8 @@ works/broken counts for its first week. Request discussions and flags on request
   later proposes the version bump.
 - `ot outdated` flags installed tools that are deprecated, possibly broken or yanked, and says when a newer `ot`
   exists.
+- A new version's works/broken counts stand out for its first week, beside the version before it, on the tool page,
+  the versions list, "What's new" and in `ot outdated`.
 
 **Learning**
 - A `/learn` hub: how an investigation runs (scope, collect, pivot, verify, record, report), opsec for the

@@ -22,21 +22,22 @@ Items marked **(you)** need the owner of the GitHub, GitLab, Cloudflare, Resend,
 The roadmap's phase 1 ([roadmap.md](roadmap.md)) was merged into `main` on 23 Oct: #58 (roadmap, stars), #61 (release
 notes), #63 (activity and feeds), #66 (learn hub), the community stack #68 → #74 → #76 → #78 → #79 → #80 → #81 → #82 →
 #83 and the close-out #84. Request discussions and flags on requests followed in
-[#89](https://github.com/OTInstaller/otinstaller/pull/89) (migration 0026). Nothing of phase 1 is deployed. In order,
-the owner's steps:
+[#89](https://github.com/OTInstaller/otinstaller/pull/89) (migration 0026, merged), and change proposals with a new
+version's first-week counts in [#90](https://github.com/OTInstaller/otinstaller/pull/90) (migration 0027). Nothing of
+phase 1 is deployed. In order, the owner's steps:
 
-- [ ] **(you)** Review and merge #89 (request discussions).
+- [ ] **(you)** Review and merge #90 (change proposals and first-week counts).
 - [ ] **(you)** Apply every migration that has reached `main` remotely before deploying the API: 0015 to 0022 (phase 1),
       0023 to 0025 (direct publishing, #86 to #88, merged), 0026 (request discussions) and 0027 (change proposals), with
       `npx wrangler d1 migrations apply otinstaller --remote`; then deploy the API and the site.
 - [ ] **(you)** Grant the first triager and reviewer roles (Admin console → Community).
-- [ ] **(you)** Set up the community bot for submissions and bump pull requests (publishing-setup.md section 6,
+- [ ] **(you)** Set up the community bot for submissions, bump pull requests and change proposals (publishing-setup.md section 6,
       "Community submissions"): the "OTInstaller Community" GitHub App, its three secrets, and the main App on all
       repositories of `osintverse-community`. Until then submitting answers 503 and the rest works.
 - [ ] **(you)** After a week of upstream watcher reports (Admin console → Upstream), decide whether to set
       `UPSTREAM_WATCH` to `issues`, and later `prs`.
-- [ ] **(you)** Release `ot` with `ot issues`, `ot request`, `ot changelog`, `ot report --works|--broken` and the failure
-      prompt.
+- [ ] **(you)** Release `ot` with `ot issues`, `ot request`, `ot changelog`, `ot report --works|--broken`, the failure
+      prompt, and the first-week note in `ot outdated`.
 - [ ] **(you)** Publish the draft guide `seed/guides/osint-fundamentals/` (`ot release 1.0.0` in its repository).
 
 ## Left before announcing

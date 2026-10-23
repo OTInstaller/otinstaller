@@ -47,7 +47,7 @@ anonymous GET.
 
 ## 1. Routes
 
-Total: **178 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
+Total: **187 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
 call; the `for` loops in `routes/trust.ts` (`yank`, `unyank`), `routes/community.ts` (a thread's subscription) and
 `routes/requests.ts` (a vote, a request's subscription) register two each. The mirror Worker's OCI routes are in
 section 6 and are not in this count. There is no route for stars, although the rate-limit comment in `index.ts`
@@ -71,7 +71,7 @@ in code; a Cloudflare rate-limiting rule on the zone covers `/mcp`, `/v1/tools*`
 | GET | `/tools` | none | `cached(c, 60)` | index.ts | Search. Params `q`, `input`, `output`, `category`, `runtime`, `kind`, `level`, `format`, `lang`, `sort` (relevance, installs, stars, updated, health: healthy tools by their last passing nightly check first), `no_keys`, `passive_only` (`1`/`true`: no target contact, personal data or egress), `limit` (1–100, default 25), `cursor` (offset). FTS path caps at 200 rows, non-FTS at 1000; `total_capped: true` says the total hit the cap. Summaries carry ethics and egress. A bad enum value is 400 `invalid_parameter` with the allowed values |
 | GET | `/guides` | none | 60 (inherited) | index.ts | Re-dispatches internally to `/v1/tools?kind=guide` with `app.fetch`, so the `/tools` response (and its `max-age=60`) is returned |
 | GET | `/tools/:ns/:name` | none | `cached(c, 60)` | index.ts | Follows aliases (`moved_to`); not found goes through `notFound()`: 410 `tool_removed` or 404 `tool_not_found`. `sample` is the latest version's passing `smoke` scan row's `sample` (entities or stdout from the test input) with `version` and `recorded_at`, when the scanner sent one |
-| GET | `/tools/:ns/:name/versions` | none | `cached(c, 60)` | index.ts | Published, yanked and removed versions, semver-sorted, each with `changelog`, `changelog_html` (rendered by `changelog.ts:renderNotes`) and `changelog_source` |
+| GET | `/tools/:ns/:name/versions` | none | `cached(c, 60)` | index.ts | Published, yanked and removed versions, semver-sorted, each with `changelog`, `changelog_html` (rendered by `changelog.ts:renderNotes`) and `changelog_source`; versions under a week old also carry `first_week` (`{works, broken, ends_at}`, `first-week.ts:firstWeekCounts`), which `ot outdated` reads |
 | GET | `/tools/:ns/:name/:version/manifest` | none | `cached(c, version === "latest" ? 60 : 3600)` | index.ts | Removed versions return status and `removed_reason` with `manifest: null`; otherwise adds `installFallbacks()` (`mirror_image` / `wheel_url`). `manifest` is `compatManifest()` (`lib/manifest.ts`): without the optional fields added after ot v0.12, whose install-time validation rejects them; `manifest_full` carries them when anything was left out |
 | GET | `/tools/:ns/:name/:version/scans` | none | `cached(c, 300)` | index.ts | PII scan summaries reduced to `{hits: <count>}` |
 | GET | `/tools/:ns/:name/:version` | none | `cached(c, 3600)` | index.ts | Also 3600 for `latest` (unlike `/manifest`, which uses 60 for `latest`); carries the same release-notes fields |
@@ -80,7 +80,7 @@ in code; a Cloudflare rate-limiting rule on the zone covers `/mcp`, `/v1/tools*`
 | GET | `/namespaces/:ns/activity` | none | `cached(c, 300)` | routes/profiles.ts | `?limit` (1–100, 30). Public audit events of visible packages: `version.published`, `version.yank`/`unyank`, `tool.deprecate`/`undeprecate`, `transfer.complete` |
 | GET | `/facets` | none | `cached(c, 600)` | index.ts | How many visible packages match each facet value: `inputs`, `outputs`, `categories`, `runtimes`, `no_keys`. `kind` is tool (default) or guide; counts ignore other filters |
 | GET | `/pivots` | none | `cached(c, 600)` | index.ts | `from=` comma list of entity types; follows `spec/pivots.json` to the input types each can feed (`inputs`, plus `unmapped` for types with none); top 10 non-broken tools per usable type |
-| GET | `/activity` | none | `cached(c, 300)` | index.ts → activity.ts | Public events from `audit_log` (published with `new_package`/`has_notes`, yanked, unyanked, deprecated with `replacement`, undeprecated, transferred) of visible, listed packages; `limit` 1–100 (30), `before` (ms), `kind`, `input`, `namespace`, `events` (`registry` default; `community` adds `issue_confirmed`/`issue_fixed` with `number` and `issue_kind`, and `request_accepted`/`request_published` with `number` and `tool`, worded from fields; `all`); `next_before` for paging. Never carries reasons, actors or anything people wrote |
+| GET | `/activity` | none | `cached(c, 300)` | index.ts → activity.ts | Public events from `audit_log` (published with `new_package`/`has_notes`, yanked, unyanked, deprecated with `replacement`, undeprecated, transferred) of visible, listed packages; `limit` 1–100 (30), `before` (ms), `kind`, `input`, `namespace`, `events` (`registry` default; `community` adds `issue_confirmed`/`issue_fixed` with `number` and `issue_kind`, and `request_accepted`/`request_published` with `number` and `tool`, worded from fields; `all`); `next_before` for paging; `published` events of versions under a week old carry `first_week`. Never carries reasons, actors or anything people wrote |
 | POST | `/installs` | none | - | index.ts | `{tool, version, client?}`; 400 `invalid_body` without tool and version, else always 204 (also for unknown packages). Counts once per `cf-connecting-ip`, version and day (`overLimit` scope `install`: a salted hash of address and version in `rate_limits`, never the address itself), into `install_counts` and `install_clients` (`client` `cli`, `mcp`, `ci`, else `other`) |
 
 ### 1.2 Guides, docs, READMEs, assets, wheel copies, transparency (12)
@@ -230,6 +230,7 @@ people (`feedback` scope) go through `poster()`: a timed-out account gets 403 `p
 | --- | --- | --- | --- | --- | --- |
 | GET | `/tools/:ns/:name/issues` | none | `cached(c, 60)` | routes/community.ts | `status` open (open+confirmed) / closed / all, `kind`, `before`; 30 a page; `counts`; visible posts only |
 | GET | `/tools/:ns/:name/issues/:number` | none | `cached(c, 60)` | routes/community.ts | The issue and its visible comments (`renderPost`: no raw HTML or images, links `nofollow ugc`, links as text for authors under a week old); `indexable` once a maintainer replied or it was confirmed or fixed |
+| GET | `/tools/:ns/:name/status` | none | `cached(c, 300)` | routes/community.ts | `communityStatus`: the one-line `statusLine`, the last 30 health checks (failure class, never the excerpt), the latest version's confirmations by platform (30 days), open broken and outdated counts; in the latest version's first week (`first-week.ts`), the line says when it came out and `new_version` has its counts by platform beside the previous version's |
 | GET | `/issues` | none | `cached(c, 120)` | routes/community.ts | The board: open broken, outdated and wrong_info issues across visible packages; `kind`, `needs=confirmation`, `before` |
 | GET | `/tools/:ns/:name/issues/:number/viewer` | user | no-store | routes/community.ts | `can_triage`, `is_author`, `can_edit_issue`, `editable_comments`, `subscribed`, the viewer's own held comments |
 | POST | `/tools/:ns/:name/issues` | user, feedback | no-store | routes/community.ts | `issueInput()`; 5 a day (2 under a week old); 201 with `number` and `moderation` |
@@ -368,6 +369,34 @@ pins and wrappers of upstream's own image get none.
 | --- | --- | --- | --- | --- | --- |
 | GET | `/packages/:ns/:name/bump` | user | no-store | routes/upstream.ts | The open bump (`version`, `number`, `url`) and `can_release` |
 | POST | `/packages/:ns/:name/pulls/:number/release` | maintainer or reviewer, publish | no-store | routes/upstream.ts | `releaseBump`: 403 `not_package_maintainer`; a pull request whose files aren't `pinOnly` needs a reviewer (403 `not_pin_only`); squash-merges (409 `bump_not_mergeable`), then dispatches the release workflow with upstream's version (a patch on top when it exists) or tags `v<version>` for wheels |
+
+Change proposals (`proposals.ts`, 9 routes in `routes/proposals.ts`, table `change_proposals`): a community wrapper's
+maintainers and reviewers (`canPropose`, the same people as `canRelease`) change more than the pin. `wrapperByRef`
+answers 409 `not_a_wrapper` for packages outside `osintverse-community` or without a GitHub wrapper source.
+`checkProposal` compares the sent `otinstaller.yaml`, `Dockerfile` and `README.md` with the wrapper's main branch
+(`currentFiles`, read with the community bot's token): unchanged files are dropped (400 `proposal_unchanged` when
+nothing is left), the manifest must parse and validate (409 `proposal_invalid` with `problems`) and keep `schema`,
+`kind`, `name`, `namespace`, `homepage`, `license`, `readme`, `runtime.kind` and, for builds, the image's repository
+(409 `protected_field`); a version not past every version the package had (`nextVersion`, any status) is rewritten to
+the next patch, so `otinstaller.yaml` is always in the pull request. A Dockerfile needs one on main (400
+`no_dockerfile`) and goes through `dockerfileChecks` (size refuses; misses become checks). `screen()` hits: a secret
+refuses (400 `secret_in_proposal`), anything else in a file is a `personal_data` check, anything in the note refuses
+(400 `note_screened`). Checks also name `fields_changed` and `ethics_changed` (ethics, network or secrets). The bot
+opens `otinstaller/proposal-<id>` with `openPullRequest` (the note in a text fence, so it can't mention or link), then
+`updatePull` links the proposal's page; the proposal is known by the pull request's number. Reviewers and the other
+maintainers get a `proposal` inbox item. GitHub failures answer 503 `github_failed`.
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/proposals` | none | `cached(c, 60)` | routes/proposals.ts | Across the registry for reviewers: `status` open (open + changes_requested, the default) / closed / all, `before` (`updated_at`); 50 a page, each with `ref` |
+| GET | `/packages/:ns/:name/proposals` | none | `cached(c, 60)` | routes/proposals.ts | A wrapper's proposals, newest first, 50 |
+| GET | `/packages/:ns/:name/proposals/:number` | none | `cached(c, 60)` | routes/proposals.ts | One proposal: `note`, `files` (paths), `builds`, `checks`, `version`, `released_version`, the decision; 404 `proposal_not_found` |
+| GET | `/packages/:ns/:name/proposals/:number/viewer` | user | no-store | routes/proposals.ts | `is_proposer`, `can_review` (reviewers, never the proposer, while open), `can_edit`, `can_withdraw` (proposer or admin); `files` (contents) for the proposer and reviewers |
+| GET | `/packages/:ns/:name/files` | maintainer or reviewer | no-store | routes/proposals.ts | The three files on main (null when missing), `builds`, `latest_version`, `next_version`, `repo`; 403 `not_package_maintainer` |
+| POST | `/packages/:ns/:name/proposals` | maintainer or reviewer, publish | no-store | routes/proposals.ts | `{title, note?, files}`: `createProposal`; 3 open per person and package (409 `too_many_proposals`), 5 a day; 201 with `proposal` and `url` |
+| PATCH | `/packages/:ns/:name/proposals/:number` | proposer, publish | no-store | routes/proposals.ts | `{title?, note?, files?}` while open or sent back (409 `proposal_closed`): checked again, the branch rewritten from main, the title and body updated, status back to `open`; the reviewer who sent it back hears |
+| DELETE | `/packages/:ns/:name/proposals/:number` | proposer or admin, manage | no-store | routes/proposals.ts | Withdraw: `closePull`, status `withdrawn` |
+| POST | `/packages/:ns/:name/proposals/:number/review` | reviewer, manage | no-store | routes/proposals.ts | `{decision: approve \| changes_requested \| reject, note}` (note needed for the last two); 403 `not_reviewer`, `self_review`; approve squash-merges (409 `proposal_not_mergeable`) and dispatches the release workflow with the version (the next free one if it was taken) for builds, or tags `v<version>` at the merge (409 `version_taken` first when it was taken); reject closes the pull request; the proposer hears |
 
 Maintainers are `tool_maintainers` rows (the submitter, others staff add) and the namespace's members;
 `community.ts:roleBadge` now gives tool maintainers the maintainer badge, so they triage the package's issues, and

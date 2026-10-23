@@ -8,6 +8,7 @@ import { findPersonalData, imagesToAlt, renderPage } from "./content";
 import { audit } from "./routes/auth";
 import { overLimit, type ToolRef } from "./trust";
 import { maintainers, notify, requestSubscribers, subscribers } from "./inbox";
+import { FIRST_WEEK, inFirstWeek } from "./first-week";
 
 export const ISSUE_KINDS = ["broken", "outdated", "wrong_info", "feature", "question"] as const;
 export const ISSUE_STATUSES = ["open", "confirmed", "fixed", "wont_fix", "duplicate"] as const;
@@ -502,19 +503,25 @@ const ago = (ms: number, now: number) => {
 
 /**
  * How a package is doing, in one honest line: the registry's nightly health check first, then what signed-in people
- * said about the latest version in the last 30 days, then open broken issues. Facts with counts, never a score.
+ * said about the latest version in the last 30 days (in its first week, since it came out), then open broken issues.
+ * Facts with counts, never a score.
  */
 export function statusLine(input: {
   health: string; checked_at: number | null; works: number; broken: number; platforms: string[]; open_broken: number; version: string;
+  released_at?: number | null;
 }, now = Date.now()): { state: StatusState; text: string } {
   const parts: string[] = [];
   if (input.health === "healthy") parts.push(`Passed the registry's health check${input.checked_at ? ` ${ago(input.checked_at, now)}` : ""}`);
   else if (input.health === "broken") parts.push("Failing the registry's health check");
   else parts.push("Not health-checked yet");
-  if (input.works || input.broken) {
-    const people = (n: number) => `${n} ${n === 1 ? "person" : "people"}`;
-    const said = [input.works ? `works for ${people(input.works)}` : null, input.broken ? `broken for ${people(input.broken)}` : null].filter(Boolean).join(", ");
-    parts.push(`${input.version} ${said}${input.platforms.length ? ` (${input.platforms.slice(0, 3).join(", ")})` : ""} in the last 30 days`);
+  const people = (n: number) => `${n} ${n === 1 ? "person" : "people"}`;
+  const said = [input.works ? `works for ${people(input.works)}` : null, input.broken ? `broken for ${people(input.broken)}` : null].filter(Boolean).join(", ");
+  const where = input.platforms.length ? ` (${input.platforms.slice(0, 3).join(", ")})` : "";
+  if (inFirstWeek(input.released_at, now)) {
+    const out = `${input.version} came out ${ago(input.released_at!, now)}`;
+    parts.push(said ? `${out}: ${said}${where}` : `${out}; nobody has said yet whether it works`);
+  } else if (said) {
+    parts.push(`${input.version} ${said}${where} in the last 30 days`);
   }
   if (input.open_broken) parts.push(`${input.open_broken} open broken ${input.open_broken === 1 ? "issue" : "issues"}`);
   const state: StatusState =
@@ -533,17 +540,31 @@ export async function communityStatus(env: Env, t: ToolRef, now = Date.now()) {
     db.prepare(
       `SELECT h.ran_at, v.version, h.result, h.duration_ms, h.failure_class FROM health_checks h JOIN versions v ON v.id = h.version_id WHERE h.tool_id = ? ORDER BY h.ran_at DESC LIMIT 30`,
     ).bind(t.id).all<{ ran_at: number; version: string; result: string; duration_ms: number | null; failure_class: string | null }>(),
-    db.prepare(`SELECT id, version FROM versions WHERE id = ?`).bind(t.latest_version_id).first<{ id: string; version: string }>(),
+    db.prepare(`SELECT id, version, published_at FROM versions WHERE id = ?`).bind(t.latest_version_id).first<{ id: string; version: string; published_at: number | null }>(),
   ]);
   const counts = version ? await versionConfirmations(env, version.id, now) : { works: 0, broken: 0, platforms: {} };
   const platforms = Object.entries(counts.platforms).filter(([p, c]) => p !== "unknown" && c.works > 0).sort((a, b) => b[1].works - a[1].works).map(([p]) => p);
   const line = statusLine({
     health: tool?.health_status ?? "unknown", checked_at: tool?.health_checked_at ?? null, works: counts.works, broken: counts.broken, platforms,
-    open_broken: tool?.open_broken ?? 0, version: version?.version ?? "",
+    open_broken: tool?.open_broken ?? 0, version: version?.version ?? "", released_at: version?.published_at ?? null,
   }, now);
+  // In its first week, the latest version's counts are shown beside the version before it, so a regression stands out.
+  const fresh = version && inFirstWeek(version.published_at, now) ? version : null;
+  const before = fresh
+    ? await db.prepare(
+      `SELECT id, version FROM versions WHERE tool_id = ? AND id != ? AND status IN ('published', 'yanked') AND published_at < ? ORDER BY published_at DESC LIMIT 1`,
+    ).bind(t.id, fresh.id, fresh.published_at).first<{ id: string; version: string }>()
+    : null;
+  const previous = before ? await versionConfirmations(env, before.id, now) : null;
   return {
     version: version?.version ?? null,
     line,
+    new_version: fresh
+      ? {
+        version: fresh.version, published_at: fresh.published_at, ends_at: fresh.published_at! + FIRST_WEEK, works: counts.works, broken: counts.broken, platforms: counts.platforms,
+        previous: before && previous ? { version: before.version, works: previous.works, broken: previous.broken } : null,
+      }
+      : null,
     health: {
       status: tool?.health_status ?? "unknown", checked_at: tool?.health_checked_at ?? null,
       history: history.results.map((h) => ({ at: h.ran_at, version: h.version, result: h.result, duration_ms: h.duration_ms, failure: h.failure_class })),

@@ -138,7 +138,10 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   …`) and flags in brackets. JSON rows: `{ref, installed, latest, status, note, flags, replacement}`. `flags` is always
   an array of `deprecated`, `possibly_broken` (health `broken`), `yanked` (the installed version), `source_unavailable`
   and `moved`, whatever the status; `replacement` is the deprecation's replacement, else `moved_to`. Each flag also
-  prints one `warning:` line on stderr, in JSON mode too. "Nothing installed yet." goes to **stderr**.
+  prints one `warning:` line on stderr, in JSON mode too. When the update is under a week old (the versions list's
+  `first_week`), the row has `latest_first_week` (`{works, broken, ends_at}`) and a `note: <ref> <version> is under a
+  week old: works for N people, broken for M so far` line follows the warnings (`firstWeekNote`). "Nothing installed
+  yet." goes to **stderr**.
 - Exit: 0 always on a completed check (it changes nothing and does not fail on outdated or errored rows); 1 on state
   errors.
 - Newer ot (`noteNewerOT`, `latestOT` in `cli/selfupdate.go`): after the table, also with nothing installed, a `note: ot
@@ -965,7 +968,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `cli/auto_test.go` | `ot auto`: type guessing, `--dry-run`, `--type`, `--live` progress lines, and errors (bad `--type`, `--type` with two targets, no matching tool, `--all`; plus `run --dry-run` without `--all`) |
 | `cli/playbook_test.go` | `ot playbook`: `--list` with a user playbook and the TAKES column, prefixed and guessed targets, and errors (missing tools, no matching inputs, no typed input, unknown playbook, `--all`) |
 | `cli/saved_test.go` | `ot extract` and `ot diff` against saved runs |
-| `cli/update_test.go` | `ot outdated --json` and `ot update` (named, `--all`) against a fake registry (update available, removed, not in registry), plus usage errors; lifecycle flags, their warnings and the table, `yanked` cleared by an update, and moved packages installed under their new name (old image removed only when not shared) |
+| `cli/update_test.go` | `ot outdated --json` and `ot update` (named, `--all`) against a fake registry (update available, removed, not in registry), plus usage errors; lifecycle flags, their warnings and the table, an update's first-week note and `latest_first_week`, `yanked` cleared by an update, and moved packages installed under their new name (old image removed only when not shared) |
 | `cli/guide_test.go` | Guide search and read, terminal rewriting (`forTerminal`), Glamour rendering, `guide get` then offline read, `guide tools`, `guide open` and `docs`, request IDs on server errors, guide content validation |
 | `cli/import_test.go` | Import wizard completing a draft and opening a PR, `--registry` with `--yes`, community wrapper, bulk import and `--list` |
 | `cli/login_test.go` | Device-flow login (GitHub) and `--osintverse` |

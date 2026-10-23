@@ -3,25 +3,28 @@
 // and at most three badges. The evidence lives in the body of the page, not up here.
 import type { ToolDetail } from "../lib/api";
 import BumpRelease from "../islands/BumpRelease";
+import { isWrapper } from "../lib/proposals";
 
 interface Props {
   tool: ToolDetail;
-  active: "overview" | "docs" | "versions" | "security" | "issues";
+  active: "overview" | "docs" | "versions" | "security" | "issues" | "changes";
   hasDocs: boolean;
 }
 const { tool: t, active, hasDocs } = Astro.props;
 const ref = `${t.namespace}/${t.name}`;
+// A wrapper's homepage is the project it wraps. When it is the package's own repository there is nothing to credit
+// or claim, whatever the flag says (older rows were flagged by namespace alone).
+const upstream = t.homepage && t.homepage !== t.repo_url ? t.homepage : null;
+const wrapper = isWrapper(t);
 const tabs = [
   { key: "overview", href: `/${ref}`, label: "Overview" },
   { key: "security", href: `/${ref}/security`, label: "Security" },
   { key: "versions", href: `/${ref}/versions`, label: "Versions" },
   ...(hasDocs ? [{ key: "docs", href: `/${ref}/docs`, label: "Docs" }] : []),
   { key: "issues", href: `/${ref}/issues`, label: t.community?.open_broken ? `Issues (${t.community.open_broken} broken)` : "Issues" },
+  // Community wrappers take change proposals from their maintainers.
+  ...(wrapper ? [{ key: "changes", href: `/${ref}/changes`, label: "Changes" }] : []),
 ];
-// A wrapper's homepage is the project it wraps. When it is the package's own repository there is nothing to credit
-// or claim, whatever the flag says (older rows were flagged by namespace alone).
-const upstream = t.homepage && t.homepage !== t.repo_url ? t.homepage : null;
-const wrapper = t.community_packaged && !!upstream;
 // What the upstream watcher found when upstream itself changed.
 const UPSTREAM_NOTE: Record<string, string> = {
   archived: "The upstream repository is archived, so no new releases will come.",

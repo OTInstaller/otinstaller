@@ -17,7 +17,7 @@ const PER_USER_DAILY = 12;
 const SETTLE = 2 * 60_000;
 
 export interface Item {
-  kind: "issue_opened" | "comment" | "status" | "moderation" | "role";
+  kind: "issue_opened" | "comment" | "status" | "moderation" | "role" | "proposal";
   scope: Scope;
   summary: string;
   path: string;
