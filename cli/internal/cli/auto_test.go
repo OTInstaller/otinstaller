@@ -74,6 +74,10 @@ func TestAuto(t *testing.T) {
 	if code := run(a, "auto", "johndoe", "--dry-run"); code != 0 || !strings.Contains(errb.String(), "johndoe is a username") {
 		t.Fatalf("exit %d: %s", code, errb)
 	}
+	errb.Reset()
+	if code := run(a, "auto", "jd@example.com", "--dry-run"); code != 0 || !strings.Contains(errb.String(), "jd@example.com is an email") {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
 
 	// Progress lines on stderr as each tool finishes; otinstaller's --live is accepted.
 	errb.Reset()
