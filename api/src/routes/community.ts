@@ -1,5 +1,5 @@
-// Community routes: issues and comments on packages, confirmations, flags, the registry-wide board, moderation
-// queues and the roles admins grant. Rules and storage live in ../community.ts.
+// Community routes: issues and comments on packages, confirmations, flags (on posts and tool requests), the
+// registry-wide board, moderation queues and the roles admins grant. Rules and storage live in ../community.ts.
 import type { Context } from "hono";
 import type { App, AppEnv, User } from "../env";
 import { apiError } from "../lib/errors";
@@ -9,9 +9,9 @@ import { requireAdmin, requireReviewer } from "./review";
 import { toolByRef, type ToolRef } from "../trust";
 import { notify } from "../inbox";
 import {
-  addComment, canTriage, communityRoles, communityStatus, confirm, createIssue, deletePost, editPost, EDIT_WINDOW, fileSystemIssue, flagPost, FLAG_REASONS,
+  addComment, canTriage, communityRoles, communityStatus, confirm, createIssue, deletePost, editPost, EDIT_WINDOW, fileSystemIssue, FLAG_KINDS, flagPost, FLAG_REASONS,
   indexable, ISSUE_KINDS, ISSUE_STATUSES, issueByNumber, issueInput, moderate, OPEN_STATUSES, renderPost, reportRun, requireModerator, requireTriage, runReportInput,
-  setLocked, setStatus, timeout, type IssueRow, type IssueStatus, type ModerationAction,
+  setLocked, setStatus, timeout, type FlagKind, type IssueRow, type IssueStatus, type ModerationAction,
 } from "../community";
 import { moderateRequest } from "../requests";
 
@@ -260,10 +260,10 @@ export function communityRoutes(app: App) {
   app.post("/flags", async (c) => {
     const u = requireUser(c);
     const b = await body<{ target_kind: string; target_id: string; reason: string; note: string }>(c);
-    if (b.target_kind !== "issue" && b.target_kind !== "comment") apiError(400, "invalid_body", "target_kind must be issue or comment");
+    if (!FLAG_KINDS.includes(b.target_kind as FlagKind)) apiError(400, "invalid_body", `target_kind must be one of: ${FLAG_KINDS.join(", ")}`);
     if (!(FLAG_REASONS as readonly string[]).includes(String(b.reason))) apiError(400, "invalid_body", `reason must be one of: ${FLAG_REASONS.join(", ")}`);
     if (typeof b.target_id !== "string" || !b.target_id) apiError(400, "invalid_body", "send {target_id}");
-    const r = await flagPost(c.env, u, b.target_kind, b.target_id, b.reason as (typeof FLAG_REASONS)[number], typeof b.note === "string" ? b.note : "");
+    const r = await flagPost(c.env, u, b.target_kind as FlagKind, b.target_id, b.reason as (typeof FLAG_REASONS)[number], typeof b.note === "string" ? b.note : "");
     return c.json({ ...r, note: "Thanks. A moderator will look at it." }, 201);
   });
 
@@ -295,19 +295,21 @@ export function communityRoutes(app: App) {
 
   app.post("/moderation/:kind/:id", async (c) => {
     const u = requireUser(c);
-    const kind = c.req.param("kind");
-    if (kind !== "issue" && kind !== "comment" && kind !== "request") apiError(404, "not_found", "no such route");
+    const kind = c.req.param("kind") as FlagKind;
+    if (!FLAG_KINDS.includes(kind)) apiError(404, "not_found", "no such route");
     const id = c.req.param("id");
     const b = await body<{ action: string; reason: string }>(c);
     const action = String(b.action) as ModerationAction;
     if (!["hide", "restore", "approve", "redact"].includes(action)) apiError(400, "invalid_body", "action must be hide, restore, approve or redact");
     const roles = await communityRoles(c.env, u);
     const reason = typeof b.reason === "string" ? b.reason.slice(0, 200) : "";
-    if (kind === "request") {
-      // A request's note is the only thing in it people write; redacting removes the note for good.
+    if (kind === "request" || kind === "request_comment") {
+      // Requests belong to no package, so only triagers and staff moderate them and their replies. A request's note is
+      // the only thing in it people write; redacting removes the note for good.
       if (!roles.has("triager")) apiError(403, "not_triager", "only triagers and staff can do this");
       if (action === "redact" && !u.is_admin && !u.is_reviewer) apiError(403, "forbidden", "only staff can redact posts");
-      await moderateRequest(c.env, u, id, action, reason);
+      if (kind === "request") await moderateRequest(c.env, u, id, action, reason);
+      else await moderate(c.env, u, kind, id, action, reason);
       return c.json({ kind, id, action });
     }
     if (!roles.has("triager")) {
@@ -340,7 +342,11 @@ export function communityRoutes(app: App) {
            LEFT JOIN users u ON u.id = cm.author_id WHERE cm.moderation != 'visible' AND cm.deleted_at IS NULL AND cm.created_at < ?1
          UNION ALL
          SELECT 'request', r.id, r.repo_path, COALESCE(r.note, ''), r.hidden_reason, r.created_at, NULL, NULL, r.number, u.handle
-           FROM tool_requests r LEFT JOIN users u ON u.id = r.requested_by WHERE r.moderation = 'held' AND r.created_at < ?1
+           FROM tool_requests r LEFT JOIN users u ON u.id = r.requested_by WHERE r.moderation != 'visible' AND r.created_at < ?1
+         UNION ALL
+         SELECT 'request_comment', rc.id, r.repo_path, rc.body_md, rc.hidden_reason, rc.created_at, NULL, NULL, r.number, u.handle
+           FROM request_comments rc JOIN tool_requests r ON r.id = rc.request_id LEFT JOIN users u ON u.id = rc.author_id
+           WHERE rc.moderation != 'visible' AND rc.deleted_at IS NULL AND rc.created_at < ?1
          ORDER BY created_at DESC LIMIT 100`,
       ).bind(before).all<{ kind: string; id: string; title: string | null; body_md: string; hidden_reason: string | null; created_at: number; ns: string | null; tool: string | null; number: number; handle: string | null }>()).results;
       return c.json({
@@ -348,11 +354,30 @@ export function communityRoutes(app: App) {
         next_before: rows.length === 100 ? rows.at(-1)!.created_at : null,
       });
     }
+    // Each flag with where its target is on the site and what it says, so a moderator can judge it from the queue.
     const flags = (await c.env.DB.prepare(
-      `SELECT f.id, f.target_kind, f.target_id, f.reason, f.note, f.created_at, u.handle AS flagger FROM content_flags f JOIN users u ON u.id = f.flagger_id
+      `SELECT f.id, f.target_kind, f.target_id, f.reason, f.note, f.created_at, u.handle AS flagger,
+         COALESCE(i.title || char(10) || i.body_md, ic.body_md, r.note, rc.body_md, '') AS text,
+         COALESCE(i.moderation, ic.moderation, r.moderation, rc.moderation) AS moderation,
+         CASE f.target_kind
+           WHEN 'issue' THEN '/' || n1.name || '/' || t1.name || '/issues/' || i.number
+           WHEN 'comment' THEN '/' || n2.name || '/' || t2.name || '/issues/' || ii.number || '#c-' || ic.id
+           WHEN 'request' THEN '/requests/' || r.number
+           WHEN 'request_comment' THEN '/requests/' || rr.number || '#c-' || rc.id
+         END AS path
+       FROM content_flags f JOIN users u ON u.id = f.flagger_id
+         LEFT JOIN issues i ON f.target_kind = 'issue' AND i.id = f.target_id
+         LEFT JOIN tools t1 ON t1.id = i.tool_id LEFT JOIN namespaces n1 ON n1.id = t1.namespace_id
+         LEFT JOIN issue_comments ic ON f.target_kind = 'comment' AND ic.id = f.target_id LEFT JOIN issues ii ON ii.id = ic.issue_id
+         LEFT JOIN tools t2 ON t2.id = ii.tool_id LEFT JOIN namespaces n2 ON n2.id = t2.namespace_id
+         LEFT JOIN tool_requests r ON f.target_kind = 'request' AND r.id = f.target_id
+         LEFT JOIN request_comments rc ON f.target_kind = 'request_comment' AND rc.id = f.target_id LEFT JOIN tool_requests rr ON rr.id = rc.request_id
        WHERE f.status = 'open' AND f.created_at < ? ORDER BY (f.reason = 'personal_data') DESC, f.created_at DESC LIMIT 100`,
-    ).bind(before).all<{ id: string; target_kind: string; target_id: string; reason: string; note: string | null; created_at: number; flagger: string }>()).results;
-    return c.json({ flags, next_before: flags.length === 100 ? flags.at(-1)!.created_at : null });
+    ).bind(before).all<{ id: string; target_kind: string; target_id: string; reason: string; note: string | null; created_at: number; flagger: string; text: string; moderation: string | null; path: string | null }>()).results;
+    return c.json({
+      flags: flags.map(({ text, ...f }) => ({ ...f, body_html: renderPost(text.slice(0, 2000), true) })),
+      next_before: flags.length === 100 ? flags.at(-1)!.created_at : null,
+    });
   });
 
   app.post("/moderation/users/:handle/timeout", async (c) => {
