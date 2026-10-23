@@ -188,8 +188,10 @@ Step by step:
    (re-tagging a rejected version reuses its row and resets `scan_status = 'pending'`), `publish_jobs` (`status`,
    `error_code`, `error_detail`, `problems_json`) and an `audit_log` row `publish.scanning|rejected`.
 10. **Outcome.**
-    - Valid: `guides.ts:storeContent` (pages and README in R2, `versions.search_text`), status "Valid; security
-      scans running" (or "Valid; content checks running"), then `startChecks` → `scans.ts:dispatchScan` (tools) or
+    - Valid: `guides.ts:storeContent` (pages and README in R2, `versions.search_text`), then
+      `changelog.ts:captureNotes` (release notes from `host.releaseNotes(tag)`, else the version's section of
+      `CHANGELOG.md`, `CHANGES.md` or `HISTORY.md` at the commit; written only when a release webhook has not
+      already set them, and never an error), status "Valid; security scans running" (or "Valid; content checks running"), then `startChecks` → `scans.ts:dispatchScan` (tools) or
       `guides.ts:queueContentChecks` (guides). If the manifest moved into the repo, the source switches from
       `registry` to `repo` mode.
     - Invalid: email `notify.ts:templates.rejected` (only when a version row was written), status
