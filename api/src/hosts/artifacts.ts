@@ -10,12 +10,21 @@ const MANIFEST_TYPES = [
   "application/vnd.docker.distribution.manifest.v2+json",
 ].join(", ");
 
+/**
+ * The registry API host and repository for an image name. Docker Hub's names (docker.io/owner/tool) are served from
+ * registry-1.docker.io, and its official images live under library/.
+ */
+function registryPath(host: string, repo: string) {
+  if (host !== "docker.io" && host !== "index.docker.io") return { host, repo };
+  return { host: "registry-1.docker.io", repo: repo.includes("/") ? repo : `library/${repo}` };
+}
+
 /** Splits "ghcr.io/owner/tool@sha256:abc" into its registry host, repository and digest. */
 export function parseImage(ref: string) {
   const at = ref.indexOf("@");
   const name = ref.slice(0, at), digest = ref.slice(at + 1);
   const slash = name.indexOf("/");
-  return { host: name.slice(0, slash), repo: name.slice(slash + 1), digest };
+  return { ...registryPath(name.slice(0, slash), name.slice(slash + 1)), digest };
 }
 
 // Registries answer 401 with a Bearer challenge; anonymous tokens are enough for public images.
@@ -78,7 +87,7 @@ export async function checkWheel(f: Fetch, pkg: string, version: string, sha256:
  */
 export async function imageDigest(f: Fetch, image: string, tag: string): Promise<{ digest: string; platforms: string[] } | null> {
   const slash = image.indexOf("/");
-  const host = image.slice(0, slash), repo = image.slice(slash + 1);
+  const { host, repo } = registryPath(image.slice(0, slash), image.slice(slash + 1));
   const res = await registryGet(f, `https://${host}/v2/${repo}/manifests/${encodeURIComponent(tag)}`);
   if (res.status === 401 || res.status === 403 || res.status === 404) return null;
   if (!res.ok) throw new HostError(`registry ${host} returned ${res.status}`, res.status, res.status >= 500 || res.status === 429);

@@ -15,7 +15,7 @@ export type TokenInfo = { id: string; scopes: Set<string>; scoped: boolean };
 /** What each scope allows, for messages and docs. */
 export const SCOPE_HELP: Record<string, string> = {
   read: "your account, tokens and publish history (/me)",
-  publish: "imports, manifest edits, syncs and sources",
+  publish: "uploads (`ot publish`), imports, manifest edits, syncs and sources",
   manage: "yanks, deprecations, claims, transfers, backup settings and tokens",
   feedback: "reports and feedback",
   staff: "the review queue and admin actions (reviewers and admins only)",
@@ -41,7 +41,7 @@ export function requiredScope(method: string, path: string): string | null {
   if (p.startsWith("/admin")) return "staff";
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") return "read";
   if (p === "/feedback" || /^\/tools\/[^/]+\/[^/]+\/reports$/.test(p)) return "feedback";
-  if (/^\/(imports|sources)(\/|$)/.test(p) || /^\/packages\/[^/]+\/[^/]+\/(manifest|sync|source)(\/|$)/.test(p)) return "publish";
+  if (p === "/publish" || /^\/(imports|sources)(\/|$)/.test(p) || /^\/packages\/[^/]+\/[^/]+\/(manifest|sync|source)(\/|$)/.test(p)) return "publish";
   return "manage";
 }
 

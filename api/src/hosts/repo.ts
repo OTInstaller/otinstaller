@@ -20,7 +20,8 @@ export interface RepoMeta {
 }
 
 export interface RepoHost {
-  provider: "github" | "gitlab";
+  // "direct": an upload from `ot publish` (direct.ts:bundleHost), read through the same interface.
+  provider: "github" | "gitlab" | "direct";
   tagCommit(tag: string): Promise<string>;
   fileAt(path: string, sha: string): Promise<string | null>;
   /** The same, as bytes (for images). */

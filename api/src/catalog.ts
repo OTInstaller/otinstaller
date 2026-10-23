@@ -160,6 +160,15 @@ export async function notFound(db: D1Database, ns: string, name: string): Promis
   apiError(404, "tool_not_found", `${ns}/${name} is not in the registry`);
 }
 
+/** How a version came in: a tag ("tag"), an upload from CI ("ci") or a direct upload ("direct"); null without a job. */
+export async function publishedVia(db: D1Database, versionId: string): Promise<"tag" | "ci" | "direct" | null> {
+  const row = await db.prepare(
+    `SELECT CASE WHEN provider = 'direct' THEN 'direct' WHEN bundle_key IS NOT NULL THEN 'ci' ELSE 'tag' END AS via
+     FROM publish_jobs WHERE version_id = ? ORDER BY created_at DESC LIMIT 1`,
+  ).bind(versionId).first<{ via: "tag" | "ci" | "direct" }>();
+  return row?.via ?? null;
+}
+
 export type VersionRow = {
   id: string;
   version: string;
