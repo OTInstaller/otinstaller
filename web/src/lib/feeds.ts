@@ -46,9 +46,24 @@ export const packageHref = (kind: string, ref: string) => (kind === "guide" ? `/
 
 /** One registry event as a feed entry. Titles are built from fields, never from text a publisher wrote. */
 export function eventEntry(e: RegistryEvent): FeedEntry {
+  // Community events are worded from fields; the API never sends what people wrote.
+  if (e.type === "issue_confirmed" || e.type === "issue_fixed") {
+    const what = e.issue_kind === "outdated" ? "an outdated report" : e.issue_kind === "wrong_info" ? "a wrong-information report" : e.issue_kind === "broken" ? "a broken report" : "an issue";
+    return {
+      id: `tag:otinstaller.com,2026:${e.id}`, title: `${e.ref}: ${what} ${e.type === "issue_fixed" ? "was fixed" : "was confirmed"}`,
+      url: `/${e.ref}/issues/${e.number}`, updated: e.at, summary: e.summary,
+    };
+  }
+  if (e.type === "request_accepted" || e.type === "request_published") {
+    return {
+      id: `tag:otinstaller.com,2026:${e.id}`,
+      title: e.type === "request_published" && e.tool ? `Requested tool published: ${e.ref} is ${e.tool}` : `Tool request accepted: ${e.ref}`,
+      url: e.type === "request_published" && e.tool ? `/${e.tool}` : `/requests/${e.number}`, updated: e.at, summary: e.summary,
+    };
+  }
   const what = e.kind === "guide" ? "guide" : "tool";
   const v = e.version ? ` ${e.version}` : "";
-  const page = packageHref(e.kind, e.ref);
+  const page = packageHref(e.kind as "tool" | "guide", e.ref);
   const title = {
     published: e.new_package ? `New ${what}: ${e.ref}` : `${e.ref}${v} released`,
     yanked: `${e.ref}${v} yanked`,

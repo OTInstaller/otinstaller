@@ -312,12 +312,19 @@ export interface ActivityEvent {
 }
 
 /** GET /activity: what changed across the registry (a superset of a profile's events). */
-export interface RegistryEvent extends ActivityEvent {
+export interface RegistryEvent extends Omit<ActivityEvent, "type" | "kind"> {
+  type: ActivityEvent["type"] | "issue_confirmed" | "issue_fixed" | "request_accepted" | "request_published";
+  kind: ActivityEvent["kind"] | "request";
   id: string;
   summary: string;
   new_package?: boolean;
   has_notes?: boolean;
   replacement?: string;
+  /** Community events (GET /activity?events=community): the issue's or request's number. */
+  number?: number;
+  issue_kind?: IssueKind;
+  /** request_published: the package that answers it. */
+  tool?: string;
 }
 
 export interface RegistryActivity {

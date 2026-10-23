@@ -14,6 +14,7 @@ errors as one line of JSON on stderr; see [Scripts, CI and agents](/docs/automat
 | --- | --- |
 | `ot search [query] [--input email] [--output domain] [--category x] [--runtime docker\|pipx] [--no-keys] [--kind tool\|guide] [--limit 25]` | Search the registry by words, by the input type a tool takes or the entity type it produces |
 | `ot info <ns/name \| otinstaller.yaml>` | Summary, inputs, outputs, keys (with the `ot keys set` command), ethics flags, trust status, and a copy-ready run command using the registry's test input |
+| `ot changelog <ns/name> [--all] [--limit 10]` | Release notes, newest first: for an installed tool the versions newer than yours (what `ot update` would bring), otherwise the latest. `ot info` shows the current version's "What's new" |
 | `ot install <ns/name[@version] \| otinstaller.yaml> ... [--native]` | Install one or more tools: pull each image by digest and verify its signature, or build its Python package into a container (`--native` installs it with pipx on the host instead). Every name is checked before anything installs; then it says how to try each tool and which keys to set first |
 | `ot run <ns/name> --<input> <value> …` | Run a tool; installs it first if needed (`-y`/`--yes` without asking) |
 | `ot run <ns/name> u:johndoe` | Typed inputs fill the tool's input of that type: `u:` username, `d:` domain, `e:` email, `p:` phone, `ip:` IP, `url:` URL |

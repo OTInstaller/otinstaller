@@ -22,6 +22,10 @@ when a phase changes. Production steps (migrations, deploys, releases) happen se
 
 ## Phase 1: the community loop
 
+Built on 23 October 2026 as pull requests; not merged or deployed yet ([launch-checklist.md](launch-checklist.md)
+lists the owner's steps). Left from phase 1: a request's discussion thread, flags on requests, maintainers proposing
+changes beyond a pin, and highlighting a new version's works/broken counts for its first week.
+
 **Community**
 - Issues and discussion on every tool page: broken, outdated, wrong information, feature requests and questions,
   with comments, "me too", status and subscriptions. Moderation and community guidelines come with them.

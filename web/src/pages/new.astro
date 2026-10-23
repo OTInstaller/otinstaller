@@ -24,6 +24,11 @@ const label: Record<RegistryEvent["type"], { text: string; tone: string }> = {
   deprecated: { text: "Deprecated", tone: "warn" },
   undeprecated: { text: "Back", tone: "plain" },
   transferred: { text: "Moved", tone: "plain" },
+  // Community events, when the page asks for them (it doesn't today).
+  issue_confirmed: { text: "Confirmed", tone: "warn" },
+  issue_fixed: { text: "Fixed", tone: "ok" },
+  request_accepted: { text: "Accepted", tone: "plain" },
+  request_published: { text: "Requested", tone: "ok" },
 };
 const badge = (e: RegistryEvent) => (e.type === "published" && e.new_package ? { text: e.kind === "guide" ? "New guide" : "New tool", tone: "ok" } : label[e.type]);
 ---

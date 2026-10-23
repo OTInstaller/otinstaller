@@ -302,6 +302,13 @@ The exit criterion is that every seeded package is healthy in the nightly check,
 Change `version` (and for pipx wrappers `package_version` and `wheel_sha256`, from
 `https://pypi.org/pypi/<package>/json`), then tag, or run the release workflow for Docker wrappers.
 
+The upstream watcher (`api/src/upstream.ts`) checks every wrapper nightly against its project's latest release, from
+the pin in its Dockerfile (`api/src/upstream-pin.ts` reads `go install …@v1.2.3`, `pip install tool==1.2.3`,
+`git+…@ref`, `git checkout`, `cargo install --tag`, release and raw URLs, or `ARG UPSTREAM_VERSION`). Every Dockerfile
+here parses, which `api/test/upstream.test.ts` checks. With `UPSTREAM_WATCH=issues` a wrapper behind a release gets an
+outdated issue; with `prs` the community bot also opens a pull request that changes only the pin, and the package's
+maintainers merge and release it from its page. Keep pins on one line so a bump stays a one-line change.
+
 ## notifies_target and key pricing (22 Oct 2026)
 
 Seven published packages gained the optional fields agents read (`ethics.notifies_target` and `ethics.notes`, or a

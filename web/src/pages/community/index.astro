@@ -4,7 +4,8 @@
 import Base from "../../layouts/Base.astro";
 import PageHead from "../../components/PageHead.astro";
 import IssueRow from "../../components/IssueRow.astro";
-import { api, apiOrNull, type IssueSummary, type UpstreamSummary } from "../../lib/api";
+import { api, apiOrNull, type IssueSummary, type RegistryActivity, type UpstreamSummary } from "../../lib/api";
+import { eventEntry } from "../../lib/feeds";
 import { cacheFor } from "../../lib/page";
 
 const views = [
@@ -17,9 +18,10 @@ const views = [
 const view = views.find((v) => v.key === (Astro.url.searchParams.get("view") ?? "")) ?? views[0]!;
 const before = /^\d{1,15}$/.test(Astro.url.searchParams.get("before") ?? "") ? Astro.url.searchParams.get("before") : null;
 const params = [view.query, before ? `before=${before}` : ""].filter(Boolean).join("&");
-const [board, upstream] = await Promise.all([
+const [board, upstream, recent] = await Promise.all([
   api<{ issues: (IssueSummary & { ref: string })[]; next_before: number | null }>(`/issues${params ? `?${params}` : ""}`),
   apiOrNull<UpstreamSummary>("/upstream/summary").catch(() => null),
+  apiOrNull<RegistryActivity>("/activity?events=community&limit=8").catch(() => null),
 ]);
 cacheFor(Astro, 120);
 const link = (key: string) => (key ? `/community?view=${key}` : "/community");
@@ -49,6 +51,12 @@ const link = (key: string) => (key ? `/community?view=${key}` : "/community");
         <li><b>Ask for a missing tool.</b> <a href="/requests">Tool requests</a> lists what people want packaged; vote for the ones you'd use.</li>
         <li><b>From the terminal.</b> When <code>ot run</code> fails it asks whether to report it, and <code>ot report &lt;tool&gt; --works</code> says a version works for you. <code>ot issues &lt;tool&gt;</code> lists what others found.</li>
       </ul>
+      {recent && recent.events.length > 0 && (
+        <>
+          <h3 class="behind-h">Recently</h3>
+          <ul class="behind">{recent.events.map((e) => { const entry = eventEntry(e); return <li><a href={entry.url}>{entry.title}</a></li>; })}</ul>
+        </>
+      )}
       {upstream && upstream.behind.length > 0 && (
         <>
           <h3 class="behind-h">Behind upstream</h3>

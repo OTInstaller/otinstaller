@@ -1,4 +1,5 @@
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { RESERVED, SLUG } from "./twins";
 
@@ -11,5 +12,11 @@ describe("reserved first path segments", () => {
       .filter((n) => n !== "index" && !n.startsWith("[") && SLUG.test(n));
     expect(names.length).toBeGreaterThan(10);
     expect(names.filter((n) => !RESERVED.has(n))).toEqual([]);
+  });
+
+  it("are all names the API never gives a namespace (api/src/lib/reserved.ts)", () => {
+    const api = readFileSync(fileURLToPath(new URL("../../../api/src/lib/reserved.ts", import.meta.url)), "utf8");
+    const names = new Set([...api.matchAll(/"([a-z0-9-]+)"/g)].map((m) => m[1]));
+    expect([...RESERVED].filter((n) => !names.has(n))).toEqual([]);
   });
 });

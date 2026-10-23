@@ -118,6 +118,7 @@ func (a *App) Root() *cobra.Command {
 		a.validateCmd(),
 		a.searchCmd(),
 		a.infoCmd(),
+		a.changelogCmd(),
 		a.installCmd(),
 		a.runCmd(),
 		a.playbookCmd(),

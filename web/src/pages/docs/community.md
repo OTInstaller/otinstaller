@@ -179,6 +179,7 @@ Everything is in the [registry API](/docs/api) (OpenAPI tag "Community"):
 | `POST /v1/tools/<ns>/<name>/run-reports` | A failed run, as `ot` sends it: `{version, exit_code \| timed_out, os, arch, engine, ot_version}`; anonymous or scope `feedback` |
 | `GET /v1/requests` | Tool requests (`status`, `sort=votes\|new`, `before`) |
 | `POST /v1/requests` | Ask for a tool (scope `feedback`); `PUT /v1/requests/<number>/vote` to vote |
+| `GET /v1/activity?events=community` | Issues confirmed or fixed and tool requests accepted or published, worded from fields (`events=all` adds releases) |
 | `GET /v1/upstream/summary` | Community wrappers against their upstream projects: counts by state, and those behind a release |
 | `GET /v1/submissions`, `GET /v1/submissions/<number>` | Community submissions and one submission's checks, release and decision |
 | `POST /v1/imports/<id>/finish` `{"mode": "submit"}` | Submit a community import (scope `publish`); `dockerfile` and `request` are optional |
