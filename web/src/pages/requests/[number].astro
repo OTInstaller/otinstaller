@@ -9,6 +9,7 @@ import { apiOrNull, type ToolRequestDetail } from "../../lib/api";
 import { formatDate } from "../../lib/format";
 import { DECLINE_LABEL, REQUEST_STATUS_LABEL, REQUEST_STATUS_TONE, takesVotes } from "../../lib/requests";
 import { cacheFor } from "../../lib/page";
+import { personHref } from "../../lib/community";
 
 const number = Number(Astro.params.number);
 const loaded = /^\d{1,7}$/.test(Astro.params.number ?? "") ? await apiOrNull<{ request: ToolRequestDetail }>(`/requests/${number}`) : null;
@@ -21,7 +22,6 @@ const facts = [
   ["License", r.license ?? "none found"],
   r.upstream_stars !== null && ["Stars", r.upstream_stars.toLocaleString("en")],
   r.pushed_at && ["Last change", formatDate(r.pushed_at)],
-  ["Asked for", `${formatDate(r.created_at)} by ${r.requested_by?.handle ?? "a deleted account"}`],
 ].filter(Boolean) as [string, string][];
 ---
 <Base title={`${r.name}: tool request #${r.number}`} description={`A request to package ${r.repo} for the OTInstaller registry. ${r.description ?? ""}`.trim()} noindex={!r.indexable} jsonHref={`https://api.otinstaller.com/v1/requests/${r.number}`}>
@@ -48,7 +48,11 @@ const facts = [
     )}
     {r.otlite && <p class="notice small">otlite, the no-Docker edition, installs it already: <code>otlite install {r.otlite}</code> (<a href={`/otlite/tools/${r.otlite}`}>its page</a>).</p>}
 
-    <dl class="facts small">{facts.map(([k, v]) => <><dt>{k}</dt><dd>{v}</dd></>)}</dl>
+    <dl class="facts small">
+      {facts.map(([k, v]) => <><dt>{k}</dt><dd>{v}</dd></>)}
+      <dt>Asked for</dt>
+      <dd>{formatDate(r.created_at)} by {r.requested_by ? (r.requested_by.profile ? <a href={personHref(r.requested_by.handle)}>{r.requested_by.handle}</a> : r.requested_by.handle) : "a deleted account"}</dd>
+    </dl>
 
     {r.note && (
       <section class="post">

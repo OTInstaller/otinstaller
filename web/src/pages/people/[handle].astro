@@ -1,0 +1,91 @@
+---
+// /people/<handle>: a contributor's public profile. Their handle, avatar, roles and what they did in the community
+// (counted nightly), with their recent issues and tool requests. Never their email or accounts; a hidden profile is a
+// 404. Profiles stay out of search results until the community has recognised something the person did.
+import Base from "../../layouts/Base.astro";
+import { apiOrNull, type Person } from "../../lib/api";
+import { formatDate } from "../../lib/format";
+import { issueHref, KIND_LABEL, STATUS_LABEL, STATUS_TONE } from "../../lib/community";
+import { REQUEST_STATUS_LABEL, REQUEST_STATUS_TONE, requestHref } from "../../lib/requests";
+import { cacheFor } from "../../lib/page";
+
+const handle = Astro.params.handle ?? "";
+const p = /^[a-z0-9][a-z0-9._-]{0,63}$/i.test(handle) ? await apiOrNull<Person>(`/people/${encodeURIComponent(handle)}`) : null;
+if (!p) return Astro.rewrite("/404");
+cacheFor(Astro, 300);
+const ROLE_LABEL = { staff: "Staff", triager: "Triager", reviewer: "Reviewer" } as const;
+const joined = new Date(`${p.joined}-01T00:00:00Z`).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+const stats = [
+  [p.counts.issues_opened, "issues opened"],
+  [p.counts.issues_confirmed, "reports confirmed or fixed"],
+  [p.counts.replies, "replies"],
+  [p.counts.confirmations, "works or broken answers"],
+  [p.counts.requests_made, "tools asked for"],
+  [p.counts.requests_published, "requests published"],
+  [p.counts.issues_triaged, "issues triaged"],
+].filter(([n]) => (n as number) > 0) as [number, string][];
+---
+<Base title={`${p.handle} · Community`} description={`${p.handle} on the OTInstaller community: issues, confirmations and tool requests.`} noindex={!p.indexable} jsonHref={`https://api.otinstaller.com/v1/people/${p.handle}`}>
+  <header class="head">
+    {p.avatar_url && <img class="avatar" src={p.avatar_url} alt="" width="72" height="72" loading="lazy" referrerpolicy="no-referrer" />}
+    <div>
+      <p class="eyebrow">Community</p>
+      <h1 class="name">{p.handle}</h1>
+      <p class="tags">
+        {p.roles.map((r) => <span class="badge plain">{ROLE_LABEL[r]}</span>)}
+        <span class="small muted">Taking part since {joined}</span>
+      </p>
+    </div>
+  </header>
+
+  {stats.length > 0 ? (
+    <ul class="stats">{stats.map(([n, label]) => <li><b>{n.toLocaleString("en")}</b> <span class="muted">{label}</span></li>)}</ul>
+  ) : <p class="muted">Nothing to count yet.</p>}
+  {p.counted_at && <p class="small muted">Counted {formatDate(p.counted_at)}; only posts everyone can see count.</p>}
+
+  <div class="cols">
+    <section aria-labelledby="issues-h">
+      <h2 id="issues-h">Recent issues</h2>
+      {p.issues.length === 0 ? <p class="muted small">None.</p> : (
+        <ul class="list">
+          {p.issues.map((i) => (
+            <li>
+              <a href={issueHref(i.ref, i.number)}>{i.title}</a>
+              <span class="small muted"> · {i.ref} #{i.number} · {KIND_LABEL[i.kind]} · <span class={`badge ${STATUS_TONE[i.status]}`}>{STATUS_LABEL[i.status]}</span></span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+    <section aria-labelledby="requests-h">
+      <h2 id="requests-h">Tools asked for</h2>
+      {p.requests.length === 0 ? <p class="muted small">None.</p> : (
+        <ul class="list">
+          {p.requests.map((r) => (
+            <li>
+              <a href={requestHref(r.number)}>{r.repo}</a>
+              <span class="small muted"> · #{r.number} · <span class={`badge ${REQUEST_STATUS_TONE[r.status]}`}>{REQUEST_STATUS_LABEL[r.status]}</span></span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  </div>
+</Base>
+
+<style>
+  .head { display: flex; gap: 20px; align-items: center; margin-bottom: 20px; }
+  .avatar { border: 1px solid var(--border); }
+  .name { margin: 0; overflow-wrap: anywhere; }
+  .eyebrow { margin: 0; }
+  .tags { display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; margin: 6px 0 0; }
+  .stats { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 24px; }
+  .stats b { font-variant-numeric: tabular-nums; }
+  .cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; margin-top: 24px; }
+  .cols h2 { font-size: var(--fs-3); margin: 0 0 8px; }
+  .list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border); }
+  .list li { padding: 8px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+  @media (max-width: 720px) {
+    .cols { grid-template-columns: minmax(0, 1fr); }
+  }
+</style>

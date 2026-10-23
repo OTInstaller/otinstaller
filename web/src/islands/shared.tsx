@@ -11,6 +11,8 @@ export interface Me {
   reviewer: boolean;
   /** triager and reviewer roles staff granted (staff hold both); older API answers omit it. */
   community_roles?: ("triager" | "reviewer")[];
+  /** Whether the person hid their contributor profile; older API answers omit it. */
+  profile_hidden?: boolean;
   accounts: { provider: "github" | "gitlab" | "osintverse"; login: string }[];
   namespaces: { name: string; status: string; verified: number; role: string }[];
 }

@@ -32,6 +32,9 @@ export const STATUS_TONE: Record<IssueStatus, string> = { open: "info", confirme
 
 export const STATE_TONE: Record<string, string> = { working: "ok", mixed: "warn", failing: "bad", unknown: "none" };
 
+/** A contributor's profile page. */
+export const personHref = (handle: string) => `/people/${encodeURIComponent(handle)}`;
+
 /** Where an issue lives on the site. */
 export const issueHref = (ref: string, number: number) => `/${ref}/issues/${number}`;
 

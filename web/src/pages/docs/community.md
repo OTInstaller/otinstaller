@@ -87,6 +87,15 @@ moderators' decisions about your posts. Each kind can come by email within 15 mi
 every email has a one-click unsubscribe link. People get at most a dozen community emails a day; the rest wait for
 the next day's digest.
 
+## Profiles
+
+Everyone who takes part has a profile at `/people/<handle>`: their handle, avatar, roles and when they joined, counts
+of what they did (issues opened, reports that were confirmed or fixed, replies, "works" and "broken" answers, tools
+asked for and published, issues triaged; recounted every night, from posts everyone can see) and their recent issues
+and requests. It never shows an email address or the accounts someone signed in with. Handles on issues and requests
+link to it. You can hide yours in [Settings → Notifications](/settings/notifications); a hidden profile is not found,
+and your avatar is left off your posts.
+
 ## Who can do what
 
 | Who | Can |

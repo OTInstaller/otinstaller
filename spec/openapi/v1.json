@@ -4523,6 +4523,118 @@
         ]
       }
     },
+    "/people/{handle}": {
+      "get": {
+        "operationId": "get_person",
+        "tags": [
+          "Community"
+        ],
+        "summary": "A contributor's public profile",
+        "description": "Their handle, avatar, roles, when they joined, counts of what they did (recounted nightly; only visible posts count) and their recent issues and requests. Never their email or accounts. Hidden profiles answer 404. Cached for 5 minutes.",
+        "parameters": [
+          {
+            "name": "handle",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The handle shown on their posts"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "handle": {
+                      "type": "string"
+                    },
+                    "avatar_url": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "joined": {
+                      "type": "string",
+                      "description": "YYYY-MM"
+                    },
+                    "roles": {
+                      "type": "array",
+                      "items": {
+                        "enum": [
+                          "staff",
+                          "triager",
+                          "reviewer"
+                        ]
+                      }
+                    },
+                    "counts": {
+                      "type": "object",
+                      "properties": {
+                        "issues_opened": {
+                          "type": "integer"
+                        },
+                        "issues_confirmed": {
+                          "type": "integer"
+                        },
+                        "replies": {
+                          "type": "integer"
+                        },
+                        "confirmations": {
+                          "type": "integer"
+                        },
+                        "requests_made": {
+                          "type": "integer"
+                        },
+                        "requests_published": {
+                          "type": "integer"
+                        },
+                        "issues_triaged": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "counted_at": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "requests": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "indexable": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
     "/moderation/{kind}/{id}": {
       "post": {
         "operationId": "moderate_post",
@@ -4997,6 +5109,66 @@
           }
         },
         "description": "community: threads you follow; owner_issues: new issues on your packages. Moderation and role notices are always sent.",
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/me/community-profile": {
+      "put": {
+        "operationId": "set_community_profile",
+        "tags": [
+          "Account"
+        ],
+        "summary": "Hide or show your contributor profile",
+        "description": "A hidden profile answers 404 and your avatar is left off your posts; your handle still shows on what you wrote.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "hidden"
+                ],
+                "properties": {
+                  "hidden": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "hidden": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
         "x-scope": "manage",
         "security": [
           {

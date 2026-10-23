@@ -233,6 +233,9 @@ Only the package's maintainers, the registry's triagers and staff can triage iss
 There is a daily limit per account: 5 issues (2 for accounts under a week old), 30 comments, 60 confirmations,
 20 flags, 5 tool requests and 60 votes. Try again tomorrow.
 
+### person_not_found
+Nobody has that handle, or they chose to hide their profile.
+
 ### request_not_found
 There is no [tool request](/requests) with that number, or a moderator hid it.
 

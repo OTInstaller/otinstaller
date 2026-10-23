@@ -4,6 +4,7 @@
 import type { ToolRequest } from "../lib/api";
 import { formatDate } from "../lib/format";
 import { REQUEST_STATUS_LABEL, REQUEST_STATUS_TONE, requestHref, takesVotes } from "../lib/requests";
+import { personHref } from "../lib/community";
 import RequestVote from "../islands/RequestVote";
 
 interface Props {
@@ -22,7 +23,7 @@ const { request: r } = Astro.props;
     {r.description && <p class="small desc">{r.description}</p>}
     <p class="small muted meta">
       {r.provider === "gitlab" ? "GitLab" : "GitHub"}{r.license && <> · {r.license}</>}{r.upstream_stars !== null && <> · {r.upstream_stars.toLocaleString("en")} stars</>}
-      {" "}· asked by {r.requested_by?.handle ?? "a deleted account"} on {formatDate(r.created_at)}
+      {" "}· asked by {r.requested_by ? (r.requested_by.profile ? <a href={personHref(r.requested_by.handle)}>{r.requested_by.handle}</a> : r.requested_by.handle) : "a deleted account"} on {formatDate(r.created_at)}
       {r.tool && <> · <a href={`/${r.tool}`}>{r.tool}</a></>}
     </p>
   </div>

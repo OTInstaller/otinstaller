@@ -31,6 +31,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0016 | `0016_community.sql` | `users` + `handle` (unique, backfilled from `lower(login)`, a suffix on collision), `profile_hidden`, `posting_blocked_until`; new tables `community_roles`, `issues`, `issue_comments`, `confirmations`, `run_signals`, `content_flags`, `issue_subscriptions`; `health_checks` + `failure_class`; `tools` + `open_broken`, `open_outdated`. |
 | 0017 | `0017_notifications.sql` | New tables `email_prefs` (per person: `community`, `owner_issues` as immediate/daily/off) and `inbox` (kind, scope community/owner_issues/account, summary, site path, read and emailed times); indexes `inbox_user`, `inbox_pending` (partial). |
 | 0018 | `0018_requests.sql` | New tables `tool_requests` (one per repository: status, decline code, decision, the answering package, what otlite and the seed survey knew, votes, moderation) and `request_votes`; indexes `tool_requests_board`, `tool_requests_project`, `tool_requests_requester`, `request_votes_user`. |
+| 0019 | `0019_people.sql` | New table `contributor_stats` (per person: issues opened and confirmed, replies, confirmations, requests made and published, issues triaged; recounted nightly); indexes `issues_author`, `issue_comments_author`, `confirmations_user`, `issues_closed_by`. |
 
 ---
 
@@ -413,6 +414,15 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
   `tool_requests_requester (requested_by, created_at)`.
 - `request_votes`: PK `(request_id, user_id)`, `created_at`; the requester's vote is added with the request.
   `vote_count` is recounted in the same batch as every vote.
+
+### 2.12c Contributor profiles (0019)
+
+- `contributor_stats`: PK `user_id` → `users(id)` (cascade), `issues_opened`, `issues_confirmed` (their broken,
+  outdated and wrong_info issues now confirmed or fixed), `replies`, `confirmations`, `requests_made`,
+  `requests_published`, `issues_triaged` (other people's issues they closed), `updated_at`. Only visible, undeleted
+  posts by people (not the registry) count. Written only by `people.ts:refreshContributorStats` (nightly).
+- Indexes for profiles: `issues_author (author_id, created_at DESC)`, `issue_comments_author`, `confirmations_user`,
+  `issues_closed_by`.
 
 ### 2.12 Feedback (0012)
 

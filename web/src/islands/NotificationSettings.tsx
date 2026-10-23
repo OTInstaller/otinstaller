@@ -1,5 +1,5 @@
 // Your notifications on /settings/notifications: what happened on the issues you follow and the packages you
-// maintain, and how often each kind reaches you by email.
+// maintain, how often each kind reaches you by email, and whether your contributor profile is public.
 import { useEffect, useState } from "preact/hooks";
 import { api } from "../lib/api";
 import { ErrorNote, Loading, SignIn, useMe, when } from "./shared";
@@ -15,10 +15,12 @@ export default function NotificationSettings({ back }: { back: string }) {
   const [prefs, setPrefs] = useState<Prefs | null>(null);
   const [items, setItems] = useState<Item[] | null>(null);
   const [saved, setSaved] = useState(false);
+  const [hidden, setHidden] = useState<boolean | null>(null);
   const [error, setError] = useState<unknown>(null);
 
   useEffect(() => {
     if (!me) return;
+    setHidden(!!me.profile_hidden);
     Promise.all([api<Prefs>("/me/email-prefs"), api<{ items: Item[] }>("/me/inbox")]).then(([p, i]) => { setPrefs(p); setItems(i.items); }, setError);
   }, [me]);
 
@@ -43,6 +45,13 @@ export default function NotificationSettings({ back }: { back: string }) {
       setError(e);
     }
   };
+  const hide = async (value: boolean) => {
+    try {
+      setHidden((await api<{ hidden: boolean }>("/me/community-profile", { method: "PUT", body: JSON.stringify({ hidden: value }) })).hidden);
+    } catch (e) {
+      setError(e);
+    }
+  };
   const unread = items.filter((i) => !i.read_at).length;
 
   return (
@@ -62,6 +71,13 @@ export default function NotificationSettings({ back }: { back: string }) {
           </label>
         )}
         <p class="small muted">Moderators' decisions about your posts always reach you. Publishing results keep coming by email as before.{saved && " Saved."}</p>
+      </section>
+
+      <section class="card stack" aria-labelledby="profile-h">
+        <h2 id="profile-h">Contributor profile</h2>
+        <p class="small">{hidden ? "Your profile is hidden." : <>Your profile at <a href={`/people/${me.handle ?? me.login.toLowerCase()}`}>/people/{me.handle ?? me.login.toLowerCase()}</a> shows your handle, avatar, roles and what you did in the community; never your email.</>}</p>
+        <label class="row"><input type="checkbox" checked={!!hidden} onChange={(e) => hide((e.target as HTMLInputElement).checked)} /> Hide my profile, and my avatar on my posts</label>
+        <p class="small muted">Your handle still shows on what you wrote.</p>
       </section>
 
       <section class="stack" aria-labelledby="inbox-h">
