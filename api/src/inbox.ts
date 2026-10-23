@@ -38,9 +38,10 @@ export async function subscribers(env: Env, issueId: string): Promise<string[]> 
   return (await env.DB.prepare(`SELECT user_id FROM issue_subscriptions WHERE issue_id = ? AND muted = 0`).bind(issueId).all<{ user_id: string }>()).results.map((r) => r.user_id);
 }
 
-/** The members of a package's namespace. */
-export async function maintainers(env: Env, namespaceId: string): Promise<string[]> {
-  return (await env.DB.prepare(`SELECT user_id FROM namespace_members WHERE namespace_id = ?`).bind(namespaceId).all<{ user_id: string }>()).results.map((r) => r.user_id);
+/** The members of a package's namespace, and the people who maintain that package (a community package's submitter). */
+export async function maintainers(env: Env, namespaceId: string, toolId?: string): Promise<string[]> {
+  return (await env.DB.prepare(`SELECT user_id FROM namespace_members WHERE namespace_id = ? UNION SELECT user_id FROM tool_maintainers WHERE tool_id = ?`)
+    .bind(namespaceId, toolId ?? "").all<{ user_id: string }>()).results.map((r) => r.user_id);
 }
 
 /** Writes items now; failures are logged, never thrown, so taking part never fails over a notification. */

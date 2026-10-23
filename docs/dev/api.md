@@ -311,7 +311,7 @@ The upstream watcher (`routes/upstream.ts`, logic in `upstream.ts`, 4 routes; th
 
 | Method | Path | Auth | Caching | Defined in | Notes |
 | --- | --- | --- | --- | --- | --- |
-| GET | `/upstream/summary` | none | `cached(c, 3600)` | routes/upstream.ts | `mode`, `counts` by state, `behind` (release pins only), `checked_at` |
+| GET | `/upstream/summary` | none | `cached(c, 3600)` | routes/upstream.ts | `mode` (report, issues, prs), `counts` by state, `behind` (release pins only), `checked_at` |
 | GET | `/admin/upstream` | reviewer | no-store | routes/upstream.ts | Every watch row (`state` filter), with pin kind, license, error and override |
 | PUT | `/admin/upstream/:ns/:name` | admin | no-store | routes/upstream.ts | `{pinned, pin_kind?, package?}` override or `{clear: true}`; audited `upstream.override`; checks at once |
 | POST | `/admin/upstream/:ns/:name/check` | reviewer | no-store | routes/upstream.ts | Checks now |
@@ -326,7 +326,22 @@ PyPI JSON for pip and pipx pins; for commit pins the compare API (`commits_behin
 App's installation on `osintverse-community` (anonymous without one). With `UPSTREAM_WATCH=issues`, `actOn` files
 `outdated` system issues (dedupe `outdated:<release>`, three days after the release, older ones closed as superseded,
 closed as fixed when the pin catches up) and one per upstream change (`upstream:<state>`), and tells admins about a
-license that no longer allows redistribution. `GET /tools/:ns/:name` gains `upstream` (`publicWatch`).
+license that no longer allows redistribution. `GET /tools/:ns/:name` gains `upstream` (`publicWatch`, plus `bump`).
+
+Bump pull requests (`bumps.ts`, 2 routes in `routes/upstream.ts`): with `UPSTREAM_WATCH=prs` (issues mode plus this)
+and the community bot set up, `maybeOpenBump` opens `otinstaller/bump-<release>` in the wrapper repository three days
+after a release, once per release (`bump_prs`; an older open one is closed), changing only the pin: the Dockerfile
+line `findPin` points at, or the pipx manifest's `version`, `package_version` and `wheel_sha256` (from PyPI). Commit
+pins and wrappers of upstream's own image get none.
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/packages/:ns/:name/bump` | user | no-store | routes/upstream.ts | The open bump (`version`, `number`, `url`) and `can_release` |
+| POST | `/packages/:ns/:name/pulls/:number/release` | maintainer or reviewer, publish | no-store | routes/upstream.ts | `releaseBump`: 403 `not_package_maintainer`; a pull request whose files aren't `pinOnly` needs a reviewer (403 `not_pin_only`); squash-merges (409 `bump_not_mergeable`), then dispatches the release workflow with upstream's version (a patch on top when it exists) or tags `v<version>` for wheels |
+
+Maintainers are `tool_maintainers` rows (the submitter, others staff add) and the namespace's members;
+`community.ts:roleBadge` now gives tool maintainers the maintainer badge, so they triage the package's issues, and
+`inbox.ts:maintainers` sends them its new issues.
 
 Contributor profiles (`routes/people.ts`, logic in `people.ts`, 2 routes):
 
