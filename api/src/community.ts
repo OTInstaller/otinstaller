@@ -388,6 +388,88 @@ export async function versionConfirmations(env: Env, versionId: string, now = Da
   return { works, broken, platforms };
 }
 
+// ---------- failed runs reported from ot ----------
+
+export interface RunReport {
+  version: string;
+  exit_code: number | null;
+  timed_out: boolean;
+  os: string;
+  arch: string;
+  engine: string | null;
+  ot_version: string | null;
+}
+
+/** How many failed-run reports from different addresses in a week open an "unconfirmed" issue. */
+export const SIGNALS_FOR_ISSUE = 3;
+
+/** Validates a report from ot's failure prompt: only these fields, never inputs or output. */
+export function runReportInput(b: Record<string, unknown>): RunReport {
+  const str = (v: unknown, max: number) => (typeof v === "string" && /^[A-Za-z0-9._\/+-]{1,40}$/.test(v) ? v.slice(0, max) : null);
+  const version = str(b.version, 40);
+  const os = str(b.os, 20);
+  const arch = str(b.arch, 20);
+  if (!version || !os || !arch) apiError(400, "invalid_body", "send {version, os, arch, exit_code | timed_out}");
+  const exit = b.exit_code == null ? null : Number(b.exit_code);
+  if (exit !== null && (!Number.isInteger(exit) || exit < 0 || exit > 255)) apiError(400, "invalid_body", "exit_code must be a number from 0 to 255");
+  const timedOut = b.timed_out === true;
+  if (exit === null && !timedOut) apiError(400, "invalid_body", "send exit_code, or timed_out: true");
+  const engine = str(b.engine, 10);
+  return { version, exit_code: exit, timed_out: timedOut, os, arch, engine: engine && (ENGINES as readonly string[]).includes(engine) ? engine : null, ot_version: str(b.ot_version, 20) };
+}
+
+/**
+ * A failed run reported from ot. Signed in, it counts as "broken for me" on that version and platform and joins the
+ * open broken issue for the version (or opens one, screened and limited like any issue). Anonymous, it only adds to a
+ * daily count per version and platform, once per address a day; enough addresses in a week open an "unconfirmed" issue.
+ */
+export async function reportRun(env: Env, t: ToolRef, user: User | null, address: string, r: RunReport) {
+  const v = await env.DB.prepare(`SELECT id, version FROM versions WHERE tool_id = ? AND version = ? AND status IN ('published', 'yanked')`).bind(t.id, r.version)
+    .first<{ id: string; version: string }>();
+  if (!v) apiError(404, "version_not_found", `${t.namespace}/${t.name} has no version ${r.version}`);
+  const platform = `${r.os}/${r.arch}`;
+  const what = r.timed_out ? "timed out" : `exited with ${r.exit_code}`;
+  if (user) {
+    await dailyLimit(env, "runreport", user.id, 20);
+    const open = await env.DB.prepare(
+      `SELECT * FROM issues WHERE tool_id = ? AND kind = 'broken' AND version = ? AND status IN ('open', 'confirmed') AND moderation = 'visible' AND deleted_at IS NULL ORDER BY created_at LIMIT 1`,
+    ).bind(t.id, r.version).first<IssueRow>();
+    if (open) {
+      await confirm(env, t, user, { result: "broken", version: r.version, platform, engine: r.engine, ot_version: r.ot_version, issue: open });
+      return { issue: open.number, created: false, moderation: "visible" };
+    }
+    const issue = await createIssue(env, t, user, {
+      kind: "broken", title: `${r.version} ${what} on ${platform}`.slice(0, MAX_TITLE),
+      body: `Reported from \`ot run\`: version ${r.version} ${what} on ${platform}${r.engine ? ` (${r.engine})` : ""}${r.ot_version ? `, ot ${r.ot_version}` : ""}. ot sends no inputs or output; add how to reproduce it with the tool's test input if you can.`,
+      version: r.version, platform, engine: r.engine, exit_code: r.exit_code,
+    });
+    await confirm(env, t, user, { result: "broken", version: r.version, platform, engine: r.engine, ot_version: r.ot_version, issue });
+    return { issue: issue.number, created: true, moderation: issue.moderation };
+  }
+  // Anonymous: one count per address, version and day, and a few reports a day per address.
+  if (await overLimit(env, "runreport-ip", address, 10, 86_400_000)) {
+    rateLimited("too_many_posts", "at most 10 reports a day from one address", "sign in with `ot login` to report more", windowRetry(86_400_000), 10, 86400);
+  }
+  const counted = !(await overLimit(env, "runsignal", `${address}|${v.id}`, 1, 86_400_000));
+  if (counted) {
+    await env.DB.prepare(
+      `INSERT INTO run_signals (tool_id, version_id, day, platform, engine, exit_class, count) VALUES (?, ?, date('now'), ?, ?, ?, 1)
+       ON CONFLICT (version_id, day, platform, engine, exit_class) DO UPDATE SET count = count + 1`,
+    ).bind(t.id, v.id, platform, r.engine ?? "", r.timed_out ? "timeout" : "exit").run();
+    const week = (await env.DB.prepare(`SELECT COALESCE(SUM(count), 0) AS n FROM run_signals WHERE version_id = ? AND day >= date('now', '-7 days')`).bind(v.id).first<{ n: number }>())!.n;
+    if (week >= SIGNALS_FOR_ISSUE) {
+      const rows = (await env.DB.prepare(`SELECT platform, SUM(count) AS n FROM run_signals WHERE version_id = ? AND day >= date('now', '-7 days') GROUP BY platform ORDER BY n DESC`).bind(v.id)
+        .all<{ platform: string; n: number }>()).results;
+      await fileSystemIssue(env, t.id, "broken", {
+        title: `Several reports of ${r.version} failing (unconfirmed)`,
+        markdown: `In the last 7 days, \`ot run\` sent ${week} reports, without a sign-in, that ${r.version} failed:\n\n${rows.map((x) => `- ${x.platform}: ${x.n}`).join("\n")}\n\nIf it fails for you too, say so here; if it works, say that instead.`,
+        version: r.version,
+      }, `run_signals:${r.version}`, "run_signals");
+    }
+  }
+  return { counted };
+}
+
 // ---------- the status line ----------
 
 export type StatusState = "working" | "mixed" | "failing" | "unknown";
