@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"strconv"
 )
 
 // Issue is one issue in a package's list (GET /tools/:ns/:name/issues).
@@ -91,4 +92,47 @@ func (c *Client) Confirm(ctx context.Context, ns, name, result, version, platfor
 		body["ot_version"] = otVersion
 	}
 	return &out, c.do(ctx, http.MethodPut, "/tools/"+pkgPath(ns, name)+"/confirmations", body, &out)
+}
+
+// ToolRequest is a request to package a tool (POST /requests, GET /requests/:number).
+type ToolRequest struct {
+	Number      int    `json:"number"`
+	Repo        string `json:"repo"`
+	URL         string `json:"url"`
+	Status      string `json:"status"`
+	DeclineCode string `json:"decline_code,omitempty"`
+	Votes       int    `json:"votes"`
+	Tool        string `json:"tool,omitempty"`
+	Otlite      string `json:"otlite,omitempty"`
+}
+
+// RequestMade is the registry's answer to a new request: the request, whether it waits for a moderator, and notes.
+type RequestMade struct {
+	Request ToolRequest `json:"request"`
+	Held    bool        `json:"held"`
+	Notes   []string    `json:"notes"`
+	URL     string      `json:"url"`
+}
+
+// RequestVote is a request's votes after voting.
+type RequestVote struct {
+	Number int  `json:"number"`
+	Votes  int  `json:"votes"`
+	Voted  bool `json:"voted"`
+}
+
+// RequestTool asks for the repository at repo (a GitHub or GitLab URL) to be packaged.
+func (c *Client) RequestTool(ctx context.Context, repo, note string) (*RequestMade, error) {
+	var out RequestMade
+	body := map[string]string{"repo": repo}
+	if note != "" {
+		body["note"] = note
+	}
+	return &out, c.do(ctx, http.MethodPost, "/requests", body, &out)
+}
+
+// VoteRequest adds the signed-in person's vote to a request.
+func (c *Client) VoteRequest(ctx context.Context, number int) (*RequestVote, error) {
+	var out RequestVote
+	return &out, c.do(ctx, http.MethodPut, "/requests/"+strconv.Itoa(number)+"/vote", nil, &out)
 }

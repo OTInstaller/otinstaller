@@ -3,6 +3,8 @@ import { defineConfig } from "vitest/config";
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
 // @ts-expect-error plain JS module
 import { buildSeedStatements } from "./scripts/seed-lib.mjs";
+// @ts-expect-error plain JS module
+import { buildKnownRepos } from "./scripts/known-repos-lib.mjs";
 
 export default defineConfig(async () => {
   const migrations = await readD1Migrations("./migrations");
@@ -27,6 +29,7 @@ export default defineConfig(async () => {
           TEST_SEED: buildSeedStatements(),
           TEST_FIXTURES: fixtures,
           TEST_TEMPLATES: templates,
+          TEST_KNOWN_REPOS: buildKnownRepos(".."),
           SITE_URL: "https://otinstaller.com",
           API_URL: "https://api.otinstaller.com",
           GITHUB_APP_ID: "123",

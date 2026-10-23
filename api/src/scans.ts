@@ -9,6 +9,7 @@ import { audit } from "./routes/auth";
 import { ownerEmails, sendEmail, templates } from "./notify";
 import { updateLinkHealth } from "./guides";
 import { announceVersion } from "./community";
+import { linkPublished } from "./requests";
 
 export const SCAN_TOKEN_TTL = 60 * 60 * 1000;
 const PARAMETER_TYPES = new Set(["string", "integer", "boolean", "enum"]);
@@ -301,6 +302,8 @@ export async function publishVersion(env: Env, versionId: string, opts: { backup
   await db.batch(stmts);
   // People following open broken or outdated issues are asked whether the new version fixes them.
   await announceVersion(env, v.tool_id, v.version).catch((e) => console.error("announcing the version on issues failed", e));
+  // Requests for this tool (its own repository, or the upstream a wrapper packages) are answered.
+  await linkPublished(env, v.tool_id).catch((e) => console.error("linking tool requests failed", e));
   if (v.kind === "guide" && isLatest) await updateLinkHealth(env, v.tool_id);
   const scan = await db.prepare(`SELECT scan_status FROM versions WHERE id = ?`).bind(versionId).first<{ scan_status: string }>();
   await commitStatus(env, v, "success", `Published ${refOf(v)}@${v.version}`);
