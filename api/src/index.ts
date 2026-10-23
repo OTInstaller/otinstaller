@@ -25,6 +25,7 @@ import { communityRoutes } from "./routes/community";
 import { inboxRoutes } from "./routes/inbox";
 import { requestRoutes } from "./routes/requests";
 import { peopleRoutes } from "./routes/people";
+import { submissionRoutes } from "./routes/submissions";
 import { refreshContributorStats } from "./people";
 import { deliverInbox, purgeInbox } from "./inbox";
 import { refreshDueProfiles } from "./profiles";
@@ -80,6 +81,7 @@ communityRoutes(app);
 inboxRoutes(app);
 requestRoutes(app);
 peopleRoutes(app);
+submissionRoutes(app);
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
@@ -264,9 +266,16 @@ app.get("/tools/:ns/:name", async (c) => {
   const smoke = await c.env.DB.prepare(`SELECT summary_json, ran_at FROM scans WHERE version_id = ? AND kind = 'smoke' AND result = 'pass' ORDER BY ran_at DESC LIMIT 1`)
     .bind(row.latest_version_id).first<{ summary_json: string | null; ran_at: number }>();
   const sampleJson = smoke?.summary_json ? JSON.parse(smoke.summary_json)?.sample : undefined;
+  // People who look after a community package besides its namespace: who submitted it, and others staff added.
+  const maintainers = (await c.env.DB.prepare(
+    `SELECT COALESCE(u.handle, lower(u.login)) AS handle, m.reason FROM tool_maintainers m JOIN users u ON u.id = m.user_id
+     WHERE m.tool_id = ? AND u.profile_hidden = 0 AND u.banned_at IS NULL ORDER BY m.created_at`,
+  ).bind(row.id).all<{ handle: string; reason: string }>()).results;
   cached(c, 60);
   return c.json({
     ...summary(row),
+    packaged_by: maintainers.find((m) => m.reason === "submitter")?.handle ?? undefined,
+    maintainers: maintainers.length ? maintainers.map((m) => m.handle) : undefined,
     sample: sampleJson ? { ...sampleJson, version: row.latest_version, recorded_at: smoke!.ran_at } : undefined,
     deprecated_replacement: row.deprecated_replacement ?? undefined,
     repo_url: row.repo_url,

@@ -1,11 +1,13 @@
-// /import: four steps. Pick a repository, see what was detected, complete what the detector could not guess
-// (small forms that write their part of the draft manifest; the YAML stays editable), then finish as a pull
-// request, a registry-held manifest or a wrapper, with what happens next spelled out.
+// /import: four steps. Pick a repository (yours, or someone else's open-source tool to package for the community),
+// see what was detected, complete what the detector could not guess (small forms that write their part of the draft
+// manifest; the YAML stays editable), then finish as a pull request, a registry-held manifest or a community
+// submission (with a Dockerfile when the wrapper builds its own image), with what happens next spelled out.
 import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { api, API_URL, type Types } from "../lib/api";
 import { categoryLabel, entityLabel, inputLabel } from "../lib/format";
 import { categoriesBlock, ethicsBlock, inputsBlock, outputsBlock, problemKey, secretsBlock, setTopLevel, testBlock, type InputField } from "../lib/yaml-blocks";
+import { dockerfileTemplate, TEMPLATE_LABEL, type TemplateKind } from "../lib/dockerfile-templates";
 import { ErrorNote, Loading, SignIn, useMe } from "./shared";
 
 interface Repo {
@@ -30,7 +32,9 @@ interface Import {
   assumed: string[];
   warnings: string[];
   install_url?: string;
-  finish_modes: ("pr" | "registry" | "connect" | "wrapper")[];
+  finish_modes: ("pr" | "registry" | "connect" | "wrapper" | "submit")[];
+  community?: boolean;
+  draft?: Record<string, any> | null;
   draft_yaml: string | null;
   problems: Problem[];
   missing: string[];
@@ -44,6 +48,7 @@ const STEPS = ["Pick a repository", "What was detected", "Complete the manifest"
 const FINISH: Record<string, { title: string; body: string }> = {
   pr: { title: "Open a pull request", body: "The manifest and the release workflow go into your repository. Releases are signed by your CI; no label, no ranking penalty." },
   wrapper: { title: "Open a pull request in the wrapper repository", body: "The community wrapper repository gets the manifest; the upstream project is credited and can claim the package later." },
+  submit: { title: "Submit for review", body: "The registry creates the wrapper repository in osintverse-community and starts its release; a community reviewer approves the first one. You become a maintainer of the package." },
   registry: { title: "Keep the manifest on the registry", body: "Nothing changes in your repository. The package is labelled, releases are unsigned and ranked a little lower; a one-click pull request moves it in later." },
   connect: { title: "Connect the repository", body: "It already has otinstaller.yaml, so the next vX.Y.Z tag publishes." },
 };
@@ -75,19 +80,30 @@ export default function ImportWizard({ back }: { back: string }) {
   const [step, setStep] = useState(0);
   const [types, setTypes] = useState<Types | null>(null);
   const [showYaml, setShowYaml] = useState(false);
+  // Packaging someone else's tool: the upstream URL, the request it answers, and the Dockerfile when it builds.
+  const [community, setCommunity] = useState(false);
+  const [upstream, setUpstream] = useState("");
+  const [request, setRequest] = useState<number | null>(null);
+  const [dockerfile, setDockerfile] = useState("");
 
   useEffect(() => {
     api<Types>("/types").then(setTypes, () => setTypes({ inputs: INPUT_TYPES, outputs: [], categories: [] }));
+    // A request's "Package this" link: /import?community=1&repo=<url>&request=<number>.
+    const q = new URLSearchParams(location.search);
+    if (q.get("community") === "1") setCommunity(true);
+    if (q.get("repo")) setUpstream(q.get("repo")!);
+    if (/^\d+$/.test(q.get("request") ?? "")) setRequest(Number(q.get("request")));
   }, []);
   useEffect(() => {
-    if (!me) return;
+    // Your own repositories are listed only when publishing one of them.
+    if (!me || community) return;
     setRepos(null);
     setError(null);
     const t = setTimeout(() => {
       api<{ repos: Repo[] }>(`/me/repos?provider=${provider}&q=${encodeURIComponent(q)}`).then((r) => setRepos(r.repos), (e) => (setRepos([]), setError(e)));
     }, 250);
     return () => clearTimeout(t);
-  }, [me, provider, q]);
+  }, [me, provider, q, community]);
 
   if (me === null) return <Loading what="your account" />;
   if (me === false) return <SignIn back={back} why="Sign in with the GitHub or GitLab account that owns the repository you want to publish." />;
@@ -112,12 +128,24 @@ export default function ImportWizard({ back }: { back: string }) {
     else setStep(imp.problems.length || imp.missing.length ? 2 : 2);
   };
   const start = (repo: Repo) => run(async () => show(await api<Import>("/imports", { method: "POST", body: JSON.stringify({ repo: repo.url, provider }) }), 1));
+  const startCommunity = (e: Event) => {
+    e.preventDefault();
+    void run(async () => show(await api<Import>("/imports", { method: "POST", body: JSON.stringify({ repo: upstream.trim(), community: true }) }), 1));
+  };
   const recheck = () => run(async () => show(await api<Import>(`/imports/${current!.id}`), 1));
   const save = (text = yaml) => run(async () => show(await api<Import>(`/imports/${current!.id}`, { method: "PATCH", body: JSON.stringify({ yaml: text }) }), 2));
   const finish = (mode: string) => run(async () => {
-    const r = await api<Import & { queued_tag?: string }>(`/imports/${current!.id}/finish`, { method: "POST", body: JSON.stringify({ mode }) });
+    const body = mode === "submit" ? { mode, dockerfile: dockerfile || undefined, request: request ?? undefined } : { mode };
+    const r = await api<Import & { queued_tag?: string; submission?: { number: number; status: string; url: string } }>(`/imports/${current!.id}/finish`, { method: "POST", body: JSON.stringify(body) });
     show(r, 3);
-    setDone(r.pr_url ? { text: "Pull request opened.", url: r.pr_url } : r.queued_tag ? { text: `Saved. ${r.queued_tag} is being published now.` } : { text: "Connected. The next vX.Y.Z tag publishes a version." });
+    setDone(r.submission
+      ? {
+        text: r.submission.status === "releasing"
+          ? `Submitted as #${r.submission.number}. The release is on its way; a reviewer looks at it once its scans pass.`
+          : `Submitted as #${r.submission.number}. A reviewer starts the build after reading the Dockerfile.`,
+        url: `/submissions/${r.submission.number}`,
+      }
+      : r.pr_url ? { text: "Pull request opened.", url: r.pr_url } : r.queued_tag ? { text: `Saved. ${r.queued_tag} is being published now.` } : { text: "Connected. The next vX.Y.Z tag publishes a version." });
   });
   const write = (key: string, block: string) => {
     const next = setTopLevel(yaml, key, block);
@@ -137,6 +165,19 @@ export default function ImportWizard({ back }: { back: string }) {
     return (
       <div class="stack wizard">
         {header}
+        <div class="segmented" role="group" aria-label="Whose tool">
+          <button type="button" aria-pressed={!community} onClick={() => setCommunity(false)}>My repository</button>
+          <button type="button" aria-pressed={community} onClick={() => setCommunity(true)}>Someone else's tool</button>
+        </div>
+        {community ? (
+          <form class="stack" onSubmit={startCommunity}>
+            <p class="small muted">Package an open-source tool you don't maintain as a community wrapper in <code>osintverse-community</code>. Its license must allow redistribution, and it mustn't be packaged or submitted already.{request && <> This answers <a href={`/requests/${request}`}>request #{request}</a>.</>}</p>
+            <label for="up">The tool's GitHub or GitLab repository</label>
+            <input id="up" type="url" required placeholder="https://github.com/owner/tool" value={upstream} onInput={(e) => setUpstream((e.target as HTMLInputElement).value)} />
+            <p><button class="btn btn-primary" type="submit" disabled={busy || !upstream.trim()}>Package it</button></p>
+            <ErrorNote error={error} />
+          </form>
+        ) : <>
         <div class="row" role="group" aria-label="Provider">
           <div class="segmented">
             <button type="button" aria-pressed={provider === "github"} onClick={() => setProvider("github")}>GitHub</button>
@@ -161,6 +202,7 @@ export default function ImportWizard({ back }: { back: string }) {
             ))}
           </ul>
         )}
+        </>}
       </div>
     );
   }
@@ -237,7 +279,8 @@ export default function ImportWizard({ back }: { back: string }) {
     );
   }
 
-  // Step 4: finish.
+  // Step 4: finish. A community wrapper builds its own image when upstream publishes none (a placeholder digest).
+  const builds = current.draft?.runtime?.kind === "docker" && /@sha256:0{64}$/.test(String(current.draft?.runtime?.image ?? ""));
   return (
     <div class="stack wizard">
       {header}
@@ -248,7 +291,7 @@ export default function ImportWizard({ back }: { back: string }) {
         </div>
       ) : (
         <div class="finish">
-          {current.finish_modes.map((m) => (
+          {current.finish_modes.filter((m) => m !== "wrapper").map((m) => (
             <button class="fcard" type="button" disabled={busy} onClick={() => finish(m)}>
               <strong>{FINISH[m]?.title ?? m}</strong>
               <span class="small muted">{FINISH[m]?.body}</span>
@@ -256,11 +299,33 @@ export default function ImportWizard({ back }: { back: string }) {
           ))}
         </div>
       )}
+      {current.community && !done && builds && (
+        <section class="wsec">
+          <h3>Packaging</h3>
+          <p class="small muted">The project publishes no image, so the wrapper builds one. Start from a template and check the command and version; official base images, a non-root user and a pinned release let it build straight away, anything else waits for a reviewer to read it.</p>
+          <div class="row">
+            {(Object.keys(TEMPLATE_LABEL) as TemplateKind[]).map((k) => (
+              <button class="btn btn-sm" type="button" onClick={() => setDockerfile(dockerfileTemplate(k, {
+                repo: (current.url ?? "").replace(/^https?:\/\//, ""), version: String(current.draft?.version ?? "0.1.0"),
+                command: String(current.draft?.runtime?.command?.[0] ?? current.repo.split("/").pop()), pkg: current.repo.split("/").pop(),
+              }))}>{TEMPLATE_LABEL[k]}</button>
+            ))}
+          </div>
+          <label for="df">Dockerfile</label>
+          <textarea id="df" rows={14} value={dockerfile} spellcheck={false} onInput={(e) => setDockerfile((e.target as HTMLTextAreaElement).value)} placeholder="FROM …" />
+        </section>
+      )}
       <ErrorNote error={error} />
       <section class="wsec">
         <h3>What happens next</h3>
         <ol class="next small">
-          {(current.finish_mode ?? current.finish_modes[0]) === "registry" ? (
+          {current.community ? (
+            <>
+              <li>The registry checks the license, that nobody packaged or submitted it, and the Dockerfile; then it creates <code>osintverse-community/{String(current.draft?.name ?? "")}</code> with the manifest, a README crediting the project{builds && ", the Dockerfile and the release workflow"}.</li>
+              <li>The first release is built, scanned and smoke-tested like any other, then waits for a community reviewer. You get updates in your <a href="/settings/notifications">inbox</a>, and the submission's page shows each step.</li>
+              <li>Once it is published you are listed as a maintainer of the package.</li>
+            </>
+          ) : (current.finish_mode ?? current.finish_modes[0]) === "registry" ? (
             <>
               <li>The registry holds the manifest; your next <code>vX.Y.Z</code> tag (or the one queued now) is validated and scanned.</li>
               <li>A new publisher's first release waits for a reviewer, usually within 3 business days; later ones publish when the checks pass.</li>
@@ -278,7 +343,9 @@ export default function ImportWizard({ back }: { back: string }) {
       </section>
       <div class="row">
         {!done && <button class="btn" type="button" onClick={() => setStep(2)}>← Complete</button>}
-        {done && <a class="btn btn-strong" href="/dashboard">Go to the dashboard</a>}
+        {done && (done.url?.startsWith("/submissions/")
+          ? <a class="btn btn-strong" href={done.url}>Open the submission</a>
+          : <a class="btn btn-strong" href="/dashboard">Go to the dashboard</a>)}
         <button class="btn btn-ghost" type="button" onClick={back0}>Import another repository</button>
       </div>
     </div>

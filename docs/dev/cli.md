@@ -523,8 +523,10 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   | `--file` | string | | use this manifest file as the draft (`PATCH` with `yaml`) |
   | `--save` | string | | write the draft manifest to this file |
   | `--registry` | bool | false | keep the manifest on the registry instead of a PR/MR |
-  | `--community` | bool | false | package a tool you don't own as a community wrapper (osintverse-community admins) |
-  | `--wrapper` | string | `https://<provider>.com/osintverse-community/<name>` (asked) | wrapper repository for a community import |
+  | `--community` | bool | false | package an open-source tool you don't own as a community wrapper; finishes as a submission |
+  | `--dockerfile` | string | | the Dockerfile a community wrapper builds when upstream publishes no image (required then: exit 2, `dockerfile_required`) |
+  | `--request` | int | 0 | the tool request a submission answers |
+  | `--wrapper` | string | | osintverse-community admins: open a PR/MR in this wrapper repository instead of submitting |
   | `--draft` | bool | false | stop after saving the draft |
   | `-y`, `--yes` | bool | false | do not prompt; fail if the draft still needs input |
   | `--list` | bool | false | list your imports |
@@ -533,7 +535,8 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 - Two or more URLs (without `--id`) start a bulk import (`--community` applies).
 - API: `POST /imports` `{repo}` / `{repo, community: true}` / `{repos, community}` (bulk); `GET /imports/{id}`; `GET
   /imports` (`--list`); `PATCH /imports/{id}` (`yaml`, `kind`, or `manifest` changes); `POST /imports/{id}/finish`
-  `{mode: pr|registry|connect}` or `{mode: wrapper, wrapper_repo}`.
+  `{mode: pr|registry|connect}`, `{mode: submit, dockerfile?, request?}` (community imports; prints `Submitted as #N` and
+  the submission's URL) or `{mode: wrapper, wrapper_repo}` (with `--wrapper`).
 - Sign-in: **yes, client-side** (no token → exit 2 "sign in first with `ot login`").
 - Exit: 0; 2 for no token, no URL/`--id`, registry 4xx, draft problems, `--yes` with missing fields, undetectable kind
   with `--yes`, bad finish answer; **1** when the import is still `detecting` or detection `failed`.

@@ -38,7 +38,7 @@ const wrapper = t.community_packaged && !!upstream;
     <p class="notice warn"><b>Deprecated.</b> {t.deprecated_message}{t.deprecated_replacement && <> Use <a href={`/${t.deprecated_replacement}`}>{t.deprecated_replacement}</a> instead.</>}</p>
   )}
   {wrapper && (
-    <p class="notice small"><b>Community-packaged</b> from <a href={upstream!} rel="nofollow noopener">{upstream!.replace(/^https?:\/\//, "")}</a>: the registry's community pins the upstream release; the tool is its authors' work. Maintain that project? <a href={`/${ref}/claim`}>Claim this package</a>.</p>
+    <p class="notice small"><b>Community-packaged</b> from <a href={upstream!} rel="nofollow noopener">{upstream!.replace(/^https?:\/\//, "")}</a>: the registry's community pins the upstream release; the tool is its authors' work.{t.packaged_by && <> Packaged by <a href={`/people/${t.packaged_by}`}>{t.packaged_by}</a>{(t.maintainers ?? []).filter((m) => m !== t.packaged_by).length > 0 && <>, maintained with {(t.maintainers ?? []).filter((m) => m !== t.packaged_by).map((m, i) => <>{i > 0 && ", "}<a href={`/people/${m}`}>{m}</a></>)}</>}.</>} Maintain that project? <a href={`/${ref}/claim`}>Claim this package</a>.</p>
   )}
   {t.manifest_held_by_registry && <p class="notice small"><b>Manifest held by the registry.</b> The repository has no <code>otinstaller.yaml</code> yet, so releases are unsigned until it is added.</p>}
   {t.source_unavailable && <p class="notice bad"><b>Source unavailable.</b> The repository is gone or private. Installed copies keep working, but no new versions will come.</p>}

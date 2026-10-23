@@ -1,0 +1,106 @@
+---
+// One community submission: what it packages, its manifest and Dockerfile, what reviewers should look at, the release's
+// scans and the decision. The island adds reviewers' decisions and the submitter's changes. Submission pages stay out
+// of search results; the published package's own page is what people should find.
+import Base from "../../layouts/Base.astro";
+import SubmissionActions from "../../islands/SubmissionActions";
+import { apiOrNull, type SubmissionDetail } from "../../lib/api";
+import { formatDate } from "../../lib/format";
+import { SUBMISSION_STATUS_LABEL, SUBMISSION_STATUS_TONE } from "../../lib/submissions";
+import { cacheFor } from "../../lib/page";
+
+const number = Number(Astro.params.number);
+const loaded = /^\d{1,7}$/.test(Astro.params.number ?? "") ? await apiOrNull<{ submission: SubmissionDetail }>(`/submissions/${number}`) : null;
+if (!loaded) return Astro.rewrite("/404");
+const s = loaded.submission;
+cacheFor(Astro, 60);
+const m = s.manifest as { version?: string; summary?: string; license?: string; runtime?: { kind?: string; image?: string; package?: string; package_version?: string; command?: string[] } };
+const facts = [
+  ["Packages", s.upstream.repo],
+  ["Package", `osintverse-community/${s.name}${m.version ? ` ${m.version}` : ""}`],
+  ["License", m.license ?? "unknown"],
+  ["Runs", s.runtime === "pipx" ? `the ${m.runtime?.package ?? ""} wheel from PyPI` : s.builds ? "an image built from the Dockerfile below" : "upstream's own published image"],
+  m.runtime?.command && ["Command", m.runtime.command.join(" ")],
+  ["Submitted", `${formatDate(s.created_at)}${s.submitted_by ? ` by ${s.submitted_by}` : ""}`],
+].filter(Boolean) as [string, string][];
+const result = (r: string) => (r === "pass" ? "ok" : r === "fail" ? "bad" : "warn");
+---
+<Base title={`${s.name}: submission #${s.number}`} description={`A community submission packaging ${s.upstream.repo} for the OTInstaller registry.`} noindex jsonHref={`https://api.otinstaller.com/v1/submissions/${s.number}`}>
+  <p class="small back"><a href="/submissions">← All submissions</a></p>
+  <article class="sub">
+    <header>
+      <p class="eyebrow">Community submission #{s.number}</p>
+      <h1 class="name">{s.name}</h1>
+      <p class="tags"><span class={`badge ${SUBMISSION_STATUS_TONE[s.status]}`}>{SUBMISSION_STATUS_LABEL[s.status]}</span>{m.summary && <span class="small">{m.summary}</span>}</p>
+      <p class="row">
+        <a class="btn btn-sm" href={s.upstream.url} rel="nofollow ugc noopener">The project</a>
+        {s.wrapper_repo && <a class="btn btn-sm" href={s.wrapper_repo} rel="nofollow noopener">The wrapper repository</a>}
+        {s.tool && <a class="btn btn-sm btn-primary" href={`/${s.tool}`}>{s.tool}</a>}
+        {s.request && <a class="btn btn-sm btn-ghost" href={`/requests/${s.request}`}>Request #{s.request}</a>}
+      </p>
+    </header>
+
+    {s.status === "published" && s.tool && <p class="notice ok">Published as <a href={`/${s.tool}`}>{s.tool}</a>. Install it with <code>ot install {s.tool}</code>.</p>}
+    {s.error && <p class="notice bad">{s.error}</p>}
+    {s.decision_note && (
+      <section class="post">
+        <h2>{s.status === "changes_requested" ? "What to change" : "Reviewer's note"}</h2>
+        <p class="note">{s.decision_note}</p>
+        {s.reviewer && <p class="small muted">{s.reviewer}</p>}
+      </section>
+    )}
+
+    <dl class="facts small">{facts.map(([k, v]) => <><dt>{k}</dt><dd>{v}</dd></>)}</dl>
+
+    {(s.flags.length > 0 || s.dockerfile_checks.length > 0) && (
+      <section class="post">
+        <h2>For reviewers</h2>
+        <ul class="checks small">
+          {s.dockerfile_checks.map((c) => <li><span class="badge warn">Dockerfile</span> {c.message} <code>{c.code}</code></li>)}
+          {s.flags.map((c) => <li><span class="badge plain">Note</span> {c.message}</li>)}
+        </ul>
+        {!s.template_conformant && s.status === "submitted" && <p class="small muted">Because of the Dockerfile notes, the build waits for a reviewer to start it.</p>}
+      </section>
+    )}
+
+    {s.release && (
+      <section class="post">
+        <h2>Release {s.release.version}</h2>
+        <p class="small muted">{s.release.status.replace(/_/g, " ")}{s.release.scan_status && `, scans ${s.release.scan_status}`}</p>
+        {s.release.scans.length > 0 && <ul class="checks small">{s.release.scans.map((x) => <li><span class={`badge ${result(x.result)}`}>{x.result}</span> {x.kind}</li>)}</ul>}
+      </section>
+    )}
+
+    {s.dockerfile && (
+      <details class="post" open={s.status === "submitted" || s.status === "in_review"}>
+        <summary>Dockerfile</summary>
+        <pre class="code"><code>{s.dockerfile}</code></pre>
+      </details>
+    )}
+    <details class="post">
+      <summary>Manifest</summary>
+      <pre class="code"><code>{JSON.stringify(s.manifest, null, 2)}</code></pre>
+    </details>
+
+    <SubmissionActions client:idle number={s.number} status={s.status} conformant={s.template_conformant} dockerfile={s.dockerfile ?? ""} />
+  </article>
+</Base>
+
+<style>
+  .back { margin: 0 0 12px; }
+  .sub { max-width: 820px; display: grid; gap: 16px; }
+  .eyebrow { margin: 0; }
+  .name { margin: 4px 0 0; overflow-wrap: anywhere; }
+  .tags { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; margin: 8px 0; }
+  .facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 16px; margin: 0; }
+  .facts dt { color: var(--muted); }
+  .facts dd { margin: 0; overflow-wrap: anywhere; }
+  .post { border-top: 1px solid var(--border); padding-top: 12px; }
+  .post h2 { margin: 0 0 6px; font-size: var(--fs-2); }
+  .post summary { cursor: pointer; font-weight: 600; }
+  .note { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+  .checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .code { overflow-x: auto; max-width: 100%; }
+  .sub :global(.subactions form label), .sub :global(.subactions form textarea) { display: block; width: 100%; }
+  .sub :global(.subactions form label + textarea) { margin-top: 4px; }
+</style>

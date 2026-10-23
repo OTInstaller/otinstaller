@@ -276,6 +276,36 @@ notifies the requester on every change and voters on published or declined (inbo
 `linkPublished` (called by `publishVersion`) marks requests for the package's own repository or the upstream its
 `homepage` names as published.
 
+Community submissions (`routes/submissions.ts`, logic in `submissions.ts`, 9 routes; submitting is
+`POST /imports/:id/finish {mode: "submit", dockerfile?, request?}` in `routes/imports.ts`):
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/submissions` | none | `cached(c, 120)` | routes/submissions.ts | `status` open / published / closed / all, `before` (number); 50 a page |
+| GET | `/submissions/:number` | none | `cached(c, 60)` | routes/submissions.ts | Manifest, Dockerfile, `template_conformant`, `flags`, `dockerfile_checks`, the latest release with its scans, decision, reviewer |
+| GET | `/submissions/:number/viewer` | user | no-store | routes/submissions.ts | `is_submitter`, `can_review`, `can_edit` |
+| PUT | `/submissions/:number` | submitter, publish | no-store | routes/submissions.ts | `{manifest?, dockerfile?}` while submitted, sent back or failed: checked again, committed, released again (patch bump when the version was tagged) |
+| POST | `/submissions/:number/withdraw` | submitter, manage | - | routes/submissions.ts | Archives the wrapper repository |
+| POST | `/submissions/:number/start` | reviewer, manage | - | routes/submissions.ts | Starts the build of a non-conformant Dockerfile |
+| POST | `/submissions/:number/approve` | reviewer, manage | - | routes/submissions.ts | Publishes the release waiting for review; 403 `self_review` for the submitter, `not_reviewer` without the role |
+| POST | `/submissions/:number/request-changes` / `reject` | reviewer, manage | - | routes/submissions.ts | `{note}` required; turns the waiting release down; reject archives the repository and puts a linked request back to accepted |
+
+`submitWrapper` refuses without the community bot's secrets (503 `community_bot_missing`), with three open submissions
+(409 `too_many_submissions`), on draft problems (409 `import_not_ready`), a builds-image draft without a Dockerfile
+(400 `dockerfile_required`) and on any blocking check, as 409 with all of them in `problems`:
+`license_not_redistributable`, `license_mismatch`, `upstream_has_manifest`, `already_packaged`, `submission_exists`,
+`name_taken`, `pypi_not_upstream`, `dockerfile_too_large`. `dockerfileChecks` (base image, non-root user, `ADD` URL,
+piped shell, a pin `upstream-pin.ts:findPin` can read) only decide `template_conformant`; flags for reviewers are
+`similar_name`, `stale_upstream`, `few_stars`, `dropped_in_survey`, `archived_upstream`, `pypi_unchecked`. Then the
+bot (`COMMUNITY_*`) creates the repository, commits the files, a `sources` row links it (`connected_by` the submitter,
+the main App's installation on the namespace), and the release starts: `createTag` for pinned images and wheels, a
+`workflow_dispatch` of `otinstaller-release.yml` for conformant builds. In the pipeline: `record()` marks a new tool
+from that repository `needs_first_review` (`markSubmittedTool`), `applyScanResults` holds it in `awaiting_review`
+even in an active namespace (`firstReleaseScanned`), and `publishVersion` clears the flag and adds the submitter to
+`tool_maintainers` (`firstReleasePublished`). `/admin/versions/:id/approve` also refuses the submitter
+(`self_review`). `GET /tools/:ns/:name` gains `packaged_by` and `maintainers`. `POST /imports {community: true}` is open
+to anyone signed in (10 a day); bulk community imports stay with admins.
+
 Contributor profiles (`routes/people.ts`, logic in `people.ts`, 2 routes):
 
 | Method | Path | Auth | Caching | Defined in | Notes |

@@ -26,7 +26,8 @@ sign-in we keep only a daily count per version and platform; your address is has
 day and the hash is deleted after a day. `OT_NO_TELEMETRY=1` turns the question off.
 
 Tool requests are public too: the repository, your handle and the note you wrote. Votes are counted on each request;
-who voted is not shown.
+who voted is not shown. Community submissions are public in the same way: your handle, the manifest and Dockerfile
+you sent, and the wrapper repository's README, which says you packaged it.
 
 If you take part, your profile at `/people/<handle>` shows your handle, avatar, roles, the month you joined, counts
 of your visible posts and answers, and your recent issues and requests; never your email. You can hide it in
