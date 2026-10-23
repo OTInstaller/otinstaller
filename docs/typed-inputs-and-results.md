@@ -127,14 +127,25 @@ differences: a listed tool with no input of the given types is shown as skipped 
 saved under the case `playbook-<name>` (or the playbook's `case:`, or `--case`). Tools that are not installed stop the
 run with the `ot install` commands to fix it; `--yes` installs them first.
 
-Two playbooks are bundled: `domain-recon` (`osintverse-community/dnstwist`, `osintverse-community/crtsh-subdomains`) and
-`username-investigation` (`osintverse-community/sherlock`, `osintverse-community/maigret`), the same tools as
-otinstaller's except `crtsh-subdomains`, which replaces otinstaller's `ctfr` (both read Certificate Transparency logs). Your own go in `<ot home>/playbooks/` or `./playbooks/` as `<name>.yaml` (`./playbooks` wins, then the
-ot home, then the bundled ones):
+Five playbooks are bundled, all from `osintverse-community` and none needing an API key:
+
+| Playbook | Takes | Tools |
+| --- | --- | --- |
+| `domain-recon` | domain | `dnstwist`, `crtsh-subdomains` |
+| `username-investigation` | username | `sherlock`, `maigret` |
+| `email-investigation` | email, domain | `holehe`, `user-scanner`; with `d:`, also `checkdmarc` and `dns-records` |
+| `phone-investigation` | phone | `phone-parse`, `phoneinfoga`, `numint` (its offline layer, plus any provider you have a key for) |
+| `ip-investigation` | ip | `ipwhois`, `naabu` (passive: Shodan InternetDB, no scan) |
+
+The first two have the same tools as otinstaller's except `crtsh-subdomains`, which replaces otinstaller's `ctfr` (both
+read Certificate Transparency logs). `TestBundledPlaybooksFitSeed` checks that every bundled tool is in the launch seed,
+takes one of its playbook's input types and needs no key. Your own go in `<ot home>/playbooks/` or `./playbooks/` as
+`<name>.yaml` (`./playbooks` wins, then the ot home, then the bundled ones):
 
 ```yaml
 name: my-recon            # optional, defaults to the file name
 description: "What it is for"
+inputs: [domain]          # optional: the input types it is meant for, the main one first
 case: my-case             # optional, defaults to playbook-<name>
 tools:
   - osintverse-community/dnstwist
@@ -142,7 +153,9 @@ tools:
 ```
 
 otinstaller playbooks list bare tool names (`sherlock`); `ot` needs the full package name and says which one to use.
-`requires_target` is accepted and ignored, since `ot playbook` always takes typed inputs. otinstaller guessed the
+`requires_target` is accepted and ignored, since `ot playbook` always takes typed inputs. `inputs` is only a label: it
+fills the TAKES column of `ot playbook --list` and `inputs` in MCP's `list_playbooks`; any typed input still runs every
+tool that takes it. otinstaller guessed the
 target type from a bare target (`example.com`); `ot` needs the prefix (`d:example.com`).
 
 ## `ot auto`

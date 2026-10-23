@@ -1,5 +1,6 @@
 name: username-investigation
 description: "Investigate a username across many platforms"
+inputs: [username]
 tools:
   - osintverse-community/sherlock
   - osintverse-community/maigret
