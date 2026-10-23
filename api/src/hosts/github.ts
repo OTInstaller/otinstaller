@@ -294,3 +294,59 @@ export async function openPullRequest(
   const p = (await (await check(pr, "opening the pull request")).json()) as { html_url: string; number: number };
   return { url: p.html_url, number: p.number };
 }
+
+// ---------- the community bot (a second App, installed only on osintverse-community) ----------
+
+/** Creates a public repository in an organisation the App's installation administers. */
+export async function createOrgRepo(f: Fetch, token: string, org: string, name: string, description: string, homepage: string): Promise<GithubRepo> {
+  const res = await f(`${GITHUB_API}/orgs/${encodeURIComponent(org)}/repos`, {
+    method: "POST", headers: { ...apiHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ name, description: description.slice(0, 350), homepage, visibility: "public", has_issues: true, has_wiki: false, has_projects: false, auto_init: false }),
+  });
+  if (res.status === 422) throw new HostError(`a repository called ${org}/${name} exists already`, 422, false);
+  return (await (await check(res, "creating the wrapper repository")).json()) as GithubRepo;
+}
+
+/** Commits one file to a branch (creating or replacing it); on an empty repository this makes the first commit. */
+export async function putFile(f: Fetch, token: string, repo: string, branch: string, file: FileChange, message: string): Promise<void> {
+  const url = `${GITHUB_API}/repos/${repo}/contents/${file.path.split("/").map(encodeURIComponent).join("/")}`;
+  const existing = await f(`${url}?ref=${encodeURIComponent(branch)}`, { headers: apiHeaders(token) });
+  const prior = existing.ok ? ((await existing.json()) as { sha?: string }).sha : undefined;
+  await check(
+    await f(url, { method: "PUT", headers: { ...apiHeaders(token), "Content-Type": "application/json" }, body: JSON.stringify({ message, content: base64(file.content), branch, sha: prior }) }),
+    `committing ${file.path}`,
+  );
+}
+
+/** The commit a branch points to. */
+export async function branchHead(f: Fetch, token: string, repo: string, branch: string): Promise<string> {
+  const res = await check(await f(`${GITHUB_API}/repos/${repo}/git/ref/heads/${encodeURIComponent(branch)}`, { headers: apiHeaders(token) }), "reading the branch");
+  return ((await res.json()) as { object: { sha: string } }).object.sha;
+}
+
+/** Creates a lightweight tag at a commit; the tag push reaches the registry's webhook like any release. */
+export async function createTag(f: Fetch, token: string, repo: string, tag: string, sha: string): Promise<void> {
+  const res = await f(`${GITHUB_API}/repos/${repo}/git/refs`, {
+    method: "POST", headers: { ...apiHeaders(token), "Content-Type": "application/json" }, body: JSON.stringify({ ref: `refs/tags/${tag}`, sha }),
+  });
+  if (res.status === 422) throw new HostError(`${repo} already has the tag ${tag}`, 422, false);
+  await check(res, "creating the release tag");
+}
+
+/** Runs a workflow_dispatch workflow (the release workflow builds, signs, commits the digest and tags). */
+export async function dispatchWorkflow(f: Fetch, token: string, repo: string, workflow: string, ref: string, inputs: Record<string, string>): Promise<void> {
+  await check(
+    await f(`${GITHUB_API}/repos/${repo}/actions/workflows/${encodeURIComponent(workflow)}/dispatches`, {
+      method: "POST", headers: { ...apiHeaders(token), "Content-Type": "application/json" }, body: JSON.stringify({ ref, inputs }),
+    }),
+    "starting the release workflow",
+  );
+}
+
+/** Archives a repository (read-only, never deleted). */
+export async function archiveRepo(f: Fetch, token: string, repo: string): Promise<void> {
+  await check(
+    await f(`${GITHUB_API}/repos/${repo}`, { method: "PATCH", headers: { ...apiHeaders(token), "Content-Type": "application/json" }, body: JSON.stringify({ archived: true }) }),
+    "archiving the repository",
+  );
+}

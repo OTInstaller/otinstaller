@@ -16,11 +16,12 @@ import { RELEASE_TAG, queueTag, sourceById, sourceByProject } from "./sync";
 import { audit } from "./routes/auth";
 import { connectGitlabProject, gitlabNamespaceName } from "./routes/sources";
 import { RELEASE_TEMPLATES } from "./release-templates";
+import { dailyLimit } from "./community";
 
 export const MAX_BULK = 50;
 export const IMPORT_BRANCH = "otinstaller/import";
 const MANIFEST_FILE = "otinstaller.yaml";
-const ZERO = "0".repeat(64);
+export const ZERO = "0".repeat(64);
 
 export type Provider = "github" | "gitlab";
 export type Kind = "docker" | "pipx" | "guide";
@@ -641,8 +642,10 @@ export function parseRepoRef(input: string, fallback?: Provider): { provider: Pr
 /** Starts imports: one repository is detected right away, several are detected in the queue. */
 export async function startImports(env: Env, user: User, refs: { provider: Provider; path: string }[], opts: { community?: boolean } = {}): Promise<ImportRow[]> {
   const community = !!opts.community;
+  // Anyone signed in may package someone else's tool (it finishes as a reviewed submission); bulk stays with admins.
   if (community && !(await isCommunityAdmin(env, user))) {
-    refuse(403, "not_community_admin", `only ${COMMUNITY_NAMESPACE} admins can package tools they don't own`);
+    if (refs.length > 1) refuse(403, "not_community_admin", `only ${COMMUNITY_NAMESPACE} admins can package several tools at once`);
+    await dailyLimit(env, "community-import", user.id, 10);
   }
   const now = Date.now();
   const batch = refs.length > 1 ? ulid(now) : null;
@@ -902,7 +905,7 @@ export function wrapperReadme(draft: Record<string, unknown>, upstream: string):
  * namespace. The manifest lives in that repository, so wrappers are never registry-held.
  */
 async function finishWrapper(env: Env, user: User, row: ImportRow, facts: Facts, wrapperInput: string | undefined) {
-  if (!(await isCommunityAdmin(env, user))) refuse(403, "not_community_admin", `only ${COMMUNITY_NAMESPACE} admins can package tools they don't own`);
+  if (!(await isCommunityAdmin(env, user))) refuse(403, "not_community_admin", `only ${COMMUNITY_NAMESPACE} admins can open a wrapper pull request`, `finish with {"mode": "submit"} instead`);
   const ref = wrapperInput ? parseRepoRef(wrapperInput, row.provider) : null;
   if (!ref) return refuse(400, "wrapper_required", `send the wrapper repository, e.g. {"mode": "wrapper", "wrapper_repo": "https://github.com/${COMMUNITY_NAMESPACE}/${facts.repoName}"}`);
   const wrapper = await openRepo(env, user.id, ref.provider, ref.path);

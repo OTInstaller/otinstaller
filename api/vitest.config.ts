@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { defineConfig } from "vitest/config";
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
 // @ts-expect-error plain JS module
@@ -20,6 +20,14 @@ export default defineConfig(async () => {
       .filter((f) => f.endsWith(".yml"))
       .map((f) => [f.replace(/\.yml$/, ""), readFileSync(`../spec/templates/${f}`, "utf8")]),
   );
+  // Every community wrapper's Dockerfile and upstream, for the pin parser the upstream watcher relies on.
+  const dockerfiles = readdirSync("../seed/community")
+    .filter((d) => existsSync(`../seed/community/${d}/Dockerfile`))
+    .map((d) => ({
+      name: d,
+      homepage: /^homepage:\s*(\S+)/m.exec(readFileSync(`../seed/community/${d}/otinstaller.yaml`, "utf8"))?.[1] ?? "",
+      dockerfile: readFileSync(`../seed/community/${d}/Dockerfile`, "utf8"),
+    }));
   return {
     plugins: [
       cloudflareTest({
@@ -30,6 +38,7 @@ export default defineConfig(async () => {
           TEST_FIXTURES: fixtures,
           TEST_TEMPLATES: templates,
           TEST_KNOWN_REPOS: buildKnownRepos(".."),
+          TEST_DOCKERFILES: dockerfiles,
           SITE_URL: "https://otinstaller.com",
           API_URL: "https://api.otinstaller.com",
           GITHUB_APP_ID: "123",

@@ -160,16 +160,37 @@ When something is wrong, releases are never blocked or held by it:
 | `GET /v1/me/repos?provider=github\|gitlab&q=` | Public repositories you administer (GitHub) or maintain (GitLab), whether the App is installed, and which are already published |
 | `POST /v1/imports {"repo": url}` | Detects one repository and returns the draft manifest, what was guessed (`assumed`), and what is `missing` |
 | `POST /v1/imports {"repos": [url, ...]}` | Bulk import of up to 50; detection runs in the queue (`GET /v1/imports?batch=<id>` to follow it) |
-| `POST /v1/imports {"repo": url, "community": true}` | A community wrapper of a tool you don't own (owners of `osintverse-community` and registry admins only); the upstream license must allow it |
+| `POST /v1/imports {"repo": url, "community": true}` | A community wrapper of a tool you don't own (anyone signed in, 10 a day; bulk for owners of `osintverse-community` and registry admins only); the upstream license must allow it |
 | `PATCH /v1/imports/{id}` | `{"manifest": {...}}` sets top-level keys (null removes one), `{"yaml": "..."}` replaces the draft, `{"kind": "docker\|pipx\|guide"}` redrafts it |
 | `POST /v1/imports/{id}/finish {"mode": "pr\|registry\|connect"}` | Opens the pull/merge request, keeps the manifest on the registry (owners only; publishes the newest tag right away), or connects a repository that already has `otinstaller.yaml` |
+| `POST /v1/imports/{id}/finish {"mode": "submit", "dockerfile"?, "request"?}` | Finishes a community import as a submission: the community bot creates the wrapper repository and starts its release; a community reviewer approves the first one (see below) |
 | `POST /v1/imports/{id}/finish {"mode": "wrapper", "wrapper_repo": url}` | Finishes a community import with a pull/merge request in a wrapper repository owned by `osintverse-community` (the manifest and a README crediting upstream, plus a release workflow when upstream publishes no image) |
 | `POST /v1/packages/{ns}/{name}/sync`, `GET …/sync-log` | Sync now (10 per hour; `ot sync`) and the sync status with the last 50 events (`ot sync --log`) |
 | `PUT /v1/packages/{ns}/{name}/manifest` | Edits a registry-held manifest; the next tag uses it |
 | `POST /v1/packages/{ns}/{name}/manifest/pr` | Opens a pull/merge request that moves a registry-held manifest into the repository; the label goes once a tag publishes from it |
 
 Community wrappers need the `osintverse-community` namespace: install the GitHub App on that organization (and make the
-people who package tools its owners), then create one wrapper repository per tool there before finishing the import.
+people who package tools its owners). Admins who finish with `wrapper` create one wrapper repository per tool there
+first.
+
+### Community submissions (the community bot)
+
+Submissions from people who aren't `osintverse-community` admins go through a second GitHub App, so the registry's own
+App keeps only the permissions it needs. Until it is set up, submitting answers 503 `community_bot_missing` and nothing
+else changes.
+
+1. The registry's own App must be installed on **All repositories** of `osintverse-community`, so it sees the tags of
+   repositories the bot creates (the publish webhook and the 6-hourly poller both use it).
+2. Create a GitHub App called "OTInstaller Community", owned by the `osintverse-community` organisation, with no
+   webhook. Repository permissions: Administration, Contents, Workflows and Actions **read and write**; Metadata
+   read. Install it on `osintverse-community` only (all repositories).
+3. Set the secrets on the API Worker (owner's step: `wrangler secret put` changes production):
+   `COMMUNITY_APP_ID`, `COMMUNITY_APP_PRIVATE_KEY` (the App's key converted to PKCS#8, like `GITHUB_APP_PRIVATE_KEY`)
+   and `COMMUNITY_INSTALLATION_ID`.
+4. Grant the reviewer role to the community members who approve first releases (Admin console, Community tab).
+5. Check it with a throwaway submission of a small MIT tool: the bot creates `osintverse-community/<name>`, the release
+   tags or builds, the version waits on `/submissions/<n>`, a reviewer approves it, and it publishes. Turn the test down
+   afterwards: the repository is archived, not deleted; delete it by hand if you want it gone.
 
 To check it against real hosts: import 5 GitHub and 5 GitLab repositories of different kinds, check that each draft is
 right, then merge one pull request and one merge request, run their release workflows, and confirm the tags publish.

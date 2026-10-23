@@ -19,7 +19,8 @@ import (
 // manifest, ot asks for what it could not detect, then opens a pull/merge request or keeps the manifest
 // on the registry.
 func (a *App) importCmd() *cobra.Command {
-	var id, file, save, wrapper string
+	var id, file, save, wrapper, dockerfile string
+	var request int
 	var registry, draftOnly, yes, list, community bool
 	cmd := &cobra.Command{
 		Use:   "import <github-or-gitlab-url>...",
@@ -28,9 +29,13 @@ func (a *App) importCmd() *cobra.Command {
 			"otinstaller.yaml from the repository, ot asks for what it could not detect, and then opens a pull or merge\n" +
 			"request adding the manifest and a release workflow. With --registry the manifest stays on the registry instead\n" +
 			"(repository owners only). Several URLs start a bulk import of up to 50 repositories.\n\n" +
-			"osintverse-community admins can package a tool they don't own with --community: the package is labelled\n" +
-			"Community-packaged, credits the upstream project, and its manifest goes into a wrapper repository (--wrapper).",
+			"Anyone can package an open-source tool they don't maintain with --community. It finishes as a submission: the\n" +
+			"registry creates osintverse-community/<name> with the manifest (and, when upstream publishes no image, the\n" +
+			"--dockerfile you give and the release workflow), starts its release, and a community reviewer approves the first\n" +
+			"one. --request links the tool request it answers. The package is labelled Community-packaged and credits the\n" +
+			"upstream project. osintverse-community admins can instead open a pull request in a wrapper repository (--wrapper).",
 		Example: "  ot import https://github.com/alice/whois-plus\n  ot import --id 01J... --file otinstaller.yaml\n  ot import --list\n" +
+			"  ot import --community https://github.com/sherlock-project/sherlock --dockerfile Dockerfile --request 12\n" +
 			"  ot import --community https://github.com/sherlock-project/sherlock --wrapper https://github.com/osintverse-community/sherlock",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -60,7 +65,7 @@ func (a *App) importCmd() *cobra.Command {
 			if err != nil {
 				return a.requestError(err)
 			}
-			return a.runWizard(ctx, imp, wizardOptions{file: file, save: save, wrapper: wrapper, registry: registry, draftOnly: draftOnly, yes: yes, asJSON: a.jsonMode()})
+			return a.runWizard(ctx, imp, wizardOptions{file: file, save: save, wrapper: wrapper, dockerfile: dockerfile, request: request, registry: registry, draftOnly: draftOnly, yes: yes, asJSON: a.jsonMode()})
 		},
 	}
 	f := cmd.Flags()
@@ -68,8 +73,10 @@ func (a *App) importCmd() *cobra.Command {
 	f.StringVar(&file, "file", "", "use this manifest file as the draft")
 	f.StringVar(&save, "save", "", "write the draft manifest to this file")
 	f.BoolVar(&registry, "registry", false, "keep the manifest on the registry instead of opening a pull/merge request")
-	f.BoolVar(&community, "community", false, "package a tool you don't own as a community wrapper (osintverse-community admins)")
-	f.StringVar(&wrapper, "wrapper", "", "the wrapper repository a community import opens its pull/merge request in")
+	f.BoolVar(&community, "community", false, "package an open-source tool you don't own as a community wrapper (finishes as a reviewed submission)")
+	f.StringVar(&dockerfile, "dockerfile", "", "the Dockerfile a community wrapper builds when upstream publishes no image")
+	f.IntVar(&request, "request", 0, "the tool request a community submission answers")
+	f.StringVar(&wrapper, "wrapper", "", "osintverse-community admins: open a pull/merge request in this wrapper repository instead of submitting")
 	f.BoolVar(&draftOnly, "draft", false, "stop after saving the draft; finish later with --id")
 	f.BoolVarP(&yes, "yes", "y", false, "do not prompt; fail if the draft still needs input")
 	f.BoolVar(&list, "list", false, "list your imports")
@@ -77,7 +84,8 @@ func (a *App) importCmd() *cobra.Command {
 }
 
 type wizardOptions struct {
-	file, save, wrapper              string
+	file, save, wrapper, dockerfile  string
+	request                          int
 	registry, draftOnly, yes, asJSON bool
 }
 
@@ -161,7 +169,10 @@ func (a *App) runWizard(ctx context.Context, imp *api.Import, o wizardOptions) e
 	}
 
 	if imp.Community {
-		return a.finishWrapper(ctx, imp, o, ask)
+		if o.wrapper != "" {
+			return a.finishWrapper(ctx, imp, o, ask)
+		}
+		return a.finishSubmission(ctx, imp, o)
 	}
 	mode := "pr"
 	switch {
@@ -348,6 +359,46 @@ func (a *App) printDetection(imp *api.Import) {
 	for _, w := range imp.Warnings {
 		fmt.Fprintf(a.Out, "  warning: %s\n", w)
 	}
+}
+
+// buildsImage reports whether a community draft builds its own image (upstream publishes none: a placeholder digest).
+func buildsImage(draft map[string]any) bool {
+	rt, _ := draft["runtime"].(map[string]any)
+	image, _ := rt["image"].(string)
+	return rt["kind"] == "docker" && strings.HasSuffix(image, "@sha256:"+strings.Repeat("0", 64))
+}
+
+// finishSubmission finishes a community import as a submission: the registry's community bot creates the wrapper
+// repository and starts its release, and a community reviewer approves the first one.
+func (a *App) finishSubmission(ctx context.Context, imp *api.Import, o wizardOptions) error {
+	var dockerfile string
+	if o.dockerfile != "" {
+		b, err := os.ReadFile(o.dockerfile)
+		if err != nil {
+			return exitErr(ExitUsage, "reading the Dockerfile: %v", err)
+		}
+		dockerfile = string(b)
+	} else if buildsImage(imp.Draft) {
+		return &ExitError{Code: ExitUsage, Reason: "dockerfile_required",
+			Err:  fmt.Errorf("%s publishes no image, so the wrapper builds one from a Dockerfile", imp.Repo),
+			Hint: fmt.Sprintf("write one and run `ot import --id %s --dockerfile Dockerfile` (templates: https://otinstaller.com/docs/community#submissions)", imp.ID)}
+	}
+	done, err := a.API.FinishSubmission(ctx, imp.ID, dockerfile, o.request)
+	if err != nil {
+		return a.requestError(err)
+	}
+	if o.asJSON {
+		return writeJSON(a.Out, done)
+	}
+	if s := done.Submission; s != nil {
+		fmt.Fprintf(a.Out, "\nSubmitted as #%d: %s\n", s.Number, s.URL)
+		if s.Status == "releasing" {
+			fmt.Fprintln(a.Out, "The release is on its way. Once its scans pass, a community reviewer looks at it; you get updates in your inbox.")
+		} else {
+			fmt.Fprintln(a.Out, "The Dockerfile doesn't follow the template, so a reviewer starts the build after reading it.")
+		}
+	}
+	return nil
 }
 
 // finishWrapper opens a community import's pull/merge request in its wrapper repository.

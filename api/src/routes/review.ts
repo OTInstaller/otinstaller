@@ -201,6 +201,8 @@ export function reviewRoutes(app: App) {
   app.post("/admin/versions/:id/approve", async (c) => {
     const reviewer = requireReviewer(c);
     const v = await heldVersion(c);
+    const submitted = await c.env.DB.prepare(`SELECT submitted_by FROM tools WHERE id = ?`).bind(v.tool_id).first<{ submitted_by: string | null }>();
+    if (submitted?.submitted_by === reviewer.id) apiError(403, "self_review", "someone other than the submitter has to review a submission");
     const note = await notes(c, "notes", false);
     await audit(c.env.DB, reviewer.id, "user", "version.approve", "version", v.id, { notes: note }).run();
     await publishVersion(c.env, v.id);
