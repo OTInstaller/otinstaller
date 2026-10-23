@@ -67,6 +67,9 @@ const REMOVED_WITH_CONTENT = /<(script|style|iframe|object|embed|noscript|templa
 const TAG = /<!--[\s\S]*?(-->|$)|<(\/?)([a-zA-Z][a-zA-Z0-9]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g;
 const ATTR = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+))?/g;
 
+/** Rendered HTML with each image replaced by its alt text, for places that cannot serve repository images. */
+export const imagesToAlt = (html: string) => html.replace(/<img\b[^>]*>/g, (tag) => /\balt="([^"]*)"/.exec(tag)?.[1] ?? "");
+
 /** Resolves a relative href against a directory, POSIX style; null when it leaves the repository. */
 export function resolvePath(dir: string, href: string): string | null {
   const parts = href.startsWith("/") ? [] : dir.split("/").filter(Boolean);

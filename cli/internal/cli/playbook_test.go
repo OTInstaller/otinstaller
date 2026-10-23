@@ -29,6 +29,14 @@ func TestPlaybook(t *testing.T) {
 	if code := run(a, "playbook", "--list"); code != 0 || !strings.Contains(out.String(), "people") || !strings.Contains(out.String(), "domain-recon") {
 		t.Fatalf("list: exit %d: %s %s", code, out, errb)
 	}
+	for _, line := range strings.Split(out.String(), "\n") {
+		f := strings.Fields(line)
+		switch {
+		case len(f) < 2:
+		case f[0] == "NAME" && f[1] != "TAKES", f[0] == "email-investigation" && f[1]+f[2] != "email,domain", f[0] == "people" && f[1] != "-":
+			t.Errorf("TAKES column: %q", line)
+		}
+	}
 
 	out.Reset()
 	if code := run(a, "playbook", "people", "u:johndoe", "--format", "json"); code != 0 {
@@ -59,11 +67,13 @@ func TestPlaybook(t *testing.T) {
 		t.Fatalf("bare target: %v %+v", err, rows)
 	}
 
+	// Without a terminal, missing tools are an error naming the commands that install them.
+	t.Setenv("OT_NONINTERACTIVE", "1")
 	for _, c := range []struct {
 		args []string
 		want string
 	}{
-		{[]string{"playbook", "missing", "u:x"}, "ot install dheeraj/not-here"},
+		{[]string{"playbook", "missing", "u:x"}, "needs tools that are not installed: dheeraj/not-here\ninstall them with `ot install dheeraj/not-here`, or install and run in one go with `ot playbook missing u:x --yes`"},
 		{[]string{"playbook", "people", "d:example.com"}, "none of the playbook's tools"},
 		{[]string{"playbook", "people"}, "needs at least one typed input"},
 		{[]string{"playbook", "nope", "u:x"}, "no playbook"},

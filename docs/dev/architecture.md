@@ -66,7 +66,8 @@ Contents
  Install: curl get.otinstaller.com/ot | sh -> otinstaller-get Worker (ops/get/worker.js)
           -> github.com/OTInstaller/ot/releases/latest/download/install.sh (cached 300 s)
           -> script fetches ot_<ver>_<os>_<arch> + checksums.txt(.sig) from OTInstaller/ot releases
- Self-update: ot -> api.github.com/repos/otinstaller/ot/releases/latest (not get.otinstaller.com)
+ Self-update: ot -> get.otinstaller.com/ot/latest -> assets from github.com/<Repo>/releases/download/<tag>/
+              (fallback: api.github.com/repos/otinstaller/ot/releases/latest); ot outdated: the same lookup, daily
 ```
 
 Bindings (`api/wrangler.jsonc`): D1 `DB` (`otinstaller`), R2 `CONTENT`, `BACKUPS`, `MIRROR`, queue `PUBLISH_QUEUE`
@@ -187,8 +188,10 @@ Step by step:
    (re-tagging a rejected version reuses its row and resets `scan_status = 'pending'`), `publish_jobs` (`status`,
    `error_code`, `error_detail`, `problems_json`) and an `audit_log` row `publish.scanning|rejected`.
 10. **Outcome.**
-    - Valid: `guides.ts:storeContent` (pages and README in R2, `versions.search_text`), status "Valid; security
-      scans running" (or "Valid; content checks running"), then `startChecks` → `scans.ts:dispatchScan` (tools) or
+    - Valid: `guides.ts:storeContent` (pages and README in R2, `versions.search_text`), then
+      `changelog.ts:captureNotes` (release notes from `host.releaseNotes(tag)`, else the version's section of
+      `CHANGELOG.md`, `CHANGES.md` or `HISTORY.md` at the commit; written only when a release webhook has not
+      already set them, and never an error), status "Valid; security scans running" (or "Valid; content checks running"), then `startChecks` → `scans.ts:dispatchScan` (tools) or
       `guides.ts:queueContentChecks` (guides). If the manifest moved into the repo, the source switches from
       `registry` to `repo` mode.
     - Invalid: email `notify.ts:templates.rejected` (only when a version row was written), status
@@ -607,6 +610,8 @@ and daily for the warning (`cli/internal/cli/trust.go:removedList`).
    ops/get/worker.js: /ot|/ot.sh|/install.sh -> install.sh ; /ot.ps1|/install.ps1 -> install.ps1
      fetch github.com/<RELEASE_REPO|OTInstaller/ot>/releases/latest/download/<file> (cacheTtl 300)
      upstream error -> 502 with a script that prints an error and exits 1 (ps1: throw)
+     /ot/latest -> github.com/<RELEASE_REPO>/releases/latest (redirect: manual) -> tag from Location
+       ^vX.Y.Z$ -> {"version": tag}, max-age 3600 ; else 502 latest_unknown
      other paths -> 302 https://otinstaller.com/docs/getting-started
    install.sh: tag = OT_VERSION or api.github.com/repos/<OT_RELEASE_REPO>/releases/latest
      download ot_<ver>_<os>_<arch>.tar.gz, checksums.txt, checksums.txt.sig
@@ -615,11 +620,17 @@ and daily for the warning (`cli/internal/cli/trust.go:removedList`).
 
  ot self-update [--check]
    cli/selfupdate.go -> selfupdate.New (needs build-time PublicKey, else exit 2)
-     Updater.Latest -> api.github.com/repos/<Repo>/releases/latest
-     Newer(tag, Version)? -> Download: checksums.txt + .sig -> VerifyChecksums (Ed25519)
+     Updater.Latest -> LatestVersion(get.otinstaller.com/ot/latest) -> assets named under
+                       github.com/<Repo>/releases/download/<tag>/ ; on any failure api.github.com/repos/<Repo>/releases/latest
+     Newer(tag, Version)? (so never a downgrade) -> Download: checksums.txt + .sig -> VerifyChecksums (Ed25519)
         -> ChecksumFor(archive) -> sha256 of archive -> extract
         any mismatch -> exit 4 "update refused: ..."
      selfupdate.Replace(exe): temp file next to exe; on Windows exe -> exe.old first
+
+ ot outdated (after the table)
+   latestOT: <ot home>/cache/ot-latest.json younger than 24 h? use it : selfupdate.Checker().Latest (3 s), saved
+     either way (a failure waits a day too); skipped for dev builds, ot mcp, CI and OT_NO_UPDATE_CHECK=1
+   Newer(latest, Version) -> "note: ot vX is out (you have vY); `ot self-update` installs it" on stderr
 ```
 
 ### k. Agents: `ot mcp`, unattended runs and the remote MCP server
@@ -660,3 +671,37 @@ The remote server is separate and runs nothing:
      tool -> get(path) -> edgeCached anonymous GET of /v1/tools, /v1/tools/:ns/:name, /v1/types, /v1/pivots,
              /v1/guides, guide pages (no caller headers) -> JSON result with the consent class ot mcp would give
 ```
+
+### l. The community: issues, failed runs, requests, submissions and the upstream watcher
+
+```
+ person (site or ot)                          registry API (community.ts, inbox.ts)
+   POST /tools/:ns/:name/issues  ---------->  poster(): timeout? daily limit? holdReason() (new account, screen(),
+                                               first post with links) -> issues row visible | held
+                                               announceIssue -> inbox rows for the namespace and tool_maintainers
+   ot run fails at a terminal, "y"  ------->  POST /tools/:ns/:name/run-reports {version, exit_code, os, arch, ...}
+                                               signed in: confirm(broken) + join or open the version's broken issue
+                                               anonymous: run_signals daily count; 3 in a week -> system issue
+   */15 cron: deliverInbox("immediate"); nightly: deliverInbox("daily"), lockStaleThreads, refreshContributorStats
+
+ POST /requests {repo} --> readUpstream (as the requester, else the App on osintverse-community, else anonymous)
+                            refuse: exists, packaged, upstream manifest; record declined: license, archived
+                            -> tool_requests (+ the requester's vote); triagers: setRequestStatus -> inbox
+ publishVersion --> linkPublished: requests for the package's repository or its homepage's upstream -> published
+
+ POST /imports {repo, community: true} --> detection --> POST /imports/:id/finish {mode: "submit", dockerfile?}
+   submitWrapper: draftProblems, submissionChecks (license, manifest, packaged, submitted, PyPI source),
+                  dockerfileChecks (conformant?) --> community bot (COMMUNITY_APP_*): createOrgRepo,
+                  putFile x N, sources row --> createTag (pinned image/wheel) | dispatch otinstaller-release.yml
+   tag webhook --> processJob --> record(): markSubmittedTool (needs_first_review, submitted_by)
+   scan callback --> applyScanResults: awaiting_review (firstReleaseScanned -> in_review, reviewers notified)
+   POST /submissions/:n/approve (reviewer, not the submitter) --> publishVersion --> firstReleasePublished
+                  (needs_first_review = 0, tool_maintainers += submitter)
+
+ nightly queueUpstreamChecks --> {upstreamCheckToolId} --> checkUpstream:
+   repoState (gone, renamed, archived, license_changed) --> currentPin (override, pipx, Dockerfile at git_sha via
+   findPin, upstream's own image) --> latestRelease (releases/latest with If-None-Match | PyPI | compare for commits)
+   --> upstream_watch row; UPSTREAM_WATCH=issues: outdated issue 3 days after a release, closed when caught up;
+   =prs: maybeOpenBump (pin-only PR) --> POST /packages/:ns/:name/pulls/:n/release (maintainer) --> merge + release
+```
+

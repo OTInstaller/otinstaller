@@ -40,6 +40,9 @@ type Error struct {
 	Problems []Problem `json:"problems,omitempty"`
 	// RequestID identifies a failed request in the registry's logs (server errors only).
 	RequestID string `json:"request_id,omitempty"`
+	// Number is the tool request that exists already (request_exists); Ref the package that does (already_in_registry).
+	Number int    `json:"number,omitempty"`
+	Ref    string `json:"ref,omitempty"`
 }
 
 func (e *Error) Error() string {
@@ -81,7 +84,9 @@ type ToolSummary struct {
 	Signed        bool     `json:"signed"`
 	NeedsKeys     bool     `json:"needs_keys"`
 	ManifestHeld  bool     `json:"manifest_held_by_registry"`
-	Status        string   `json:"status"`
+	// SourceGone means the source repository is gone, so no new versions will come.
+	SourceGone bool   `json:"source_unavailable"`
+	Status     string `json:"status"`
 	// Tools only: what a run does (from the manifest), so callers can tell which runs need consent.
 	Ethics *Ethics `json:"ethics,omitempty"`
 	Egress *bool   `json:"egress,omitempty"`
@@ -114,6 +119,7 @@ type ToolDetail struct {
 	RepoURL       string          `json:"repo_url"`
 	License       string          `json:"license"`
 	DeprecatedMsg string          `json:"deprecated_message,omitempty"`
+	Replacement   string          `json:"deprecated_replacement,omitempty"`
 	CommunityWrap bool            `json:"community_packaged"`
 	Manifest      json.RawMessage `json:"manifest"`
 	MovedTo       string          `json:"moved_to,omitempty"`
@@ -227,6 +233,29 @@ func (c *Client) Search(ctx context.Context, p SearchParams) (*SearchResult, err
 func (c *Client) Tool(ctx context.Context, ns, name string) (*ToolDetail, error) {
 	var out ToolDetail
 	return &out, c.anon().do(ctx, http.MethodGet, "/tools/"+url.PathEscape(ns)+"/"+url.PathEscape(name), nil, &out)
+}
+
+// Version is one version of a package as GET /tools/:ns/:name/versions lists it, newest first.
+type Version struct {
+	Version string `json:"version"`
+	// Status is published, yanked or removed.
+	Status      string `json:"status"`
+	ScanStatus  string `json:"scan_status"`
+	PublishedAt *int64 `json:"published_at"`
+	YankedAt    *int64 `json:"yanked_at"`
+	Signed      bool   `json:"signed"`
+	// Changelog is the version's release notes in Markdown (the host's release, or its CHANGELOG.md section); nil when
+	// the registry has none, or answered before it kept them.
+	Changelog       *string `json:"changelog"`
+	ChangelogSource string  `json:"changelog_source,omitempty"`
+}
+
+func (c *Client) Versions(ctx context.Context, ns, name string) ([]Version, error) {
+	var out struct {
+		Versions []Version `json:"versions"`
+	}
+	err := c.anon().do(ctx, http.MethodGet, "/tools/"+url.PathEscape(ns)+"/"+url.PathEscape(name)+"/versions", nil, &out)
+	return out.Versions, err
 }
 
 func (c *Client) Manifest(ctx context.Context, ns, name, version string) (*ManifestResponse, error) {

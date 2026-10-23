@@ -275,7 +275,6 @@ func (a *App) printProfile(n *api.Namespace) {
 	if s := n.Stats; s != nil && s.Packages > 0 {
 		row("Packages", fmt.Sprintf("%d (%d tools, %d guides)", s.Packages, s.Tools, s.Guides))
 		row("Installs", fmt.Sprintf("%d in 30 days, %d in all", s.Installs30d, s.InstallsTotal))
-		row("Stars", strconv.Itoa(s.Stars))
 		if s.Tools > 0 {
 			row("Health", fmt.Sprintf("%d passing, %d possibly broken", s.Healthy, s.Broken))
 		}

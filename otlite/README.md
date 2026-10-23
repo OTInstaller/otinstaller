@@ -91,8 +91,10 @@ otlite install sherlock
 otlite run sherlock -- u:johndoe
 ```
 
-The installer finds a Python 3.10 to 3.14, installs pipx if it is missing and installs otlite with it. If you
-already have pipx, `pipx install otlite` does the same.
+The installer needs nothing installed first. If the machine has a Python 3.10 to 3.14 and pipx, it installs otlite
+with pipx. Otherwise it downloads uv into `~/.local/bin` and installs otlite with uv on a Python 3.12 that uv keeps in
+your home directory, without sudo. Upgrade later with `pipx upgrade otlite` or `uv tool upgrade otlite`, whichever
+the installer used. If you already have pipx, `pipx install otlite` does the same.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/OTInstaller/otinstaller/main/otlite/docs/images/otlite-demo.png" alt="Installing and running a tool with otlite" width="820">
@@ -106,7 +108,9 @@ Linux or macOS. Tested on Ubuntu 22.04 and 24.04, Debian 12, Arch Linux, Kali Li
 Apple silicon. On macOS, `brew install python@3.12 git pipx` gives you everything otlite needs; some tools are
 built for Linux first and may not run there.
 
-Python 3.10 to 3.14, git, and the `venv` module. On Debian, Ubuntu and Kali, install that module with:
+Python 3.10 to 3.14, git, and the `venv` module. The one-line installer brings its own Python when the machine
+has none, so of these only git is left to install; on macOS the first `git` command offers to install Apple's
+command line tools. With your own Python on Debian, Ubuntu and Kali, install the `venv` module with:
 
 ```bash
 sudo apt install python3-venv git
@@ -172,7 +176,7 @@ Check the machine with:
 otlite doctor
 ```
 
-`doctor` prints `[ok]`, `[note]` or `[problem]` for the platform, Python, git, venv and pipx. Fix any `[problem]` line before you continue: each one ends with the command that fixes it on your system (apt, dnf, pacman or Homebrew).
+`doctor` prints `[ok]`, `[note]` or `[problem]` for the platform, Python, git, venv and pipx (or uv, when the installer used it). Fix any `[problem]` line before you continue: each one ends with the command that fixes it on your system (apt, dnf, pacman or Homebrew).
 
 ### Upgrading from otinstaller
 
@@ -456,7 +460,7 @@ No. Root is only needed once, for `sudo apt install python3-venv git`. Everythin
 otlite itself contacts GitHub and PyPI to install and update tools. It has no usage tracking. Crash reports are off unless you say yes: `otlite init` asks once, and Enter means no. If you turn them on, a report is sent only when otlite itself crashes, and it holds the error, where in otlite's code it happened, and the otlite, Python and OS versions, never your targets, command arguments, tool output, results, API keys, file paths or user name. Turn them on or off with `otlite crash-reports on` or `off`, and send a test report with `otlite crash-reports test`; `DO_NOT_TRACK=1` or `OTLITE_CRASH_REPORTS=off` always turns them off. The tools you run contact the services they are built to query.
 
 **How do I uninstall it?**
-`otlite remove --all` removes every tool, then `pipx uninstall otlite` removes otlite itself. `rm -rf ~/.otlite` deletes the config, the API key file and the logs. Results stay wherever you ran your commands.
+`otlite remove --all` removes every tool, then `pipx uninstall otlite` (or `uv tool uninstall otlite`) removes otlite itself. `rm -rf ~/.otlite` deletes the config, the API key file and the logs. Results stay wherever you ran your commands.
 
 **Is it legal to use?**
 The tools are legal to install. Whether a particular use is legal depends on where you are and what you are investigating. Read [Responsible use](#responsible-use) before running anything against a real person.

@@ -7,7 +7,8 @@ export const BETA = String(import.meta.env.PUBLIC_BETA ?? "1") !== "0";
 export const ISSUES_URL = String(import.meta.env.PUBLIC_ISSUES_URL ?? "https://github.com/OTInstaller/feedback/issues").replace(/\/+$/, "");
 
 export class ApiError extends Error {
-  constructor(public status: number, public code: string, message: string, public hint?: string, public problems?: Problem[]) {
+  /** Fields the error adds beyond code, message and hint (a request's number, the package that exists, ...). */
+  constructor(public status: number, public code: string, message: string, public hint?: string, public problems?: Problem[], public extra: Record<string, unknown> = {}) {
     super(message);
   }
 }
@@ -28,10 +29,11 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers: { Accept: "application/json", ...(init.body ? { "Content-Type": "application/json" } : {}), ...init.headers },
   });
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { error?: { code: string; message: string; hint?: string; problems?: Problem[]; request_id?: string } } | null;
+    const body = (await res.json().catch(() => null)) as { error?: { code: string; message: string; hint?: string; problems?: Problem[]; request_id?: string } & Record<string, unknown> } | null;
     const e = body?.error;
     const message = e ? e.message + (e.request_id ? ` (request ID ${e.request_id})` : "") : `The registry answered ${res.status}.`;
-    throw new ApiError(res.status, e?.code ?? "http_error", message, e?.hint, e?.problems);
+    const { code: _c, message: _m, hint: _h, problems: _p, docs: _d, ...extra } = (e ?? {}) as Record<string, unknown>;
+    throw new ApiError(res.status, e?.code ?? "http_error", message, e?.hint, e?.problems, extra);
   }
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 }
@@ -130,6 +132,14 @@ export interface ToolDetail extends ToolSummary {
   deprecated_replacement?: string;
   manifest: Manifest;
   moved_to?: string;
+  /** Open issues people filed; older API answers omit it. */
+  community?: { open_broken: number; open_outdated: number };
+  /** What the upstream watcher last found, for community wrappers. */
+  upstream?: UpstreamWatch;
+  /** The handle of whoever submitted a community package (community submissions). */
+  packaged_by?: string;
+  /** People who look after a community package besides its namespace. */
+  maintainers?: string[];
 }
 
 export interface Version {
@@ -139,6 +149,12 @@ export interface Version {
   published_at: number | null;
   yanked_at: number | null;
   signed: boolean;
+  /** Release notes as Markdown: untrusted text, never rendered as HTML. Absent from older API answers. */
+  changelog?: string | null;
+  /** The same notes, rendered and sanitized by the registry. */
+  changelog_html?: string | null;
+  /** Where the notes came from: the host's release for the tag, or the version's section of CHANGELOG.md. */
+  changelog_source?: "release" | "file" | null;
 }
 
 /** The manifest endpoint: what `ot install` reads, plus where it falls back to when the original host refuses. */
@@ -295,6 +311,27 @@ export interface ActivityEvent {
   to?: string;
 }
 
+/** GET /activity: what changed across the registry (a superset of a profile's events). */
+export interface RegistryEvent extends Omit<ActivityEvent, "type" | "kind"> {
+  type: ActivityEvent["type"] | "issue_confirmed" | "issue_fixed" | "request_accepted" | "request_published";
+  kind: ActivityEvent["kind"] | "request";
+  id: string;
+  summary: string;
+  new_package?: boolean;
+  has_notes?: boolean;
+  replacement?: string;
+  /** Community events (GET /activity?events=community): the issue's or request's number. */
+  number?: number;
+  issue_kind?: IssueKind;
+  /** request_published: the package that answers it. */
+  tool?: string;
+}
+
+export interface RegistryActivity {
+  events: RegistryEvent[];
+  next_before: number | null;
+}
+
 export interface PublisherList {
   namespaces: { name: string; kind: string; verified: boolean; display_name: string; packages: number; installs_30d: number }[];
 }
@@ -316,3 +353,197 @@ export interface ProfileSettings {
 }
 
 export type ProfileField = "display_name" | "bio" | "location" | "website" | "company" | "avatar_url" | "socials";
+
+// ---------- community ----------
+
+export type IssueKind = "broken" | "outdated" | "wrong_info" | "feature" | "question";
+export type IssueStatus = "open" | "confirmed" | "fixed" | "wont_fix" | "duplicate";
+
+export interface IssueAuthor {
+  handle: string;
+  avatar_url?: string | null;
+  system?: boolean;
+  profile?: boolean;
+}
+
+export interface IssueSummary {
+  number: number;
+  kind: IssueKind;
+  status: IssueStatus;
+  title: string;
+  author: IssueAuthor;
+  version: string | null;
+  platform: string | null;
+  comments: number;
+  me_too: number;
+  locked: boolean;
+  created_at: number;
+  last_activity_at: number;
+  closed_at: number | null;
+  indexable: boolean;
+  /** On the registry-wide board only. */
+  ref?: string;
+}
+
+export interface IssueList {
+  ref: string;
+  counts: { open: number; closed: number };
+  issues: IssueSummary[];
+  next_before: number | null;
+}
+
+export interface IssueComment {
+  id: string;
+  author: IssueAuthor;
+  role: "maintainer" | "triager" | "staff" | null;
+  body_html: string;
+  created_at: number;
+  edited_at: number | null;
+}
+
+export interface IssueThread {
+  ref: string;
+  issue: IssueSummary & { id: string; body_html: string; engine: string | null; exit_code: number | null; fixed_in: string | null; duplicate_of: number | null; deleted: boolean; edited_at: number | null };
+  comments: IssueComment[];
+}
+
+export interface IssueViewer {
+  can_triage: boolean;
+  is_author: boolean;
+  can_edit_issue: boolean;
+  editable_comments: string[];
+  subscribed: boolean;
+  held_comments: { id: string; created_at: number; body_html: string }[];
+}
+
+export interface CommunityStatus {
+  ref: string;
+  version: string | null;
+  line: { state: "working" | "mixed" | "failing" | "unknown"; text: string };
+  health: { status: string; checked_at: number | null; history: { at: number; version: string; result: "pass" | "fail"; duration_ms: number | null; failure: string | null }[] };
+  confirmations: { version: string | null; works: number; broken: number; platforms: Record<string, { works: number; broken: number }> };
+  issues: { open_broken: number; open_outdated: number };
+}
+
+// ---------- tool requests ----------
+
+export type RequestStatus = "open" | "accepted" | "in_progress" | "published" | "declined";
+export type DeclineCode = "license" | "archived" | "not_osint" | "not_cli" | "needs_login" | "acceptable_use" | "unmaintained" | "duplicate" | "withdrawn" | "other";
+
+export interface ToolRequest {
+  number: number;
+  provider: "github" | "gitlab";
+  repo: string;
+  name: string;
+  url: string;
+  description: string | null;
+  license: string | null;
+  upstream_stars: number | null;
+  status: RequestStatus;
+  decline_code: DeclineCode | null;
+  votes: number;
+  requested_by: IssueAuthor | null;
+  /** The published package that answers it. */
+  tool: string | null;
+  /** otlite's name for the tool, when otlite installs it. */
+  otlite: string | null;
+  created_at: number;
+  updated_at: number;
+  indexable: boolean;
+}
+
+export interface ToolRequestDetail extends ToolRequest {
+  note: string | null;
+  decision_note: string | null;
+  decided_at: number | null;
+  decided_by: string | null;
+  dropped_reason: string | null;
+  pushed_at: number | null;
+}
+
+export interface RequestBoard {
+  requests: ToolRequest[];
+  counts: Record<RequestStatus, number>;
+  next_before: string | null;
+}
+
+export interface RequestViewer {
+  voted: boolean;
+  is_requester: boolean;
+  can_decide: boolean;
+  held: boolean;
+  /** The requester's own note while a moderator hasn't looked at it yet. */
+  note?: string | null;
+}
+
+// ---------- contributor profiles ----------
+
+export interface Person {
+  handle: string;
+  avatar_url: string | null;
+  /** YYYY-MM */
+  joined: string;
+  roles: ("staff" | "triager" | "reviewer")[];
+  counts: { issues_opened: number; issues_confirmed: number; replies: number; confirmations: number; requests_made: number; requests_published: number; issues_triaged: number };
+  counted_at: number | null;
+  issues: { ref: string; number: number; kind: IssueKind; status: IssueStatus; title: string; created_at: number }[];
+  requests: { number: number; repo: string; status: RequestStatus; created_at: number }[];
+  indexable: boolean;
+}
+
+// ---------- community submissions ----------
+
+export type SubmissionStatus = "submitted" | "releasing" | "in_review" | "changes_requested" | "published" | "rejected" | "withdrawn" | "failed";
+
+export interface Submission {
+  number: number;
+  name: string;
+  upstream: { provider: "github" | "gitlab"; repo: string; url: string };
+  runtime: "docker" | "pipx";
+  builds: boolean;
+  status: SubmissionStatus;
+  submitted_by: string | null;
+  wrapper_repo: string | null;
+  tool: string | null;
+  request: number | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface SubmissionCheck { code: string; message: string }
+
+export interface SubmissionDetail extends Submission {
+  manifest: Record<string, unknown>;
+  dockerfile: string | null;
+  template_conformant: boolean;
+  flags: SubmissionCheck[];
+  dockerfile_checks: SubmissionCheck[];
+  released_version: string | null;
+  decision_note: string | null;
+  reviewer: string | null;
+  error: string | null;
+  release: { version: string; status: string; scan_status: string | null; scans: { kind: string; result: string; summary: unknown }[] } | null;
+}
+
+export interface SubmissionViewer { is_submitter: boolean; can_review: boolean; can_edit: boolean }
+
+// ---------- the upstream watcher ----------
+
+export interface UpstreamWatch {
+  state: "current" | "behind" | "unknown" | "archived" | "gone" | "license_changed" | "renamed" | "error";
+  pinned: string | null;
+  latest: string | null;
+  latest_at: number | null;
+  /** For commit pins: how many commits upstream's default branch has moved on. */
+  commits_behind: number | null;
+  checked_at: number | null;
+  /** The community bot's open pull request bumping the pin, on the tool detail only. */
+  bump?: { version: string; number: number; url: string };
+}
+
+export interface UpstreamSummary {
+  mode: "report" | "issues";
+  counts: Record<UpstreamWatch["state"], number>;
+  behind: (UpstreamWatch & { ref: string })[];
+  checked_at: number | null;
+}

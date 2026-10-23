@@ -34,6 +34,7 @@ The source of truth is `src/otlite/data/registry.yaml` (packaged with the wheel)
 | long_running | boolean | no | Tool monitors until stopped; left out of `--all` and `auto` |
 | run_from_source | boolean | no | Git tools only. Run from the tool's checkout instead of the current directory, for scripts that read data files by relative path (default: false) |
 | interactive | boolean | no | Tool prompts for input (logins, menus, setup wizards). Single runs on a terminal then use a pseudo-terminal so prompts are visible (default: false) |
+| notes | list[string] | no | Caveats worth knowing before installing, such as why a tool needs a particular Python or a login step. One line each, at most 300 characters. Shown by `otlite info` and on the tool's page on otinstaller.com |
 
 ## Accepts field
 

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/otinstaller/otinstaller/cli/internal/manifest"
 )
 
 func TestBundled(t *testing.T) {
@@ -16,9 +18,9 @@ func TestBundled(t *testing.T) {
 	for _, p := range all {
 		names[p.Name] = p
 	}
-	for _, want := range []string{"domain-recon", "username-investigation"} {
+	for _, want := range []string{"domain-recon", "username-investigation", "email-investigation", "phone-investigation", "ip-investigation"} {
 		p := names[want]
-		if p == nil || p.Source != "bundled" || len(p.Tools) == 0 || p.Case != "playbook-"+want {
+		if p == nil || p.Source != "bundled" || len(p.Tools) == 0 || p.Case != "playbook-"+want || len(p.Inputs) == 0 {
 			t.Errorf("%s: %+v", want, p)
 		}
 	}
@@ -36,6 +38,68 @@ func TestBundledToolsAreSeeded(t *testing.T) {
 			if errCommunity != nil && errFirst != nil {
 				t.Errorf("%s: %s is not in seed/", p.Name, ref)
 			}
+		}
+	}
+}
+
+// Every tool of a bundled playbook is in the launch seed under the same name, takes one of the playbook's input types,
+// and needs no key, so the playbook works on a fresh machine with nothing set up.
+func TestBundledPlaybooksFitSeed(t *testing.T) {
+	all, err := All(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range all {
+		if len(p.Inputs) == 0 {
+			t.Errorf("%s: declares no inputs", p.Name)
+		}
+		takesMain := false
+		for _, ref := range p.Tools {
+			_, name, _ := strings.Cut(ref, "/")
+			path := filepath.Join("../../../seed/community", name, "otinstaller.yaml")
+			if _, err := os.Stat(path); err != nil {
+				path = filepath.Join("../../../seed/first-party", name, "otinstaller.yaml")
+			}
+			_, m, err := manifest.LoadFile(path)
+			if err != nil {
+				t.Errorf("%s: %s: %v", p.Name, ref, err)
+				continue
+			}
+			if m.Ref() != ref {
+				t.Errorf("%s: %s is published as %s", p.Name, ref, m.Ref())
+			}
+			fits := false
+			for _, in := range m.Inputs {
+				for i, typ := range p.Inputs {
+					if in.Type == typ {
+						fits, takesMain = true, takesMain || i == 0
+					}
+				}
+			}
+			if !fits {
+				t.Errorf("%s: %s has no %s input", p.Name, ref, strings.Join(p.Inputs, " or "))
+			}
+			for _, s := range m.Secrets {
+				if s.Required {
+					t.Errorf("%s: %s needs the key %s", p.Name, ref, s.Name)
+				}
+			}
+		}
+		if len(p.Inputs) > 0 && !takesMain {
+			t.Errorf("%s: no tool takes its main input, %s", p.Name, p.Inputs[0])
+		}
+	}
+}
+
+func TestStarter(t *testing.T) {
+	for typ, want := range map[string]string{"username": "username-investigation", "email": "email-investigation",
+		"domain": "domain-recon", "phone": "phone-investigation", "ip": "ip-investigation", "url": ""} {
+		got := ""
+		if p := Starter(typ); p != nil {
+			got = p.Name
+		}
+		if got != want {
+			t.Errorf("Starter(%q) = %q, want %q", typ, got, want)
 		}
 	}
 }
@@ -62,12 +126,14 @@ func TestLaterDirsWin(t *testing.T) {
 
 func TestParseErrors(t *testing.T) {
 	for doc, want := range map[string]string{
-		"tools: []\n":                         "lists no tools",
-		"tools: [sherlock]\n":                 "osintverse-community/sherlock",
-		"tools: [a-ns/xx1, a-ns/xx1]\n":       "twice",
-		"tools: [Not/A/Ref]\n":                "not a package",
-		"name: Bad Name\ntools: [a-ns/xx1]\n": "lowercase",
-		"tools: {a: b}\n":                     "playbook",
+		"tools: []\n":                             "lists no tools",
+		"tools: [sherlock]\n":                     "osintverse-community/sherlock",
+		"tools: [a-ns/xx1, a-ns/xx1]\n":           "twice",
+		"tools: [Not/A/Ref]\n":                    "not a package",
+		"name: Bad Name\ntools: [a-ns/xx1]\n":     "lowercase",
+		"inputs: [hostname]\ntools: [a-ns/xx1]\n": "must be username, email",
+		"inputs: [ip, ip]\ntools: [a-ns/xx1]\n":   "input ip twice",
+		"tools: {a: b}\n":                         "playbook",
 	} {
 		if _, err := Parse([]byte(doc), "pb", "pb.yaml"); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%q: want %q, got %v", doc, want, err)

@@ -4,9 +4,10 @@
 import type { APIRoute } from "astro";
 import { api, type Facets, type SearchResult, type Types } from "../lib/api";
 import { GENERIC_INPUTS } from "../lib/landing";
+import { OTLITE_TOOLS, toolPath } from "../lib/otlite";
 
-const DOCS = ["", "/quick-start", "/getting-started", "/otlite", "/cli", "/agents", "/mcp-tools", "/automation", "/results", "/api", "/manifest", "/publishing", "/guides", "/errors", "/security", "/faq"];
-const POLICIES = ["/acceptable-use", "/terms", "/privacy", "/takedown", "/transparency"];
+const DOCS = ["", "/quick-start", "/getting-started", "/otlite", "/cli", "/agents", "/mcp-tools", "/automation", "/results", "/api", "/manifest", "/publishing", "/community", "/guides", "/errors", "/security", "/faq"];
+const POLICIES = ["/acceptable-use", "/terms", "/privacy", "/takedown", "/community", "/transparency"];
 
 async function all(path: string) {
   const out: SearchResult["results"] = [];
@@ -23,7 +24,8 @@ export const GET: APIRoute = async ({ site }) => {
   const [types, tools, guides, facets] = await Promise.all([api<Types>("/types"), all("/tools?kind=tool"), all("/guides"), api<Facets>("/facets?kind=tool").catch(() => null)]);
   const listed = (counts: Record<string, number> | undefined, v: string) => !counts || (counts[v] ?? 0) > 0;
   const paths = [
-    "/", "/search", "/guides", "/publish", "/tour", "/otlite", "/otlite/tools", "/agents",
+    "/", "/search", "/guides", "/learn", "/new", "/community", "/requests", "/submissions", "/publish", "/tour", "/otlite", "/otlite/tools", "/agents",
+    ...OTLITE_TOOLS.map((t) => toolPath(t.name)),
     ...types.inputs.filter((t) => !GENERIC_INPUTS.has(t) && listed(facets?.inputs, t)).map((t) => `/input/${t}`),
     ...types.categories.filter((c) => listed(facets?.categories, c)).map((c) => `/category/${c}`),
     ...tools.map((t) => `/${t.namespace}/${t.name}`),

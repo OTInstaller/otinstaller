@@ -10,7 +10,7 @@ Yes. Browsing, installing, running and publishing are free.
 
 ## Do my searches or results go to the registry?
 
-No. Tools run on your machine and their results stay there. `ot` sends one anonymous install count per tool version (no IP address or user is stored); set `OT_NO_TELEMETRY=1` to turn it off.
+No. Tools run on your machine and their results stay there. `ot` sends one anonymous install count per tool version (no IP address or user is stored); set `OT_NO_TELEMETRY=1` to turn it off. Once a day `ot outdated` also asks which `ot` release is newest, sending nothing about you; `OT_NO_UPDATE_CHECK=1` turns that off.
 
 ## Do I need Docker?
 

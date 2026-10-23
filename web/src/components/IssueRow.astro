@@ -1,0 +1,45 @@
+---
+// One issue in a list: its title, kind and status, number, who opened it and when, and how many people replied or
+// said "me too". On the registry-wide board it also names the package.
+import type { IssueSummary } from "../lib/api";
+import { ago } from "../lib/format";
+import { issueHref, KIND_LABEL, personHref, STATUS_LABEL, STATUS_TONE } from "../lib/community";
+
+interface Props {
+  issue: IssueSummary;
+  /** The package, for rows on the board. */
+  refName: string;
+  showRef?: boolean;
+}
+const { issue: i, refName, showRef = false } = Astro.props;
+---
+<li class="irow">
+  <div class="main">
+    <p class="title"><a href={issueHref(refName, i.number)}>{i.title}</a></p>
+    <p class="small muted meta">
+      {showRef && <><a href={`/${refName}`}>{refName}</a> · </>}#{i.number} · {i.author.system ? "opened by the registry" : <>opened by {i.author.profile ? <a href={personHref(i.author.handle)}>{i.author.handle}</a> : i.author.handle}</>} {ago(i.created_at).replace(/^on /, "on ")}
+      {i.version && <> · {i.version}</>}{i.platform && <> on {i.platform}</>}
+    </p>
+  </div>
+  <div class="tags">
+    <span class="badge plain">{KIND_LABEL[i.kind]}</span>
+    <span class={`badge ${STATUS_TONE[i.status]}`}>{STATUS_LABEL[i.status]}</span>
+    {i.locked && <span class="badge plain">Locked</span>}
+  </div>
+  <p class="small muted counts">
+    {i.comments > 0 && <span>{i.comments} {i.comments === 1 ? "reply" : "replies"}</span>}
+    {i.me_too > 0 && <span>{i.me_too} me too</span>}
+  </p>
+</li>
+
+<style>
+  .irow { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px 16px; align-items: baseline; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .title { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+  .meta { margin: 2px 0 0; overflow-wrap: anywhere; }
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .counts { margin: 0; display: flex; gap: 10px; white-space: nowrap; }
+  @media (max-width: 640px) {
+    .irow { grid-template-columns: minmax(0, 1fr); }
+    .tags { justify-content: flex-start; }
+  }
+</style>

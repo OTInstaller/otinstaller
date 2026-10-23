@@ -59,6 +59,8 @@ restore drill).
 | `GITHUB_APP_ID` | yes (GitHub publishing) | App JWT: installation tokens for repos and (fallback) registry-ops dispatch, imports | 503 on use | yes | yes |
 | `GITHUB_APP_PRIVATE_KEY` | yes | PKCS#8 PEM for the App JWT | 503 on use | yes | yes |
 | `GITHUB_WEBHOOK_SECRET` | yes | HMAC check on `POST /v1/webhooks/github` | 503 on every GitHub webhook | yes | yes |
+| `UPSTREAM_WATCH` (var) | no | What the upstream watcher does: `report` (default) records; `issues` also opens and closes outdated issues on community wrappers; `prs` also has the community bot open bump pull requests | report only | yes | no |
+| `COMMUNITY_APP_ID` / `COMMUNITY_APP_PRIVATE_KEY` / `COMMUNITY_INSTALLATION_ID` | for community submissions | The community bot: a second GitHub App installed only on `osintverse-community` that creates wrapper repositories, commits their files, tags or dispatches their release and archives turned-down ones (`submissions.ts`) | 503 `community_bot_missing` on submit; the rest of the site works | yes | no |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | yes (GitHub sign-in) | OAuth sign-in | 503 on GitHub login | yes | yes |
 | `GITLAB_CLIENT_ID` / `GITLAB_CLIENT_SECRET` | yes (GitLab) | GitLab OAuth sign-in and refreshing stored GitLab tokens (`hosts/repo.ts`) | 503 on GitLab login and GitLab repo calls | yes | yes |
 | `OSINTVERSE_CLIENT_ID` / `OSINTVERSE_CLIENT_SECRET` | for that sign-in | Sign in with OSINTverse (confidential OIDC client) | 503; the button fails | yes | yes |
@@ -157,7 +159,8 @@ Behaviour (`worker.js`):
 | --- | --- |
 | `/ot`, `/ot.sh`, `/install.sh` | `https://github.com/<RELEASE_REPO>/releases/latest/download/install.sh` |
 | `/ot.ps1`, `/install.ps1` | `.../install.ps1` |
-| `/otlite`, `/otlite.sh` | `https://raw.githubusercontent.com/<OTLITE_REPO>/main/otlite/scripts/install.sh` (pipx from PyPI, so no release is involved) |
+| `/otlite`, `/otlite.sh` | `https://raw.githubusercontent.com/<OTLITE_REPO>/main/otlite/scripts/install.sh` (pipx or uv from PyPI, so no release is involved) |
+| `/ot/latest` | `{"version": "vX.Y.Z"}`, read from the `Location` of `https://github.com/<RELEASE_REPO>/releases/latest` (`redirect: "manual"`, no GitHub API limit); only a tag matching `^v\d+\.\d+\.\d+$` is answered, with `cache-control: public, max-age=3600`; otherwise 502 `{"error": {"code": "latest_unknown", ...}}`, `no-store`. Read by `ot self-update` and `ot outdated` (`selfupdate.LatestURL`) |
 | anything else | 302 to `https://otinstaller.com/docs/getting-started` |
 
 Upstream fetches use `cf: { cacheTtl: 300, cacheEverything: true }`; responses are `text/plain; charset=utf-8`

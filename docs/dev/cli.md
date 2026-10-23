@@ -24,9 +24,10 @@ Conventions used here:
 
 ## 1. Commands
 
-Registered in `Root()` (`cli/root.go`) in this order: init, validate, search, info, install, run, playbook, auto,
-extract, diff, list, outdated, update, uninstall, keys, doctor, login, logout, whoami, import, sync, guide, docs,
-report, feedback, claim, transfer, yank, deprecate, self-update, release, mcp, pivot, token. 34 top-level commands,
+Registered in `Root()` (`cli/root.go`) in this order: init, validate, search, info, changelog, install, run, playbook,
+auto, runs, issues, request, extract, diff, list, outdated, update, uninstall, keys, doctor, login, logout, whoami, import,
+sync, guide, docs, report, feedback, claim, transfer, yank, deprecate, self-update, release, mcp, pivot, token, profile.
+39 top-level commands,
 plus subcommands `keys set|setup|list|rm`, `guide search|read|open|get|tools`, `mcp install|audit|policy|tools`
 (with `mcp policy reset`) and `token create|list|revoke`.
 
@@ -71,9 +72,34 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   Deprecated message, License, then Inputs/Outputs/Key/Ethics and a `Run:` example (tools) or Level/Tools (guides).
 - Sign-in: no. Exit: 0; 2 for a bad reference; 1 for registry errors (4xx not wrapped) or manifest parse errors.
 
-#### `ot install <namespace/name[@version]>`
-- File: `cli/packages.go` (`installCmd`, `install`). Args: `ExactArgs(1)`. Also accepts a local manifest path.
+#### `ot changelog <namespace/name>`
+- File: `cli/changelog.go` (`changelogCmd`, `releasedVersions`, `printRelease`, `cleanNotes`). Args: `ExactArgs(1)`; a
+  local manifest is exit 2.
+- Flags: `--all` (bool): every version, not only those newer than the installed one; `--limit` (int, 10; 0 for all);
+  `--json`.
+- API: `GET /tools/{ns}/{name}/versions` (anonymous): `changelog` and `changelog_source` per version (registries before
+  release notes send none: "(no release notes)").
+- Output: published and yanked versions newest first; for an installed package only the newer ones ("You have X;
+  newer versions:" on stderr), else the latest. Each as `version · date[ · yanked]` and the notes indented, always
+  through `stripControl` (they come from a publisher's repository). JSON: `{ref, installed, versions: [{version,
+  status, published_at, changelog}]}`.
+- `ot info` uses the same lookup (`whatsNew`) to print "What's new in <version>" (the first 12 lines, then a pointer
+  to `ot changelog`); its JSON gains `changelog`.
+- Sign-in: no. Exit: 0; 2 for a local manifest or a registry 4xx; 1 otherwise.
+
+#### `ot install <namespace/name[@version]> ...`
+- File: `cli/packages.go` (`installCmd`, `installMany`, `install`). Args: `MinimumNArgs(1)`; each may also be a local
+  manifest path. Every reference is parsed first, so a bad one exits 2 before anything installs; repeated arguments
+  install once.
 - Flags: `--native` (bool, false): install pipx tools on the host instead of in a container.
+- Several packages: `installMany` installs them one after another and goes on after a failure (printing
+  `error: <ref>: <message>` on stderr in text mode), except a missing container engine (`RuntimeMissingError`), which
+  stops it: the rest are `not_tried`. `guide tools` and `playbook -y` use it too.
+- After installing, text mode prints `Try it: <runner.ExampleCommand>` (or `Try them:` and one command per line) and
+  ``Needs a key: run `ot keys setup <ref>` to set <NAME>`` for required keys not set (`missingKeys` in `run.go`), on
+  stderr.
+- JSON: one package prints its install record plus `example` and `missing_keys` (omitted when none); several print
+  `[{ref, status (installed, failed, not_tried), version, example, missing_keys, error, exit_code}]`, then the error.
 - API: `GET /tools/{ns}/{name}/{version|latest}/manifest`; then, after a successful install of a registry package and
   if telemetry is enabled, `POST /installs` `{"tool": ref, "version": v}` (3 s timeout, errors ignored). Local
   manifests: no API calls, no ping, and a `note:` that signatures are not checked.
@@ -86,7 +112,8 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   the manifest is a guide (`UsageError`: "use `ot guide get`"); **4** when the error code is `tool_removed`, the
   response status is `removed`, the manifest fails validation, the image is not digest-pinned, cosign verification
   fails, or a wheel hash mismatches; **5** when Docker/Podman (or, for native pipx, pipx) is missing; 1 otherwise
-  (other registry errors, pull or build failures).
+  (other registry errors, pull or build failures). With several packages: 5 when the engine is missing; otherwise the
+  code every failed install shares ("N of M failed to install: …", and their common JSON code), or 1 when they differ.
 
 #### `ot list`
 - File: `cli/packages.go` (`listCmd`). Args: `NoArgs`. No flags. No API call (other than the pre-run removal check).
@@ -104,17 +131,31 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 #### `ot outdated`
 - File: `cli/update.go` (`outdatedCmd`). Args: `NoArgs`.
 - Flags: `--json` (bool, false).
-- API: `GET /tools/{ns}/{name}/latest/manifest` per installed package.
-- Output: table `PACKAGE INSTALLED LATEST STATUS`; statuses `up to date`, `update available`, `removed`, `not in
-  registry` (404), `error`, with notes (`moved to …`). "Nothing installed yet." goes to **stderr**.
+- API: `GET /tools/{ns}/{name}` and `GET /tools/{ns}/{name}/versions` per installed package (`api.Client.Tool` and
+  `Versions`), four packages at a time (`checkConcurrency`); rows keep the installed order.
+- Output: table `PACKAGE INSTALLED LATEST STATUS`; statuses `up to date`, `update available`, `removed` (410 for the
+  package, or the installed version listed as `removed`), `not in registry` (404), `error`, with notes (`moved to
+  …`) and flags in brackets. JSON rows: `{ref, installed, latest, status, note, flags, replacement}`. `flags` is always
+  an array of `deprecated`, `possibly_broken` (health `broken`), `yanked` (the installed version), `source_unavailable`
+  and `moved`, whatever the status; `replacement` is the deprecation's replacement, else `moved_to`. Each flag also
+  prints one `warning:` line on stderr, in JSON mode too. "Nothing installed yet." goes to **stderr**.
 - Exit: 0 always on a completed check (it changes nothing and does not fail on outdated or errored rows); 1 on state
   errors.
+- Newer ot (`noteNewerOT`, `latestOT` in `cli/selfupdate.go`): after the table, also with nothing installed, a `note: ot
+  vX is out (you have vY); \`ot self-update\` installs it` on stderr when the latest release is newer. The release is
+  looked up at most once a day (`GET https://get.otinstaller.com/ot/latest`, else the GitHub API; 3 s) and kept in
+  `<ot home>/cache/ot-latest.json`, a failed lookup too. Never for a `dev` build, under `ot mcp`, with `CI` set or with
+  `OT_NO_UPDATE_CHECK=1`.
 
 #### `ot update [namespace/name ...]`
 - File: `cli/update.go` (`updateCmd`). Args: any number.
 - Flags: `--all` (bool, false): update every installed package; `--json` (bool, false).
 - API: as `outdated`, then the `install` calls (`GET …/manifest`, `POST /installs`) for each package with an update.
-  Native installs stay native.
+  Native installs stay native. Picks packages by `status` (`update available`), plus packages that moved (`up to date`
+  or `update available` with a `moved_to`): those are installed under the new name, the old `state.json` entry is
+  dropped and its image removed unless the new install uses the same one (`forgetOldName`; native pipx installs share
+  their package, so nothing is uninstalled). Such a row is reported under the new name with the note `from <old ref>
+  <version>`. An updated row loses its `yanked` and `moved` flags.
 - Exit: 0; **2** when neither names nor `--all` are given, or both are, or a named package is not installed; **1** when
   any update failed, or (with named packages) any named package ends in a status other than `updated` / `up to date`
   (for example `removed` or `not in registry`).
@@ -196,12 +237,29 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   `Install it now? [Y/n]` on stderr unless `-y`, a non-yes answer is exit 2; local manifest paths are always
   reinstalled), resolve inputs and types, load secrets (env var of the same name, then keychain), run, save, print
   the envelope (`Saved <path>` on stderr).
+- Failure prompt (`report_prompt.go`, `offerFailureReport`): after a single run that timed out, or exited non-zero
+  with no entities, ot asks on stderr `<ref> <version> failed (exit N). Report it as broken? ... [y/N]`. Only at a
+  terminal, never under `ot mcp`, with `CI` set, with `--json`/`OT_OUTPUT=json` or `-f json|jsonl` (`runArgs.Machine`),
+  for local manifests, or with telemetry off (`OT_NO_TELEMETRY`, `"telemetry": false`); at most once per
+  `tool@version` every 7 days (`cache/report-prompts.json`, written whatever the answer). Yes sends
+  `POST /tools/{ns}/{name}/run-reports` `{version, exit_code | timed_out, os, arch, engine, ot_version}` and never
+  inputs, output or paths: signed in, the API adds the person to the open broken issue for that version or opens one
+  (a token without the `feedback` scope falls back to an anonymous report); anonymous (`anon()`), it only counts.
+  The run's exit code is unchanged and a failed send is a `warning:`.
 - `--all` flow (`runAll`): needs at least one typed input; refuses `--<input>`, `-o`, `--out-dir` and `--no-save`;
   considers every installed tool; tools with no matching input are left out, tools with an ambiguous input, a missing
   required input or a missing required key are listed as `skipped`. With the table format it prints `Running N
   tools, P at a time...` and `[n/N] <tool> <status>` on stderr, then a `TOOL STATUS ENTITIES SAVED` table (or JSON
   array of `{tool, version, status, exit_code, entities, output_path, meta_path, reason}`). Parallel runs' stderr goes
   only to the saved `.stderr.txt`.
+- No installed tool takes any typed input (`planAll` returns `*noToolsError`, `starter.go`): for each input type,
+  `playbook.Starter` picks the bundled playbook whose main `inputs` entry is that type (never a user playbook). At a
+  terminal, and not for `--dry-run`, `offerInstall` calls `GET /tools/{ns}/{name}` for each of its tools, leaves out
+  deprecated, `health: broken`, removed and unknown ones (a `note:` each) and those without the input type, prints
+  `ref version: summary (agent.Describe effects)` and asks `Install N tools and run? [y/N]` on stderr. Yes:
+  `installMany`, then `planAll` again (failed installs are reported; the rest run unless none installed or the engine
+  is missing). Otherwise exit 2, `not_installed`, with `ExitError.Hint` naming `ot playbook <starter> <type>:<value>
+  --yes` (or `ot search --input <type>` when no playbook fits, as for `url`). An unreachable registry exits 1.
 - API: `GET /removed` (if the cache is older than 1 h); install calls when installing; none for the run itself.
 - Sign-in: no.
 - Exit codes:
@@ -209,8 +267,8 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   - 1: tool exited non-zero ("`<ref> exited with code N`"); with `--all` any row not `complete`/`skipped`; results
     folder cannot be created; other errors.
   - 2: argument errors (`runner.UsageError`), unknown `-f` format, `--dry-run` without `--all`, no package (prints the
-    help and exits 2), `--all` misuse, "no installed tool has a … input", declined install prompt, a tool that isn't
-    installed when there is no terminal to ask (`not_installed`), `consent_required`.
+    help and exits 2), `--all` misuse, "no installed tool has a … input" (`not_installed`, with a hint), declined
+    install prompt, a tool that isn't installed when there is no terminal to ask (`not_installed`), `consent_required`.
   - 3: a required key is missing (`ot keys set <NAME>` hint, plus the key URL).
   - 4: removed version, or any install trust failure.
   - 5: Docker/Podman (or pipx for native installs) missing.
@@ -244,12 +302,22 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   `--list`), `-y/--yes` (install the playbook's missing tools first), `--native` (for those installs), `--parallel`
   (int, 4), `--results-dir`, `--case` (default the playbook's `case`, which defaults to `playbook-<name>`),
   `-h/--help`. `--live` accepted; `--no-save`, `-o`, `--out-dir`, `--<input>` refused.
-- Sources, later winning on a name clash: bundled (`domain-recon`: dnstwist, ctfr; `username-investigation`: sherlock,
-  maigret, all `osintverse-community/`), `<ot home>/playbooks/*.yaml|*.yml`, `./playbooks/*.yaml|*.yml`. YAML keys:
-  `name` (defaults to the file stem), `description`, `tools` (`ns/name`, no duplicates, namespace required), `case`,
+- `--list`: table `NAME TAKES DESCRIPTION TOOLS SOURCE` (TAKES is `inputs`, or `-`); JSON is the playbooks with
+  `inputs` always an array.
+- Sources, later winning on a name clash: bundled (`playbook/bundled/`, all `osintverse-community/`, none needing a
+  key: `domain-recon`: dnstwist, crtsh-subdomains; `username-investigation`: sherlock, maigret; `email-investigation`:
+  holehe, user-scanner, checkdmarc, dns-records; `phone-investigation`: phone-parse, phoneinfoga, numint;
+  `ip-investigation`: ipwhois, naabu), `<ot home>/playbooks/*.yaml|*.yml`, `./playbooks/*.yaml|*.yml`. YAML keys:
+  `name` (defaults to the file stem), `description`, `inputs` (input types the playbook is for, main one first; each
+  one of username, email, domain, phone, ip, url, no duplicates; optional), `tools` (`ns/name`, no duplicates,
+  namespace required), `case`,
   `requires_target` (ignored). A broken file is an error.
-- Missing tools without `-y`: exit 2 listing `ot install …` commands. With `-y`: installs them (`GET …/manifest`,
-  `POST /installs`). Prints `Playbook <name>: <tools>` on stderr (table). Tools with no input of the given types are
+- Missing tools without `-y`: at a terminal, `offerInstall` (`starter.go`) describes them from the registry, leaves out
+  deprecated, broken and removed ones, and asks `Install N tools and run? [y/N]`; on yes the playbook runs with the
+  tools that are installed. Without a terminal, or after a no: exit 2, `not_installed`, hint `ot install <tools>` or
+  `ot playbook <name> <inputs> --yes`. With `-y`: installs them all with `installMany` (`GET …/manifest`,
+  `POST /installs`), then runs; a failed install stops the playbook with that install's code (or the failures' common
+  one). Prints `Playbook <name>: <tools>` on stderr (table). Tools with no input of the given types are
   listed as `skipped`.
 - Sign-in: no. Exit: as `ot run --all`; also 2 for an unknown playbook, a broken playbook file, a bad list format, or
   when none of the playbook's tools can run with the inputs; install errors propagate their own codes (4, 5, 1).
@@ -263,6 +331,42 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   `spec/pivots.json`, lists for each entity worth following the input type it fits and the installed tools that take
   it, with an `ot run` line for each. The run's own inputs are left out. Nothing is run.
 - API: only with `--registry` (`GET /pivots`). Exit: 0; 2 when the run or its sidecar can't be found.
+
+#### `ot runs [run-id]`
+- File: `cli/runs.go` (`runsCmd`, `listSavedRuns`, `showRun`). Args: `MaximumNArgs(1)`.
+- Flags: `--tool` (`ns/name` or `name`), `--target`, `--case` (reads `<dir>/cases/<case>`), `--status` (`complete`,
+  `failed`, `timeout` or `interrupted`; anything else exit 2), `--since` (duration, default `168h`; `0` for all),
+  `--limit` (int, 20; `0` for all), `--results-dir` (read only that folder), `--json`.
+- Reads `resultDirs()`: the results dir (`$OT_RESULTS_DIR`, else `./results`) and `<ot home>/results`, merged newest
+  first by the time stamp in the file names. `listSavedRuns` is also what MCP's `list_runs` uses (with only the results
+  dir, as before).
+- Output: table `RUN STARTED TOOL TARGET STATUS ENTITIES CASE` (a `note:` on stderr when `--limit` cut it, and a line
+  pointing at `ot runs <run-id>` and `ot pivot`), or "No saved runs from the last 7 days under …"; JSON is an array of
+  `list_runs` rows. With a run id (`findSavedRunIn`): tool, target, status, exit code, entity count, duration, start
+  time, case, saved path, warnings, the first ten distinct entities and, when it found any, a line suggesting `ot pivot <id>`; JSON is the sidecar.
+- No API. Exit: 0, also when nothing is found; 2 for a bad flag value or an unknown run id (`run_not_found`).
+
+#### `ot issues <namespace/name>`
+- File: `cli/issues.go` (`issuesCmd`). Args: `ExactArgs(1)`; a local path or a bad reference is exit 2.
+- Flags: `--all` (bool): closed issues too; `--json`.
+- API: `GET /tools/{ns}/{name}/issues?status=open|all` (anonymous, edge-cached 60 s).
+- Output: table `# KIND STATUS VERSION REPLIES TITLE`, then `N open, M closed: <site>/<ns>/<name>/issues` on stderr;
+  with none, a line with the issues page. JSON is the API's answer (`ref`, `counts`, `issues`).
+- Sign-in: no. Exit: 0; 2 for a bad reference or a registry 4xx (unknown package); 1 otherwise.
+
+#### `ot request <repository-url>`
+- File: `cli/request.go` (`requestCmd`, `askVote`). Args: `ExactArgs(1)`: a GitHub or GitLab repository URL (the
+  registry parses it).
+- Flags: `--note` (string): why it's worth packaging, plain text; `--vote` (bool): vote for the existing request
+  instead of failing when someone asked already; `--json`.
+- API: `POST /requests` `{repo, note?}`. On 409 `request_exists` (the error carries `number`): with `--vote`, or a yes
+  (the default) to `... Vote for it instead? [Y/n]` at a terminal, `PUT /requests/{number}/vote`; otherwise exit 2.
+- Output: "Asked for <repo> as request #N ..." (or declined at once, or waiting for a moderator) with the page's URL,
+  then each of the registry's notes as a `note:` line on stderr (otlite has it already, why the seed survey left it
+  out); after a vote, "Voted for request #N (M votes): <url>". JSON is the API's answer (`request`, `held`, `notes`,
+  `url`) or the vote (`number`, `votes`, `voted`); a JSON error carries `number` (and `ref` for `already_in_registry`).
+- Sign-in: **yes, client-side** (exit 2). Exit: 0; 2 for no token, an existing request not voted for, or a registry
+  4xx; 1 otherwise.
 
 #### `ot extract <tool | path>`
 - File: `cli/saved.go` (`extractCmd`); logic in `results/saved.go`. Args: `MaximumNArgs(1)`.
@@ -375,7 +479,9 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 - Flags: `-y`, `--yes` (bool): install without asking; `--native` (bool): install pipx tools on the host.
 - API: `GET /guides/{ns}/{name}[/{version}]`, then the install calls for each tool not installed and still available.
 - Prompt `Install N tool(s)? [y/N]:` (default no; "no" is exit 0 with "Nothing installed.").
-- Exit: 0; 1 when any install failed ("N of M tool(s) failed to install"); 2 for registry 4xx on the guide.
+- Installs through `installMany`, so it stops when Docker or Podman is missing (the rest are `not_tried` in JSON).
+- Exit: 0; as `ot install` with several packages when any install failed (5 for a missing engine, else the failures'
+  common code or 1; with one tool to install, that install's own code); 2 for registry 4xx on the guide.
 
 #### `ot docs <namespace/tool> [page]`
 - File: `cli/guide.go` (`docsCmd`). Args: `RangeArgs(1, 2)`; `@version` is refused (exit 2): docs are always latest.
@@ -432,8 +538,10 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   | `--file` | string | | use this manifest file as the draft (`PATCH` with `yaml`) |
   | `--save` | string | | write the draft manifest to this file |
   | `--registry` | bool | false | keep the manifest on the registry instead of a PR/MR |
-  | `--community` | bool | false | package a tool you don't own as a community wrapper (osintverse-community admins) |
-  | `--wrapper` | string | `https://<provider>.com/osintverse-community/<name>` (asked) | wrapper repository for a community import |
+  | `--community` | bool | false | package an open-source tool you don't own as a community wrapper; finishes as a submission |
+  | `--dockerfile` | string | | the Dockerfile a community wrapper builds when upstream publishes no image (required then: exit 2, `dockerfile_required`) |
+  | `--request` | int | 0 | the tool request a submission answers |
+  | `--wrapper` | string | | osintverse-community admins: open a PR/MR in this wrapper repository instead of submitting |
   | `--draft` | bool | false | stop after saving the draft |
   | `-y`, `--yes` | bool | false | do not prompt; fail if the draft still needs input |
   | `--list` | bool | false | list your imports |
@@ -442,7 +550,8 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 - Two or more URLs (without `--id`) start a bulk import (`--community` applies).
 - API: `POST /imports` `{repo}` / `{repo, community: true}` / `{repos, community}` (bulk); `GET /imports/{id}`; `GET
   /imports` (`--list`); `PATCH /imports/{id}` (`yaml`, `kind`, or `manifest` changes); `POST /imports/{id}/finish`
-  `{mode: pr|registry|connect}` or `{mode: wrapper, wrapper_repo}`.
+  `{mode: pr|registry|connect}`, `{mode: submit, dockerfile?, request?}` (community imports; prints `Submitted as #N` and
+  the submission's URL) or `{mode: wrapper, wrapper_repo}` (with `--wrapper`).
 - Sign-in: **yes, client-side** (no token → exit 2 "sign in first with `ot login`").
 - Exit: 0; 2 for no token, no URL/`--id`, registry 4xx, draft problems, `--yes` with missing fields, undetectable kind
   with `--yes`, bad finish answer; **1** when the import is still `detecting` or detection `failed`.
@@ -482,10 +591,18 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 #### `ot report <namespace/name>`
 - File: `cli/trust.go`. Args: `ExactArgs(1)`; `@version` is used as the version when `--version` is not given.
 - Flags: `--reason` (string: malware, policy, impersonation, license, broken, other); `--details` (string; required
-  by the registry except for broken); `--version` (string).
-- Without `--reason`: opens `<site>/<ns>/<name>/report[?v=<version>]`, no API call.
-- API: `POST /tools/{ns}/{name}/reports` `{reason, details, version?}`.
-- Sign-in: no (anonymous unless a token is loaded). Exit: 0; 2 for a bad reference or registry 4xx; 1 otherwise.
+  by the registry except for broken); `--version` (string); `--works` and `--broken` (bool, mutually exclusive,
+  exit 2 together).
+- Without `--reason`, `--works` or `--broken`: opens `<site>/<ns>/<name>/report[?v=<version>]`, no API call.
+- API: `POST /tools/{ns}/{name}/reports` `{reason, details, version?}`. The report is private to the reviewers; with
+  `--reason broken` ot adds a `note:` that `--broken` tells other users too.
+- `--works` / `--broken` (`confirmVersion` in `issues.go`) act on `--version`, else the installed version. `--works`
+  needs a token (exit 2 otherwise) and sends `PUT /tools/{ns}/{name}/confirmations` `{result: "works", version,
+  platform, engine, ot_version}`, printing how many people say that version works. `--broken` needs a version (exit 2
+  without one) and goes through the failure prompt's `sendRunReport` with exit code 1, so it joins or opens the
+  version's broken issue when signed in, and only counts when not.
+- Sign-in: no (anonymous unless a token is loaded), except `--works`. Exit: 0; 2 for a bad reference, `--works`
+  without a token, or a registry 4xx; 1 otherwise.
 
 #### `ot claim [namespace/name]`
 - File: `cli/trust.go`. Args: `RangeArgs(0, 1)`.
@@ -562,7 +679,9 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 #### `ot self-update`
 - File: `cli/selfupdate.go`; logic `selfupdate/selfupdate.go`. Args: `NoArgs`.
 - Flags: `--check` (bool): only say whether an update is available.
-- Network (not the registry): `GET https://api.github.com/repos/<Repo>/releases/latest`, then the release assets
+- Network (not the registry): `GET https://get.otinstaller.com/ot/latest` (`selfupdate.LatestVersion`; a tag
+  matching `^v\d+\.\d+\.\d+$`), the assets then named under `https://github.com/<Repo>/releases/download/<tag>/`;
+  if that fails, `GET https://api.github.com/repos/<Repo>/releases/latest` and its asset URLs. Then the release assets
   `checksums.txt`, `checksums.txt.sig` and `ot_<ver>_<os>_<arch>.tar.gz|.zip`. Verifies the Ed25519 signature with the
   built-in `PublicKey`, then the archive SHA-256, extracts `ot`, writes it next to the binary (`.ot-update-*`) and
   renames it in place (on Windows the old binary is moved to `<exe>.old`, removed on the next update).
@@ -590,8 +709,9 @@ JSON on stderr, `{"error": {code, message, hint?, docs, exit_code, request_id?, 
 (`spec/schema/error-v1.json`, the same shape as the API's errors). `OT_OUTPUT=json` turns it on for every command, and
 `ot run`, `auto` and `playbook` (which parse their own arguments) honour `--json` themselves (`jsonRequested`). The
 `code` is the registry's own code, else `ExitError.Reason` (`input_required`, `consent_required`, `needs_terminal`,
-`not_installed`, ...), else one that follows from the exit code (`machine.go`). Otherwise errors are printed once by
-`Execute` as `error: <msg>` on stderr (nothing for an `ExitError` with a nil or empty error). `SilenceUsage` and
+`not_installed`, ...), else one that follows from the exit code (`machine.go`); `hint` is the registry's hint or
+`ExitError.Hint`. Otherwise errors are printed once by `Execute` as `error: <msg>` on stderr, followed by
+`ExitError.Hint` on its own line when there is one (nothing for an `ExitError` with a nil or empty error). `SilenceUsage` and
 `SilenceErrors` are on, so usage is never printed on error. Cobra adds `-h/--help` and `-v/--version`.
 
 **No prompts without a terminal** (`machine.go`, `interactive()`): when stdin isn't a terminal, `OT_NONINTERACTIVE=1`
@@ -654,7 +774,8 @@ Read by the CLI (`os.Getenv` calls in `cli/`, plus the keychain lookup):
 | `OT_NONINTERACTIVE` | `machine.go` `interactive` | `1`: never prompt, as if there were no terminal | prompts at a terminal |
 | `OT_CONSENT` | `consent.go` `cliConsent` | `off`: unattended runs need no `--yes` (still audited) | consent checked |
 | `OT_MAX_RAW` | `run_cmd.go` | default for `--max-raw` (bytes) | no limit |
-| `CI` | `run_cmd.go` `clientKind` | any value: the envelope's and audit log's `client` is `ci`, and the install ping says so | `cli` |
+| `CI` | `run_cmd.go` `clientKind`, `selfupdate.go` `latestOT` | any value: the envelope's and audit log's `client` is `ci`, and the install ping says so; no newer-ot check | `cli` |
+| `OT_NO_UPDATE_CHECK` | `selfupdate.go` `latestOT` | `1`: `ot outdated` never looks up the latest ot release | checked daily |
 | `<SECRET_NAME>` (any manifest `secrets[].name`) | `keys.Get` in `loadSecrets` | a tool's key; env wins over the keychain | keychain entry |
 
 Other environment handling:
@@ -692,6 +813,8 @@ Data directory (`state.Home()`): `$OT_HOME` if set; else on Windows `%APPDATA%\o
 | `<home>/config.json` | never written by ot (read only) | `api_url`, `site_url`, `telemetry` (bool), `format` (default `ot run` format); env vars override the first three |
 | `<home>/keys.json` | `keys set`, `keys rm`, `login`, `logout`, `doctor` | sorted JSON array of key names (never values), mode 0600 |
 | `<home>/cache/removed.json` | pre-run check (24 h), `ot run` (1 h) | `{"fetched_at", "removed": [...]}` from `GET /removed`, mode 0644 |
+| `<home>/cache/ot-latest.json` | `ot outdated` (24 h) | `{"checked_at", "version"}`: the latest ot release, or the last one known when the lookup failed, mode 0644 |
+| `<home>/cache/report-prompts.json` | `ot run` (the failure prompt) | `{"ns/name@version": "<time asked>"}`; entries older than 7 days are dropped on each write, mode 0644 |
 | `<home>/guides/<ns>/<name>/<version>/` | `guide get` | every page as Markdown at its nav path, plus `guide.json` (the guide detail); read by `guide read` offline |
 | `<home>/pipx/`, `<home>/bin/` | native pipx installs | ot's own `PIPX_HOME` and `PIPX_BIN_DIR`; native runs execute `<home>/bin/<command>[.exe]` |
 | `<home>/agent-policy.json` | `ot mcp policy reset` (else the user) | the agent policy: `enabled`, `mode`, `allow_tools`, `deny_tools`, `auto_approve`, `consent_ttl_minutes`, `max_runs_per_hour`, `max_parallel`, `max_runs_per_target_per_hour`, `max_output_chars`, `allow_install`, `redact_targets_in_audit`; missing fields keep their defaults, a broken file is an error |
@@ -726,6 +849,10 @@ a registry package (not local manifests), 3 s timeout, errors ignored. Disabled 
 once per address, version and day (a salted hash of the address and version in `rate_limits`, removed by the nightly purge once the window is over) and keeps only
 per-version and per-client-kind daily counts.
 
+Run reports (the failure prompt and `ot report --broken`) are sent only when the person says yes, and are switched
+off with the same settings. Anonymous ones also go through `anon()`; the API keeps a daily count per version and
+platform and hashes the address only to count it once a day.
+
 Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-only --tmpfs /tmp:rw,size=256m
 --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --memory 1g --cpus 2 --user 65534:65534 -e HOME=/tmp`,
 `--network none` unless the manifest has `network.egress: true`, `-e NAME` per secret, `-v <out-dir>:/out:rw`,
@@ -741,7 +868,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | Package | One line |
 | --- | --- |
 | `agent` | Consent classes (`Classify`, `Describe`), the policy file (`LoadPolicy`, `DefaultPolicy`), sessions (`DecideRun`, approvals, limits), consent tokens (`CallHash`, `Seal`/`Open`, single use), the audit log (`Record`, `ReadAudit`, rotation) |
-| `api` | Registry HTTP client: `do`, error shape `*api.Error`, search, tool/manifest, install ping, device login, `/me`, tokens, guides and docs, imports, sync, removals, reports, claims and transfers, yank/deprecate, feedback |
+| `api` | Registry HTTP client: `do`, error shape `*api.Error`, search, tool/manifest/versions, install ping, device login, `/me`, tokens, guides and docs, imports, sync, removals, reports, claims and transfers, yank/deprecate, feedback, community issues, run reports, confirmations and tool requests; `Version` carries `changelog` |
 | `cli` | Every cobra command, the `App` struct, exit codes, `ExitError`, `Main`, `ExitCodeFor`, JSON errors (`machine.go`), the MCP server (`mcp_*.go`) |
 | `envelope` | The result envelope (`Version = 1`), `ParseOutput` for json/jsonl/csv/text, `Write` for json/raw/csv/table |
 | `keys` | Keychain storage (service `osintverse-ot`), env-first `Get`, `keys.json` name index |
@@ -750,7 +877,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `results` | Saving runs (output, `.meta.json`, lazy `.stderr.txt`), `Dir`, `Sanitize`; `saved.go` reads them back for `extract` and `diff` |
 | `runner` | Engine detection, install (docker pull + cosign, mirror and wheel fallbacks, pipx native or sandbox image), run, container args, input resolution, typed inputs, command building, target type detection with embedded `tlds.txt` |
 | `scaffold` | Files `ot init` writes, git remote and kind detection, embedded release templates (`go generate` from `spec/templates`) |
-| `selfupdate` | GitHub release lookup, Ed25519-signed checksums, archive SHA-256, extraction, atomic replace |
+| `selfupdate` | Release lookup (get.otinstaller.com, else the GitHub API), Ed25519-signed checksums, archive SHA-256, extraction, atomic replace |
 | `specfiles` | Embedded copies of `spec/schema/{envelope,run-all,error}-v1.json`, `spec/pivots.json` and `spec/types.json` (`go generate`) |
 | `state` | Data directory, `state.json` load/atomic save, read-only `config.json` with env overrides |
 
@@ -759,30 +886,36 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 
 ### Test files
 
-`api`, `keys`, `state` and `selfupdate` have **no test files** (`selfupdate` is exercised by `TestSelfUpdate` in
-`cli/trust_test.go`; `api` through the commands' fake registries).
+`api`, `keys` and `state` have **no test files** (`api` is exercised through the commands' fake registries).
+`selfupdate_test.go` covers `LatestVersion` and the lookup order; downloads and signatures are exercised by
+`TestSelfUpdate` and `TestSelfUpdateViaLatestURL` in `cli/trust_test.go`.
 
 | File | Covers |
 | --- | --- |
 | `cli/cli_test.go` | Shared helpers (`newTestApp`, `fakeExec`); `validate` output and exit codes, `init` then `validate`, `init` not overwriting, running a local manifest, run exit codes, `parseRunArgs` |
 | `cli/run_test.go` | Typed-input parsing, typed run saving results, `--no-save` and `--results-dir`, typed-input errors, `run --all`, Ctrl-C keeping partial output (exit 130) |
+| `cli/runs_test.go` | `ot runs`: none yet, newest first, each filter, the default `--since`, the table, one run in text and JSON, unknown ids (`run_not_found`), a bad `--status`, `--results-dir` |
 | `cli/auto_test.go` | `ot auto`: type guessing, `--dry-run`, `--type`, `--live` progress lines, and errors (bad `--type`, `--type` with two targets, no matching tool, `--all`; plus `run --dry-run` without `--all`) |
-| `cli/playbook_test.go` | `ot playbook`: `--list` with a user playbook, prefixed and guessed targets, and errors (missing tools, no matching inputs, no typed input, unknown playbook, `--all`) |
+| `cli/playbook_test.go` | `ot playbook`: `--list` with a user playbook and the TAKES column, prefixed and guessed targets, and errors (missing tools, no matching inputs, no typed input, unknown playbook, `--all`) |
 | `cli/saved_test.go` | `ot extract` and `ot diff` against saved runs |
-| `cli/update_test.go` | `ot outdated --json` and `ot update` (named, `--all`) against a fake registry (update available, removed, not in registry), plus usage errors |
+| `cli/update_test.go` | `ot outdated --json` and `ot update` (named, `--all`) against a fake registry (update available, removed, not in registry), plus usage errors; lifecycle flags, their warnings and the table, `yanked` cleared by an update, and moved packages installed under their new name (old image removed only when not shared) |
 | `cli/guide_test.go` | Guide search and read, terminal rewriting (`forTerminal`), Glamour rendering, `guide get` then offline read, `guide tools`, `guide open` and `docs`, request IDs on server errors, guide content validation |
 | `cli/import_test.go` | Import wizard completing a draft and opening a PR, `--registry` with `--yes`, community wrapper, bulk import and `--list` |
 | `cli/login_test.go` | Device-flow login (GitHub) and `--osintverse` |
 | `cli/release_test.go` | `ot release` with real git: happy path, refusals (dirty tree, existing tag), tools refused, `--no-push` |
 | `cli/sync_test.go` | `ot sync` and `--log` |
 | `cli/profile_test.go` | `ot profile`: show, `--set`/`--unset`, `--sync`, rate limit, `--json` |
-| `cli/trust_test.go` | report/claim/transfer against a fake registry, removed-package warnings and refusal, `self-update` with a signed fake release |
+| `cli/trust_test.go` | report/claim/transfer against a fake registry, removed-package warnings and refusal, `self-update` with a signed fake release (through the GitHub API, and through `/ot/latest` with no downgrade), the newer-ot note in `ot outdated` (daily cache, and never for dev builds, agents, CI or `OT_NO_UPDATE_CHECK=1`) |
+| `cli/changelog_test.go` | `ot changelog` newest first without removed versions, only what's newer than the installed one, JSON, control characters stripped, a local manifest refused; `ot info`'s "What's new" |
+| `cli/community_test.go` | The failure prompt (asks once a week, sends no inputs, stays quiet with telemetry off, no terminal, `--json`, CI, a passing run or a local manifest), `ot report --works` (needs a token) and `--broken`, `ot issues` table and JSON, `ot request` (sign-in, notes, voting at a terminal and with `--vote`, the request number in JSON errors) |
 | `cli/feedback_test.go` | `ot feedback`: message with `--kind`/`--about`, piped stdin with `--email`, bad kind exits 2 |
 | `cli/machine_test.go` | `--json` detection, error codes, JSON errors on stderr, no prompts without a terminal, envelope provenance, `--all` JSON lines, stdout stays JSON |
 | `cli/mcp_test.go` | `ot mcp`: tool list, passive runs, consent by elicitation and by token, policy and trust, unattended CLI runs need `--yes`, `mcp install`, docs and plugin match the server, policy changes without a restart, shutdown, sandbox mode, batches |
 | `cli/keysetup_test.go` | `ot keys setup` at a terminal, refused without one, `key_setup` never shows values |
 | `cli/token_test.go` | `ot token create|list|revoke` against a fake registry |
 | `cli/info_test.go` | `ot info` prints a runnable command and the key hint |
+| `cli/starter_test.go` | A fresh machine: `ot auto` offering the starter playbook's tools at a terminal (no, dry run, yes; deprecated tools left out), `not_installed` with the `ot playbook … --yes` hint without one, `ot playbook` asking, MCP `run_all` answering `not_installed` with `suggested_tools` |
+| `cli/install_test.go` | `ot install` with one and several packages: hints, JSON shapes, a bad reference installing nothing, exit codes when installs fail, a missing engine stopping the rest; `playbook -y` installing in one go |
 | `agent/agent_test.go` | `Classify`, `DecideRun`, policy lists and limits, loading, live policy changes, consent tokens, the audit log, `notifies_target` in descriptions |
 | `specfiles/specfiles_test.go` | Copies equal `spec/`; the pivot map covers every entity type; every schema enum value has a description |
 | `runner/textentities_test.go`, `runner/example_test.go` | Entities from text output; example commands |
@@ -790,7 +923,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `envelope/envelope_test.go` | `ParseOutput` per format; `Write` formats |
 | `manifest/validate_test.go` | Every valid fixture passes, every invalid fixture's first code, tag mismatch, file checks, embedded schema equals `spec/schema/v1.json` |
 | `manifest/seed_test.go` | Every `seed/*/*/otinstaller.yaml` validates with its files (at least 50) |
-| `playbook/playbook_test.go` | Bundled playbooks, bundled tools exist in the seed, later dirs win, parse errors, a broken file is an error |
+| `playbook/playbook_test.go` | Bundled playbooks, bundled tools exist in the seed (`TestBundledPlaybooksFitSeed`: each takes one of its playbook's input types and needs no key), later dirs win, parse errors, a broken file is an error |
 | `results/results_test.go` | `Sanitize`, `Dir` precedence (flag, `OT_RESULTS_DIR`, `OTINSTALLER_RESULTS_DIR`), start/finish sidecar, stderr file only when written |
 | `results/saved_test.go` | `Outputs` and `Extract`; `Diff` |
 | `runner/runner_test.go` | `BuildCommand` (dropping optional args, no re-expansion), `ResolveInputs`, sandbox container args, docker install and run, no engine (exit 5), signature failure refuses, wheel hash check, sandboxed pipx image build |

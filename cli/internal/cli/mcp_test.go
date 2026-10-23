@@ -192,6 +192,11 @@ func TestMCPPassiveRunNeedsNoConsent(t *testing.T) {
 	if len(runs["runs"].([]any)) != 1 {
 		t.Errorf("list_runs: %v", runs)
 	}
+	// Playbooks say what input types they are for.
+	pb, e := h.call("get_playbook", map[string]any{"name": "email-investigation"})
+	if in, _ := pb["inputs"].([]any); e != nil || len(in) != 2 || in[0] != "email" || in[1] != "domain" {
+		t.Errorf("get_playbook: %v %v", pb, e)
+	}
 	// Every run is audited.
 	entries, _ := agent.ReadAudit(time.Now().Add(-time.Minute))
 	if len(entries) != 1 || entries[0].Consent != "policy" || entries[0].Client != "mcp:test-client 1" || entries[0].RunID != runID {

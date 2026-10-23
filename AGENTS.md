@@ -33,6 +33,12 @@ AI agents are first-class callers: `ot mcp` is a local MCP server that searches,
 person's consent and a local audit log, the API serves a read-only remote MCP server at `/mcp`, and every command and
 error has a JSON form (see [Agents](#agents-ot-mcp-the-remote-mcp-server-and-the-plugin)).
 
+The community keeps the catalog current (see [Community](#community-issues-requests-submissions-and-the-upstream-watcher)):
+every package has public issues and "works for me" counts, `ot run` offers to report a failed run, anyone signed in can
+request a tool or submit a community wrapper that a reviewer approves, contributors have profiles and an inbox, and a
+nightly upstream watcher compares each wrapper with its upstream project. Release notes, the activity feed and Atom/JSON
+feeds keep people up to date, and `/learn` is where to start.
+
 The repository also holds `otlite/`, the no-Docker edition `otlite` (the Python package manager formerly called
 `otinstaller`; see [otlite/](#otlite-the-no-docker-edition-otlite)).
 
@@ -50,7 +56,7 @@ Production:
 | Registry API | `https://api.otinstaller.com/v1` (`api/`, Worker `otinstaller-registry-api`) |
 | Image mirror | `https://mirror.otinstaller.com` (`api/src/mirror/`, Worker `otinstaller-mirror`, config `api/wrangler.mirror.jsonc`) |
 | Remote MCP server | `https://api.otinstaller.com/mcp` (`api/src/mcp.ts`, same Worker as the API, read-only) |
-| Install scripts | `get.otinstaller.com/ot` and `/ot.ps1` (the latest `ot` release's scripts), `get.otinstaller.com/otlite` (`otlite/scripts/install.sh` from `main`); all from `ops/get/` |
+| Install scripts | `get.otinstaller.com/ot` and `/ot.ps1` (the latest `ot` release's scripts), `get.otinstaller.com/otlite` (`otlite/scripts/install.sh` from `main`), `/ot/latest` (the latest `ot` version, for `ot` itself); all from `ops/get/` |
 | Manifest schema | `https://otinstaller.com/schema/v1.json` (served from `spec/schema/v1.json`); also `/schema/envelope-v1.json`, `run-all-v1.json`, `error-v1.json` |
 | API reference | `https://api.otinstaller.com/v1/openapi.json` (served from `spec/openapi/v1.json`) |
 | Scanner, backups, drills, health checks | GitHub Actions in the private repo `OTInstaller/registry-ops` (copied from `ops/`) |
@@ -246,6 +252,7 @@ invalid ones. Digests and hashes in fixtures are fake. Separately, `cli/internal
 | `spec/schema/{envelope,run-all,error}-v1.json`, `spec/pivots.json`, `spec/types.json` | `cli/internal/specfiles/files/` (embedded; MCP resources, `list_types`, `suggest_pivots`, `ot pivot`) | `cd cli && go generate ./...` | `TestCopiesMatchSpec`; `TestPivotsCoverEveryEntityType` and `TestTypesDescribeEverySchemaValue` check them against the schema |
 | `spec/pivots.json`, `spec/types.json`, `spec/openapi/v1.json` | imported directly by `api/src/index.ts` (`/pivots`, `/types`, `/openapi.json`) | nothing to do | `api.test.ts` checks every enum value has a description and that the OpenAPI document lists every public and owner route |
 | `spec/schema/{envelope,run-all,error}-v1.json` | imported directly by `web/src/pages/schema/[name].json.ts` | nothing to do | — |
+| `otlite/src/otlite/data/registry.yaml`, `seed/candidates.md` | `api/src/known-repos.ts` (generated: what otlite installs and why the seed survey dropped a repository, for tool requests) | `cd api && npm run sync:known-repos` | `requests.test.ts` |
 
 Never edit a generated copy by hand. Edit `spec/`, then regenerate. `TestWorkflowsAreValidYAML` (`scaffold_test.go`)
 also checks every generated workflow parses as YAML with string script lines (write lines containing `: ` as `|-` blocks).
@@ -281,31 +288,35 @@ stderr and returns `ExitCodeFor(err)`. `cli/README.md` ships in the release arch
 | `api` | Registry HTTP client. Decodes `{"error":{...}}` into `*api.Error` (`Status`, `Code`, `Message`, `Hint`, `Docs`, `Problems`, `RequestID`) |
 | `manifest` | Typed `Manifest`, `Parse`/`LoadFile`, `Validate(doc, m, Options{Tag, Dir})`, content rules, embedded schema |
 | `runner` | Install and run: engine detection (docker, then podman), `Install` (with backup fallbacks), `Run`, `ContainerArgs`, input resolution, typed inputs, command building, target type detection (`detect.go` + embedded IANA `tlds.txt`) |
-| `playbook` | Named tool sets: bundled `domain-recon` and `username-investigation`, plus `<ot home>/playbooks` and `./playbooks` (later wins) |
+| `playbook` | Named tool sets: bundled `domain-recon`, `username-investigation`, `email-investigation`, `phone-investigation` and `ip-investigation` (none needs a key), plus `<ot home>/playbooks` and `./playbooks` (later wins). `inputs` says which input types a playbook is for; `Starter(type)` picks the bundled one to offer when nothing installed takes a type |
 | `envelope` | The normalized result envelope (`Version = 1`) and `ParseOutput` / `Write` (json, raw, csv, table) |
 | `results` | Saving each run's raw output plus `.meta.json` (and lazy `.stderr.txt`); `saved.go` reads them back for `extract` and `diff` |
 | `keys` | OS keychain (service `osintverse-ot`); an env var of the same name wins; names indexed in `keys.json` |
 | `state` | Data dir (`OT_HOME` → `%APPDATA%\ot` → `~/.ot`), `state.json` (atomic write, 0600, records `from_backup`), read-only `config.json` |
 | `scaffold` | Files written by `ot init` (manifest, Dockerfile, starter tool, READMEs, guide pages) and embedded templates; uses `<<`/`>>` template delimiters |
-| `selfupdate` | `ot self-update`: Ed25519-signed `checksums.txt`, archive SHA-256, atomic replace |
+| `selfupdate` | `ot self-update`: release lookup (`get.otinstaller.com/ot/latest`, else the GitHub API), Ed25519-signed `checksums.txt`, archive SHA-256, atomic replace |
 
 ### Commands
 
-Packages: `search`, `info`, `install`, `list`, `uninstall`, `outdated`, `update`. Running: `run`, `auto`, `playbook`,
-`extract`, `diff`, `pivot`, `keys set|setup|list|rm`, `doctor`. Agents: `mcp` (`mcp install|audit|policy [reset]|tools`).
+Packages: `search`, `info`, `changelog`, `install`, `list`, `uninstall`, `outdated`, `update`. Running: `run`, `auto`, `playbook`,
+`runs`, `extract`, `diff`, `pivot`, `keys set|setup|list|rm`, `doctor`. Agents: `mcp` (`mcp install|audit|policy [reset]|tools`).
 Guides: `guide search|read|open|get|tools`, `docs`. Publishing: `init`, `validate`, `import`, `sync`, `release`,
 `login` (`--gitlab`, `--osintverse`, `--scope`, `--print-token`), `logout`, `whoami`, `token create|list|revoke`, `profile`.
-Trust: `report`, `claim`, `transfer`, `yank`, `deprecate`. Other: `feedback`, `self-update`. Cobra adds `help`,
+Trust: `report` (`--works`/`--broken` too), `claim`, `transfer`, `yank`, `deprecate`. Community: `issues`, `request`.
+Other: `feedback`, `self-update`. Cobra adds `help`,
 `completion` and `--version`. The root's one persistent flag is `--json` (JSON output, and errors as one JSON line on
 stderr; `OT_OUTPUT=json` turns it on for a session). Its `PersistentPreRun` refreshes `cache/removed.json` (daily) and
 warns about installed versions that were removed. Every flag of every command, with its exit codes, is in
 [docs/dev/cli.md](docs/dev/cli.md).
 
 Each is an `(a *App) xxxCmd() *cobra.Command` method. Files: `packages.go` (search/info/install/list/uninstall),
-`update.go` (outdated/update), `run_cmd.go` + `run_all.go` (run), `auto.go`, `playbook.go`, `saved.go` (extract/diff),
-`pivot.go`, `run.go` (keys/doctor), `keysetup.go` (keys setup), `guide.go` (guide/docs), `init_validate.go`,
+`update.go` (outdated/update), `run_cmd.go` + `run_all.go` (run), `auto.go`, `playbook.go`, `starter.go` (what to
+install when nothing takes a target), `runs.go` (runs), `saved.go` (extract/diff), `pivot.go`, `run.go`
+(keys/doctor), `keysetup.go` (keys setup), `guide.go` (guide/docs), `init_validate.go`,
 `import.go`, `sync.go`, `release.go`, `login.go`, `token.go`, `trust.go` (report/claim/transfer/yank/deprecate),
-`feedback.go`, `selfupdate.go`, `mcp_cmd.go` (mcp and its subcommands), `consent.go` (unattended runs).
+`issues.go` (issues, and `report --works|--broken`), `request.go` (request), `changelog.go` (changelog, and `info`'s
+"What's new"), `report_prompt.go` (the failure prompt), `feedback.go`, `selfupdate.go`, `mcp_cmd.go` (mcp and its
+subcommands), `consent.go` (unattended runs).
 
 - `ot run` disables cobra flag parsing and parses its own args (`run_cmd.go`): ot flags (`-f/--format`, `--json`, `-o`,
   `--out-dir`, `--native`, `-y`, `--results-dir`, `--case`, `--no-save`, `--max-raw`, `--all`, `--parallel`,
@@ -325,10 +336,34 @@ Each is an `(a *App) xxxCmd() *cobra.Command` method. Files: `packages.go` (sear
 - `runAll` (`run_all.go`) is shared by `run --all`, `playbook` and `auto`: runs `--parallel` at a time, skips tools that
   can't run unattended, prints `[n/N]` progress on stderr and a summary table or JSON.
 - `ot auto <target>` guesses the type (url, ip, email, phone, domain by IANA TLD, else username; `--type` overrides) and
-  runs every installed tool that takes it. `ot playbook <name> <inputs>` runs a playbook (`--list`, `--dry-run`, `-y` to
-  install missing tools); runs are saved under case `playbook-<name>`.
-- `ot extract` and `ot diff` read saved results (indicators; the two latest runs compared). `ot outdated` / `ot update`
-  compare installed packages with the registry (`update` exits 1 when an update fails).
+  runs every installed tool that takes it. `ot playbook <name> <inputs>` runs a playbook (`--list` with a TAKES column,
+  `--dry-run`; missing tools are offered at a terminal, `-y` installs them without asking); runs are saved under case
+  `playbook-<name>`.
+- When no installed tool takes the typed inputs (`noToolsError`, `starter.go`), as on a fresh machine, `run --all` and
+  `auto` offer the tools of the bundled starter playbook for that type at a terminal (`playbook.Starter`: bundled
+  playbooks only), checked against the registry, and install them on a yes. Without a terminal they exit 2
+  `not_installed` with an `ot playbook <starter> <type>:<value> --yes` hint. `ExitError.Hint` is the JSON error's
+  `hint`, and a second line in text. Don't add flags to `auto` or `run --all`: their unknown `--x` are tool inputs.
+- `ot install a b c` (`installMany` in `packages.go`, shared with `guide tools` and `playbook -y`) parses every
+  reference first, installs one after another, goes on after a failure except a missing container engine (exit 5),
+  and prints `Try it:` and the keys still needed (`missingKeys` in `run.go`).
+- `ot runs [run-id]` lists saved runs newest first from `resultDirs()` (`listSavedRuns`, shared with MCP's
+  `list_runs`), or shows one and points at `ot pivot`. `ot extract` and `ot diff` read saved results (indicators; the
+  two latest runs compared).
+- `ot outdated` / `ot update` compare installed packages with the registry (`GET /tools/:ns/:name` and `/versions`,
+  four at a time); rows carry lifecycle `flags` (`deprecated`, `possibly_broken`, `yanked`, `source_unavailable`,
+  `moved`) and `replacement`, each with a `warning:` line. `update` installs newer versions and moves a renamed package
+  to its new name (`forgetOldName`), and exits 1 when an update fails. `ot outdated` also notes a newer `ot` (looked up
+  at most daily into `cache/ot-latest.json`; never for dev builds, `ot mcp`, CI or `OT_NO_UPDATE_CHECK=1`).
+- After a single `ot run` that timed out, or exited non-zero with no entities, `report_prompt.go` asks at a terminal
+  whether to report it as broken; a yes sends `POST /tools/:ns/:name/run-reports` with the version, exit code, OS,
+  engine and ot version only. Never under `ot mcp`, in CI, without a terminal, with `--json`/`-f json`, for local
+  manifests or with telemetry off; at most once a week per tool and version (`cache/report-prompts.json`). The run's
+  exit code doesn't change.
+- `ot issues <tool>` lists a package's issues; `ot request <repo-url> [--note] [--vote]` asks for a tool to be packaged
+  (or votes for the existing request); `ot changelog <tool>` prints release notes newer than the installed version
+  (through `stripControl`), and `ot info` shows the installed version's "What's new". `ot import --community` finishes
+  as a reviewed submission (`--dockerfile`, `--request`); `--wrapper` keeps the admins' pull-request flow.
 - `ot feedback [message]` posts to `/v1/feedback` (`--kind bug|idea|question|other`, `--email`, `--about`); with no
   message it reads piped stdin, or opens `<site>/feedback`.
 - `ot release <version> [path]` (`release.go`) releases **guides only**: checks a clean tree and an unused tag, rewrites
@@ -347,8 +382,10 @@ missing · `124` timeout · `130` interrupted. Typed errors map to them: `runner
 `runner.RuntimeMissingError` → 5, `runner.TimeoutError` → 124, `*cli.ExitError` → its `Code` (a nil `Err` exits
 silently). Wrap registry 4xx errors with `a.requestError(err)` so they exit 2 and print problem lists. These codes are
 documented to users; don't repurpose them. Caveats: errors raised by cobra itself (wrong argument count, unknown
-flag) exit 1, not 2; `search`, `info`, `login`, `outdated` and `update` don't wrap registry 4xx errors, so those exit
-1; `doctor` exits 5 when any check fails; `self-update` exits 4 on a failed verification. With `--no-save`, Ctrl-C
+flag) exit 2 too, through `cobraUsage` (`machine.go`); a batch `ot install` (and `guide tools`, `playbook -y`) exits
+with its failures' common code, or 1 when they differ; `search`, `info`, `login`, `outdated` and `update` don't wrap
+registry 4xx errors, so those exit 1; `doctor` exits 5 when any check fails; `self-update` exits 4 on a failed
+verification. With `--no-save`, Ctrl-C
 during a single run exits 1, not 130. With `--json`, the error is `{"error": {code, message, hint?, exit_code, ...}}`
 on stderr (`spec/schema/error-v1.json`, shared with the API); its `code` is the registry's own code, else
 `ExitError.Reason`, else one that follows from the exit code.
@@ -384,7 +421,8 @@ carries the token), `OT_RESULTS_DIR` (legacy
 `OTINSTALLER_RESULTS_DIR`; results default to `./results`, not the data dir), `OTINSTALLER_TOKEN` (overrides the
 keychain token; like every key, an env var of the same name wins), `OT_OUTPUT=json` (as `--json`),
 `OT_NONINTERACTIVE=1` (never prompt), `OT_CONSENT=off` (no `--yes` needed unattended; still audited), `OT_MAX_RAW`
-(leave `raw` out of large envelopes), `CI` (the envelope's `client` becomes `ci`). `config.json` (`api_url`,
+(leave `raw` out of large envelopes), `OT_NO_UPDATE_CHECK=1` (`ot outdated` doesn't look up the latest `ot`), `CI`
+(the envelope's `client` becomes `ci`, and there is no newer-`ot` check). `config.json` (`api_url`,
 `site_url`, `telemetry`, `format`) is read, never written. Install scripts:
 `OT_VERSION`, `OT_RELEASE_REPO`, `OT_INSTALL_DIR`, `OT_DOWNLOAD_BASE` (serve a release from another URL; checks still
 apply), `OT_NO_MODIFY_PATH=1` (Windows). Build-time only: `OT_RELEASE_PUBLIC_KEY`, `OT_RELEASE_KEY_FILE`,
@@ -456,10 +494,19 @@ and beta work, so `R2_*`, `ISSUES_REPO`/`ISSUES_TOKEN` and `EDGE_CACHE` are only
 | `trust.ts` / `transfers.ts` | Yank, deprecate, removal, reports, transparency, rate limits; claims and transfers |
 | `notify.ts` | Resend email with idempotency keys (`notifications` table); skipped when `RESEND_API_KEY` is unset |
 | `ops.ts` | Health targets/results, stuck-job alerts, daily digest, rate-limit purge, Sentry `reportError` |
+| `changelog.ts` | Release notes: captured from the host's release or the version's `CHANGELOG.md` section at publish, cleaned and rendered |
+| `activity.ts` | `GET /activity`: registry events from the audit log, and with `events=community` confirmed/fixed issues and accepted/published requests, worded from fields |
+| `community.ts` | Issues, comments, confirmations, flags, moderation, roles (`triager`, `reviewer`; tool maintainers), screening (`screen`, `holdReason`), `renderPost`, failed-run reports, the status line, system issues (`fileSystemIssue`, `closeSystemIssue`) |
+| `inbox.ts` | Inbox items written with each event, email delivery (immediate every 15 minutes, daily digests), signed unsubscribe links |
+| `requests.ts` | Tool requests: checks (`readUpstream`, `packagedFrom`, `knownRepo`), votes, triagers' decisions, `linkPublished` |
+| `people.ts` | Contributor profiles and the nightly `contributor_stats` recount |
+| `submissions.ts` | Community wrapper submissions: checks, `dockerfileChecks`, the community bot (`COMMUNITY_*`), the first-release review gate |
+| `upstream-pin.ts` / `upstream.ts` / `bumps.ts` | Reading a wrapper's upstream pin from its Dockerfile; the nightly upstream watcher (`UPSTREAM_WATCH`); bump pull requests and "merge and release" |
+| `known-repos.ts` | **Generated** from otlite's catalog and `seed/candidates.md`; don't edit |
 | `mirror/` | The mirror Worker: `index.ts` (entry) and `registry.ts` (OCI API, `imageExists`, `hideImage`, `deleteImage`) |
 | `hosts/` | External services: `github.ts`, `gitlab.ts`, `osintverse.ts` (OIDC), `repo.ts` (`RepoHost` over both), `artifacts.ts` (OCI digest and PyPI wheel checks) |
-| `lib/` | `errors.ts` (`apiError`), `crypto.ts` (hashing, AES-GCM, RS256 JWT, `ulid()`), `manifest.ts` (validator), `images.ts` (metadata stripping, SVG sanitizing), `presign.ts` (R2 SigV4 URLs) |
-| `routes/` | One `xxxRoutes(app)` registrar per area: auth, device, webhooks, review, sources, imports, guides, trust, transfers, backups, beta, ops |
+| `lib/` | `errors.ts` (`apiError`), `crypto.ts` (hashing, AES-GCM, RS256 JWT, `ulid()`), `manifest.ts` (validator), `images.ts` (metadata stripping, SVG sanitizing), `presign.ts` (R2 SigV4 URLs), `reserved.ts` (namespace names the site's sections take) |
+| `routes/` | One `xxxRoutes(app)` registrar per area: auth, device, webhooks, review, sources, imports, guides, trust, transfers, backups, beta, ops, profiles, community, inbox, requests, people, submissions, upstream |
 | `release-templates.ts` | **Generated** from `spec/templates`; don't edit |
 
 Routes only parse input, check permissions and shape responses; domain logic lives in the top-level modules. Route
@@ -498,6 +545,13 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
 - Publishing: `POST /webhooks/github` (HMAC), `POST /webhooks/gitlab` (per-source token), `/imports...`,
   `/sources/gitlab`, `/packages/:ns/:name/sync|sync-log|manifest|manifest/pr|source|backups|backups/restore`.
 - Owners: yank/unyank, deprecate, claim, transfer, git-backup opt-out, restore, switch source. Anyone: reports, feedback.
+- Community (public reads cached, writes scope `feedback`, triage `manage`): `/tools/:ns/:name/issues[/:n[/comments|
+  /status|/lock|/subscription|/viewer]]`, `/tools/:ns/:name/status`, `/tools/:ns/:name/confirmations`,
+  `/tools/:ns/:name/run-reports`, `/issues` (the board), `/comments/:id`, `/flags`, `/moderation/...`,
+  `/admin/community/roles`; `/me/inbox`, `/me/email-prefs`, `/unsubscribe`; `/requests[/:n[/vote|/status|/viewer]]`;
+  `/people/:handle`, `/me/community-profile`; `/submissions[/:n[/approve|/request-changes|/reject|/start|/withdraw|
+  /viewer]]` (submitting is `POST /imports/:id/finish {mode: "submit"}`); `/upstream/summary`, `/admin/upstream...`,
+  `/packages/:ns/:name/bump`, `/packages/:ns/:name/pulls/:n/release`; `/activity` (`events=registry|community|all`).
 - Staff (`/admin/...`): review queue, namespace approve/request-changes/reject/verify/suspend, version approve/reject,
   reports, removals, legal holds, audit log, transfers, bans, feedback triage, beta metrics, manual backups, restore
   drills, `POST /admin/email-test` (checks the Resend key).
@@ -506,7 +560,7 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
   `POST /internal/drills/:id`, `/internal/health[/targets]`. Scans, backup runs and drills each use their own
   single-use token (scan 1 h, run 3 h or 12 h weekly, drill 6 h); the health endpoints use the static shared
   `HEALTH_TOKEN`.
-- The full route table (109 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
+- The full route table (165 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
   `spec/openapi/v1.json` describes the public and owner routes, each with its token scope as `x-scope`; a test in
   `api.test.ts` fails when a route and the document disagree, so add new routes to both.
 - 429s carry `Retry-After`, `RateLimit-Policy` and `retry_after_s` (`rateLimited` in `lib/errors.ts`).
@@ -523,16 +577,22 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
    malware, secrets, or a failed smoke test; fixable critical/high vulns warn.
    Guides: `runContentChecks` checks every external link (and URL Scanner when configured) and runs PII heuristics.
 4. Pass/warn: published right away if the namespace is `active`, otherwise `awaiting_review` until a reviewer approves the
-   namespace. PII hits in a guide always go to review. Emails go out at each step.
+   namespace. PII hits in a guide always go to review. A community submission's first release
+   (`tools.needs_first_review`) waits for a staff or community reviewer who isn't its submitter, even in the active
+   community namespace. Emails go out at each step. `publishVersion` also announces the version on open issues, makes a
+   submission's submitter a maintainer, and marks requests for that repository published.
 5. Backups: a passing scan's callback answer tells the scanner to back up right away; versions published another way
    (namespace approval, guides) queue `{ backupVersionId }`. See below.
 6. Every 15 minutes: expire stale scans (1 h), poll due sources, alert on jobs stuck > 30 min, expire backup runs and
-   drills, backfill up to 5 versions with no backup. `scheduled()` runs this block on **every** trigger, including the
-   nightly, weekly and monthly ones. Nightly also: guide link rechecks (> 20% dead → needs update), the
-   reviewer digest, rate-limit purge, backup purge, `installs_30d` recompute.
+   drills, backfill up to 5 versions with no backup, email inbox items due now. `scheduled()` runs this block on
+   **every** trigger, including the nightly, weekly and monthly ones. Nightly also: guide link rechecks (> 20% dead →
+   needs update), the reviewer digest, rate-limit purge, backup purge, locking stale closed threads, daily inbox
+   digests and the inbox purge, the `contributor_stats` recount, queuing every community wrapper's upstream check,
+   `installs_30d` recompute.
 
 Queue messages (`PublishMessage` in `env.ts`): `{ jobId }`, `{ importId }`, `{ checkVersionId, attempt? }`,
-`{ linkCheckToolId }`, `{ publishVersionId }`, `{ backupVersionId }`; anything else is treated as `{ jobId }`. Transient
+`{ linkCheckToolId }`, `{ publishVersionId }`, `{ backupVersionId }`, `{ profileNamespaceId }`, `{ upstreamCheckToolId }`;
+anything else is treated as `{ jobId }`. Transient
 failures retry with a delay of 30 × attempts seconds, 5 deliveries in all (the code acks before wrangler's own
 `max_retries` kicks in); a `HostError` with `transient=false` fails immediately. On the last failure a job becomes
 `error` (`internal_error`) and an import `detection_failed`; other messages are only logged.
@@ -565,7 +625,12 @@ migrations add publish intake (0002), scans/review and `notifications` (0003), s
 `page_links` (0007, 0008), trust/takedowns/claims/health and `rate_limits` (0009), OSINTverse login plus `device_logins`
 (0010), backups (`backup_runs`, `backups`, `restore_drills`, tool `git_backups`/`legal_hold`/`legal_hold_reason`, 0011),
 `feedback` (0012), and scoped tokens (`api_tokens.scoped`) plus the `install_clients` daily counts by client kind
-(0013), and publisher profiles (`namespace_profiles`, `namespace_hosts`, 0014). That is 36 tables plus `tools_fts`; every table, column, CHECK value set and status transition is in
+(0013), publisher profiles (`namespace_profiles`, `namespace_hosts`, 0014), release-note sources (0015), the community
+(handles, `community_roles`, `issues`, `issue_comments`, `confirmations`, `run_signals`, `content_flags`,
+`issue_subscriptions`, 0016), notifications (`email_prefs`, `inbox`, 0017), tool requests (`tool_requests`,
+`request_votes`, 0018), `contributor_stats` (0019), community submissions (`tools.needs_first_review`,
+`tool_maintainers`, `wrapper_submissions`, 0020), the upstream watcher (`upstream_watch`, 0021) and bump pull requests
+(`bump_prs`, 0022). That is 52 tables plus `tools_fts`; every table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
 
 - IDs are ULIDs (`ulid()`), timestamps are Unix **milliseconds**, booleans are 0/1, JSON columns end in `_json`
@@ -621,7 +686,8 @@ feedback `feedback`, other writes `manage`).
 
 `vitest.config.ts` uses `@cloudflare/vitest-plugin`, so tests run in workerd against the bindings from `wrangler.jsonc`
 with fake secrets and `EDGE_CACHE: "off"`. The config also builds `TEST_SEED` (from `scripts/seed-lib.mjs`),
-`TEST_FIXTURES` and `TEST_TEMPLATES` (from `spec/`); `test/setup.ts` applies the migrations and, when `tools` is empty,
+`TEST_FIXTURES` and `TEST_TEMPLATES` (from `spec/`), `TEST_KNOWN_REPOS` (what `known-repos.ts` should hold) and
+`TEST_DOCKERFILES` (every seed wrapper's Dockerfile and upstream); `test/setup.ts` applies the migrations and, when `tools` is empty,
 the seed. Helpers in `test/helpers.ts`: `fakeHosts(routes)` (keys like `"GET https://api.github.com/..."`,
 longest prefix wins, unmatched requests get status 599), `testEnv()` (a generated GitHub App key, cached per file; a fake queue collecting messages into
 `sent`), `call(path, init, env?)`, `webhook(event, payload)`. `test/fixtures.ts` has `ghUser`, `installation`, `tagEvent`,
@@ -629,8 +695,9 @@ longest prefix wins, unmatched requests get status 599), `testEnv()` (a generate
 files are named by plan week (`week4` publish intake, `week5` scans/review, `week6` GitLab/sync, `week7` imports,
 `week8` guides/content, `week10` trust/ops, `week11` backups and mirror, `week12` feedback/beta/test email) plus
 `api.test.ts` (search, pivots, types, facets, OpenAPI, old-`ot` manifests, the remote MCP server), `edge-cache.test.ts`,
-`osintverse.test.ts`, `community-provenance.test.ts`; add tests to the file for
-that area. The rate-limit test in `week10` waits for the start of a minute, so a slow run is expected.
+`osintverse.test.ts`, `community-provenance.test.ts`, `community.test.ts` (issues, moderation, notifications, failed runs,
+community activity), `requests.test.ts`, `people.test.ts` and `upstream.test.ts` (pins, the watcher, bumps); community
+submissions are in `week7` with the imports. Add tests to the file for that area. The rate-limit test in `week10` waits for the start of a minute, so a slow run is expected.
 
 ### Seed data
 
@@ -653,19 +720,29 @@ Astro 7 with `output: "server"` on `@astrojs/cloudflare`, Preact islands, no CSS
   guides under `guides/`, search at `search.astro`, plus `input/[type]`, `category/[slug]`, `[ns]/index.astro` (publisher),
   `dashboard`, `import`, `feedback`, `publish.astro`, `tour.astro`, `settings/accounts`, `transfers/[id]`,
   `admin/[...section]`, `docs/*.md` (including `agents`, `mcp-tools`, `automation`, `api`, `results`, `otlite`),
-  `policy/*`, `removed.astro`, `404.astro`, `500.astro` (API trouble, shows the request ID), `robots.txt.ts`,
+  `policy/*`, `removed.astro`, `404.astro`, `500.astro` (API trouble, shows the request ID), `new.astro` (what's new),
+  `learn.astro` (+ `learn.md.ts`), the community pages (`community/` with the board and moderation,
+  `[ns]/[name]/issues/`, `requests/`, `people/[handle]`, `submissions/`, `settings/notifications`, `unsubscribe`),
+  Atom and JSON feeds (`feed.atom.ts`/`feed.json.ts` at the root, per publisher, per tool, per input type), `robots.txt.ts`,
   `sitemap.xml.ts`, `llms.txt.ts` and `llms-full.txt.ts`, `schema/v1.json.ts` and `schema/[name].json.ts` (the
   envelope, run-all and error schemas). Only `schema/v1.json.ts` is prerendered.
 - Markdown twins for agents: `<ns>/<name>.md`, guide pages and docs and policy pages as `.md` (`docs/[page].md.ts`,
   `policy/[page].md.ts`, `lib/twins.ts`); `src/middleware.ts` serves them for `Accept: text/markdown` too.
 - `/agents` (`agents.astro`): the homepage for AI agents. Its Markdown twin (`agents.md.ts`, and
   `Accept: text/markdown` on `/agents`) is built from the same content in `lib/agents.ts`, which `agents.test.ts`
-  keeps in step with `docs/agents.md` and `docs/mcp-tools.md`. `agents` must stay in the middleware's `RESERVED`,
+  keeps in step with `docs/agents.md` and `docs/mcp-tools.md`. `agents` must stay in `RESERVED` (`lib/twins.ts`),
   or `/agents.md` is taken for a publisher's twin.
 - `/otlite` and `/otlite/tools`: the no-Docker edition and its tool catalog (both list every tool through
   `components/OtliteCatalog.astro`, and `/otlite` computes its counts from it), read at build time from
   `src/data/otlite-catalog.json`, which `otlite/scripts/web_catalog.py` generates from otlite's registry (a test in
   `otlite/tests/test_web_catalog.py` fails when it is stale; regenerate it, don't edit it).
+- `/otlite/tools/<name>` (`otlite/tools/[name].astro`): one page per otlite tool, from the same JSON through
+  `lib/otlite.ts`. It shows install and run commands with a value builder (the value never leaves the page), what each
+  typed input becomes on the tool's command line (`tool_args`, computed by otlite's own `_build_tool_args`; the
+  browser's `lib/otlite-args.ts` must agree, which `otlite.test.ts` checks for every tool), caveats from the registry's
+  flags and `notes`, keys, results, batch runs and playbooks, and a link to the registry wrapper when the launch seed has
+  one and it is published. Its Markdown twin is `otlite/tools/[name].md.ts`; there is no sample output on purpose,
+  because otlite's example files are illustrative.
 - Tool pages show sample output: the envelope the scanner's smoke test recorded (`sample` from the API,
   `recordedEnvelope` in `lib/evidence.ts`), else one shaped from the declared output types, with a caption saying
   which.
@@ -678,16 +755,21 @@ Astro 7 with `output: "server"` on `@astrojs/cloudflare`, Preact islands, no CSS
   Results, PageReader, Terminal, BetaNotice, CopyCode, CopyCommand, Logo, PageHead, SideNav, ThemeToggle).
   The design follows osintverse.com (`docs/web-redesign-plan.md` section 4.9): Geist Mono, dark by default, no radius.
 - `src/islands/*.tsx`: Preact islands for anything signed-in or interactive (AdminConsole with review, reports,
-  transfers, audit, feedback and beta tabs; Dashboard; PackageDetail and JobView (the `/dashboard/{ns}/{name}` and
+  transfers, community, upstream, audit, feedback and beta tabs; Dashboard; PackageDetail and JobView (the `/dashboard/{ns}/{name}` and
   `/dashboard/publish/{jobId}` pages); Backups (used by Dashboard and PackageDetail); ImportWizard (four steps; its
   forms write YAML blocks through `lib/yaml-blocks.ts`), Accounts, ClaimFlow, TransferView, ReportForm, FeedbackForm,
-  VersionActions, SearchDialog). `shared.tsx` has `useMe`, `SignIn`, `ErrorNote`, `Status`, `Loading`, `Confirm`.
+  VersionActions, SearchDialog; for the community IssueComposer, IssueThread, WorksForMe, CommunityModeration,
+  NotificationSettings, RequestForm, RequestVote, RequestDecision, SubmissionActions, UpstreamWatch, BumpRelease).
+  The import wizard also packages someone else's tool ("Someone else's tool", with `lib/dockerfile-templates.ts`).
+  `shared.tsx` has `useMe`, `SignIn`, `ErrorNote`, `Status`, `Loading`, `Confirm`.
 - `src/lib/`: `api.ts` (the only fetch helper: `api<T>()`, `apiOrNull`, `ApiError`, `signInUrl`, response types, and the
   `BETA` / `ISSUES_URL` settings), `page.ts` (`cacheFor`, `searchFrom`, `withParam`), `tool.ts` (`loadTool` handles
   404/410/moved/guide redirects), `theme-boot.ts`, `format.ts` (+ `format.test.ts`, including `hintParts`),
   `detect.ts` (the paste box's type detection, the CLI's rules; `/search` redirects typed values to `/input/{type}`),
   `evidence.ts` (the tool page's evidence lines and sample envelope), `install.ts` (the install commands; a test
-  keeps `docs/getting-started.md` equal to them), `yaml-blocks.ts`.
+  keeps `docs/getting-started.md` equal to them), `yaml-blocks.ts`, `feeds.ts` (Atom, JSON Feed, event wording),
+  `learn.ts`, `compare.ts` (the input pages' comparison table), `community.ts`, `requests.ts` and `submissions.ts`
+  (labels), `twins.ts` (Markdown twins and `RESERVED`).
 - `src/styles/`: `tokens.css` (all colours, radii, motion, type scale; light and dark), `global.css` (shared classes),
   `admin.css` (admin console only).
 
@@ -725,6 +807,11 @@ Environment: `PUBLIC_API_URL` (default production), `PUBLIC_BETA` (`"0"` hides t
 - HTML from the registry (READMEs, guide pages) is already sanitized server-side and rendered with `set:html`; don't
   render other untrusted HTML that way.
 - Every component and island file opens with a one-line purpose comment.
+- A new top-level page needs its name in `RESERVED` (`lib/twins.ts`) and in the API's `RESERVED_NAMESPACES`
+  (`api/src/lib/reserved.ts`), or a publisher with that name hides it; `reserved.test.ts` checks both.
+- Community content is user-written: render posts only through the API's `body_html` (sanitized, links
+  `nofollow ugc`), never put titles or notes into feeds, `aggregateRating` or `<title>` of an indexable page, and keep
+  issue, request and submission pages `noindex` until the API says `indexable`.
 
 ### Local environments
 
@@ -738,6 +825,40 @@ Environment: `PUBLIC_API_URL` (default production), `PUBLIC_BETA` (`"0"` hides t
   [docs/dev/local-setup.md](docs/dev/local-setup.md).
 
 ---
+
+## Community: issues, requests, submissions and the upstream watcher
+
+The plan is [docs/roadmap.md](docs/roadmap.md) (phase 1 built). User docs: `web/src/pages/docs/community.md` and
+`policy/community.md`; every route is in [docs/dev/api.md](docs/dev/api.md) and every table in
+[docs/dev/database.md](docs/dev/database.md).
+
+- **Issues** (`community.ts`, migration 0016): per package, with replies, "me too", follows and flags. Posts from
+  accounts under a day old, posts `screen()` flags as personal data or secrets, and a first post with links are held
+  for a moderator; links from new authors render as text, every link is `nofollow ugc`. A personal-data flag from an
+  established account, or three flags, hides a post at once. Triage (status, locks, hiding) is for the package's
+  maintainers, triagers and staff; only staff redact. Daily limits per person (`dailyLimit`). The registry files
+  system issues itself (`fileSystemIssue`, deduplicated by key).
+- **Status line** (`GET /tools/:ns/:name/status`): the nightly health check and its history, confirmations from the
+  last 30 days by platform, open broken issues, in one sentence with counts, never a score.
+- **`ot` hooks**: the failure prompt (`report_prompt.go`) sends `run-reports` only after a yes; anonymous reports only
+  count (three addresses in a week open an "unconfirmed" issue), signed-in ones join the version's broken issue.
+- **Notifications** (`inbox.ts`, 0017): inbox rows written with each event, emailed within 15 minutes or as a daily
+  digest per person's preference, at most 12 a day, with a signed one-click unsubscribe (`TOKEN_ENC_KEY`).
+- **Requests** (`requests.ts`, 0018): one per repository, checked when made (public, not packaged or requested,
+  no upstream manifest; a license the registry can't redistribute or an archived repository is declined at once);
+  votes; triagers decide; a published package from that repository answers it (`linkPublished`).
+- **Profiles** (`people.ts`, 0019): `/people/<handle>` with roles and counts recomputed nightly; never email or
+  accounts; hidden profiles 404.
+- **Submissions** (`submissions.ts`, 0020): anyone signed in finishes a community import with mode `submit`. Checks
+  first, then the community bot (a second GitHub App, `COMMUNITY_APP_*`; without it 503 `community_bot_missing`)
+  creates `osintverse-community/<name>`, commits the files and tags or dispatches the release. The first release waits
+  for a reviewer who isn't the submitter (`needs_first_review`); the submitter becomes a maintainer.
+- **Upstream watcher** (`upstream.ts`, 0021; pins from `upstream-pin.ts`): nightly, at most three requests per
+  wrapper. `UPSTREAM_WATCH=report` (default) records; `issues` opens and closes outdated issues; `prs` also has the
+  bot open pin-only bump pull requests (`bumps.ts`, 0022), which maintainers merge and release from the package page.
+- **Activity and feeds**: `/v1/activity` (registry events; `events=community` adds confirmed and fixed issues and
+  accepted and published requests, worded from fields), `/new`, and Atom/JSON feeds at the root, per publisher, per
+  tool (release notes) and per input type.
 
 ## Agents: `ot mcp`, the remote MCP server and the plugin
 
@@ -755,6 +876,8 @@ official Go SDK. Tools run on the person's machine in the same sandbox as `ot ru
   (`ot://schema/...`, `ot://types`, `ot://policy/...`, `ot://runs/{run_id}`, `ot://cases/{case}`, tool manifests,
   guide pages) and prompts (`investigate_*`, `pivot_from_run`, `compare_runs`, `write_playbook`, `publish_tool`) are in
   `mcp_content.go`. Every result that carries tool output starts with a note that it is untrusted data, not instructions.
+  `list_playbooks` and `get_playbook` give each playbook's `inputs`. `run_all` and `run_playbook` never install: with
+  nothing installed for the target, `run_all` answers `not_installed` with the starter playbook's `suggested_tools`.
 - Consent: `agent.Classify` puts each run in the strictest class that applies: passive (offline), networked, target
   (`ethics.touches_target`, or the person's own keys or account) or personal (`collects_personal_data`, or an email,
   phone, name or image input). By default only passive runs go ahead unasked. Otherwise the server asks the person:
@@ -828,8 +951,10 @@ section 10, "MCP bundles and the MCP Registry".
   `/ot.ps1`, `/install.ps1` to the latest release's scripts on `OTInstaller/ot` (`RELEASE_REPO`), and `/otlite`,
   `/otlite.sh` to `otlite/scripts/install.sh` on this repo's `main` (`OTLITE_REPO`; it installs from PyPI, so it needs
   no release). Both are cached 5 minutes; upstream errors get a script that fails loudly, and other paths redirect to
-  the getting-started docs. A change to `otlite/scripts/install.sh` is live as soon as it reaches `main`. Deploy with
-  `npx wrangler deploy` from `ops/get` (only when asked). It has no automated test.
+  the getting-started docs. `/ot/latest` answers `{"version"}` for the latest `OTInstaller/ot` release, read from
+  GitHub's `/releases/latest` redirect (no API limit) and cached an hour; `ot self-update` and `ot outdated` ask it
+  first and fall back to the GitHub API. A change to `otlite/scripts/install.sh` is live as soon as it reaches `main`.
+  Deploy with `npx wrangler deploy` from `ops/get` (only when asked). It has no automated test.
 
 ## Seed (`seed/`)
 
@@ -856,9 +981,14 @@ table, publish order (namespace → tools → guides), what was not converted an
   LICENSE.md. Guides have no release workflow: release them with `ot release X.Y.Z` (or a plain `git tag vX.Y.Z && git
   push`), never through GitHub Actions.
 - `outreach/`: issue and PR texts for upstream maintainers.
-- The bundled playbooks' tools must exist in the seed (`TestBundledToolsAreSeeded`), and every seed manifest must
-  validate (`TestSeedManifests`).
+- The bundled playbooks' tools must exist in the seed (`TestBundledToolsAreSeeded`), take one of the playbook's
+  `inputs` types and need no key (`TestBundledPlaybooksFitSeed`), and every seed manifest must validate
+  (`TestSeedManifests`).
 - Updating a pipx wrapper: change `version`, `package_version` and `wheel_sha256` (from `https://pypi.org/pypi/<pkg>/json`).
+  With `UPSTREAM_WATCH=prs` the community bot opens that change as a bump pull request, and Docker wrappers get their
+  pin line bumped the same way.
+- Every wrapper Dockerfile must pin its upstream release in a way `api/src/upstream-pin.ts` reads, and follow the
+  submission rules (`dockerfileChecks`); `upstream.test.ts` and `week7` check every seed Dockerfile.
 
 ## otlite, the no-Docker edition (`otlite/`)
 
@@ -876,8 +1006,10 @@ read and the first run copies settings from `~/.otinstaller`. Users of both edit
   from its own environment (`pypi-otinstaller`, `testpypi-otinstaller`), because PyPI picks one publisher per
   environment.
 - The one-line installer `curl -fsSL https://get.otinstaller.com/otlite | sh` is `otlite/scripts/install.sh` (pipx
-  from PyPI), served from `main` by `ops/get`.
-- `otlite/scripts/web_catalog.py` writes `web/src/data/otlite-catalog.json` for the site's `/otlite/tools` page; rerun
+  from PyPI when Python and pipx are there, else a pinned, hash-checked uv with its own Python 3.12, no sudo), served
+  from `main` by `ops/get`. Bumping uv means changing `UV_VERSION` and all four SHA-256 values in the script.
+- `otlite/scripts/web_catalog.py` writes `web/src/data/otlite-catalog.json` for the site's `/otlite` pages (it reads
+  `seed/community/` to name each tool's registry wrapper); rerun
   it whenever the catalog changes (its test fails otherwise). This is the one place where `otlite/` writes outside its
   folder.
 - **Read [otlite/AGENTS.md](otlite/AGENTS.md) before touching anything in `otlite/`.** Its rules apply there and differ
@@ -961,6 +1093,13 @@ effect goes through `agent.Session.DecideRun` and the audit log. If the remote s
 **Changing what the scanner receives or reports**: `api/src/scans.ts` / `backups.ts`, the matching route parser,
 `ops/scanner/*.py` and their tests, and a note that registry-ops needs the new copy.
 
+**Adding a top-level site page**: the page, `RESERVED` in `web/src/lib/twins.ts`, `RESERVED_NAMESPACES` in
+`api/src/lib/reserved.ts`, the sitemap if it should be indexed, and `llms.txt` if agents should find it.
+
+**Changing community rules** (who may post or triage, holds, limits): `api/src/community.ts` (or `requests.ts`,
+`submissions.ts`), the error codes in `web/src/pages/docs/errors.md`, `web/src/pages/docs/community.md` and
+`policy/community.md`, and the tests in `community.test.ts` (or the matching file).
+
 **Changing the site's look or motion**: tokens first, no inline styles or scripts, test both themes and reduced motion,
 and verify in the preview build.
 
@@ -991,7 +1130,9 @@ pushing tags or running workflows on seed repositories (publishes packages), pub
 `otlite-v*` tags or running `release-otlite.yml`), pushing to `OTInstaller/agent-plugin`, `mcp-publisher publish` to
 the MCP Registry, submitting to directories or marketplaces (Anthropic, Cursor), posting outreach issues or PRs or
 launch posts, running `scripts/beta/labels.sh`, triggering backups or drills on production, changing the Cloudflare
-rate-limiting rule, and changing GitHub App, OAuth, R2 or registry-ops settings. The operator runbook for all of these is
+rate-limiting rule, changing GitHub App, OAuth, R2 or registry-ops settings (including creating the community bot's
+App and setting `COMMUNITY_APP_*`), moving `UPSTREAM_WATCH` past `report`, and granting community roles in
+production. The operator runbook for all of these is
 [docs/publishing-setup.md](docs/publishing-setup.md); current production state is in
 [docs/launch-checklist.md](docs/launch-checklist.md).
 
@@ -1045,15 +1186,22 @@ change. Keep this list current when you fix one or find another.
 - `tools_fts` triggers fire only on `tools`, so renaming a namespace leaves the old name in search.
 - Redelivering a GitHub webhook is a no-op once the first delivery created a job.
 - `ot install` doesn't warn about deprecated packages (the manifest response doesn't carry deprecation).
-- `ot self-update` and the install scripts ask `api.github.com` for the latest release without a token (60 requests an
-  hour per IP).
+- The install scripts ask `api.github.com` for the latest release without a token (60 requests an hour per IP).
+  `ot self-update` and `ot outdated` ask `get.otinstaller.com/ot/latest` first and use the API only as a fallback.
 - The same error code has two statuses in places (`tool_removed` 410/409, `manifest_in_repo` 409/400,
   `unknown_provider` 404/400); `manifest_name_mismatch` exists only in the API.
 - `ot login --osintverse` ignores `--scope` and token expiry: the OSINTverse device poll (`pollOsintverseDevice` in
   `routes/device.ts`) mints with the default four scopes and never reads `scopes` or `expires_in_days`, unlike the
   GitHub and GitLab path. It also writes `token.create` to the audit log twice (once in `mintApiToken`, once itself).
-- The API reserves no namespace names, so a namespace called `agents`, `tour`, `otlite`, `search` or another site
-  section would have its publisher page hidden by the site's own page.
+- Namespaces that already exist with a reserved name (`api/src/lib/reserved.ts` only affects new ones) keep it; none
+  did in production as of 23 Oct 2026.
+- Stars are still never written (no route records one), though ranking and `stars` columns read them.
+- Community: request pages have no discussion thread, and flags don't cover requests (moderators can hide them);
+  maintainers can't propose changes beyond a pin through the registry; a new version's works/broken counts aren't
+  highlighted for its first week; `contributor_stats` is only as fresh as the last nightly run.
+- Bump pull requests skip wrappers that pin upstream's own image (they get an outdated issue only), and commit pins.
+- The community bot creates wrapper repositories on GitHub only; a submission whose first release fails its scan
+  stays `failed` until the submitter changes it.
 
 **Docs debt**
 
@@ -1090,6 +1238,17 @@ change. Keep this list current when you fix one or find another.
 | Scan / verdict | The registry-ops job (`scan.py`) and its outcome: pass, warn (fixable critical/high vulns) or fail |
 | Smoke test | The scan's sandboxed run of the manifest's `test.input`; the nightly health check runs it again |
 | Possibly broken | Three failed health checks in a row (`tools.health_status = 'broken'`) |
+| Issue | A public report on a package (broken, outdated, wrong_info, feature, question), with replies; system issues are filed by the registry itself (`author_kind = 'system'`) |
+| Confirmation | "Works for me" or "broken for me" on a version and platform; counts, never ratings |
+| Handle | The public name on someone's posts and profile (`users.handle`) |
+| Triager / reviewer | Community roles staff grant: triagers triage any package's issues and moderate; reviewers also decide submissions |
+| Maintainer | Someone who looks after a package: its namespace's members, plus `tool_maintainers` (a submission's submitter, others staff add) |
+| Tool request | A request to package a repository (`tool_requests`), with votes; open → accepted → in progress → published, or declined |
+| Submission | A community wrapper someone packaged through the wizard (`wrapper_submissions`); its first release waits for a reviewer |
+| Community bot | The second GitHub App (`COMMUNITY_APP_*`), installed only on `osintverse-community`, that creates wrapper repositories and opens bump pull requests |
+| Upstream watcher | The nightly check of each wrapper's pin against its upstream's latest release (`upstream_watch`, `UPSTREAM_WATCH`) |
+| Bump pull request | The community bot's pull request changing only a wrapper's pin; maintainers merge and release it (`bump_prs`) |
+| Failure prompt | `ot run`'s "Report it as broken?" after a run that failed; sends no inputs or output |
 | Awaiting review | A passing version of a not-yet-approved namespace, or a guide with PII hits |
 | Yank / deprecate / remove | Owner takes a version off `@latest` (an exact `@version` still installs) / owner marks a package as superseded / staff takedown (410, backups deleted after 14 days unless a legal hold) |
 | Claim / transfer | Taking over a community wrapper by proving upstream ownership / moving a package between namespaces |

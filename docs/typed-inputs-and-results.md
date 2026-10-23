@@ -127,14 +127,25 @@ differences: a listed tool with no input of the given types is shown as skipped 
 saved under the case `playbook-<name>` (or the playbook's `case:`, or `--case`). Tools that are not installed stop the
 run with the `ot install` commands to fix it; `--yes` installs them first.
 
-Two playbooks are bundled: `domain-recon` (`osintverse-community/dnstwist`, `osintverse-community/crtsh-subdomains`) and
-`username-investigation` (`osintverse-community/sherlock`, `osintverse-community/maigret`), the same tools as
-otinstaller's except `crtsh-subdomains`, which replaces otinstaller's `ctfr` (both read Certificate Transparency logs). Your own go in `<ot home>/playbooks/` or `./playbooks/` as `<name>.yaml` (`./playbooks` wins, then the
-ot home, then the bundled ones):
+Five playbooks are bundled, all from `osintverse-community` and none needing an API key:
+
+| Playbook | Takes | Tools |
+| --- | --- | --- |
+| `domain-recon` | domain | `dnstwist`, `crtsh-subdomains` |
+| `username-investigation` | username | `sherlock`, `maigret` |
+| `email-investigation` | email, domain | `holehe`, `user-scanner`; with `d:`, also `checkdmarc` and `dns-records` |
+| `phone-investigation` | phone | `phone-parse`, `phoneinfoga`, `numint` (its offline layer, plus any provider you have a key for) |
+| `ip-investigation` | ip | `ipwhois`, `naabu` (passive: Shodan InternetDB, no scan) |
+
+The first two have the same tools as otinstaller's except `crtsh-subdomains`, which replaces otinstaller's `ctfr` (both
+read Certificate Transparency logs). `TestBundledPlaybooksFitSeed` checks that every bundled tool is in the launch seed,
+takes one of its playbook's input types and needs no key. Your own go in `<ot home>/playbooks/` or `./playbooks/` as
+`<name>.yaml` (`./playbooks` wins, then the ot home, then the bundled ones):
 
 ```yaml
 name: my-recon            # optional, defaults to the file name
 description: "What it is for"
+inputs: [domain]          # optional: the input types it is meant for, the main one first
 case: my-case             # optional, defaults to playbook-<name>
 tools:
   - osintverse-community/dnstwist
@@ -142,7 +153,9 @@ tools:
 ```
 
 otinstaller playbooks list bare tool names (`sherlock`); `ot` needs the full package name and says which one to use.
-`requires_target` is accepted and ignored, since `ot playbook` always takes typed inputs. otinstaller guessed the
+`requires_target` is accepted and ignored, since `ot playbook` always takes typed inputs. `inputs` is only a label: it
+fills the TAKES column of `ot playbook --list` and `inputs` in MCP's `list_playbooks`; any typed input still runs every
+tool that takes it. otinstaller guessed the
 target type from a bare target (`example.com`); `ot` needs the prefix (`d:example.com`).
 
 ## `ot auto`
@@ -154,9 +167,33 @@ guess, first match wins: `url` (starts with `http://` or `https://`), `ip` (IPv4
 `ot run --all` with that typed input. A prefixed target (`d:example.com`) is never second-guessed, and bare targets in
 `ot playbook` are guessed the same way.
 
+### Nothing installed for the target
+
+On a fresh machine `ot auto johndoe` used to stop at "no installed tool has a username input". Now, when no installed
+tool takes any of the typed inputs, `ot run --all` and `ot auto` look for a starter: the bundled playbook whose main
+input is that type (`playbook.Starter`; never one from `./playbooks` or the ot home, which could come with any folder
+someone downloaded). At a terminal, ot asks the registry about each of its tools that takes the input, leaves out
+deprecated, possibly broken and removed ones, lists the rest as `ref version: summary (what a run does)`, and asks
+`Install N tools and run? [y/N]`. On yes it installs them with `installMany` and plans again; a tool that fails to
+install is reported and the rest run. Without a terminal, for a dry run, or after a no, it never installs: exit 2,
+`not_installed`, with a hint naming `ot playbook <starter> <type>:<value> --yes`. There is no flag for this on `auto`
+or `run --all`, since their unknown `--x` flags are tool inputs. `ot playbook` without `--yes` asks the same question
+at a terminal for its missing tools; MCP's `run_all` and `run_playbook` never install and answer `not_installed`
+pointing at `install_tool`.
+
 `--dry-run` (with `ot auto`, `ot run --all` or `ot playbook`) lists what would run and what would be skipped, and runs
 nothing. While a batch runs, a line such as `[2/5] osintverse-community/sherlock complete` goes to stderr as each tool
 finishes; otinstaller's `--live` is accepted and changes nothing.
+
+## `ot runs`
+
+`ot runs` lists saved runs, newest first, from the results folder (`--results-dir`, `$OT_RESULTS_DIR` or `./results`)
+and `<ot home>/results`, where `ot mcp` saves: by default the last 20 started in the past week. `--tool`, `--target`,
+`--case` and `--status` narrow it; `--since 0` and `--limit 0` lift the defaults. The rows are the ones MCP's
+`list_runs` returns (both use `listSavedRuns`), and `--json` prints them as an array. `ot runs <run-id>` shows one
+run (tool and version, target, status and exit code, duration, case, where it is saved and the first ten entities)
+and suggests `ot pivot <run-id>`; with `--json` it prints the run's sidecar. Nothing found is not an error (exit 0);
+an unknown run id is (exit 2, `run_not_found`).
 
 ## `ot extract` and `ot diff`
 
@@ -174,6 +211,13 @@ output was written.
 `ot outdated` compares each installed package with the registry's latest version and changes nothing. `ot update
 <namespace/name>...` or `ot update --all` installs the newer versions, through the same checks as `ot install`.
 Packages installed from a local manifest show as "not in registry".
+
+Beside the status, each row carries lifecycle `flags`: `deprecated` (with the publisher's `replacement` when there is
+one), `possibly_broken` (failed recent health checks), `yanked` (the installed version, even when it is the latest),
+`source_unavailable` (no new versions will come) and `moved` (the package has a new name, which `replacement` gives).
+Each flag is also one `warning:` line on stderr saying what to do. The statuses, and exit 0, are unchanged. `ot update`
+updates the packages with a newer version, and also moves a package that has a new name: it installs it under that
+name and forgets the old one. The registry is asked about four packages at a time.
 
 ## `ot pivot`
 

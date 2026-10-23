@@ -39,10 +39,10 @@ def test_install_hint(monkeypatch, family, what, expected):
     assert config.install_hint(what, "3.12") == expected
 
 
-def _doctor(monkeypatch, tmp_path, platform, which):
+def _doctor(monkeypatch, tmp_path, platform, which, version=(3, 12, 0, "final", 0)):
     monkeypatch.setenv("OTLITE_HOME", str(tmp_path))
     monkeypatch.setattr("sys.platform", platform)
-    monkeypatch.setattr("sys.version_info", (3, 12, 0, "final", 0))
+    monkeypatch.setattr("sys.version_info", version)
     monkeypatch.setattr("shutil.which", which)
 
     class Result:
@@ -65,3 +65,38 @@ def test_doctor_says_how_to_install_git_and_pipx_on_macos(monkeypatch, tmp_path)
     assert "git not found; install it with: xcode-select --install" in result.output
     assert "[note] pipx not found" in result.output
     assert "brew install pipx" in result.output
+
+
+@pytest.mark.parametrize(
+    ("marker", "expected"),
+    [("uv-receipt.toml", "uv"), ("pipx_metadata.json", "pipx"), (None, None)],
+)
+def test_installed_with(monkeypatch, tmp_path, marker, expected):
+    if marker:
+        (tmp_path / marker).write_text("")
+    monkeypatch.setattr(sys, "prefix", str(tmp_path))
+    assert config.installed_with() == expected
+
+
+def test_doctor_on_a_uv_install_needs_no_pipx(monkeypatch, tmp_path):
+    prefix = tmp_path / "uv-tool"
+    prefix.mkdir()
+    (prefix / "uv-receipt.toml").write_text("")
+    monkeypatch.setattr(sys, "prefix", str(prefix))
+
+    def which(name):
+        return None if name == "pipx" else f"/usr/bin/{name}"
+
+    result = _doctor(monkeypatch, tmp_path, "linux", which)
+    assert result.exit_code == 0, result.output
+    assert "[ok] installed with uv; upgrade it with: uv tool upgrade otlite" in result.output
+    assert "pipx not found" not in result.output
+
+
+def test_doctor_on_an_unsupported_python_says_how_to_reinstall_with_uv(monkeypatch, tmp_path):
+    (tmp_path / "uv-receipt.toml").write_text("")
+    monkeypatch.setattr(sys, "prefix", str(tmp_path))
+    old = (3, 9, 0, "final", 0)
+    result = _doctor(monkeypatch, tmp_path, "linux", lambda x: f"/usr/bin/{x}", old)
+    assert result.exit_code == 1
+    assert "uv tool install --force --managed-python --python 3.12 otlite" in result.output

@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Registry entries can carry `notes`, short caveats such as why a tool needs a particular Python or how to sign in first; `otlite info` lists them
+
+### Changed
+- The one-line installer no longer needs Python or pipx on the machine: without them it downloads a pinned uv (checked against its SHA-256) into `~/.local/bin` and installs otlite with uv on a Python 3.12 that uv keeps in the home directory, never with sudo. `OTLITE_USE_UV=1` picks this path even when pipx is there
+- `otlite doctor` recognises an otlite installed with uv and gives uv commands for upgrading and reinstalling, instead of a note about pipx
+- The descriptions of auto-archiver, telepathy and openosint are one sentence again; their caveats moved into `notes`
+
 ## [1.2.1] - 2026-10-22
 
 ### Added
