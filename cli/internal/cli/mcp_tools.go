@@ -138,6 +138,7 @@ type playbookInfo struct {
 	Description string         `json:"description"`
 	Case        string         `json:"case"`
 	Source      string         `json:"source"`
+	Inputs      []string       `json:"inputs" jsonschema:"the input types it is meant for, the main one first; empty when the playbook doesn't say"`
 	Tools       []playbookTool `json:"tools"`
 }
 
@@ -308,7 +309,7 @@ func (s *mcpServer) addReadTools() {
 			t := runner.DetectTyped(strings.TrimSpace(in.Target))
 			return &detectOut{InputType: runner.TypedPrefixes[t.Prefix], Prefix: t.Prefix + ":"}, nil
 		})
-	readTool(s, "list_playbooks", "List playbooks", "Named sets of tools run together against one target, bundled or the person's own, and which of their tools are installed.",
+	readTool(s, "list_playbooks", "List playbooks", "Named sets of tools run together against one target, bundled or the person's own: the input types each is for, and which of their tools are installed.",
 		func(ctx context.Context, _ struct{}) (*playbooksOut, error) {
 			all, err := playbook.All(playbook.Dirs(state.Home()))
 			if err != nil {
@@ -320,7 +321,7 @@ func (s *mcpServer) addReadTools() {
 			}
 			return out, nil
 		})
-	readTool(s, "get_playbook", "Get a playbook", "One playbook: its tools and which are installed.",
+	readTool(s, "get_playbook", "Get a playbook", "One playbook: the input types it is for, its tools and which are installed.",
 		func(ctx context.Context, in nameIn) (*playbookInfo, error) {
 			p, err := playbook.Find(playbook.Dirs(state.Home()), in.Name)
 			if err != nil {
@@ -477,7 +478,7 @@ func orInt(v, def int) int {
 
 func playbookOf(p *playbook.Playbook) playbookInfo {
 	st, _ := state.Load()
-	info := playbookInfo{Name: p.Name, Description: p.Description, Case: p.Case, Source: p.Source, Tools: []playbookTool{}}
+	info := playbookInfo{Name: p.Name, Description: p.Description, Case: p.Case, Source: p.Source, Inputs: p.Inputs, Tools: []playbookTool{}}
 	for _, ref := range p.Tools {
 		info.Tools = append(info.Tools, playbookTool{Ref: ref, Installed: st != nil && st.Installed[ref] != nil})
 	}
