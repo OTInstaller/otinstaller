@@ -16,11 +16,13 @@ import { RELEASE_TAG, queueTag, sourceById, sourceByProject } from "./sync";
 import { audit } from "./routes/auth";
 import { connectGitlabProject, gitlabNamespaceName } from "./routes/sources";
 import { RELEASE_TEMPLATES } from "./release-templates";
+import { dailyLimit } from "./community";
+import { RESERVED_NAMESPACES } from "./lib/reserved";
 
 export const MAX_BULK = 50;
 export const IMPORT_BRANCH = "otinstaller/import";
 const MANIFEST_FILE = "otinstaller.yaml";
-const ZERO = "0".repeat(64);
+export const ZERO = "0".repeat(64);
 
 export type Provider = "github" | "gitlab";
 export type Kind = "docker" | "pipx" | "guide";
@@ -31,6 +33,9 @@ export const COMMUNITY_NAMESPACE = "osintverse-community";
 
 // Licenses that allow publishing a wrapper of someone else's tool.
 const REDISTRIBUTABLE = /^(MIT|MIT-0|Apache-2\.0|BSD-[234]-Clause|0BSD|ISC|MPL-2\.0|(A|L)?GPL-[23]\.0(-only|-or-later)?|LGPL-2\.1(-only|-or-later)?|Unlicense|CC0-1\.0|CC-BY(-SA)?-4\.0|EPL-2\.0|EUPL-1\.2|Zlib|Artistic-2\.0|BSL-1\.0)$/;
+
+/** Whether a license lets the registry redistribute a tool as a community wrapper (and so take requests for it). */
+export const isRedistributable = (license: string | null | undefined): boolean => !!license && REDISTRIBUTABLE.test(license);
 
 /** A refusal that the routes turn into an API error and bulk detection records on the import. */
 export class ImportProblem extends Error {
@@ -354,7 +359,7 @@ async function githubNamespaceName(env: Env, owner: { id: number; login: string 
     .bind(String(owner.id)).first<{ id: string; name: string; status: string }>();
   if (existing) return existing;
   let name = slug(owner.login);
-  if (await env.DB.prepare(`SELECT 1 FROM namespaces WHERE name = ?`).bind(name).first()) name = `${name.slice(0, 37)}-gh`;
+  if (RESERVED_NAMESPACES.has(name) || (await env.DB.prepare(`SELECT 1 FROM namespaces WHERE name = ?`).bind(name).first())) name = `${name.slice(0, 37)}-gh`;
   return { name, status: "pending_review" };
 }
 
@@ -473,7 +478,7 @@ export async function detect(env: Env, repo: Repo): Promise<{ facts: Facts; draf
   }
   if (repo.community) {
     // Wrappers only where the license allows it, and only when upstream doesn't publish the tool itself.
-    if (!license || !REDISTRIBUTABLE.test(license)) {
+    if (!isRedistributable(license)) {
       refuse(400, "license_not_redistributable", `${repo.path} has ${license ? `the license ${license}, which` : "no license that"} the registry accepts for community wrappers`,
         "ask the maintainer to publish it themselves");
     }
@@ -638,8 +643,10 @@ export function parseRepoRef(input: string, fallback?: Provider): { provider: Pr
 /** Starts imports: one repository is detected right away, several are detected in the queue. */
 export async function startImports(env: Env, user: User, refs: { provider: Provider; path: string }[], opts: { community?: boolean } = {}): Promise<ImportRow[]> {
   const community = !!opts.community;
+  // Anyone signed in may package someone else's tool (it finishes as a reviewed submission); bulk stays with admins.
   if (community && !(await isCommunityAdmin(env, user))) {
-    refuse(403, "not_community_admin", `only ${COMMUNITY_NAMESPACE} admins can package tools they don't own`);
+    if (refs.length > 1) refuse(403, "not_community_admin", `only ${COMMUNITY_NAMESPACE} admins can package several tools at once`);
+    await dailyLimit(env, "community-import", user.id, 10);
   }
   const now = Date.now();
   const batch = refs.length > 1 ? ulid(now) : null;
@@ -899,7 +906,7 @@ export function wrapperReadme(draft: Record<string, unknown>, upstream: string):
  * namespace. The manifest lives in that repository, so wrappers are never registry-held.
  */
 async function finishWrapper(env: Env, user: User, row: ImportRow, facts: Facts, wrapperInput: string | undefined) {
-  if (!(await isCommunityAdmin(env, user))) refuse(403, "not_community_admin", `only ${COMMUNITY_NAMESPACE} admins can package tools they don't own`);
+  if (!(await isCommunityAdmin(env, user))) refuse(403, "not_community_admin", `only ${COMMUNITY_NAMESPACE} admins can open a wrapper pull request`, `finish with {"mode": "submit"} instead`);
   const ref = wrapperInput ? parseRepoRef(wrapperInput, row.provider) : null;
   if (!ref) return refuse(400, "wrapper_required", `send the wrapper repository, e.g. {"mode": "wrapper", "wrapper_repo": "https://github.com/${COMMUNITY_NAMESPACE}/${facts.repoName}"}`);
   const wrapper = await openRepo(env, user.id, ref.provider, ref.path);

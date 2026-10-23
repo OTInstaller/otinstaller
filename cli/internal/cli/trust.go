@@ -78,11 +78,14 @@ func (a *App) warnRemoved(ctx context.Context) {
 
 func (a *App) reportCmd() *cobra.Command {
 	var reason, details, version string
+	var works, broken bool
 	cmd := &cobra.Command{
 		Use:   "report <namespace/name>",
 		Short: "Report a tool or guide to the registry's reviewers",
 		Long: "Opens the report form on the website. With --reason it files the report directly (anonymous unless you are signed in).\n" +
-			"Reasons: malware, policy, impersonation, license, broken, other. Malware reports are looked at within 24 hours.",
+			"Reasons: malware, policy, impersonation, license, broken, other. Malware reports are looked at within 24 hours.\n\n" +
+			"--works and --broken tell the community instead: --works counts the version as working for you (needs `ot login`), " +
+			"--broken joins or opens its public broken issue (anonymous only adds to a count). Both send the version, your OS and ot version only.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ref, err := parseRef(args[0])
@@ -91,6 +94,15 @@ func (a *App) reportCmd() *cobra.Command {
 			}
 			if version == "" {
 				version = ref.Version
+			}
+			if works && broken {
+				return exitErr(ExitUsage, "--works and --broken don't go together")
+			}
+			if works || broken {
+				return a.confirmVersion(cmd, ref, version, works)
+			}
+			if reason == "broken" {
+				fmt.Fprintln(a.Err, "note: this report is private to the reviewers; `ot report "+ref.Ref()+" --broken` tells the community and the maintainers in public instead.")
 			}
 			if reason == "" {
 				u := strings.TrimRight(a.Config.SiteURL, "/") + "/" + ref.Ref() + "/report"
@@ -113,6 +125,8 @@ func (a *App) reportCmd() *cobra.Command {
 	cmd.Flags().StringVar(&reason, "reason", "", "malware, policy, impersonation, license, broken or other")
 	cmd.Flags().StringVar(&details, "details", "", "what you saw (required except for broken)")
 	cmd.Flags().StringVar(&version, "version", "", "the version you are reporting")
+	cmd.Flags().BoolVar(&works, "works", false, "say the version works for you (public count; needs `ot login`)")
+	cmd.Flags().BoolVar(&broken, "broken", false, "say the version is broken for you (joins or opens its public issue)")
 	return cmd
 }
 

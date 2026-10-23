@@ -113,7 +113,7 @@ func truncate(s string, n int) string {
 func (a *App) infoCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "info <namespace/name>",
-		Short: "Show a package's inputs, keys, ethics flags and trust status",
+		Short: "Show a package's inputs, keys, ethics flags, trust status and what's new",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ref, err := parseRef(args[0])
@@ -134,10 +134,24 @@ func (a *App) infoCmd() *cobra.Command {
 					return err
 				}
 			}
+			// What changed in this version, for registry packages that have release notes.
+			var notes *api.Version
+			if t != nil {
+				notes = a.whatsNew(cmd.Context(), ref.NS, ref.Name, m.Version)
+			}
 			if a.jsonMode() {
-				return writeJSON(a.Out, map[string]any{"registry": t, "manifest": m})
+				out := map[string]any{"registry": t, "manifest": m, "changelog": nil}
+				if notes != nil {
+					out["changelog"] = cleanNotes(notes.Changelog)
+				}
+				return writeJSON(a.Out, out)
 			}
 			printInfo(a.Out, m, t)
+			if notes != nil {
+				fmt.Fprintf(a.Out, "\nWhat's new in ")
+				printRelease(a.Out, *notes, whatsNewLines)
+				fmt.Fprintf(a.Out, "  (all notes: `ot changelog %s`)\n", m.Ref())
+			}
 			return nil
 		},
 	}

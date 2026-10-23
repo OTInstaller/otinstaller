@@ -2,7 +2,9 @@ import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import YAML from "yaml";
 import { processJob } from "../src/publish";
-import { publishVersion } from "../src/scans";
+import { applyScanResults, loadVersion, publishVersion } from "../src/scans";
+import { dockerfileChecks } from "../src/submissions";
+import { findPin } from "../src/upstream-pin";
 import { RELEASE_TEMPLATES } from "../src/release-templates";
 import {
   buildDraft, categoriesFrom, detectKind, detectQueued, latestReleaseTag, licenseFromText, missingFields, parseRepoRef, pyprojectInfo, summaryFrom,
@@ -498,9 +500,9 @@ describe("community wrappers", () => {
     return { u, name, upstream, wrapper, instId };
   }
 
-  it("is only for osintverse-community admins", async () => {
+  it("leaves bulk community imports to osintverse-community admins", async () => {
     const u = await user();
-    const res = await post("/imports", u.auth, { repo: "https://github.com/someone/sherlock", community: true });
+    const res = await post("/imports", u.auth, { repos: ["https://github.com/someone/sherlock", "https://github.com/someone/maigret"], community: true });
     expect(res.status).toBe(403);
     expect(((await res.json()) as any).error.code).toBe("not_community_admin");
     // Without --community, a repository they can't administer points them at the wrapper route.
@@ -515,7 +517,7 @@ describe("community wrappers", () => {
     const wrapperCommits: Commit[] = [];
     fakeGithub(upstream, githubRoutes(wrapper, wrapperCommits));
     const imp = (await (await post("/imports", u.auth, { repo: `https://github.com/${upstream.path}`, community: true })).json()) as any;
-    expect(imp).toMatchObject({ community: true, namespace: "osintverse-community", finish_modes: ["wrapper"], can_hold_manifest: false });
+    expect(imp).toMatchObject({ community: true, namespace: "osintverse-community", finish_modes: ["submit", "wrapper"], can_hold_manifest: false });
     expect(imp.draft).toMatchObject({ name, namespace: "osintverse-community", homepage: `https://github.com/${upstream.path}`, runtime: { image: `ghcr.io/${upstream.path}@${DIGEST}` } });
     await patch(`/imports/${imp.id}`, u.auth, {
       manifest: { inputs: [{ name: "username", type: "username", required: true }], outputs: [{ type: "account" }], ethics: completion.ethics,
@@ -741,5 +743,207 @@ describe("bulk import", () => {
     const many = Array.from({ length: 51 }, (_, i) => `https://github.com/${u.login}/r${i}`);
     expect(((await (await post("/imports", u.auth, { repos: many })).json()) as any).error.code).toBe("too_many_repos");
     expect(((await (await post("/imports", u.auth, { repo: "https://example.com/a/b" })).json()) as any).error.code).toBe("invalid_repo");
+  });
+});
+
+// ---------- community submissions ----------
+
+describe("community submissions", () => {
+  const DOCKERFILE = (path: string) => `FROM golang:1.26-alpine AS build\nRUN go install github.com/${path}@v0.15.0\n\nFROM alpine:3.22\nCOPY --from=build /go/bin/tool /usr/local/bin/tool\nUSER 65534\nENTRYPOINT ["tool"]\n`;
+  const BOT = { COMMUNITY_APP_ID: "77", COMMUNITY_INSTALLATION_ID: "555" };
+
+  /** Someone who isn't a community admin, an upstream they don't own, the main App on osintverse-community, and fakes. */
+  async function setup(upstreamOver: Partial<GhRepo> = {}) {
+    const u = await user();
+    const name = `tool${uniq()}`;
+    const upstream: GhRepo = {
+      id: Number(uniq()), path: `upstream${uniq()}/${name}`, owner: { id: Number(uniq()), type: "Organization" }, admin: false,
+      files: { Dockerfile: "FROM python", "README.md": `# ${name}`, LICENSE: "MIT License" }, tags: ["v0.15.0"], images: {},
+      description: "Finds accounts by username across social networks", topics: ["username", "osint"], ...upstreamOver,
+    };
+    const wrapper: GhRepo = { id: Number(uniq()), path: `osintverse-community/${name}`, owner: { id: 4242, type: "Organization" }, files: {} };
+    const instId = Number(uniq());
+    await DB().prepare(
+      `INSERT INTO installations (id, github_installation_id, namespace_id, repo_ids, account_login, account_type, repository_selection) VALUES (?, ?, 'ns_community', '[]', 'osintverse-community', 'Organization', 'all')`,
+    ).bind(ulid(), instId).run();
+    const commits: Commit[] = [];
+    const bot: { dispatched: unknown[]; tagged: unknown[]; archived: number } = { dispatched: [], tagged: [], archived: 0 };
+    const routes: Record<string, any> = {
+      ...githubRoutes(wrapper, commits),
+      [`POST ${GH}/orgs/osintverse-community/repos`]: async (req: Request) => {
+        const b = (await req.json()) as { name: string };
+        if (b.name !== name) return new Response("{}", { status: 422 });
+        return new Response(JSON.stringify({ id: wrapper.id, full_name: wrapper.path, html_url: `https://github.com/${wrapper.path}`, default_branch: "main" }), { status: 201 });
+      },
+      [`POST ${GH}/repos/${wrapper.path}/actions/workflows/`]: async (req: Request) => (bot.dispatched.push(await req.json()), new Response(null, { status: 204 })),
+      [`POST ${GH}/repos/${wrapper.path}/git/refs`]: async (req: Request) => (bot.tagged.push(await req.json()), new Response("{}", { status: 201 })),
+      [`PATCH ${GH}/repos/${wrapper.path}`]: () => (bot.archived++, { archived: true }),
+    };
+    const fake = (more: Record<string, any> = {}) => fakeGithub(upstream, { ...routes, ...more });
+    fake();
+    const base = await testEnv();
+    const e = { ...base, ...BOT, COMMUNITY_APP_PRIVATE_KEY: base.GITHUB_APP_PRIVATE_KEY };
+    const as = (auth: Record<string, string>) => ({
+      post: (path: string, body: unknown) => call(path, { method: "POST", headers: auth, body: JSON.stringify(body) }, e),
+      put: (path: string, body: unknown) => call(path, { method: "PUT", headers: auth, body: JSON.stringify(body) }, e),
+    });
+    return { u, name, upstream, wrapper, instId, commits, bot, fake, e, as };
+  }
+
+  /** A community import with the fields the wizard asks for filled in. */
+  async function draft(u: { auth: Record<string, string> }, upstream: GhRepo) {
+    const imp = (await (await post("/imports", u.auth, { repo: `https://github.com/${upstream.path}`, community: true })).json()) as any;
+    expect(imp).toMatchObject({ community: true, namespace: "osintverse-community", finish_modes: ["submit", "wrapper"] });
+    await patch(`/imports/${imp.id}`, u.auth, {
+      manifest: { inputs: [{ name: "username", type: "username", required: true }], outputs: [{ type: "account" }], ethics: completion.ethics,
+        runtime: { ...imp.draft.runtime, command: ["tool", "{username}"] }, test: { input: { username: "example" } } },
+    });
+    return imp;
+  }
+
+  const passing = { signature: { status: "pass" as const, identity: "https://github.com/osintverse-community/x", issuer: "https://token.actions.githubusercontent.com" },
+    vulnerabilities: { critical: 0, high: 0, medium: 0, low: 0, fixable_critical: 0, fixable_high: 0 }, secrets: { count: 0 }, malware: { count: 0 }, smoke: { status: "pass" as const } };
+
+  it("lets anyone submit a wrapper: the bot creates the repository and starts the build, and a reviewer approves the first release", async () => {
+    const s = await setup();
+    const imp = await draft(s.u, s.upstream);
+    // Without the community bot set up, nothing is created.
+    const off = await post(`/imports/${imp.id}/finish`, s.u.auth, { mode: "submit", dockerfile: DOCKERFILE(s.upstream.path) });
+    expect(off.status).toBe(503);
+    expect(((await off.json()) as any).error.code).toBe("community_bot_missing");
+    const me = s.as(s.u.auth);
+    expect(((await (await me.post(`/imports/${imp.id}/finish`, { mode: "submit" })).json()) as any).error.code).toBe("dockerfile_required");
+
+    const res = await me.post(`/imports/${imp.id}/finish`, { mode: "submit", dockerfile: DOCKERFILE(s.upstream.path) });
+    const done = (await res.json()) as any;
+    expect(res.status).toBe(201);
+    expect(done).toMatchObject({ status: "finished", submission: { status: "releasing" } });
+    const number = done.submission.number;
+    expect(s.commits.map((c) => c.path)).toEqual(["otinstaller.yaml", "README.md", "Dockerfile", ".github/workflows/otinstaller-release.yml"]);
+    expect(s.commits[1]!.content).toContain(`Packaged by @${s.u.login}`);
+    expect(YAML.parse(s.commits[0]!.content)).toMatchObject({ namespace: "osintverse-community", homepage: `https://github.com/${s.upstream.path}`, runtime: { image: `ghcr.io/${s.wrapper.path}@sha256:${"0".repeat(64)}` } });
+    expect(s.bot.dispatched).toEqual([{ ref: "main", inputs: { version: "0.15.0" } }]);
+    expect(await DB().prepare(`SELECT connected_by, installation_id IS NOT NULL AS covered FROM sources WHERE project_id = ?`).bind(String(s.wrapper.id)).first()).toEqual({ connected_by: s.u.id, covered: 1 });
+
+    const page = (await (await call(`/submissions/${number}`)).json()) as any;
+    expect(page.submission).toMatchObject({ number, name: s.name, status: "releasing", builds: true, template_conformant: true, submitted_by: s.u.login.toLowerCase(), dockerfile_checks: [] });
+    expect(((await (await call("/submissions")).json()) as any).submissions.some((x: any) => x.number === number)).toBe(true);
+
+    // The release workflow builds, commits the digest and tags; the tag publishes like any wrapper, then waits for review.
+    s.wrapper.files = { "otinstaller.yaml": s.commits[0]!.content.replace("0".repeat(64), "a".repeat(64)), "README.md": s.commits[1]!.content };
+    s.upstream.images = { "0.15.0": DIGEST };
+    const jobId = ((await (await webhook("create", tagEvent(s.instId, s.wrapper.path, s.wrapper.id, "v0.15.0"))).json()) as any).jobId;
+    s.fake();
+    expect(await processJob(await testEnv(), jobId)).toMatchObject({ status: "scanning", problems: [] });
+    const tool = await DB().prepare(`SELECT id, needs_first_review, submitted_by, upstream_url FROM tools WHERE name = ?`).bind(s.name).first<any>();
+    expect(tool).toMatchObject({ needs_first_review: 1, submitted_by: s.u.id, upstream_url: `https://github.com/${s.upstream.path}` });
+    const v = (await loadVersion(await testEnv(), "v.tool_id = ?", tool.id))!;
+    expect(await applyScanResults(await testEnv(), v, passing)).toMatchObject({ status: "awaiting_review" });
+    expect(((await (await call(`/submissions/${number}`)).json()) as any).submission).toMatchObject({ status: "in_review", release: { version: "0.15.0", status: "awaiting_review" } });
+
+    // The submitter can't approve their own, nor can someone without the reviewer role; a reviewer can.
+    expect(((await (await me.post(`/submissions/${number}/approve`, {})).json()) as any).error.code).toBe("not_reviewer");
+    await DB().prepare(`INSERT INTO community_roles (user_id, role, granted_at) VALUES (?, 'reviewer', ?)`).bind(s.u.id, Date.now()).run();
+    expect(((await (await me.post(`/submissions/${number}/approve`, {})).json()) as any).error.code).toBe("self_review");
+    await DB().prepare(`UPDATE users SET is_reviewer = 1 WHERE id = ?`).bind(s.u.id).run();
+    expect(((await (await me.post(`/admin/versions/${v.id}/approve`, {})).json()) as any).error.code).toBe("self_review");
+    const reviewer = await user();
+    await DB().prepare(`UPDATE users SET is_reviewer = 1 WHERE id = ?`).bind(reviewer.id).run();
+    expect((await s.as(reviewer.auth).post(`/submissions/${number}/approve`, { note: "Looks right." })).status).toBe(200);
+    expect(await DB().prepare(`SELECT status FROM versions WHERE id = ?`).bind(v.id).first()).toEqual({ status: "published" });
+    expect(await DB().prepare(`SELECT needs_first_review FROM tools WHERE id = ?`).bind(tool.id).first()).toEqual({ needs_first_review: 0 });
+    expect(await DB().prepare(`SELECT reason FROM tool_maintainers WHERE tool_id = ? AND user_id = ?`).bind(tool.id, s.u.id).first()).toEqual({ reason: "submitter" });
+    expect(((await (await call(`/submissions/${number}`)).json()) as any).submission).toMatchObject({ status: "published", tool: `osintverse-community/${s.name}`, reviewer: reviewer.login.toLowerCase() });
+  });
+
+  it("tags a release of upstream's own wheel, and refuses a PyPI project that isn't upstream's", async () => {
+    const s = await setup({ files: { ...pipxFiles, LICENSE: "MIT License" }, tags: ["v2.1.0"] });
+    const pypi = (home: string) => ({
+      "GET https://pypi.org/pypi/": (req: Request) => new URL(req.url).pathname.includes("phoneinfo")
+        ? { info: { version: "2.1.0", project_urls: { Source: home } }, urls: [{ packagetype: "bdist_wheel", filename: "phoneinfo-2.1.0-py3-none-any.whl", digests: { sha256: "c".repeat(64) } }] }
+        : null,
+    });
+    s.fake(pypi(`https://github.com/${s.upstream.path}`));
+    const imp = await draft(s.u, s.upstream);
+    expect(imp.draft.runtime).toMatchObject({ kind: "pipx", package: "phoneinfo" });
+    s.fake(pypi("https://github.com/someone-else/phoneinfo"));
+    expect(((await (await s.as(s.u.auth).post(`/imports/${imp.id}/finish`, { mode: "submit" })).json()) as any).error.code).toBe("pypi_not_upstream");
+    s.fake(pypi(`https://github.com/${s.upstream.path}`));
+    const done = (await (await s.as(s.u.auth).post(`/imports/${imp.id}/finish`, { mode: "submit" })).json()) as any;
+    expect(done.submission).toMatchObject({ status: "releasing" });
+    expect(s.commits.map((c) => c.path)).toEqual(["otinstaller.yaml", "README.md"]);
+    expect(s.bot.tagged).toEqual([{ ref: "refs/tags/v2.1.0", sha: "base123" }]);
+  });
+
+  it("waits for a reviewer before building a Dockerfile off the template, and lets the submitter fix it", async () => {
+    const s = await setup();
+    const imp = await draft(s.u, s.upstream);
+    const loose = `FROM ubuntu:latest\nRUN apt-get update && apt-get install -y curl && curl -fsSL https://example.org/i.sh | sh\n`;
+    const done = (await (await s.as(s.u.auth).post(`/imports/${imp.id}/finish`, { mode: "submit", dockerfile: loose })).json()) as any;
+    expect(done.submission).toMatchObject({ status: "submitted" });
+    expect(s.bot.dispatched).toEqual([]);
+    const page = (await (await call(`/submissions/${done.submission.number}`)).json()) as any;
+    expect(page.submission.template_conformant).toBe(false);
+    expect(page.submission.dockerfile_checks.map((c: any) => c.code)).toEqual(["dockerfile_base", "dockerfile_root", "dockerfile_pipe_shell", "dockerfile_no_pin"]);
+
+    // The submitter fixes it: committed again and released, with no reviewer needed to start it.
+    const fixed = (await (await s.as(s.u.auth).put(`/submissions/${done.submission.number}`, { dockerfile: DOCKERFILE(s.upstream.path) })).json()) as any;
+    expect(fixed).toMatchObject({ status: "releasing", version: "0.15.0" });
+    expect(s.commits.filter((c) => c.path === "Dockerfile").at(-1)!.content).toContain("alpine:3.22");
+    expect(s.bot.dispatched).toHaveLength(1);
+    expect(((await (await s.as(s.u.auth).put(`/submissions/${done.submission.number}`, { dockerfile: loose })).json()) as any).error.code).toBe("not_pending");
+  });
+
+  it("lets a reviewer start a non-conformant build, or turn a submission down and archive its repository", async () => {
+    const s = await setup();
+    const imp = await draft(s.u, s.upstream);
+    const done = (await (await s.as(s.u.auth).post(`/imports/${imp.id}/finish`, { mode: "submit", dockerfile: "FROM debian:bookworm-slim\nRUN echo hi\n" })).json()) as any;
+    const n = done.submission.number;
+    const reviewer = await user();
+    await DB().prepare(`INSERT INTO community_roles (user_id, role, granted_at) VALUES (?, 'reviewer', ?)`).bind(reviewer.id, Date.now()).run();
+    const r = s.as(reviewer.auth);
+    expect(((await (await s.as(s.u.auth).post(`/submissions/${n}/start`, {})).json()) as any).error.code).toBe("not_reviewer");
+    expect((await r.post(`/submissions/${n}/start`, {})).status).toBe(200);
+    expect(s.bot.dispatched).toHaveLength(1);
+    expect(((await (await r.post(`/submissions/${n}/reject`, {})).json()) as any).error.code).toBe("invalid_body");
+    expect((await r.post(`/submissions/${n}/reject`, { note: "It downloads a script at run time." })).status).toBe(200);
+    expect(s.bot.archived).toBe(1);
+    expect(((await (await call(`/submissions/${n}`)).json()) as any).submission).toMatchObject({ status: "rejected", decision_note: "It downloads a script at run time." });
+    expect(((await (await s.as(s.u.auth).post(`/submissions/${n}/withdraw`, {})).json()) as any).error.code).toBe("not_pending");
+  });
+
+  it("refuses what is packaged or submitted already", async () => {
+    const s = await setup();
+    const imp = await draft(s.u, s.upstream);
+    expect((await s.as(s.u.auth).post(`/imports/${imp.id}/finish`, { mode: "submit", dockerfile: DOCKERFILE(s.upstream.path) })).status).toBe(201);
+    // Someone else submitting the same upstream.
+    const other = await user();
+    s.fake();
+    const imp2 = await draft(other, s.upstream);
+    expect(((await (await s.as(other.auth).post(`/imports/${imp2.id}/finish`, { mode: "submit", dockerfile: DOCKERFILE(s.upstream.path) })).json()) as any).error.code).toBe("submission_exists");
+    // An upstream that is in the registry already: the seed's holehe-lite names it as its homepage.
+    const taken = await setup({ path: "dheeraj/holehe-lite" });
+    const imp3 = await draft(taken.u, taken.upstream);
+    expect(((await (await taken.as(taken.u.auth).post(`/imports/${imp3.id}/finish`, { mode: "submit", dockerfile: DOCKERFILE(taken.upstream.path) })).json()) as any).error.code).toBe("already_packaged");
+  });
+
+  it("checks Dockerfiles against the rules, and every seed wrapper follows them", () => {
+    const up = "https://github.com/owner/tool";
+    expect(dockerfileChecks(DOCKERFILE("owner/tool"), up)).toMatchObject({ conformant: true, checks: [], refused: [] });
+    expect(dockerfileChecks(`FROM alpine:3.22\nADD https://example.org/t /t\nUSER root\n`, up).checks.map((c) => c.code)).toEqual(["dockerfile_root", "dockerfile_add_url", "dockerfile_no_pin"]);
+    expect(dockerfileChecks(`FROM alpine:3.22\n${"#".repeat(17 * 1024)}\n`, up).refused.map((c) => c.code)).toEqual(["dockerfile_too_large"]);
+    const wrappers = (env as unknown as { TEST_DOCKERFILES: { name: string; homepage: string; dockerfile: string }[] }).TEST_DOCKERFILES;
+    const off = wrappers.filter((w) => !dockerfileChecks(w.dockerfile, w.homepage).conformant)
+      .map((w) => `${w.name}: ${dockerfileChecks(w.dockerfile, w.homepage).checks.map((c) => c.code).join(",")}`);
+    expect(off).toEqual([]);
+  });
+
+  it("accepts the Dockerfile templates the import wizard offers", async () => {
+    const { dockerfileTemplate } = await import("../../web/src/lib/dockerfile-templates");
+    for (const kind of ["go", "pip", "pip_git"] as const) {
+      const text = dockerfileTemplate(kind, { repo: "github.com/owner/tool", version: "v1.2.3", command: "tool" });
+      expect(dockerfileChecks(text, "https://github.com/owner/tool"), kind).toMatchObject({ conformant: true });
+      expect(findPin(text, "https://github.com/owner/tool"), kind).toMatchObject({ kind: "arg", ref: "1.2.3" });
+    }
   });
 });

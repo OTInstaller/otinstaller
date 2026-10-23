@@ -120,10 +120,12 @@ export type ToolRow = SummaryRow & {
   latest_version_id: string;
   dead_link_ratio: number | null;
   deprecated_replacement: string | null;
+  open_broken: number;
+  open_outdated: number;
 };
 
 export async function findTool(db: D1Database, ns: string, name: string): Promise<{ row: ToolRow | null; movedTo?: string }> {
-  const sql = `SELECT ${SUMMARY_COLUMNS}, t.repo_url, t.deprecated_message, t.deprecated_replacement, t.latest_version_id, t.dead_link_ratio, v.manifest_json, n.status AS namespace_status
+  const sql = `SELECT ${SUMMARY_COLUMNS}, t.repo_url, t.deprecated_message, t.deprecated_replacement, t.latest_version_id, t.dead_link_ratio, t.open_broken, t.open_outdated, v.manifest_json, n.status AS namespace_status
     FROM tools t JOIN namespaces n ON n.id = t.namespace_id JOIN versions v ON v.id = t.latest_version_id
     WHERE n.name = ? AND t.name = ? AND ${VISIBLE}`;
   const row = await db.prepare(sql).bind(ns, name).first<ToolRow>();
