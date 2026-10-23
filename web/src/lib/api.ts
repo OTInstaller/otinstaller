@@ -125,7 +125,10 @@ export interface SmokeSample {
 
 export interface ToolDetail extends ToolSummary {
   sample?: SmokeSample;
+  // null for a package published directly with `ot publish`, which has no repository.
   repo_url: string | null;
+  // How the latest version came in: a tag, an upload from CI, or a direct upload.
+  published_via?: "tag" | "ci" | "direct" | null;
   homepage: string | null;
   license: string;
   deprecated_message?: string;

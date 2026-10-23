@@ -73,11 +73,11 @@ function Row({ p, reload }: { p: Pkg; reload: () => void }) {
       <p class="small">
         {p.latest_bundle
           ? <>Latest git backup: {when(p.latest_bundle.created_at)} ({p.latest_bundle.weekly ? "weekly" : "release"}{p.latest_bundle.refs !== null && `, ${p.latest_bundle.refs} branches and tags`}{p.latest_bundle.size_bytes !== null && `, ${size(p.latest_bundle.size_bytes)}`}).</>
-          : p.git_backups ? "No git backup yet; one is made at the next release or on Monday." : "Git backups are off for this package."}
+          : !p.source ? "No repository to back up: this package is published directly." : p.git_backups ? "No git backup yet; one is made at the next release or on Monday." : "Git backups are off for this package."}
         {" "}{p.mirrored ? "Artifacts are mirrored, so installs keep working if the host removes them." : ""}
       </p>
       <ErrorNote error={error} />
-      {owner && (
+      {owner && p.source && (
         <div class="row">
           <button class="btn btn-primary" type="button" disabled={busy || !p.latest_bundle} onClick={getRestore}>Restore from backup</button>
           {askOff
@@ -94,7 +94,7 @@ function Row({ p, reload }: { p: Pkg; reload: () => void }) {
           {restore.sha256 && <p class="small muted">SHA-256 <code>{restore.sha256}</code></p>}
         </div>
       )}
-      {owner && (
+      {owner && p.source && (
         <form class="row" onSubmit={switchSource}>
           <label for={`src-${p.ref}`}>Switch source to</label>
           <input id={`src-${p.ref}`} type="url" value={newRepo} required placeholder="https://gitlab.com/you/tool" onInput={(e) => setNewRepo((e.target as HTMLInputElement).value)} />

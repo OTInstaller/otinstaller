@@ -9,7 +9,7 @@ The registry is an index. It never runs tools: images come from ghcr.io or regis
 ## Before a release is published
 
 - **Pinned artifacts.** Docker images are referenced by digest and Python wheels by hash, so a version can never point at different code later.
-- **Signatures.** Images are signed by the repository's own CI (cosign keyless with the GitHub or GitLab OIDC identity). A namespace that signed before cannot publish an unsigned version.
+- **Signatures.** Images from a repository are signed by its own CI (cosign keyless with the GitHub or GitLab OIDC identity). A package published directly with `ot publish` has no repository: its first keyless signer is pinned, and every later version must be signed by that same identity. Either way, a package that signed before cannot publish an unsigned version.
 - **Scans.** Trivy (vulnerabilities, secrets, misconfigurations), GuardDog for Python packages, an SBOM, and a smoke test with the tool's test input and no network.
 - **Review.** A person reviews every new publisher's first release against the acceptable use rules.
 - **Guides.** Links are checked, malicious links block the release, and possible personal data in examples goes to a reviewer.
