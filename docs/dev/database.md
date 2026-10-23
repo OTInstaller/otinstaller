@@ -28,6 +28,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0012 | `0012_feedback.sql` | New table `feedback` and index `feedback_queue`. (Its header says it was numbered after 0011, which was on its own branch at the time.) |
 | 0013 | `0013_agent_tokens.sql` | `api_tokens` + `scoped` (INTEGER NN default 0; tokens minted before scopes were enforced keep 0 and every power); new table `install_clients`. Must be applied before an API that reads `scoped` is deployed: `authenticate` selects it on every token request. |
 | 0014 | `0014_publisher_profiles.sql` | New tables `namespace_profiles` (host values, owner overrides, About, pins, sync state) and `namespace_hosts` (secondary GitHub or GitLab accounts shown on a profile); indexes `namespace_profiles_synced` and `audit_log_target` (for the profile's activity feed). |
+| 0015 | `0015_release_notes.sql` | `versions` + `changelog_source` (`release` or `file`, CHECK); existing notes marked `release`. |
 
 ---
 
@@ -180,7 +181,7 @@ Purpose: one release of a tool or guide, holding its full manifest.
 - `yanked_at`, `published_at` INTEGER · `created_at` INTEGER NN
 - `scan_token_hash` TEXT · `scan_token_expires_at` INTEGER · `scan_dispatched_at` INTEGER (0003)
 - `expected_signer_regexp`, `expected_signer_issuer` TEXT (0003) · `rejected_reason` TEXT (0003)
-- `changelog` TEXT (0004) · `search_text` TEXT (0007; plain text copied to `tools.readme_text` when it becomes latest)
+- `changelog` TEXT (0004; release notes as cleaned Markdown, rendered when served) · `changelog_source` TEXT (0015; `release` | `file`) · `search_text` TEXT (0007; plain text copied to `tools.readme_text` when it becomes latest)
 - UNIQUE `(tool_id, version)`
 - Indexes `versions_tool_status (tool_id, status, published_at DESC)`, `versions_status (status, scan_dispatched_at)`,
   partial UNIQUE `versions_scan_token (scan_token_hash) WHERE scan_token_hash IS NOT NULL`

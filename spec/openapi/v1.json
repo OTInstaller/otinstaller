@@ -3434,13 +3434,22 @@
           "Registry"
         ],
         "summary": "Published, yanked and removed versions",
+        "description": "Newest first, each with its release notes when the release has any.",
         "responses": {
           "200": {
             "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "properties": {
+                    "versions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Version"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3485,13 +3494,29 @@
           "Registry"
         ],
         "summary": "One version",
+        "description": "The version's manifest and its release notes.",
         "responses": {
           "200": {
             "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Version"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "ref": {
+                          "type": "string"
+                        },
+                        "manifest": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -4825,6 +4850,68 @@
               "integer",
               "null"
             ]
+          }
+        }
+      },
+      "Version": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "published",
+              "yanked",
+              "removed"
+            ]
+          },
+          "scan_status": {
+            "type": "string"
+          },
+          "published_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Unix milliseconds"
+          },
+          "yanked_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Unix milliseconds (list only)"
+          },
+          "signed": {
+            "type": "boolean"
+          },
+          "changelog": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The release notes as Markdown, without control characters. Untrusted publisher text: show it as text."
+          },
+          "changelog_html": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The release notes rendered to sanitized HTML, with relative links pointing at the repository at the tagged commit and images replaced by their alt text."
+          },
+          "changelog_source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "release",
+              "file",
+              null
+            ],
+            "description": "release: the host's release for the tag; file: the version's section of CHANGELOG.md (or CHANGES.md, HISTORY.md)."
           }
         }
       },
