@@ -4,6 +4,9 @@
 # It pushes the release commit and tag with the job token: turn on Settings > CI/CD > Job token permissions >
 # "Allow Git push requests to the repository". Or set RELEASE_TOKEN to a token with write_repository (a project
 # access token on paid plans, or a personal access token).
+# A connected project is published from its tag. Without connecting it, trust this project
+# (`ot namespace trust <namespace> gitlab:<group>/<project>`) and set the CI/CD variable OTINSTALLER_PUBLISH to oidc,
+# and the last line publishes the release itself.
 otinstaller-release:
   image: docker:27
   services: [docker:27-dind]
@@ -12,6 +15,8 @@ otinstaller-release:
   id_tokens:
     SIGSTORE_ID_TOKEN:
       aud: sigstore
+    OTINSTALLER_ID_TOKEN:
+      aud: otinstaller
   script:
     - apk add --no-cache git cosign
     - |-
@@ -35,3 +40,5 @@ otinstaller-release:
     - git diff --quiet || git commit -qam "Release $VERSION"
     - git tag "v$VERSION"
     - git push --atomic "$REMOTE" HEAD:$CI_DEFAULT_BRANCH "v$VERSION"
+    - |-
+      if [ "$OTINSTALLER_PUBLISH" = oidc ]; then apk add --no-cache curl && curl -fsSL https://get.otinstaller.com/ot | OT_INSTALL_DIR=/usr/local/bin sh && ot publish --oidc; fi

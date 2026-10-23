@@ -23,8 +23,9 @@ same commit.
 ## What this is
 
 **OTInstaller Registry** is a free, public registry of OSINT tools and guides, plus `ot`, the CLI that installs and runs
-them. Publishers add an `otinstaller.yaml` manifest to a GitHub or GitLab repository and push a `vX.Y.Z` tag, or upload
-the release straight to the registry with `ot publish` (no repository needed). The registry validates the release, has it security-scanned (tools) or content-checked (guides), sends new publishers to human review,
+them. Publishers add an `otinstaller.yaml` manifest to a GitHub or GitLab repository and push a `vX.Y.Z` tag, let the
+release workflow upload it as a trusted publisher (`ot publish --oidc` with the CI's OIDC ID token, no App needed), or
+upload the release straight to the registry with `ot publish` (no repository needed). The registry validates the release, has it security-scanned (tools) or content-checked (guides), sends new publishers to human review,
 publishes it, and backs it up. Users then run `ot install <ns>/<name>` and `ot run <ns>/<name> ...`, which pull a
 digest-pinned, cosign-verified Docker image (or a hash-pinned PyPI wheel) and run it in a locked-down container. If the
 original host later refuses the artifact, `ot` falls back to the registry's own mirror or wheel copy.
@@ -82,7 +83,7 @@ otlite/      otlite, the no-Docker edition (Python; formerly otinstaller; has it
 seed/        Launch seed: 11 first-party tools, 103 community wrappers, 10 guides, outreach texts
 examples/    dns-lookup (scripts/e2e.sh), cosign and tldextract (the local/test seed in api/scripts/seed-lib.mjs
              and scripts/e2e-real.sh)
-scripts/     e2e.sh, e2e-real.sh, e2e-backups.sh, install/ (install.sh, install.ps1, make-test-release.sh),
+scripts/     e2e.sh, e2e-real.sh, e2e-backups.sh, e2e-direct.sh, install/ (install.sh, install.ps1, make-test-release.sh),
              beta/labels.sh, pm-catalog-to-wrappers.py
 integrations/ agent-plugin/ (the Claude Code and Cursor plugin, published as OTInstaller/agent-plugin) and
              mcp-registry/server.json (the remote server's MCP Registry entry)
@@ -136,6 +137,7 @@ The main development machine is Windows. Use forward slashes in scripts, keep fi
 | End-to-end (Docker) | `bash scripts/e2e.sh` |
 | End-to-end, real artifacts | `bash scripts/e2e-real.sh` (needs Docker, cosign and the local API running) |
 | End-to-end, backups | `bash scripts/e2e-backups.sh` (Docker, cosign, crane, git, Go, Node, Python; ports 8787–8789, 5001) |
+| End-to-end, direct publishing | `bash scripts/e2e-direct.sh` (Docker, Go, Node, Python, network; ports 8787–8789) |
 | Test install scripts locally | `bash scripts/install/make-test-release.sh` (a release signed with a throwaway key) |
 
 There is no linter or formatter config for `api/` or `web/`; match the surrounding style. CI does **not** run the Go,
@@ -181,6 +183,7 @@ heavy work (pulling, scanning and copying images). Step-by-step flows with file 
 | Flow | In one line |
 | --- | --- |
 | Publish | tag → webhook/poll/import (or an `ot publish` upload → `POST /v1/publish`, files in R2) → `publish_jobs` row → queue → `processJob` validates, checks the artifact, renders pages → scan dispatch (tools) or content checks (guides) |
+| Trusted publishing | CI ID token → `POST /v1/auth/oidc/token` (`verifyCiToken`, `matchPublisher`) → hour-long `ot_` token restricted to one namespace → `POST /v1/publish` → a bundle job naming the repository, treated like its tag |
 | Scan | registry-ops runs `scan.py` → `POST /internal/scans` → `verdict` → published (active namespace) or `awaiting_review` → backup plan in the answer |
 | Backup | plan with signed upload URLs → `backup.py` copies image/wheel/bundle → `POST /internal/backups/:run` → `completeRun` checks what arrived |
 | Install | `GET /tools/:ns/:name/:version/manifest` → pull by digest + `cosign verify` (or wheel by hash) → mirror or wheel copy only when the original host refuses |
@@ -377,7 +380,11 @@ install when nothing takes a target), `runs.go` (runs), `saved.go` (extract/diff
   - `--image`, `--image-archive` or `--build` first push a Docker image to the mirror (`cli/internal/oci`) and pin its
     digest in `otinstaller.yaml`.
   - `--sign` runs `cosign sign` with the mirror credential in a temporary `DOCKER_CONFIG`, never in argv.
-  - `ot namespace create <name>` (`namespace.go`) makes a registry namespace to publish into.
+  - `--oidc` (`oidc.go`; also used when no token is set and the CI offers an ID token) gets the job's ID token
+    (GitHub's `ACTIONS_ID_TOKEN_REQUEST_URL` with `audience=otinstaller`, or GitLab's `OTINSTALLER_ID_TOKEN`), trades it
+    at `POST /v1/auth/oidc/token` and uses the minted token for the upload, any image push and following the job.
+  - `ot namespace create <name>` (`namespace.go`) makes a registry namespace to publish into; `ot namespace trust`,
+    `trusted` and `untrust` manage its trusted publishers.
 - Commands that need a sign-in (`whoami`, `import`, `publish`, `namespace create`, `sync`, `claim`, `transfer`, `token`)
   fail with exit 2 when there is no token.
 - [docs/typed-inputs-and-results.md](docs/typed-inputs-and-results.md) is the design note for typed inputs, saved
@@ -429,7 +436,8 @@ pushes; default `https://mirror.otinstaller.com`), `OT_NO_TELEMETRY` (any non-em
 disables the install ping; the ping, like search, tool and manifest reads, goes through `api.Client.anon()` and never
 carries the token), `OT_RESULTS_DIR` (legacy
 `OTINSTALLER_RESULTS_DIR`; results default to `./results`, not the data dir), `OTINSTALLER_TOKEN` (overrides the
-keychain token; like every key, an env var of the same name wins), `OT_OUTPUT=json` (as `--json`),
+keychain token; like every key, an env var of the same name wins), `OTINSTALLER_ID_TOKEN` (a GitLab CI job's ID token
+for `ot publish --oidc`; GitHub's comes from `ACTIONS_ID_TOKEN_REQUEST_URL`/`_TOKEN`), `OT_OUTPUT=json` (as `--json`),
 `OT_NONINTERACTIVE=1` (never prompt), `OT_CONSENT=off` (no `--yes` needed unattended; still audited), `OT_MAX_RAW`
 (leave `raw` out of large envelopes), `OT_NO_UPDATE_CHECK=1` (`ot outdated` doesn't look up the latest `ot`), `CI`
 (the envelope's `client` becomes `ci`, and there is no newer-`ot` check). `config.json` (`api_url`,
@@ -506,7 +514,8 @@ and beta work, so `R2_*`, `ISSUES_REPO`/`ISSUES_TOKEN` and `EDGE_CACHE` are only
 | `guides.ts` / `content.ts` | Guide and docs rendering (marked + sanitizer), R2 storage, link checks, URL Scanner, PII heuristics |
 | `sync.ts` | Keeping packages in sync with repos: 6-hourly poll, tag queuing, renames/archives/deletes |
 | `imports.ts` | Import wizard: detection, draft manifests, finishing as PR/MR, registry-held manifests, community wrappers, bulk (≤50), the `REDISTRIBUTABLE` license list |
-| `direct.ts` | Direct publishing: registry namespaces (`createNamespace`, reserved names, GitHub/GitLab names left to their owners, `purgeIdleNamespaces`), uploads (`acceptUpload`: checks before the body is read, files to R2 `uploads/<jobId>/`), and `bundleHost`, the `RepoHost` `processJob` reads an upload through |
+| `direct.ts` | Direct publishing: registry namespaces (`createNamespace`, reserved names, GitHub/GitLab names left to their owners, `purgeIdleNamespaces`), uploads (`acceptUpload`: checks before the body is read, files to R2 `uploads/<jobId>/`, CI uploads naming their repository), and `bundleHost`, the `RepoHost` `processJob` reads an upload through |
+| `trusted.ts` | Trusted publishing: a namespace's trusted publishers (add, list, remove), `matchPublisher` (repository, pinned ids, workflow, environment, package, risky events), `exchangeIdToken` (the hour-long restricted CI token), `purgeCiTokens` |
 | `trust.ts` / `transfers.ts` | Yank, deprecate, removal, reports, transparency, rate limits; claims and transfers |
 | `notify.ts` | Resend email with idempotency keys (`notifications` table); skipped when `RESEND_API_KEY` is unset |
 | `ops.ts` | Health targets/results, stuck-job alerts, daily digest, rate-limit purge, Sentry `reportError` |
@@ -521,8 +530,8 @@ and beta work, so `R2_*`, `ISSUES_REPO`/`ISSUES_TOKEN` and `EDGE_CACHE` are only
 | `known-repos.ts` | **Generated** from otlite's catalog and `seed/candidates.md`; don't edit |
 | `mirror/` | The mirror Worker: `index.ts` (entry) and `registry.ts` (OCI API, `imageExists`, `hideImage`, `deleteImage`) |
 | `hosts/` | External services: `github.ts`, `gitlab.ts`, `osintverse.ts` (OIDC), `repo.ts` (`RepoHost` over both), `artifacts.ts` (OCI digest and PyPI wheel checks) |
-| `lib/` | `errors.ts` (`apiError`), `crypto.ts` (hashing, AES-GCM, RS256 JWT, `ulid()`), `manifest.ts` (validator), `images.ts` (metadata stripping, SVG sanitizing), `presign.ts` (R2 SigV4 URLs), `reserved.ts` (namespace names the site's sections take, and the few more a registry namespace can't) |
-| `routes/` | One `xxxRoutes(app)` registrar per area: auth, device, webhooks, review, sources, imports, guides, trust, transfers, backups, beta, ops, profiles, community, inbox, requests, people, submissions, upstream, direct |
+| `lib/` | `errors.ts` (`apiError`), `crypto.ts` (hashing, AES-GCM, RS256 JWT, `ulid()`), `manifest.ts` (validator), `images.ts` (metadata stripping, SVG sanitizing), `presign.ts` (R2 SigV4 URLs), `reserved.ts` (namespace names the site's sections take, and the few more a registry namespace can't), `tokens.ts` (the `ot_` token lookup the API and the mirror share, and what a restricted CI token may do), `oidc.ts` (OIDC discovery and keys cached per issuer, EdDSA and RS256 checks, `verifyCiToken` for GitHub Actions and GitLab CI) |
+| `routes/` | One `xxxRoutes(app)` registrar per area: auth, device, webhooks, review, sources, imports, guides, trust, transfers, backups, beta, ops, profiles, community, inbox, requests, people, submissions, upstream, direct, trusted |
 | `release-templates.ts` | **Generated** from `spec/templates`; don't edit |
 
 Routes only parse input, check permissions and shape responses; domain logic lives in the top-level modules. Route
@@ -556,8 +565,10 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
   scanner's smoke test of the latest version produced (first five entities, or the start of stdout), which the tool
   page shows as its sample output.
 - Auth: `/auth/:provider/login|callback` (github, gitlab, osintverse), `/auth/logout`, `/auth/device/start|token`,
+  `POST /auth/oidc/token` (a CI run's ID token for a restricted token: trusted publishing),
   `/me`, `/me/tokens`, `/me/publish-jobs[/:id]`, `/me/repos`, `/me/transfers`, `/me/backups`,
-  `/me/namespaces/:ns/profile[/preview|/sync|/hosts[/:provider]]` (an owner's profile settings).
+  `/me/namespaces/:ns/profile[/preview|/sync|/hosts[/:provider]]` (an owner's profile settings),
+  `/me/namespaces/:ns/trusted-publishers[/:id]` (an owner's trusted publishers).
 - Publishing: `POST /webhooks/github` (HMAC), `POST /webhooks/gitlab` (per-source token), `/imports...`,
   `/sources/gitlab`, `/packages/:ns/:name/sync|sync-log|manifest|manifest/pr|source|backups|backups/restore`,
   `POST /namespaces` (a registry namespace) and `POST /publish` (an upload from `ot publish`).
@@ -577,7 +588,7 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
   `POST /internal/drills/:id`, `/internal/health[/targets]`. Scans, backup runs and drills each use their own
   single-use token (scan 1 h, run 3 h or 12 h weekly, drill 6 h); the health endpoints use the static shared
   `HEALTH_TOKEN`.
-- The full route table (168 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
+- The full route table (172 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
   `spec/openapi/v1.json` describes the public and owner routes, each with its token scope as `x-scope`; a test in
   `api.test.ts` fails when a route and the document disagree, so add new routes to both.
 - 429s carry `Retry-After`, `RateLimit-Policy` and `retry_after_s` (`rateLimited` in `lib/errors.ts`).
@@ -592,6 +603,11 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
      repository in it releases the package.
    - **Signers.** They are pinned on first use (`scans.ts:pinSigner`); see
      [docs/dev/architecture.md](docs/dev/architecture.md), flow a2.
+   - **CI uploads** (trusted publishing, `trusted.ts`) are bundle jobs whose `provider`, `repo` and `repo_id` come from
+     the run's ID token, with `trusted_publisher_id` and `ci_json`. They are treated like that repository's tag: it owns
+     the name (`tools.repo_url`), links point at the tag, the scanner expects `expectedSigner`, and there is no source
+     row or commit status. An upload of a release already received from the same repository answers 200
+     `already_received`, and `onTag` skips a tag a CI run already uploaded.
 2. `processJob` reads `otinstaller.yaml` at the tagged commit (or the registry-held manifest, or the upload), validates it, checks
    release rules (`manifest_tag_mismatch`, `manifest_version_exists`, `manifest_name_taken`, `namespace_not_allowed`, ...),
    checks the artifact exists (`hosts/artifacts.ts`), renders README/docs/guide pages to R2, and sets a pending
@@ -658,9 +674,11 @@ migrations add publish intake (0002), scans/review and `notifications` (0003), s
 `issue_subscriptions`, 0016), notifications (`email_prefs`, `inbox`, 0017), tool requests (`tool_requests`,
 `request_votes`, 0018), `contributor_stats` (0019), community submissions (`tools.needs_first_review`,
 `tool_maintainers`, `wrapper_submissions`, 0020), the upstream watcher (`upstream_watch`, 0021), bump pull requests
-(`bump_prs`, 0022) and direct publishing (`publish_jobs` `namespace_id`/`bundle_key`/`submitted_by`,
-`namespaces.created_by`, 0023), and images hosted on the mirror (`mirror_pushes`, `backups.hosted`, 0024). That is 53
-tables plus `tools_fts`; every table, column, CHECK value set and status transition is in
+(`bump_prs`, 0022), direct publishing (`publish_jobs` `namespace_id`/`bundle_key`/`submitted_by`,
+`namespaces.created_by`, 0023), images hosted on the mirror (`mirror_pushes`, `backups.hosted`, 0024), and trusted
+publishing (`trusted_publishers`, the CI token columns `api_tokens.namespace_id`/`package`/`trusted_publisher_id`/
+`oidc_json`/`jti`, and `publish_jobs.trusted_publisher_id`/`ci_json`, 0025). That is 54 tables plus `tools_fts`; every
+table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
 
 - IDs are ULIDs (`ulid()`), timestamps are Unix **milliseconds**, booleans are 0/1, JSON columns end in `_json`
@@ -689,6 +707,13 @@ get all four user scopes unless `--scope` says otherwise and don't expire; `/me/
 to 90 days. Creating, revoking and every write made with a token are audited. A new route needs the right scope in
 `requiredScope` (GETs are `read`, `/admin` is `staff`, imports, sources, manifests and syncs are `publish`, reports and
 feedback `feedback`, other writes `manage`).
+
+CI tokens (trusted publishing, `trusted.ts`) are `api_tokens` rows with a `namespace_id`: minted by
+`POST /auth/oidc/token` for one CI run's ID token (whose `jti` is unique, so it works once), they last an hour, act for
+the owner who added the trusted publisher, and are restricted to that namespace (and `package`). `authenticate` treats
+one as anonymous anywhere but `POST /publish` and `GET /me/publish-jobs/:id` (`restrictedRouteAllowed` in
+`lib/tokens.ts`), the mirror lets it push only `<namespace>/<package>`, `/me/tokens` doesn't list it, and the nightly
+cron deletes it two days after it expires.
 
 ### API conventions
 
@@ -1068,6 +1093,10 @@ read and the first run copies settings from `~/.otinstaller`. Users of both edit
 - `scripts/e2e-backups.sh`: runs the API and mirror under `wrangler dev`, backs up a release with the scanner's backup
   job, blocks the original registry and PyPI, and checks `ot install` succeeds from the mirror and the wheel copy, then
   restores the git bundle.
+- `scripts/e2e-direct.sh`: runs the API and mirror under `wrangler dev`, creates a namespace with `ot namespace
+  create`, publishes `examples/dns-lookup` with `ot publish --image` (dry run first), checks the pushed image is hidden
+  from anonymous pulls, readable with the scanner's credential and closed to another user's token, then reports a
+  passing scan and checks `ot install` pulls the released image from the mirror.
 - `scripts/install/make-test-release.sh`: a locally signed release for testing the install scripts (used by CI).
 - `scripts/beta/labels.sh`: creates the issue labels (`sev-1..3`, `needs-triage`, `beta`, `area:*`) with `gh` (only when
   asked: it changes a GitHub repo).
@@ -1215,8 +1244,10 @@ change. Keep this list current when you fix one or find another.
 - Review: nothing moves a namespace out of `rejected` or `suspended`; a report can be resolved twice.
 - A pinned signer of a package published directly can't be changed by its owner (a reviewer has to clear
   `signer_identity` on its versions by hand), and only keyless signatures count.
-- `ot publish` and the upload route take no GitHub Actions or GitLab CI identity yet: an upload from CI is a direct
-  upload with a token, so its package has no repository and its signer is pinned on first use.
+- Trusted publishing accepts only github.com Actions and gitlab.com CI (not GitHub Enterprise or self-managed GitLab
+  issuers). A package published only from CI has no `sources` row, so it gets no git backups or sync. A GitLab job has
+  one ID token, so if the answer to its exchange is lost, `ot publish --oidc` can't retry in that job
+  (`oidc_token_reused`).
 - `tools_fts` triggers fire only on `tools`, so renaming a namespace leaves the old name in search.
 - Redelivering a GitHub webhook is a no-op once the first delivery created a job.
 - `ot install` doesn't warn about deprecated packages (the manifest response doesn't carry deprecation).
@@ -1263,6 +1294,7 @@ change. Keep this list current when you fix one or find another.
 | Tool / guide | `kind: tool` (runnable, Docker or pipx) or `kind: guide` (Markdown pages, no runtime) |
 | Namespace | The publisher's slug (a GitHub user or org, a GitLab group, `osintverse-community`, or a registry namespace made with `ot namespace create`). `pending_review` until a reviewer approves it, then `active` (or `rejected`, `suspended`); `verified` is a separate badge |
 | Direct upload / bundle job | A release uploaded with `ot publish` (`POST /v1/publish`) instead of tagged: a `publish_jobs` row with a `bundle_key`, whose files come from R2. A package published this way has no repository (`tools.repo_url` NULL) and its signer is pinned on first use |
+| Trusted publisher / CI token | A repository (optionally one workflow, environment or package) a namespace's owner trusts to publish with `ot publish --oidc` (`trusted_publishers`), and the hour-long `ot_` token restricted to that namespace a run gets for its OIDC ID token. Its upload is a bundle job that names the repository |
 | Manifest | `otinstaller.yaml`, validated against `spec/schema/v1.json` |
 | Registry-held manifest | A manifest stored in D1 for a repo that doesn't have one (import wizard, community wrappers); `PUT /packages/:ns/:name/manifest` edits it |
 | First-party / community wrapper | Tools written by the project (`seed/first-party`) vs third-party tools packaged under `osintverse-community` (`seed/community`), which their authors can claim |

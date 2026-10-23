@@ -175,12 +175,13 @@ type VersionCtx = {
   installation_id: number | null;
   source_id: string | null;
   commit_sha: string | null;
+  bundle_key: string | null;
 };
 
 export async function loadVersion(env: Env, where: string, ...binds: unknown[]): Promise<VersionCtx | null> {
   return env.DB.prepare(
     `SELECT v.id, v.tool_id, v.version, v.status, v.manifest_json, t.namespace_id, n.name AS namespace, n.status AS namespace_status,
-       t.needs_first_review, t.name, t.kind, j.id AS job_id, j.provider, j.repo, j.repo_id, j.installation_id, j.source_id, j.commit_sha
+       t.needs_first_review, t.name, t.kind, j.id AS job_id, j.provider, j.repo, j.repo_id, j.installation_id, j.source_id, j.commit_sha, j.bundle_key
      FROM versions v JOIN tools t ON t.id = v.tool_id JOIN namespaces n ON n.id = t.namespace_id
      LEFT JOIN publish_jobs j ON j.version_id = v.id
      WHERE ${where} ORDER BY j.created_at DESC LIMIT 1`,
@@ -189,8 +190,9 @@ export async function loadVersion(env: Env, where: string, ...binds: unknown[]):
 
 const refOf = (v: VersionCtx) => `${v.namespace}/${v.name}`;
 
-/** How the author releases this version again: a direct upload is uploaded again, anything else re-tagged. */
-export const retryHint = (v: { provider: string | null }) => (v.provider === "direct" ? "run `ot publish` again" : "push a new tag");
+/** How the author releases this version again: a direct upload is uploaded again, a CI upload re-run, a tag re-tagged. */
+export const retryHint = (v: { provider: string | null; bundle_key?: string | null }) =>
+  v.provider === "direct" ? "run `ot publish` again" : v.bundle_key ? "run the release workflow again" : "push a new tag";
 
 export async function commitStatus(env: Env, v: VersionCtx, state: CommitState, description: string) {
   if (!v.repo || !v.repo_id || !v.commit_sha) return;
@@ -401,7 +403,8 @@ export async function expireStaleScans(env: Env, now = Date.now()) {
       env.DB.prepare(`UPDATE versions SET status = 'rejected', rejected_reason = 'scan_timeout', scan_token_hash = NULL WHERE id = ?`).bind(id),
       env.DB.prepare(
         `UPDATE publish_jobs SET status = 'error', error_code = 'scan_timeout', updated_at = ?,
-           error_detail = 'the security scan did not report back within an hour; ' || CASE WHEN provider = 'direct' THEN 'run ot publish again' ELSE 'push the tag again' END
+           error_detail = 'the security scan did not report back within an hour; ' || CASE WHEN provider = 'direct' THEN 'run ot publish again'
+             WHEN bundle_key IS NOT NULL THEN 'run the release workflow again' ELSE 'push the tag again' END
          WHERE version_id = ?`,
       ).bind(now, id),
     ]);
