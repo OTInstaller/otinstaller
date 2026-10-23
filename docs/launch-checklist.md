@@ -72,11 +72,10 @@ marked (you). In order:
       run `40014068906`.
 - [x] List `ot` 0.15.0 in the MCP Registry. Done 23 Oct, 19:55 UTC: `com.otinstaller/ot` 0.15.0 is the latest entry
       (checked 24 Oct at `https://registry.modelcontextprotocol.io/v0/servers?search=com.otinstaller`).
-- [ ] **(you)** Publish the draft guide `seed/guides/osint-fundamentals/`. It is ready: `ot validate` passes, the
-      upload is six files (10.3 KB) and all ten of its links answer 200 (checked 24 Oct). Its repository doesn't exist
-      yet: create the public `osintverse-community/osint-fundamentals` (the App is on all of the organisation's
-      repositories, so its tags reach the registry), push the folder's contents to `main`, then run `ot release 1.0.0`
-      in it. The coding agent can't do this: creating public repositories and publishing are refused to it.
+- [x] Publish the draft guide `seed/guides/osint-fundamentals/`. Done 23 Oct: the public repository
+      `osintverse-community/osint-fundamentals` (created 20:01 UTC, one commit `318f802`, annotated tag `v1.0.0`);
+      the registry published `osintverse-community/osint-fundamentals` 1.0.0 at 20:03 UTC and set the tag's
+      `otinstaller/publish` status to success.
 
 ## Left before announcing
 
