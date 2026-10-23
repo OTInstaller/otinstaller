@@ -208,6 +208,31 @@ The GitHub App needs write access to contents, workflows and pull requests to op
 ### gitlab_scope_required
 Opening merge requests needs GitLab write access. Sign in again with GitLab from the import page and grant it.
 
+## Community
+
+### issue_not_found
+The package has no issue with that number, or it is waiting for a moderator. Issues are numbered per package.
+
+### comment_not_found
+The comment does not exist or was deleted.
+
+### issue_locked
+The thread is locked, so only the package's maintainers, triagers and staff can comment. Open a new issue if
+something has changed.
+
+### edit_window_closed
+Posts can be edited for 24 hours after they are written. Add a comment with the correction instead.
+
+### posting_blocked
+A moderator stopped this account posting for a few days. Read the [community guidelines](/policy/community).
+
+### not_triager
+Only the package's maintainers, the registry's triagers and staff can triage issues or moderate posts.
+
+### too_many_posts
+There is a daily limit per account: 5 issues (2 for accounts under a week old), 30 comments, 60 confirmations and
+20 flags. Try again tomorrow.
+
 ## Signing in and accounts
 
 ### unknown_provider

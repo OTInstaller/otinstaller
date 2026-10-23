@@ -195,6 +195,38 @@ with `private, no-store`. Code in `routes/profiles.ts` and `profiles.ts`.
 
 The beta's staff endpoints (`/admin/feedback`, `/admin/beta-metrics`, `/admin/email-test`) are in 1.10.
 
+### 1.9a Community: issues, confirmations, flags, moderation (`routes/community.ts`, 23)
+
+Logic in `community.ts`. Public reads are cached; everything a person sends is `private, no-store`. Writes by
+people (`feedback` scope) go through `poster()`: a timed-out account gets 403 `posting_blocked`, daily limits answer
+429 `too_many_posts`, and `holdReason()` holds posts from accounts under 24 hours old, posts `screen()` flags
+(`findPersonalData`, public IPv4 addresses, token and key patterns) and a first post with links.
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/tools/:ns/:name/issues` | none | `cached(c, 60)` | routes/community.ts | `status` open (open+confirmed) / closed / all, `kind`, `before`; 30 a page; `counts`; visible posts only |
+| GET | `/tools/:ns/:name/issues/:number` | none | `cached(c, 60)` | routes/community.ts | The issue and its visible comments (`renderPost`: no raw HTML or images, links `nofollow ugc`, links as text for authors under a week old); `indexable` once a maintainer replied or it was confirmed or fixed |
+| GET | `/issues` | none | `cached(c, 120)` | routes/community.ts | The board: open broken, outdated and wrong_info issues across visible packages; `kind`, `needs=confirmation`, `before` |
+| GET | `/tools/:ns/:name/issues/:number/viewer` | user | no-store | routes/community.ts | `can_triage`, `is_author`, `can_edit_issue`, `editable_comments`, `subscribed`, the viewer's own held comments |
+| POST | `/tools/:ns/:name/issues` | user, feedback | no-store | routes/community.ts | `issueInput()`; 5 a day (2 under a week old); 201 with `number` and `moderation` |
+| POST | `/tools/:ns/:name/issues/:number/comments` | user, feedback | no-store | routes/community.ts | 30 a day; locked threads 409 `issue_locked` unless the poster can triage; a triager's reply sets `maintainer_replied_at` |
+| PATCH / DELETE | `/tools/:ns/:name/issues/:number` | author, feedback | - | routes/community.ts | Edit within 24 hours (409 `edit_window_closed`; re-screened) / soft delete |
+| PATCH / DELETE | `/comments/:id` | author, feedback | - | routes/community.ts | Same for comments |
+| PUT | `/tools/:ns/:name/confirmations` | user, feedback | no-store | routes/community.ts | `{result: works|broken, version?, platform?, engine?, ot_version?, issue?}`; one per person, version and platform; 60 a day; returns 30-day counts |
+| PUT / DELETE | `/tools/:ns/:name/issues/:number/subscription` | user, feedback | - | routes/community.ts | Follow / mute a thread |
+| POST | `/flags` | user, feedback | - | routes/community.ts | 20 a day; a personal-data flag from an account over a week old, or three open flags, hides the post |
+| POST | `/tools/:ns/:name/issues/:number/status` | triage, manage | - | routes/community.ts | Maintainers, triagers, staff; the author may set `fixed` (and reopen their own fix) |
+| POST | `/tools/:ns/:name/issues/:number/lock` | triage, manage | - | routes/community.ts | `{locked}`; closed threads also lock after 30 days without activity (nightly `lockStaleThreads`) |
+| POST | `/moderation/:kind/:id` | triager or staff, manage | - | routes/community.ts | `hide`, `restore`, `approve`, `redact` (staff only; overwrites the text); maintainers may hide comments on their package's issues; resolves the post's flags |
+| GET | `/moderation/queue` | triager or staff | no-store | routes/community.ts | `view=held` (held and hidden posts) or `flags` (open, personal data first); `before` |
+| POST | `/moderation/users/:handle/timeout` | triager or staff, manage | - | routes/community.ts | Up to 7 days (`users.posting_blocked_until`) |
+| GET / POST / DELETE | `/admin/community/roles[/:handle/:role]` | admin | no-store | routes/community.ts | Grant (`{handle, role: triager|reviewer, note}`, note required) and revoke; audited `role.grant`/`role.revoke` |
+| POST | `/admin/reports/:id/publish-issue` | reviewer | - | routes/community.ts | A private `broken` report becomes a system issue written by the reviewer (no reporter attached); the report is actioned |
+
+Internal: `fileSystemIssue(env, toolId, kind, body, dedupeKey, source)` (one issue per dedupe key; updated while open),
+`closeSystemIssue`, `announceVersion` (called by `publishVersion`: "does vX fix this?" on open broken and outdated
+issues) and `versionConfirmations`.
+
 ### 1.10 Admin and staff (24)
 
 | Method | Path | Auth | Caching | Defined in | Notes |

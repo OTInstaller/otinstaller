@@ -28,6 +28,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0012 | `0012_feedback.sql` | New table `feedback` and index `feedback_queue`. (Its header says it was numbered after 0011, which was on its own branch at the time.) |
 | 0013 | `0013_agent_tokens.sql` | `api_tokens` + `scoped` (INTEGER NN default 0; tokens minted before scopes were enforced keep 0 and every power); new table `install_clients`. Must be applied before an API that reads `scoped` is deployed: `authenticate` selects it on every token request. |
 | 0014 | `0014_publisher_profiles.sql` | New tables `namespace_profiles` (host values, owner overrides, About, pins, sync state) and `namespace_hosts` (secondary GitHub or GitLab accounts shown on a profile); indexes `namespace_profiles_synced` and `audit_log_target` (for the profile's activity feed). |
+| 0016 | `0016_community.sql` | `users` + `handle` (unique, backfilled from `lower(login)`, a suffix on collision), `profile_hidden`, `posting_blocked_until`; new tables `community_roles`, `issues`, `issue_comments`, `confirmations`, `run_signals`, `content_flags`, `issue_subscriptions`; `health_checks` + `failure_class`; `tools` + `open_broken`, `open_outdated`. |
 
 ---
 
@@ -375,6 +376,27 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
 - `status` TEXT NN CHECK `('sent', 'skipped', 'failed')` (no default)
 - `error` TEXT · `created_at` INTEGER NN
 - Flow (`notify.ts:sendEmail`): inserted as `sent`, or as `skipped` when `RESEND_API_KEY` is unset; set to `failed` if Resend answers with an error.
+
+### 2.12a Community (0016)
+
+- `community_roles`: `user_id`, `role` (`triager` | `reviewer`, CHECK), `granted_by`, `note`, `granted_at`; PK
+  `(user_id, role)`. Staff (`is_admin`, `is_reviewer`) hold both without a row.
+- `issues`: per-package `number` (UNIQUE with `tool_id`, assigned as `MAX(number) + 1` in the insert), `kind`
+  (broken | outdated | wrong_info | feature | question), `status` (open | confirmed | fixed | wont_fix | duplicate),
+  `title`, `body_md`, `version`, `platform`, `engine` (docker | podman | native), `exit_code`, `author_id`,
+  `author_kind` (user | system), `system_source`, `dedupe_key` (unique per tool when set), `duplicate_of`, `fixed_in`,
+  `moderation` (visible | held | hidden), `hidden_reason`, `locked_at`, `deleted_at`, `edited_at`,
+  `maintainer_replied_at`, `comment_count`, `me_too_count`, `created_at`, `last_activity_at`, `closed_at`, `closed_by`.
+  Indexes `issues_tool`, `issues_board` (partial, visible), `issues_held` (partial), `issues_dedupe`.
+- `issue_comments`: `issue_id`, `author_id`, `author_kind`, `role_badge` (maintainer | triager | staff, as it was when
+  written), `body_md`, `moderation`, `hidden_reason`, `edited_at`, `deleted_at`, `created_at`.
+- `confirmations`: `tool_id`, `version_id`, `user_id`, `result` (works | broken), `platform`, `engine`, `ot_version`,
+  `issue_id`; UNIQUE `(version_id, user_id, platform)`.
+- `run_signals`: anonymous daily counts of failed runs, PK `(version_id, day, platform, engine, exit_class)`.
+- `content_flags`: `target_kind` (issue | comment), `target_id`, `flagger_id`, `reason` (personal_data | spam | abuse |
+  off_topic | other), `note`, `status` (open | upheld | dismissed); UNIQUE per target and flagger.
+- `issue_subscriptions`: `(issue_id, user_id)` with `reason` (author, commented, confirmed, manual) and `muted`.
+- `tools.open_broken` / `open_outdated` are kept by `community.ts:refreshCounts` in the same batch as every change.
 
 ### 2.12 Feedback (0012)
 
