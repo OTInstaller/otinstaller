@@ -30,6 +30,7 @@ export const GET: APIRoute = async () => {
     "# OTInstaller",
     `> OTInstaller is a free, public registry of OSINT tools and investigation guides. Its command-line tool, \`ot\`, installs digest-pinned, signature-verified tools and runs them on your own machine in a locked-down container. Use it only for lawful investigation; see the [acceptable use policy](${SITE_URL}/policy/acceptable-use.md).`,
     `An MCP client can search the registry through the read-only remote server at ${API_URL}/mcp (Streamable HTTP, no account). Installing and running tools needs \`ot mcp\` on the person's machine; see ${SITE_URL}/docs/agents.md.`,
+    `Agents: start at ${SITE_URL}/agents.md. It says how to connect, what needs the person's consent, how to use \`ot\` and the API without MCP, and the rules to follow.`,
     "Every docs, policy, publisher, tool and guide page is also available as Markdown: add `.md` to its URL (`/<namespace>.md` for a publisher, `/<namespace>/<name>.md` for a tool, `/guides/<namespace>/<name>/<page>.md` for a guide page), or send `Accept: text/markdown`.",
     `## Start here\n\n${start.map(link).join("\n")}`,
     `## Docs\n\n${rest.map(link).join("\n")}`,

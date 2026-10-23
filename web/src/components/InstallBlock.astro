@@ -59,7 +59,8 @@ const { name = "os", compact = false, example = "ot run osintverse-community/dns
 </script>
 
 <style>
-  .install { display: grid; gap: 10px; }
+  /* minmax(0, 1fr): the column must not grow to the full width of a long command on a narrow screen. */
+  .install { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .tabs { display: inline-flex; border: 1px solid var(--border-strong); width: max-content; max-width: 100%; }
   .tabs label { cursor: pointer; padding: 6px 12px; color: var(--text-muted); font-size: var(--fs-1); transition: background var(--dur-1), color var(--dur-1); }
   .tabs label:hover { color: var(--text); }

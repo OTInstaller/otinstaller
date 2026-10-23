@@ -36,6 +36,8 @@ const path = Astro.url.pathname;
 const nav = [
   { href: "/search", label: "Tools" },
   { href: "/guides", label: "Guides" },
+  { href: "/otlite", label: "otlite" },
+  { href: "/agents", label: "Agents" },
   { href: "/docs", label: "Docs" },
   { href: "/publish", label: "Publish" },
 ];
@@ -132,6 +134,7 @@ const isCurrent = (href: string) =>
               <li><a href="/docs/quick-start">Quick start</a></li>
               <li><a href="/tour">What you can do</a></li>
               <li><a href="/otlite">otlite, no Docker</a></li>
+              <li><a href="/agents">AI agents</a></li>
               <li><a href="/docs/cli">CLI reference</a></li>
               <li><a href="/docs/automation">Scripts and agents</a></li>
               {jsonHref ? <li><a href={jsonHref}>This page as JSON</a>{markdown && <> · <a href={markdown}>Markdown</a></>}</li> : <li><a href="/llms.txt">llms.txt</a></li>}
@@ -252,9 +255,14 @@ const isCurrent = (href: string) =>
   .menu li + li { margin-top: 0; }
   .menu ul a { display: block; padding: 8px 10px; text-decoration: none; color: var(--text); }
   .menu ul a:hover, .menu ul a[aria-current="page"] { background: var(--bg-subtle); }
-  @media (max-width: 820px) {
-    .main-nav, .acct, .acct-menu, .search-btn .hint, .search-btn .kbd { display: none; }
+  /* Six nav items and the full search field need about 1000px; below that the search field becomes its icon. With
+     the icon they need about 800px, more once the account menu shows a long login, so the nav folds at 900px. */
+  @media (max-width: 1040px) {
+    .search-btn .hint, .search-btn .kbd { display: none; }
     .search-btn { min-width: 0; width: 36px; padding: 0; justify-content: center; }
+  }
+  @media (max-width: 900px) {
+    .main-nav, .acct, .acct-menu { display: none; }
     .nav-menu { display: block; }
   }
 

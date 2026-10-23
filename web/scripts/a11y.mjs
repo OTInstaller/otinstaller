@@ -10,7 +10,7 @@ const quiet = new VirtualConsole();
 quiet.on("jsdomError", (e) => { if (!/not implemented/i.test(String(e.message ?? e))) console.error(e); });
 
 const base = (process.argv[2] ?? "http://localhost:4322").replace(/\/$/, "");
-const pages = ["/", "/search", "/input/email", "/osintverse-community/holehe", "/osintverse-community/holehe/security", "/osintverse-community/holehe/versions", "/osintverse-community", "/osintverse-community?tab=guides", "/osintverse-community?tab=activity", "/guides", "/guides/osintverse-community/email-investigation", "/docs/getting-started", "/publish", "/policy/transparency", "/nope"];
+const pages = ["/", "/search", "/input/email", "/osintverse-community/holehe", "/osintverse-community/holehe/security", "/osintverse-community/holehe/versions", "/osintverse-community", "/osintverse-community?tab=guides", "/osintverse-community?tab=activity", "/guides", "/guides/osintverse-community/email-investigation", "/docs/getting-started", "/publish", "/agents", "/policy/transparency", "/nope"];
 const skip = new Set(["color-contrast", "region"]);
 
 let failed = 0;
