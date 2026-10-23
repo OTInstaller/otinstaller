@@ -40,6 +40,9 @@ type Error struct {
 	Problems []Problem `json:"problems,omitempty"`
 	// RequestID identifies a failed request in the registry's logs (server errors only).
 	RequestID string `json:"request_id,omitempty"`
+	// Number is the tool request that exists already (request_exists); Ref the package that does (already_in_registry).
+	Number int    `json:"number,omitempty"`
+	Ref    string `json:"ref,omitempty"`
 }
 
 func (e *Error) Error() string {

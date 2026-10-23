@@ -30,6 +30,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0014 | `0014_publisher_profiles.sql` | New tables `namespace_profiles` (host values, owner overrides, About, pins, sync state) and `namespace_hosts` (secondary GitHub or GitLab accounts shown on a profile); indexes `namespace_profiles_synced` and `audit_log_target` (for the profile's activity feed). |
 | 0016 | `0016_community.sql` | `users` + `handle` (unique, backfilled from `lower(login)`, a suffix on collision), `profile_hidden`, `posting_blocked_until`; new tables `community_roles`, `issues`, `issue_comments`, `confirmations`, `run_signals`, `content_flags`, `issue_subscriptions`; `health_checks` + `failure_class`; `tools` + `open_broken`, `open_outdated`. |
 | 0017 | `0017_notifications.sql` | New tables `email_prefs` (per person: `community`, `owner_issues` as immediate/daily/off) and `inbox` (kind, scope community/owner_issues/account, summary, site path, read and emailed times); indexes `inbox_user`, `inbox_pending` (partial). |
+| 0018 | `0018_requests.sql` | New tables `tool_requests` (one per repository: status, decline code, decision, the answering package, what otlite and the seed survey knew, votes, moderation) and `request_votes`; indexes `tool_requests_board`, `tool_requests_project`, `tool_requests_requester`, `request_votes_user`. |
 
 ---
 
@@ -399,6 +400,20 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
 - `issue_subscriptions`: `(issue_id, user_id)` with `reason` (author, commented, confirmed, manual) and `muted`.
 - `tools.open_broken` / `open_outdated` are kept by `community.ts:refreshCounts` in the same batch as every change.
 
+### 2.12b Tool requests (0018)
+
+- `tool_requests`: `number` (UNIQUE, `MAX(number) + 1` in the insert), `provider` (github | gitlab), `repo_path` (as
+  the host spells it), `repo_key` (UNIQUE, `provider:lower(path)`), `project_id`, `url`, `description`, `license`,
+  `upstream_stars`, `pushed_at`, `note` (plain text, 500 characters), `requested_by`, `status` (open | accepted |
+  in_progress | published | declined), `decline_code` (license | archived | not_osint | not_cli | needs_login |
+  acceptable_use | unmaintained | duplicate | withdrawn | other), `decision_note`, `decided_by`, `decided_at`,
+  `tool_id` (the package that answers it), `otlite_name`, `dropped_reason` (from `known-repos.ts`), `vote_count`,
+  `moderation` (visible | held | hidden), `hidden_reason`, `created_at`, `updated_at`. Indexes
+  `tool_requests_board (status, vote_count DESC, number DESC)`, `tool_requests_project (provider, project_id)`,
+  `tool_requests_requester (requested_by, created_at)`.
+- `request_votes`: PK `(request_id, user_id)`, `created_at`; the requester's vote is added with the request.
+  `vote_count` is recounted in the same batch as every vote.
+
 ### 2.12 Feedback (0012)
 
 #### `feedback`
@@ -553,6 +568,15 @@ Claims never use `accepted`, and transfers never use `verified`.
 ### 3.8 `reports.status`
 `open` (insert default, `trust.ts`) → `actioned` / `dismissed` in `routes/trust.ts` `POST /admin/reports/:id/resolve`.
 There is no guard on the current status, so a resolved report can be resolved again.
+
+### 3.8a `tool_requests.status`
+
+| Transition | Where |
+| --- | --- |
+| (new) → `open`, or `declined` at once (`license`, `archived`) | `requests.ts:createRequest` |
+| `declined` (`withdrawn`) → `open` when someone asks again | `requests.ts:createRequest` |
+| `open` ↔ `accepted` → `in_progress` → `published`; any active → `declined`; `declined` → `open` | `requests.ts:setRequestStatus` (triagers and staff; the requester may withdraw) |
+| any but `published` → `published` | `requests.ts:linkPublished` (from `scans.ts:publishVersion`) |
 
 ### 3.9 Others
 - **`feedback.status`**: `open` (insert, `routes/beta.ts`) ↔ `done` / `dismissed` / `open` in `routes/beta.ts`

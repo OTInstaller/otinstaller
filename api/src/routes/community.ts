@@ -13,6 +13,7 @@ import {
   indexable, ISSUE_KINDS, ISSUE_STATUSES, issueByNumber, issueInput, moderate, OPEN_STATUSES, renderPost, reportRun, requireModerator, requireTriage, runReportInput,
   setLocked, setStatus, timeout, type IssueRow, type IssueStatus, type ModerationAction,
 } from "../community";
+import { moderateRequest } from "../requests";
 
 async function body<T>(c: Context<AppEnv>): Promise<Partial<T>> {
   return c.req.json<Partial<T>>().catch(() => ({}) as Partial<T>);
@@ -295,12 +296,20 @@ export function communityRoutes(app: App) {
   app.post("/moderation/:kind/:id", async (c) => {
     const u = requireUser(c);
     const kind = c.req.param("kind");
-    if (kind !== "issue" && kind !== "comment") apiError(404, "not_found", "no such route");
+    if (kind !== "issue" && kind !== "comment" && kind !== "request") apiError(404, "not_found", "no such route");
     const id = c.req.param("id");
     const b = await body<{ action: string; reason: string }>(c);
     const action = String(b.action) as ModerationAction;
     if (!["hide", "restore", "approve", "redact"].includes(action)) apiError(400, "invalid_body", "action must be hide, restore, approve or redact");
     const roles = await communityRoles(c.env, u);
+    const reason = typeof b.reason === "string" ? b.reason.slice(0, 200) : "";
+    if (kind === "request") {
+      // A request's note is the only thing in it people write; redacting removes the note for good.
+      if (!roles.has("triager")) apiError(403, "not_triager", "only triagers and staff can do this");
+      if (action === "redact" && !u.is_admin && !u.is_reviewer) apiError(403, "forbidden", "only staff can redact posts");
+      await moderateRequest(c.env, u, id, action, reason);
+      return c.json({ kind, id, action });
+    }
     if (!roles.has("triager")) {
       // Maintainers may hide comments on their own package's issues, but not issues or redactions.
       const owner = kind === "comment" && action === "hide"
@@ -309,7 +318,7 @@ export function communityRoutes(app: App) {
       if (!owner || !(await canTriage(c.env, u, owner))) apiError(403, "not_triager", "only triagers and staff can do this");
     }
     if (action === "redact" && !u.is_admin && !u.is_reviewer) apiError(403, "forbidden", "only staff can redact posts");
-    await moderate(c.env, u, kind, id, action, typeof b.reason === "string" ? b.reason.slice(0, 200) : "");
+    await moderate(c.env, u, kind, id, action, reason);
     return c.json({ kind, id, action });
   });
 
@@ -329,9 +338,15 @@ export function communityRoutes(app: App) {
          SELECT 'comment', cm.id, NULL, cm.body_md, cm.hidden_reason, cm.created_at, n.name, t.name, i.number, u.handle
            FROM issue_comments cm JOIN issues i ON i.id = cm.issue_id JOIN tools t ON t.id = i.tool_id JOIN namespaces n ON n.id = t.namespace_id
            LEFT JOIN users u ON u.id = cm.author_id WHERE cm.moderation != 'visible' AND cm.deleted_at IS NULL AND cm.created_at < ?1
+         UNION ALL
+         SELECT 'request', r.id, r.repo_path, COALESCE(r.note, ''), r.hidden_reason, r.created_at, NULL, NULL, r.number, u.handle
+           FROM tool_requests r LEFT JOIN users u ON u.id = r.requested_by WHERE r.moderation = 'held' AND r.created_at < ?1
          ORDER BY created_at DESC LIMIT 100`,
-      ).bind(before).all<{ kind: string; id: string; title: string | null; body_md: string; hidden_reason: string | null; created_at: number; ns: string; tool: string; number: number; handle: string | null }>()).results;
-      return c.json({ items: rows.map((r) => ({ ...r, ref: `${r.ns}/${r.tool}`, body_html: renderPost(r.body_md, true) })), next_before: rows.length === 100 ? rows.at(-1)!.created_at : null });
+      ).bind(before).all<{ kind: string; id: string; title: string | null; body_md: string; hidden_reason: string | null; created_at: number; ns: string | null; tool: string | null; number: number; handle: string | null }>()).results;
+      return c.json({
+        items: rows.map((r) => ({ ...r, ref: r.ns ? `${r.ns}/${r.tool}` : null, body_html: renderPost(r.body_md, true) })),
+        next_before: rows.length === 100 ? rows.at(-1)!.created_at : null,
+      });
     }
     const flags = (await c.env.DB.prepare(
       `SELECT f.id, f.target_kind, f.target_id, f.reason, f.note, f.created_at, u.handle AS flagger FROM content_flags f JOIN users u ON u.id = f.flagger_id

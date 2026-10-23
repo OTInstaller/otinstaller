@@ -7,7 +7,8 @@ export const BETA = String(import.meta.env.PUBLIC_BETA ?? "1") !== "0";
 export const ISSUES_URL = String(import.meta.env.PUBLIC_ISSUES_URL ?? "https://github.com/OTInstaller/feedback/issues").replace(/\/+$/, "");
 
 export class ApiError extends Error {
-  constructor(public status: number, public code: string, message: string, public hint?: string, public problems?: Problem[]) {
+  /** Fields the error adds beyond code, message and hint (a request's number, the package that exists, ...). */
+  constructor(public status: number, public code: string, message: string, public hint?: string, public problems?: Problem[], public extra: Record<string, unknown> = {}) {
     super(message);
   }
 }
@@ -28,10 +29,11 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers: { Accept: "application/json", ...(init.body ? { "Content-Type": "application/json" } : {}), ...init.headers },
   });
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { error?: { code: string; message: string; hint?: string; problems?: Problem[]; request_id?: string } } | null;
+    const body = (await res.json().catch(() => null)) as { error?: { code: string; message: string; hint?: string; problems?: Problem[]; request_id?: string } & Record<string, unknown> } | null;
     const e = body?.error;
     const message = e ? e.message + (e.request_id ? ` (request ID ${e.request_id})` : "") : `The registry answered ${res.status}.`;
-    throw new ApiError(res.status, e?.code ?? "http_error", message, e?.hint, e?.problems);
+    const { code: _c, message: _m, hint: _h, problems: _p, docs: _d, ...extra } = (e ?? {}) as Record<string, unknown>;
+    throw new ApiError(res.status, e?.code ?? "http_error", message, e?.hint, e?.problems, extra);
   }
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 }
@@ -388,4 +390,55 @@ export interface CommunityStatus {
   health: { status: string; checked_at: number | null; history: { at: number; version: string; result: "pass" | "fail"; duration_ms: number | null; failure: string | null }[] };
   confirmations: { version: string | null; works: number; broken: number; platforms: Record<string, { works: number; broken: number }> };
   issues: { open_broken: number; open_outdated: number };
+}
+
+// ---------- tool requests ----------
+
+export type RequestStatus = "open" | "accepted" | "in_progress" | "published" | "declined";
+export type DeclineCode = "license" | "archived" | "not_osint" | "not_cli" | "needs_login" | "acceptable_use" | "unmaintained" | "duplicate" | "withdrawn" | "other";
+
+export interface ToolRequest {
+  number: number;
+  provider: "github" | "gitlab";
+  repo: string;
+  name: string;
+  url: string;
+  description: string | null;
+  license: string | null;
+  upstream_stars: number | null;
+  status: RequestStatus;
+  decline_code: DeclineCode | null;
+  votes: number;
+  requested_by: IssueAuthor | null;
+  /** The published package that answers it. */
+  tool: string | null;
+  /** otlite's name for the tool, when otlite installs it. */
+  otlite: string | null;
+  created_at: number;
+  updated_at: number;
+  indexable: boolean;
+}
+
+export interface ToolRequestDetail extends ToolRequest {
+  note: string | null;
+  decision_note: string | null;
+  decided_at: number | null;
+  decided_by: string | null;
+  dropped_reason: string | null;
+  pushed_at: number | null;
+}
+
+export interface RequestBoard {
+  requests: ToolRequest[];
+  counts: Record<RequestStatus, number>;
+  next_before: string | null;
+}
+
+export interface RequestViewer {
+  voted: boolean;
+  is_requester: boolean;
+  can_decide: boolean;
+  held: boolean;
+  /** The requester's own note while a moderator hasn't looked at it yet. */
+  note?: string | null;
 }

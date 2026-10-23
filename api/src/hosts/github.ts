@@ -20,8 +20,9 @@ async function check(res: Response, what: string): Promise<Response> {
   throw new HostError(`${what} failed: ${res.status} ${body.slice(0, 200)}`, res.status, transient);
 }
 
-const apiHeaders = (token: string) => ({
-  Authorization: `Bearer ${token}`,
+// An empty token reads public data anonymously (tool requests from people without a linked GitHub account).
+const apiHeaders = (token: string): Record<string, string> => ({
+  ...(token ? { Authorization: `Bearer ${token}` } : {}),
   Accept: "application/vnd.github+json",
   "X-GitHub-Api-Version": "2022-11-28",
   "User-Agent": "otinstaller-registry",
@@ -179,6 +180,7 @@ export interface GithubRepo {
   private: boolean;
   archived: boolean;
   stargazers_count?: number;
+  pushed_at?: string | null;
   owner: { login: string; id: number; type: string };
   permissions?: { admin?: boolean; maintain?: boolean; push?: boolean };
 }

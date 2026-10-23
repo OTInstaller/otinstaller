@@ -207,3 +207,65 @@ func TestReportWorksAndBrokenAndIssues(t *testing.T) {
 		t.Fatalf("issues JSON: %v %s", err, out)
 	}
 }
+
+func TestRequestCommand(t *testing.T) {
+	var votes []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		var body map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/requests" && strings.Contains(body["repo"], "taken"):
+			w.WriteHeader(http.StatusConflict)
+			io.WriteString(w, `{"error":{"code":"request_exists","message":"owner/taken was requested already, as #7 (open)","number":7,"status":"open"}}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/requests":
+			if body["note"] != "finds accounts" {
+				t.Errorf("note not sent: %v", body)
+			}
+			w.WriteHeader(http.StatusCreated)
+			io.WriteString(w, `{"request":{"number":8,"repo":"owner/new","status":"open","votes":1},"held":false,"notes":["otlite, the no-Docker edition, installs it already: `+"`otlite install new`"+`."],"url":"https://otinstaller.com/requests/8"}`)
+		case r.Method == http.MethodPut && r.URL.Path == "/v1/requests/7/vote":
+			votes = append(votes, r.Header.Get("Authorization"))
+			io.WriteString(w, `{"number":7,"votes":4,"voted":true}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	a, out, errb := newTestApp(t, &fakeExec{}, "")
+	a.API = api.New(srv.URL+"/v1", "")
+	if code := run(a, "request", "https://github.com/owner/new"); code != ExitUsage || !strings.Contains(errb.String(), "ot login") {
+		t.Fatalf("without a token: exit %d: %s", code, errb)
+	}
+	a.API.Token = "ot_test"
+	if code := run(a, "request", "https://github.com/owner/new", "--note", " finds accounts "); code != 0 {
+		t.Fatalf("request: exit %d: %s", code, errb)
+	}
+	if !strings.Contains(out.String(), "request #8") || !strings.Contains(errb.String(), "note: otlite") {
+		t.Fatalf("request output: %s / %s", out, errb)
+	}
+
+	// Someone asked already: at a terminal, yes (the default) votes; --vote votes without asking.
+	out.Reset()
+	a.In = strings.NewReader("\n")
+	if code := run(a, "request", "https://github.com/owner/taken"); code != 0 || !strings.Contains(out.String(), "Voted for request #7 (4 votes)") {
+		t.Fatalf("vote at a terminal: exit %d: %s %s", code, out, errb)
+	}
+	a.In = strings.NewReader("n\n")
+	if code := run(a, "request", "https://github.com/owner/taken"); code != ExitUsage {
+		t.Fatalf("declined vote: exit %d", code)
+	}
+	t.Setenv("OT_NONINTERACTIVE", "1")
+	errb.Reset()
+	if code := run(a, "request", "https://github.com/owner/taken", "--json"); code != ExitUsage || !strings.Contains(errb.String(), `"number":7`) {
+		t.Fatalf("no terminal: exit %d: %s", code, errb)
+	}
+	out.Reset()
+	if code := run(a, "request", "https://github.com/owner/taken", "--vote", "--json"); code != 0 || !strings.Contains(out.String(), `"voted": true`) {
+		t.Fatalf("--vote: exit %d: %s %s", code, out, errb)
+	}
+	if len(votes) != 2 || votes[0] != "Bearer ot_test" {
+		t.Fatalf("votes: %v", votes)
+	}
+}

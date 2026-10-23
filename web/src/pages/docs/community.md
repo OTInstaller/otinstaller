@@ -35,6 +35,27 @@ takes you to a new broken issue, and **I have this problem too** on an issue add
 per version and platform, and the counts from the last 30 days appear in the tool's status line next to the
 registry's own nightly health check. They are counts, never ratings.
 
+## Requests
+
+Missing a tool? [Tool requests](/requests) is where people ask for open-source tools to be packaged, and vote for
+what others asked for. Ask with the repository's GitHub or GitLab URL and, if you like, a short note on what it finds.
+The registry checks it straight away:
+
+- It must be public, and not in the registry already (you get the package's name) or requested already (you can vote
+  for that request instead).
+- If the project has its own `otinstaller.yaml`, its maintainers can publish it themselves, so it isn't requested.
+- A license the registry may not redistribute, or an archived repository, is recorded as declined at once, so the
+  next person sees why.
+- If [otlite](/otlite) installs the tool already, or the October 2026 seed survey left it out, the request says so.
+
+Triagers then accept a request (it fits: a command-line tool that takes a target and prints results), mark it as
+being packaged, or decline it with a reason. When a package from that repository is published, by the community or
+by the project's own maintainers, the request is marked published and everyone who voted hears about it. Each account
+can make 5 requests and 60 votes a day; the person who asked can withdraw their request, and someone else can ask
+for it again later.
+
+From the terminal: `ot request <repo-url> [--note "..."]`, and `--vote` to vote for an existing request.
+
 ## From the terminal
 
 When `ot run` fails at a terminal (it timed out, or exited non-zero and found nothing), it asks:
@@ -70,10 +91,10 @@ the next day's digest.
 
 | Who | Can |
 | --- | --- |
-| Anyone | Read issues, the status line and the [community board](/community) |
-| Signed in | Open issues, reply, say it works or is broken, follow a thread, flag a post |
+| Anyone | Read issues, the status line, the [community board](/community) and [tool requests](/requests) |
+| Signed in | Open issues, reply, say it works or is broken, follow a thread, flag a post, ask for a tool and vote for requests |
 | The package's maintainers | Triage its issues, lock threads, hide comments on its issues |
-| Triagers | Triage any package's issues, approve held posts, hide posts, pause an account for up to 7 days |
+| Triagers | Triage any package's issues, decide tool requests, approve held posts and requests, hide posts, pause an account for up to 7 days |
 | Reviewers | What triagers can, and approve community submissions' first releases |
 | Staff | Everything, including redacting posts and granting the triager and reviewer roles |
 
@@ -104,5 +125,7 @@ Everything is in the [registry API](/docs/api) (OpenAPI tag "Community"):
 | `POST /v1/tools/<ns>/<name>/issues` | Open an issue (token scope `feedback`) |
 | `PUT /v1/tools/<ns>/<name>/confirmations` | Works or broken for you (scope `feedback`) |
 | `POST /v1/tools/<ns>/<name>/run-reports` | A failed run, as `ot` sends it: `{version, exit_code \| timed_out, os, arch, engine, ot_version}`; anonymous or scope `feedback` |
+| `GET /v1/requests` | Tool requests (`status`, `sort=votes\|new`, `before`) |
+| `POST /v1/requests` | Ask for a tool (scope `feedback`); `PUT /v1/requests/<number>/vote` to vote |
 
 Error codes are on the [errors page](/docs/errors#community).

@@ -1,0 +1,79 @@
+---
+// /requests: tools people want packaged, most wanted first, with the form to ask for one. Anyone can read it;
+// asking and voting need a sign-in. Triagers decide each request on its own page.
+import Base from "../../layouts/Base.astro";
+import PageHead from "../../components/PageHead.astro";
+import RequestRow from "../../components/RequestRow.astro";
+import RequestForm from "../../islands/RequestForm";
+import { api, type RequestBoard } from "../../lib/api";
+import { cacheFor } from "../../lib/page";
+
+const views = [
+  { key: "", label: "Most wanted", query: "", count: (c: RequestBoard["counts"]) => c.open + c.accepted + c.in_progress },
+  { key: "new", label: "Newest", query: "sort=new", count: (c: RequestBoard["counts"]) => c.open + c.accepted + c.in_progress },
+  { key: "accepted", label: "Accepted", query: "status=accepted", count: (c: RequestBoard["counts"]) => c.accepted },
+  { key: "in_progress", label: "Being packaged", query: "status=in_progress", count: (c: RequestBoard["counts"]) => c.in_progress },
+  { key: "published", label: "Published", query: "status=published&sort=new", count: (c: RequestBoard["counts"]) => c.published },
+  { key: "declined", label: "Declined", query: "status=declined&sort=new", count: (c: RequestBoard["counts"]) => c.declined },
+];
+const view = views.find((v) => v.key === (Astro.url.searchParams.get("view") ?? "")) ?? views[0]!;
+const before = /^\d{1,6}(\.\d{1,9})?$/.test(Astro.url.searchParams.get("before") ?? "") ? Astro.url.searchParams.get("before") : null;
+const params = [view.query, before ? `before=${before}` : ""].filter(Boolean).join("&");
+const board = await api<RequestBoard>(`/requests${params ? `?${params}` : ""}`);
+cacheFor(Astro, 120);
+const link = (key: string) => (key ? `/requests?view=${key}` : "/requests");
+---
+<Base title="Tool requests" description="Open-source OSINT tools people want in the OTInstaller registry. Ask for one, or vote for what others asked for.">
+  <PageHead eyebrow="Community" title="Tool requests">
+    <p class="lead">Tools people want to install with <code>ot</code>. Ask for one that's missing, vote for the ones you'd use, and the community packages the most wanted first.</p>
+  </PageHead>
+
+  <div class="grid">
+    <div>
+      <nav class="row views" aria-label="What to show">
+        {views.map((v) => (
+          <a class="chip" href={link(v.key)} aria-current={v.key === view.key ? "page" : undefined} rel={v.key ? "nofollow" : undefined}>
+            {v.label} <span class="muted">{v.count(board.counts)}</span>
+          </a>
+        ))}
+      </nav>
+      {board.requests.length === 0 ? <p class="muted">Nothing here yet.</p> : (
+        <ul class="requests">{board.requests.map((r) => <RequestRow request={r} />)}</ul>
+      )}
+      {board.next_before && <p><a class="btn btn-sm" href={`${link(view.key)}${view.key ? "&" : "?"}before=${board.next_before}`} rel="nofollow">More</a></p>}
+    </div>
+
+    <aside class="stack side">
+      <section class="panel" aria-labelledby="ask-h">
+        <h2 id="ask-h">Ask for a tool</h2>
+        <RequestForm client:load />
+      </section>
+      <section class="panel how" aria-labelledby="how-h">
+        <h2 id="how-h">How requests work</h2>
+        <ul>
+          <li>Any open-source GitHub or GitLab repository whose license lets the registry redistribute it.</li>
+          <li>Triagers accept what fits: a command-line tool that takes one target and prints results. Then someone packages it as a community wrapper, and the request is marked published.</li>
+          <li>If the project's own maintainers publish it, the request is answered too.</li>
+          <li>From the terminal: <code>ot request &lt;repo-url&gt;</code>.</li>
+        </ul>
+        <p class="small muted"><a href="/docs/community#requests">More about requests</a> · <a href="/community">Community</a></p>
+      </section>
+    </aside>
+  </div>
+</Base>
+
+<style>
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 32px; align-items: start; }
+  .views { margin-bottom: 8px; }
+  .views .chip { text-transform: none; letter-spacing: 0; font-size: var(--fs-1); }
+  .requests { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border); }
+  .side { position: sticky; top: 80px; }
+  .side :global(.request-form label), .side :global(.request-form input), .side :global(.request-form textarea) { display: block; width: 100%; }
+  .side :global(.request-form label + input), .side :global(.request-form label + textarea) { margin-top: 4px; }
+  .how ul { margin: 0 0 10px; padding-left: 18px; display: grid; gap: 8px; font-size: var(--fs-2); }
+  .how p { margin: 0; }
+  @media (max-width: 860px) {
+    .grid { grid-template-columns: minmax(0, 1fr); }
+    .side { position: static; order: -1; }
+  }
+</style>

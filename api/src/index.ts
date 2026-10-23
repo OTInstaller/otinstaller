@@ -23,6 +23,7 @@ import { backupRoutes } from "./routes/backups";
 import { profileRoutes } from "./routes/profiles";
 import { communityRoutes } from "./routes/community";
 import { inboxRoutes } from "./routes/inbox";
+import { requestRoutes } from "./routes/requests";
 import { deliverInbox, purgeInbox } from "./inbox";
 import { refreshDueProfiles } from "./profiles";
 import { backfillBackups, expireDrills, expireRuns, installFallbacks, purgeBackups, RESTORE_DRILL_CRON, startDrill, WEEKLY_BACKUP_CRON, weeklyBackups } from "./backups";
@@ -75,6 +76,7 @@ backupRoutes(app);
 profileRoutes(app);
 communityRoutes(app);
 inboxRoutes(app);
+requestRoutes(app);
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();

@@ -25,6 +25,9 @@ inputs, output or file paths. Signed in, the report adds you to the version's br
 sign-in we keep only a daily count per version and platform; your address is hashed with a salt to count it once a
 day and the hash is deleted after a day. `OT_NO_TELEMETRY=1` turns the question off.
 
+Tool requests are public too: the repository, your handle and the note you wrote. Votes are counted on each request;
+who voted is not shown.
+
 - You can edit a post for 24 hours and withdraw it at any time; a withdrawn post's text is deleted.
 - A post a moderator redacts is overwritten for good. The database keeps a backup copy for 30 days.
 - Flags you send, and moderators' decisions, are recorded with your account and never shown publicly.
