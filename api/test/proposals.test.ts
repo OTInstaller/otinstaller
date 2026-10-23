@@ -329,6 +329,16 @@ describe("change proposals", () => {
         .bind(ulid(), w.toolId, 100 + i, maintainer.id).run();
     }
     expect((await req(maintainer, "POST", `/packages/${w.ref}/proposals`, { title: "One more change", files: { "README.md": "# x\n" } })).body.error.code).toBe("too_many_proposals");
+
+    // Sending a proposal back needs no GitHub, so it works while the community bot isn't set up; merging doesn't.
+    const reviewer = await person({ reviewer: true });
+    const noBot = async (body: unknown) => {
+      const res = await call(`/packages/${w.ref}/proposals/100/review`, { method: "POST", headers: reviewer.headers, body: JSON.stringify(body) }, await testEnv());
+      return (await res.json()) as any;
+    };
+    expect((await noBot({ decision: "changes_requested", note: "Split it in two." })).proposal.status).toBe("changes_requested");
+    await DB().prepare(`UPDATE change_proposals SET status = 'open' WHERE tool_id = ? AND pr_number = 100`).bind(w.toolId).run();
+    expect((await noBot({ decision: "approve" })).error.code).toBe("community_bot_missing");
   });
 
   it("needs the publish scope to propose and edit, and manage to review and withdraw", () => {

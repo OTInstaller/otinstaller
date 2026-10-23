@@ -337,7 +337,8 @@ export async function reviewProposal(env: Env, actor: User, t: Wrapper, p: Propo
   if (decision === "changes_requested" ? p.status !== "open" : !OPEN_STATUSES.includes(p.status)) apiError(409, "proposal_closed", `proposal #${p.pr_number} is ${p.status.replace("_", " ")}`);
   const note = typeof noteIn === "string" ? plain(noteIn, MAX_NOTE) : "";
   if (decision !== "approve" && !note) apiError(400, "invalid_body", "say what needs to change, or why it is turned down, in {note}");
-  const token = await botToken(env);
+  // Only merging and closing need GitHub; sending a proposal back doesn't.
+  const token = decision === "changes_requested" ? "" : await botToken(env);
   let released: string | null = null;
   if (decision === "approve") {
     const taken = !!(await env.DB.prepare(`SELECT 1 FROM versions WHERE tool_id = ? AND version = ?`).bind(t.id, p.version).first());
