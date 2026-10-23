@@ -102,6 +102,9 @@ func asToolError(err error) error {
 	if errors.As(err, &ee) && len(ee.Problems) > 0 {
 		out.Extra = map[string]any{"problems": ee.Problems}
 	}
+	if ee != nil && ee.Hint != "" {
+		out.Hint = ee.Hint
+	}
 	return out
 }
 
