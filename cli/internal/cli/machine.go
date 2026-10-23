@@ -30,6 +30,9 @@ type jsonError struct {
 	ExitCode  int           `json:"exit_code"`
 	RequestID string        `json:"request_id,omitempty"`
 	Problems  []api.Problem `json:"problems,omitempty"`
+	// Number and Ref come from the registry: the tool request or package that exists already.
+	Number int    `json:"number,omitempty"`
+	Ref    string `json:"ref,omitempty"`
 }
 
 // jsonRequested reports whether the command line asks for JSON, for errors raised before cobra has
@@ -59,6 +62,7 @@ func writeJSONError(w io.Writer, err error, exitCode int) {
 			je.Message = ae.Message
 		}
 		je.Hint, je.RequestID, je.Problems = ae.Hint, ae.RequestID, ae.Problems
+		je.Number, je.Ref = ae.Number, ae.Ref
 		if ae.Docs != "" {
 			je.Docs = ae.Docs
 		}

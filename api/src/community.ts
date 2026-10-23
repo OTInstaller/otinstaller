@@ -72,10 +72,10 @@ export async function requireModerator(env: Env, user: User | null): Promise<Use
   return user;
 }
 
-type Poster = { created_at: number; posting_blocked_until: number | null; handle: string | null; visible_posts: number };
+export type Poster = { created_at: number; posting_blocked_until: number | null; handle: string | null; visible_posts: number };
 
 /** The poster's account age, timeout and how many of their posts are visible (first posts with links are held). */
-async function poster(env: Env, userId: string): Promise<Poster> {
+export async function poster(env: Env, userId: string): Promise<Poster> {
   const p = await env.DB.prepare(
     `SELECT u.created_at, u.posting_blocked_until, u.handle,
        (SELECT COUNT(*) FROM issues WHERE author_id = u.id AND moderation = 'visible' AND deleted_at IS NULL)
@@ -90,7 +90,7 @@ async function poster(env: Env, userId: string): Promise<Poster> {
 }
 
 /** Applies a per-person daily limit for one kind of post. */
-async function dailyLimit(env: Env, scope: string, userId: string, limit: number) {
+export async function dailyLimit(env: Env, scope: string, userId: string, limit: number) {
   if (await overLimit(env, scope, userId, limit, 86_400_000)) {
     rateLimited("too_many_posts", `at most ${limit} a day`, "try again tomorrow", windowRetry(86_400_000), limit, 86400);
   }

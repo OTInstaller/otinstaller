@@ -32,6 +32,9 @@ export const COMMUNITY_NAMESPACE = "osintverse-community";
 // Licenses that allow publishing a wrapper of someone else's tool.
 const REDISTRIBUTABLE = /^(MIT|MIT-0|Apache-2\.0|BSD-[234]-Clause|0BSD|ISC|MPL-2\.0|(A|L)?GPL-[23]\.0(-only|-or-later)?|LGPL-2\.1(-only|-or-later)?|Unlicense|CC0-1\.0|CC-BY(-SA)?-4\.0|EPL-2\.0|EUPL-1\.2|Zlib|Artistic-2\.0|BSL-1\.0)$/;
 
+/** Whether a license lets the registry redistribute a tool as a community wrapper (and so take requests for it). */
+export const isRedistributable = (license: string | null | undefined): boolean => !!license && REDISTRIBUTABLE.test(license);
+
 /** A refusal that the routes turn into an API error and bulk detection records on the import. */
 export class ImportProblem extends Error {
   constructor(readonly status: 400 | 403 | 404 | 409, readonly code: string, message: string, readonly hint?: string) {
@@ -473,7 +476,7 @@ export async function detect(env: Env, repo: Repo): Promise<{ facts: Facts; draf
   }
   if (repo.community) {
     // Wrappers only where the license allows it, and only when upstream doesn't publish the tool itself.
-    if (!license || !REDISTRIBUTABLE.test(license)) {
+    if (!isRedistributable(license)) {
       refuse(400, "license_not_redistributable", `${repo.path} has ${license ? `the license ${license}, which` : "no license that"} the registry accepts for community wrappers`,
         "ask the maintainer to publish it themselves");
     }
