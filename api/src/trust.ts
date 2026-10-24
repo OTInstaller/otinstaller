@@ -1,5 +1,5 @@
-// Trust and safety: yanking, deprecating and removing, reports and their rate limits, and the public
-// transparency numbers. Routes live in routes/trust.ts.
+// Trust and safety: yanking, deprecating and removing (and telling the people who follow the package), reports and
+// their rate limits, and the public transparency numbers. Routes live in routes/trust.ts.
 import type { Env } from "./env";
 import { sha256Hex, ulid } from "./lib/crypto";
 import type { Manifest } from "./lib/manifest";
@@ -8,6 +8,7 @@ import { audit } from "./routes/auth";
 import { bumpCacheEpoch } from "./edge-cache";
 import { ownerEmails, sendEmail, templates } from "./notify";
 import { scheduleDeletion } from "./backups";
+import { LIFECYCLE_LEVELS, notifyPackageFollowers, SECURITY_LEVELS } from "./inbox";
 
 export const REPORT_REASONS = ["malware", "policy", "impersonation", "license", "broken", "other"] as const;
 export const REMOVAL_CATEGORIES = ["malware", "policy", "impersonation", "license", "legal", "other"] as const;
@@ -61,7 +62,55 @@ export async function setYanked(env: Env, actorId: string, t: ToolRef, version: 
     bumpCacheEpoch(env.DB),
   ]);
   await recomputeLatest(env, t.id);
+  const ref = `${t.namespace}/${t.name}`;
+  await notifyPackageFollowers(env, t.id, {
+    kind: "lifecycle", scope: "lifecycle", actor_id: actorId, path: `/${ref}/versions`,
+    summary: yanked ? `${ref} ${version} was yanked: @latest no longer installs it` : `${ref} ${version} is available again`,
+  }, LIFECYCLE_LEVELS);
   return { ok: true as const, status: yanked ? "yanked" : "published" };
+}
+
+/** Marks a package deprecated, with a message and maybe its replacement; its followers hear about it once. */
+export async function setDeprecated(env: Env, actorId: string, t: ToolRef, message: string, replacement: string | null) {
+  const [r] = await env.DB.batch([
+    env.DB.prepare(`UPDATE tools SET status = 'deprecated', deprecated_message = ?, deprecated_replacement = ? WHERE id = ? AND status != 'removed'`)
+      .bind(message, replacement, t.id),
+    audit(env.DB, actorId, "user", "tool.deprecate", "tool", t.id, { message, replacement }),
+  ]);
+  // Changing the message of a package that is already deprecated tells nobody again.
+  if (t.status === "deprecated" || !r?.meta.changes) return;
+  const ref = `${t.namespace}/${t.name}`;
+  await notifyPackageFollowers(env, t.id, {
+    kind: "lifecycle", scope: "lifecycle", actor_id: actorId, path: `/${ref}`,
+    summary: `${ref} is deprecated${replacement ? `; use ${replacement} instead` : ""}: ${message}`,
+  }, LIFECYCLE_LEVELS);
+}
+
+/** Takes the deprecation off a package; its followers hear about it when it was deprecated. */
+export async function clearDeprecated(env: Env, actorId: string, t: ToolRef) {
+  const [r] = await env.DB.batch([
+    env.DB.prepare(`UPDATE tools SET status = 'active', deprecated_message = NULL, deprecated_replacement = NULL WHERE id = ? AND status = 'deprecated'`).bind(t.id),
+    audit(env.DB, actorId, "user", "tool.undeprecate", "tool", t.id),
+  ]);
+  if (!r?.meta.changes) return;
+  const ref = `${t.namespace}/${t.name}`;
+  await notifyPackageFollowers(env, t.id, { kind: "lifecycle", scope: "lifecycle", actor_id: actorId, path: `/${ref}`, summary: `${ref} is no longer deprecated` }, LIFECYCLE_LEVELS);
+}
+
+/** How a takedown's category reads in a follower's notification (never the reviewer's reason, which can be private). */
+const REMOVED_BECAUSE: Record<string, string> = {
+  malware: "as malware", policy: "for breaking the registry's policies", impersonation: "for impersonation", license: "over its license", legal: "for legal reasons", other: "",
+};
+
+/** Tells a package's followers about a takedown: malware reaches everyone who hasn't muted it, as a security warning. */
+async function notifyRemoval(env: Env, actorId: string, t: ToolRef, version: string | null, category: string) {
+  const ref = `${t.namespace}/${t.name}`;
+  const malware = category === "malware";
+  const what = `${ref}${version ? ` ${version}` : ""} was taken down${REMOVED_BECAUSE[category] ? ` ${REMOVED_BECAUSE[category]}` : ""}`;
+  await notifyPackageFollowers(env, t.id, {
+    kind: malware ? "security" : "lifecycle", scope: malware ? "security" : "lifecycle", actor_id: actorId, path: `/${ref}`,
+    summary: malware ? `${what}; uninstall it with \`ot uninstall ${ref}\`` : what,
+  }, malware ? SECURITY_LEVELS : LIFECYCLE_LEVELS);
 }
 
 /** Removal is for malware and policy violations: the version stops resolving and is listed on the transparency page. */
@@ -103,6 +152,7 @@ export async function removeVersion(env: Env, actorId: string, t: ToolRef, versi
   // Takedowns apply to backups: the mirror stops serving them now, and they are deleted after 14 days.
   await scheduleDeletion(env, t.id, versionId, now);
   await sendEmail(env, { to: await ownerEmails(env, t.namespace_id), kind: "removed", key: `removed:${t.id}:${version ?? "all"}`, ...templates.removed(env, ref, version, category, reason) });
+  await notifyRemoval(env, actorId, t, version, category);
   return { ok: true as const };
 }
 

@@ -10,6 +10,7 @@ import * as osintverse from "../hosts/osintverse";
 import { authorizeDevice, devicePage, deviceRoutes, pollOsintverseDevice, startOsintverseDevice } from "./device";
 import { ALL_SCOPES, enforceScopes, parseScopes, USER_SCOPES } from "../scopes";
 import { communityRoles } from "../community";
+import { hiddenScopes, visibleScopeSql } from "../inbox";
 import { findToken, restrictedRouteAllowed, TOKEN_PREFIX } from "../lib/tokens";
 
 export type Provider = "github" | "gitlab" | "osintverse";
@@ -122,10 +123,12 @@ export async function signIn(
   const stmts: D1PreparedStatement[] = [];
   if (!userId) {
     userId = ulid(now);
-    // The public handle is the login, made unique across providers with the end of the user's ID.
+    // The public handle is the login, made unique across providers with the end of the user's ID. Handles people had
+    // before (handle_aliases) stay theirs.
     stmts.push(db.prepare(
       `INSERT INTO users (id, login, name, email, avatar_url, created_at, handle) VALUES (?1, ?2, ?3, ?4, ?5, ?6,
-         CASE WHEN EXISTS (SELECT 1 FROM users WHERE handle = lower(?2)) THEN lower(?2) || '-' || lower(substr(?1, -4)) ELSE lower(?2) END)`,
+         CASE WHEN EXISTS (SELECT 1 FROM users WHERE handle = lower(?2)) OR EXISTS (SELECT 1 FROM handle_aliases WHERE handle = lower(?2))
+           THEN lower(?2) || '-' || lower(substr(?1, -4)) ELSE lower(?2) END)`,
     ).bind(userId, who.login, who.name, who.email, who.avatarUrl, now));
   } else {
     const has = await db.prepare(`SELECT 1 FROM accounts WHERE user_id = ? AND provider = ?`).bind(userId, p).first();
@@ -313,13 +316,15 @@ export function authRoutes(app: App) {
   // ---------- me ----------
   app.get("/me", async (c) => {
     const u = requireUser(c);
+    // Unread items in the inbox, without the kinds the person keeps out of it.
+    const visible = visibleScopeSql(await hiddenScopes(c.env, u.id));
     const [accounts, namespaces, me, roles] = await Promise.all([
       c.env.DB.prepare(`SELECT provider, login FROM accounts WHERE user_id = ? ORDER BY provider`).bind(u.id).all(),
       c.env.DB.prepare(
         `SELECT n.name, n.status, n.verified, m.role FROM namespace_members m JOIN namespaces n ON n.id = m.namespace_id WHERE m.user_id = ? ORDER BY n.name`,
       ).bind(u.id).all(),
-      c.env.DB.prepare(`SELECT handle, profile_hidden, (SELECT COUNT(*) FROM inbox WHERE user_id = users.id AND read_at IS NULL) AS unread FROM users WHERE id = ?`).bind(u.id)
-        .first<{ handle: string | null; profile_hidden: number | null; unread: number }>(),
+      c.env.DB.prepare(`SELECT handle, profile_hidden, (SELECT COUNT(*) FROM inbox WHERE user_id = users.id AND read_at IS NULL AND ${visible.sql}) AS unread FROM users WHERE id = ?`)
+        .bind(...visible.binds, u.id).first<{ handle: string | null; profile_hidden: number | null; unread: number }>(),
       communityRoles(c.env, u),
     ]);
     return c.json({

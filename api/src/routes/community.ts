@@ -8,7 +8,7 @@ import { cached } from "../catalog";
 import { audit, requireUser } from "./auth";
 import { requireAdmin, requireReviewer } from "./review";
 import { toolByRef, type ToolRef } from "../trust";
-import { notify } from "../inbox";
+import { FOLLOW_LEVELS, notify, type FollowLevel } from "../inbox";
 import {
   addComment, canTriage, communityRoles, communityStatus, confirm, createIssue, deletePost, editPost, EDIT_WINDOW, fileSystemIssue, FLAG_KINDS, flagPost, FLAG_REASONS,
   indexable, ISSUE_KINDS, ISSUE_STATUSES, issueByNumber, issueInput, moderate, OPEN_STATUSES, problemReportInput, renderPost, reportProblem, reportRun, requireModerator,
@@ -281,22 +281,30 @@ export function communityRoutes(app: App) {
 
   // ---------- following a package's releases ----------
 
-  // Whether the signed-in person follows the package's releases.
+  // Whether the signed-in person follows the package, and at which level.
   app.get("/tools/:ns/:name/follow", async (c) => {
     const u = requireUser(c);
     const t = await tool(c);
-    const f = await c.env.DB.prepare(`SELECT created_at FROM package_follows WHERE tool_id = ? AND user_id = ?`).bind(t.id, u.id).first<{ created_at: number }>();
+    const f = await c.env.DB.prepare(`SELECT level, created_at FROM package_follows WHERE tool_id = ? AND user_id = ?`).bind(t.id, u.id).first<{ level: FollowLevel; created_at: number }>();
     c.header("Cache-Control", "private, no-store");
-    return c.json({ following: !!f, followed_at: f?.created_at ?? null });
+    return c.json({ following: !!f, level: f?.level ?? null, followed_at: f?.created_at ?? null });
   });
 
-  // Follow: an inbox item (and an email, per the "releases" preference) for each new version that becomes the latest.
+  // Follow, or change how much reaches you: {level} is all (new versions, lifecycle changes, security warnings, the
+  // default), releases (new versions and security warnings) or muted (nothing, even through a followed publisher).
+  // Each item lands in the inbox, and is emailed as that kind's preference says. Left out, the level stays as it was.
   app.put("/tools/:ns/:name/follow", async (c) => {
     const u = requireUser(c);
     const t = await tool(c);
-    await c.env.DB.prepare(`INSERT INTO package_follows (tool_id, user_id, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING`).bind(t.id, u.id, Date.now()).run();
+    const b = await body<{ level: unknown }>(c);
+    if (b.level !== undefined && !(FOLLOW_LEVELS as readonly unknown[]).includes(b.level)) apiError(400, "invalid_body", `level must be one of: ${FOLLOW_LEVELS.join(", ")}`);
+    const level = (b.level as FollowLevel | undefined) ?? null;
+    const f = await c.env.DB.prepare(
+      `INSERT INTO package_follows (tool_id, user_id, level, created_at) VALUES (?1, ?2, COALESCE(?3, 'all'), ?4)
+       ON CONFLICT (tool_id, user_id) DO UPDATE SET level = COALESCE(?3, level) RETURNING level`,
+    ).bind(t.id, u.id, level, Date.now()).first<{ level: FollowLevel }>();
     c.header("Cache-Control", "private, no-store");
-    return c.json({ following: true });
+    return c.json({ following: true, level: f?.level ?? level ?? "all" });
   });
 
   // Unfollow works for any package someone follows, even one removed since.
