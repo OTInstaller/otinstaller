@@ -69,7 +69,7 @@ only pipx packages run, with `--native`.
 | `otlite extract <tool or path>`, `--case` | `ot extract <tool or path>`, `--case` | Emails, domains, IPs and URLs from every saved output (not only `.txt`), plus the entities in the sidecars, grouped by type |
 | `otlite diff <tool> <target>`, `--case` | `ot diff <tool> <target>`, `--case` | Compares the two most recent runs' lines and entities. Line order is ignored, so a tool that lists results in a new order shows no change |
 | `otlite check-updates` | `ot outdated` | Installed and latest version of each package, and whether it was removed from the registry |
-| `otlite update <tool>`, `--all` | `ot update <namespace/name>`, `--all` | Installs the latest published version, with the same signature and trust checks as `ot install`. `ot install <namespace/name>@<version>` pins one |
+| `otlite update <tool>`, `--all` | `ot update <namespace/name>`, `--all` | Installs the latest published version, with the same signature and trust checks as `ot install`. `ot install <namespace/name>@<version>` pins one (holds it: `ot update --all` leaves it there) |
 | `otlite remove <tool>` | `ot uninstall <namespace/name>` | |
 | `otlite remove --all` | none | Uninstall one by one |
 | `otlite keys check` | `ot keys list`, `ot doctor` | `ot keys set NAME` stores a key (value from stdin); `ot run` names a missing required key and exits 3 |

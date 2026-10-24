@@ -244,8 +244,9 @@ func (s *Session) DecideRun(m *manifest.Manifest, values map[string]string) Deci
 	return Decision{Verdict: Ask, Class: class, Key: key, Reason: "needs your consent: " + strings.Join(Describe(m), "; ")}
 }
 
-// DecideInstall is the policy's answer for installing a package.
-func (s *Session) DecideInstall(ref string) Decision {
+// DecideInstall is the policy's answer for installing a version of a package. A session approval covers that version
+// only, so "allow for this session" never covers an update the person hasn't seen.
+func (s *Session) DecideInstall(ref, version string) Decision {
 	if d, no := s.refused(); no {
 		return d
 	}
@@ -254,6 +255,9 @@ func (s *Session) DecideInstall(ref string) Decision {
 		return Decision{Verdict: Refuse, Code: "tool_not_allowed", Reason: why}
 	}
 	key := "install " + ref
+	if version != "" {
+		key += "@" + version
+	}
 	if p.AllowInstall == "allow" {
 		return Decision{Verdict: Allow, Reason: "installs are allowed (allow_install in " + PolicyPath() + ")"}
 	}

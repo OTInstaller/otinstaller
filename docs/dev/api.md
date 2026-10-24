@@ -47,7 +47,7 @@ anonymous GET.
 
 ## 1. Routes
 
-Total: **187 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
+Total: **188 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
 call; the `for` loops in `routes/trust.ts` (`yank`, `unyank`), `routes/community.ts` (a thread's subscription) and
 `routes/requests.ts` (a vote, a request's subscription) register two each. The mirror Worker's OCI routes are in
 section 6 and are not in this count. There is no route for stars, although the rate-limit comment in `index.ts`
@@ -78,6 +78,7 @@ in code; a Cloudflare rate-limiting rule on the zone covers `/mcp`, `/v1/tools*`
 | GET | `/namespaces` | none | `cached(c, 600)` | routes/profiles.ts | Publishers with a visible package (at most 500), most installed first, for the sitemap and llms.txt |
 | GET | `/namespaces/:ns` | none | `cached(c, 300)` | routes/profiles.ts | The profile (`effectiveProfile()`: host values with the owner's overrides), `stats` and visible tools (with `published_at`). `pending_review` namespaces answer 200 with only the handle and host links and no tools; `rejected`/`suspended` 404 |
 | GET | `/namespaces/:ns/activity` | none | `cached(c, 300)` | routes/profiles.ts | `?limit` (1–100, 30). Public audit events of visible packages: `version.published`, `version.yank`/`unyank`, `tool.deprecate`/`undeprecate`, `transfer.complete` |
+| GET | `/latest` | none | `cached(c, 3600)` | index.ts | Every visible package (`VISIBLE`, not `LISTED`): `{packages: [{ref, kind, latest, status, health, replacement?, source_unavailable?}], moved: [{from, to}]}` (`catalog.ts:latestVersions`). `ot`'s daily update note and MCP `list_installed` read it; the same answer for everyone |
 | GET | `/facets` | none | `cached(c, 600)` | index.ts | How many visible packages match each facet value: `inputs`, `outputs`, `categories`, `runtimes`, `no_keys`. `kind` is tool (default) or guide; counts ignore other filters |
 | GET | `/pivots` | none | `cached(c, 600)` | index.ts | `from=` comma list of entity types; follows `spec/pivots.json` to the input types each can feed (`inputs`, plus `unmapped` for types with none); top 10 non-broken tools per usable type |
 | GET | `/activity` | none | `cached(c, 300)` | index.ts → activity.ts | Public events from `audit_log` (published with `new_package`/`has_notes`, yanked, unyanked, deprecated with `replacement`, undeprecated, transferred) of visible, listed packages; `limit` 1–100 (30), `before` (ms), `kind`, `input`, `namespace`, `events` (`registry` default; `community` adds `issue_confirmed`/`issue_fixed` with `number` and `issue_kind`, and `request_accepted`/`request_published` with `number` and `tool`, worded from fields; `all`); `next_before` for paging; `published` events of versions under a week old carry `first_week`. Never carries reasons, actors or anything people wrote |
