@@ -48,7 +48,7 @@ function load(files: Record<string, string>, section: MarkdownPage["section"], o
 }
 
 /** Every docs page, in the order of the docs nav; pages not in that list follow alphabetically. */
-export const DOC_PAGES = load(docs, "docs", ["index", "getting-started", "cli", "agents", "mcp-tools", "automation", "results", "api", "manifest", "publishing", "guides", "community", "errors", "security", "faq"]);
+export const DOC_PAGES = load(docs, "docs", ["index", "getting-started", "cli", "updates", "agents", "mcp-tools", "automation", "results", "api", "manifest", "publishing", "guides", "community", "errors", "security", "faq"]);
 /** Every Markdown policy page (transparency is a live page and has no twin). */
 export const POLICY_PAGES = load(policies, "policy", ["acceptable-use", "terms", "privacy", "takedown"]);
 

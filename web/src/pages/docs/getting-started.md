@@ -23,7 +23,7 @@ irm https://get.otinstaller.com/ot.ps1 | iex
 Archives for every platform, and deb and rpm packages, are on [GitHub Releases](https://github.com/OTInstaller/ot/releases),
 with `checksums.txt` signed by the release key. Homebrew and Scoop packages are coming after the beta.
 
-Later, `ot self-update` brings in new releases after checking their signature. Then check your machine:
+Later, `ot self-update` brings in new releases after checking their signature, and `ot update --all` updates your tools ([Keeping tools up to date](/docs/updates)). Then check your machine:
 
 ```sh
 ot doctor

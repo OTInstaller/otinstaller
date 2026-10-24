@@ -458,9 +458,22 @@ func (a *App) install(ctx context.Context, ref pkgRef, native bool) (*state.Inst
 	if err != nil {
 		return nil, err
 	}
+	prev := st.Installed[inst.Ref]
+	if a.AgentMode {
+		// Only the person holds or releases a version; an agent's install keeps whatever they chose.
+		inst.Held = prev != nil && prev.Held
+	} else {
+		inst.Held = ref.LocalPath == "" && ref.Version != ""
+	}
 	st.Installed[inst.Ref] = inst
 	if err := st.Save(); err != nil {
 		return nil, err
+	}
+	switch {
+	case inst.Held && !(prev != nil && prev.Held && prev.Version == inst.Version):
+		fmt.Fprintf(a.Err, "note: holding %s at %s; `ot update --all` leaves it there, `ot update %s` moves it to the latest version\n", inst.Ref, inst.Version, inst.Ref)
+	case !inst.Held && prev != nil && prev.Held && !a.AgentMode:
+		fmt.Fprintf(a.Err, "note: %s is no longer held; `ot update --all` keeps it current\n", inst.Ref)
 	}
 	if ref.LocalPath == "" && a.Config.TelemetryEnabled() {
 		pctx, cancel := context.WithTimeout(ctx, 3*time.Second)
@@ -519,7 +532,7 @@ func (a *App) listCmd() *cobra.Command {
 				if i.Native {
 					rt += " (native)"
 				}
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", i.Ref, i.Version, rt, i.InstalledAt.Format("2006-01-02"))
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", i.Ref, i.Version+yesNo(i.Held, " (held)", ""), rt, i.InstalledAt.Format("2006-01-02"))
 			}
 			return tw.Flush()
 		},
@@ -563,11 +576,12 @@ type installRecord struct {
 	Artifact    string    `json:"artifact"`
 	Signer      string    `json:"signer,omitempty"`
 	FromBackup  bool      `json:"from_backup"`
+	Held        bool      `json:"held"` // installed at an exact version: `ot update --all` leaves it
 	InstalledAt time.Time `json:"installed_at"`
 }
 
 func recordOf(i *state.Installed) installRecord {
-	return installRecord{i.Ref, i.Version, i.Runtime, i.Native, i.Artifact, i.Signer, i.FromBackup, i.InstalledAt}
+	return installRecord{i.Ref, i.Version, i.Runtime, i.Native, i.Artifact, i.Signer, i.FromBackup, i.Held, i.InstalledAt}
 }
 
 func writeJSON(w io.Writer, v any) error {
