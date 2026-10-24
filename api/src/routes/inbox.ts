@@ -1,6 +1,9 @@
-// A person's notifications: the inbox, email preferences, and the one-click unsubscribe links in community emails.
-// Writing and delivering items live in ../inbox.ts.
-import type { App } from "../env";
+// A person's notifications: the inbox, email preferences, what they follow (packages, publishers and input types),
+// and the one-click unsubscribe links in community emails. Writing and delivering items live in ../inbox.ts; following
+// one package is in ./community.ts beside its issues.
+import type { Context } from "hono";
+import schema from "../../../spec/schema/v1.json";
+import type { App, AppEnv } from "../env";
 import { apiError } from "../lib/errors";
 import { requireUser } from "./auth";
 import { PREFS, PREF_SCOPES, unsubscribe, type Pref } from "../inbox";
@@ -48,8 +51,51 @@ export function inboxRoutes(app: App) {
        FROM package_follows f JOIN tools t ON t.id = f.tool_id JOIN namespaces n ON n.id = t.namespace_id LEFT JOIN versions v ON v.id = t.latest_version_id
        WHERE f.user_id = ? AND f.created_at < ? ORDER BY f.created_at DESC LIMIT 100`,
     ).bind(u.id, before).all<{ ref: string; kind: string; status: string; latest_version: string | null; followed_at: number }>()).results;
+    // Publishers and input types are few; they come whole on the first page.
+    const others = before === Number.MAX_SAFE_INTEGER
+      ? (await c.env.DB.prepare(`SELECT kind, target, created_at FROM follows WHERE user_id = ? ORDER BY created_at DESC`).bind(u.id)
+        .all<{ kind: "publisher" | "input"; target: string; created_at: number }>()).results
+      : [];
     c.header("Cache-Control", "private, no-store");
-    return c.json({ follows: rows, next_before: rows.length === 100 ? rows.at(-1)!.followed_at : null });
+    return c.json({
+      follows: rows, next_before: rows.length === 100 ? rows.at(-1)!.followed_at : null,
+      publishers: others.filter((f) => f.kind === "publisher").map((f) => ({ name: f.target, followed_at: f.created_at })),
+      inputs: others.filter((f) => f.kind === "input").map((f) => ({ type: f.target, followed_at: f.created_at })),
+    });
+  });
+
+  // ---------- following a publisher or an input type ----------
+
+  // Whether the signed-in person follows a publisher (every new version and new package) or an input type (new
+  // packages that take it).
+  app.get("/me/follows/:kind/:target", async (c) => {
+    const u = requireUser(c);
+    const { kind, target } = await followTarget(c, false);
+    const f = await c.env.DB.prepare(`SELECT created_at FROM follows WHERE user_id = ? AND kind = ? AND target = ?`).bind(u.id, kind, target).first<{ created_at: number }>();
+    c.header("Cache-Control", "private, no-store");
+    return c.json({ following: !!f, followed_at: f?.created_at ?? null });
+  });
+
+  app.put("/me/follows/:kind/:target", async (c) => {
+    const u = requireUser(c);
+    const { kind, target } = await followTarget(c, true);
+    // Following again what you already follow answers as before, even at the limit.
+    const mine = (await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM follows WHERE user_id = ? AND NOT (kind = ? AND target = ?)`)
+      .bind(u.id, kind, target).first<{ n: number }>())?.n ?? 0;
+    if (mine >= MAX_FOLLOWS) apiError(429, "too_many_follows", `you follow ${MAX_FOLLOWS} publishers and input types already`, "stop following some in your notification settings");
+    await c.env.DB.prepare(`INSERT INTO follows (user_id, kind, target, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING`)
+      .bind(u.id, kind, target, Date.now()).run();
+    c.header("Cache-Control", "private, no-store");
+    return c.json({ following: true });
+  });
+
+  // Unfollowing works for a publisher that is gone since.
+  app.delete("/me/follows/:kind/:target", async (c) => {
+    const u = requireUser(c);
+    const { kind, target } = await followTarget(c, false);
+    await c.env.DB.prepare(`DELETE FROM follows WHERE user_id = ? AND kind = ? AND target = ?`).bind(u.id, kind, target).run();
+    c.header("Cache-Control", "private, no-store");
+    return c.json({ following: false });
   });
 
   app.put("/me/email-prefs", async (c) => {
@@ -85,4 +131,26 @@ export function inboxRoutes(app: App) {
   });
 
   app.get("/unsubscribe", (c) => c.redirect(`${c.env.SITE_URL}/unsubscribe?${new URL(c.req.url).searchParams}`, 302));
+}
+
+/** The input types a tool or guide can take; the parameter types (string, integer, boolean, enum) aren't followable. */
+const FOLLOWABLE_INPUTS = new Set((schema.$defs.inputType.enum as string[]).filter((t) => !["string", "integer", "boolean", "enum"].includes(t)));
+
+/** Publishers and input types one person may follow. */
+const MAX_FOLLOWS = 200;
+
+/** The publisher or input type a follow route names; a new follow needs a publisher that is live. */
+async function followTarget(c: Context<AppEnv>, live: boolean): Promise<{ kind: "publisher" | "input"; target: string }> {
+  const kind = c.req.param("kind");
+  const target = c.req.param("target")!;
+  if (kind === "input") {
+    if (!FOLLOWABLE_INPUTS.has(target)) apiError(404, "input_type_not_found", `${target} is not an input type tools take`);
+    return { kind, target };
+  }
+  if (kind !== "publisher") apiError(404, "not_found", "you can follow a publisher or an input type here; follow a package on its page");
+  if (live) {
+    const n = await c.env.DB.prepare(`SELECT status FROM namespaces WHERE name = ?`).bind(target).first<{ status: string }>();
+    if (!n || n.status !== "active") apiError(404, "namespace_not_found", `${target} is not a publisher in the registry`);
+  }
+  return { kind, target };
 }

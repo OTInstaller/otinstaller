@@ -48,7 +48,7 @@ anonymous GET.
 
 ## 1. Routes
 
-Total: **194 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
+Total: **197 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
 call; the `for` loops in `routes/trust.ts` (`yank`, `unyank`), `routes/community.ts` (a thread's subscription) and
 `routes/requests.ts` (a vote, a request's subscription) register two each. The mirror Worker's OCI routes are in
 section 6 and are not in this count. There is no route for stars, although the rate-limit comment in `index.ts`
@@ -257,7 +257,10 @@ Notifications (`routes/inbox.ts`, logic in `inbox.ts`, 6 routes):
 | GET | `/me/inbox` | user | no-store | routes/inbox.ts | 50 newest items with `unread` and `before` paging |
 | POST | `/me/inbox/read` | user | - | routes/inbox.ts | `{ids?}`; all when none are given |
 | GET / PUT | `/me/email-prefs` | user | no-store | routes/inbox.ts | `community`, `owner_issues` and `releases`: `immediate` / `daily` / `off` |
-| GET | `/me/follows` | user | no-store | routes/inbox.ts | The packages the person follows for releases (`ref`, `kind`, `status`, `latest_version`, `followed_at`), 100 at a time, newest first, `before` paging |
+| GET | `/me/follows` | user | no-store | routes/inbox.ts | The packages the person follows for releases (`ref`, `kind`, `status`, `latest_version`, `followed_at`), 100 at a time, newest first, `before` paging; on the first page also `publishers` (`name`, `followed_at`) and `inputs` (`type`, `followed_at`) |
+| GET | `/me/follows/:kind/:target` | user | no-store | routes/inbox.ts | Whether the person follows a publisher or an input type (`following`, `followed_at`); another `kind` 404 `not_found`, an input type tools don't take 404 `input_type_not_found` |
+| PUT | `/me/follows/:kind/:target` | user (feedback) | no-store | routes/inbox.ts | Follow a publisher (an active namespace, else 404 `namespace_not_found`) or an input type; at most 200, else 429 `too_many_follows` |
+| DELETE | `/me/follows/:kind/:target` | user (feedback) | no-store | routes/inbox.ts | Stop following; works for a namespace that is gone |
 | GET | `/tools/:ns/:name/follow` | user | no-store | routes/community.ts | `{following, followed_at}` |
 | PUT / DELETE | `/tools/:ns/:name/follow` | user, feedback | no-store | routes/community.ts | Follow (404/410 for a package that isn't live) or stop following a package's releases; DELETE works for a removed package too |
 | POST | `/unsubscribe` | none (signed link) | no-store | routes/inbox.ts | `u`, `s`, `t` from the query or a JSON body (RFC 8058 one-click); 400 `invalid_unsubscribe_link` |
@@ -284,7 +287,7 @@ and 3 in a week, counted with the website's broken reports, file a system issue 
 `POST /tools/:ns/:name/problem-reports` (anonymous, `feedback`, no-store; `community.ts:reportProblem`): what a tool
 page's **Report a problem** sends without a sign-in, `{kind: broken|outdated, version?, platform?}`. The platform must
 be `linux|darwin|windows` with an optional `/amd64|/arm64`, else it is dropped; outdated always counts against the
-latest version and keeps no platform. It adds to `problem_signals` (migration 0030) once per address, version and kind
+latest version and keeps no platform. It adds to `problem_signals` (migration 0032) once per address, version and kind
 a day; broken shares `ot`'s `runsignal` key and its unconfirmed issue, outdated (key `outdatedsignal`) files
 `outdated_signals:<version>` at 3 in a week unless the package has another open outdated issue. Answers 201
 `{counted}`; 400 `invalid_body`, 404 `version_not_found`, 429 `too_many_posts`.
@@ -376,6 +379,16 @@ App's installation on `osintverse-community` (anonymous without one). With `UPST
 closed as fixed when the pin catches up) and one per upstream change (`upstream:<state>`), and tells admins about a
 license that no longer allows redistribution. `GET /tools/:ns/:name` gains `upstream` (`publicWatch`, plus `bump`).
 
+The build watcher (`build-watch.ts`, no routes of its own): nightly `queueBuildChecks` queues `{buildCheckToolId}` for
+every Docker package with a source in `osintverse-community`. `checkBuild` compares a first-party tool's
+`requirements.txt` pins with PyPI (`dependency_watch`) and, under `UPSTREAM_WATCH`, files `dependency:<pkg>==<ver>`
+issues, opens one `otinstaller/deps-<hash>` pull request per set of releases (`bump_prs.kind = 'dependency'`) and in
+auto mode releases it on its own; and looks up the base image's Docker Hub digest (`base_images`, `base_watch`).
+`REBUILD_WATCH=rebuild` dispatches the release workflow again (`kind = 'rebuild'`, `pr_number` 0) when the digest
+changed, the latest version's vuln scan is `warn`, main is still at its commit and `tools.auto_release` is on; at most
+every 14 days per package and five a day. `GET /tools/:ns/:name` gains `dependencies`, `base_image` and `bump` (any
+kind; `upstream.bump` stays the upstream kind only). Dependency updates and rebuilds use the bump routes below.
+
 Bump pull requests (`bumps.ts`, 3 routes in `routes/upstream.ts`): with `UPSTREAM_WATCH=prs` (issues mode plus this)
 and the community bot set up, `maybeOpenBump` opens `otinstaller/bump-<release>` in the wrapper repository three days
 after a stable release (`upstreamSemver` not null), once per release (`bump_prs`; older open ones are closed, on
@@ -389,8 +402,8 @@ failed scan, and `sweepBumps` on the 15-minute cron: rejected version or publish
 
 | Method | Path | Auth | Caching | Defined in | Notes |
 | --- | --- | --- | --- | --- | --- |
-| GET | `/packages/:ns/:name/bump` | user | no-store | routes/upstream.ts | The current bump (`currentBump`: open, merged, failed, or released in the last 14 days) with `status`, `released_version`, `auto`, `merged_at`, `released_at`, `attempts`, and for people who can release it `error_code`, `error`, `run_url`; `auto_release_at` in auto mode; `can_release`, `auto_release`, `mode` |
-| POST | `/packages/:ns/:name/pulls/:number/release` | maintainer or reviewer, publish | no-store | routes/upstream.ts | `releaseBumpAs`: 403 `not_package_maintainer`; 404 `bump_not_found` (released, closed or unknown); 409 `bump_in_progress` while merged; an open pull request whose files aren't `pinOnly` needs a reviewer (403 `not_pin_only`); squash-merges an open one (409 `bump_not_mergeable`, and the bump stays open), a failed one is released again without merging; then dispatches the release workflow or commits the version and tags `v<version>` for wheels (`wrapperVersion`); a failure to start answers 503 `github_failed` and leaves the bump `failed`. Answers `{merged, upstream_version, version, attempt}` |
+| GET | `/packages/:ns/:name/bump` | user | no-store | routes/upstream.ts | The current bump of any `kind` (`currentBump`: open, merged, failed, or released in the last 14 days) for a wrapper or any package with a source, with `status`, `released_version`, `auto`, `merged_at`, `released_at`, `attempts`, and for people who can release it `error_code`, `error`, `run_url`; `auto_release_at` in auto mode; `can_release`, `auto_release`, `mode` |
+| POST | `/packages/:ns/:name/pulls/:number/release` | maintainer or reviewer, publish | no-store | routes/upstream.ts | `:number` 0 is a rebuild (only a failed one is released again); dependency updates and rebuilds release `nextPatch`. `releaseBumpAs`: 403 `not_package_maintainer`; 404 `bump_not_found` (released, closed or unknown); 409 `bump_in_progress` while merged; an open pull request whose files aren't `pinOnly` needs a reviewer (403 `not_pin_only`); squash-merges an open one (409 `bump_not_mergeable`, and the bump stays open), a failed one is released again without merging; then dispatches the release workflow or commits the version and tags `v<version>` for wheels (`wrapperVersion`); a failure to start answers 503 `github_failed` and leaves the bump `failed`. Answers `{merged, upstream_version, version, attempt}` |
 | PUT | `/packages/:ns/:name/auto-release` | maintainer or reviewer, manage | no-store | routes/upstream.ts | `{enabled}`: whether auto mode may release this package's bumps (`tools.auto_release`), audited `bump.auto_on`/`bump.auto_off` |
 
 Change proposals (`proposals.ts`, 9 routes in `routes/proposals.ts`, table `change_proposals`): a community wrapper's

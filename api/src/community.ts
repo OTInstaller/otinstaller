@@ -1,7 +1,7 @@
 // Community issues and discussion on packages: who may post and triage, how posts are screened, rendered and
 // moderated, "works for me" confirmations, flags, problems reported without a sign-in, and the system issues the
 // registry files itself (the upstream watcher, many failed or out-of-date reports). Routes live in
-// routes/community.ts; the tables are in migrations 0016 and 0030.
+// routes/community.ts; the tables are in migrations 0016 and 0032.
 import type { Env, User } from "./env";
 import { ulid } from "./lib/crypto";
 import { apiError, rateLimited, windowRetry } from "./lib/errors";

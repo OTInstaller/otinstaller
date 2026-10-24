@@ -22,6 +22,7 @@ import { ownerEmails, sendEmail, templates } from "./notify";
 import { COMMUNITY_NAMESPACE, detectQueued, failImport, heldManifestFor, parseRepoRef } from "./imports";
 import { markSubmittedTool } from "./submissions";
 import { checkUpstream } from "./upstream";
+import { checkBuild } from "./build-watch";
 import { captureNotes } from "./changelog";
 import { bundleHost, deleteBundle } from "./direct";
 
@@ -381,6 +382,7 @@ export async function handleBatch(batch: MessageBatch<PublishMessage>, env: Env)
       else if ("backupVersionId" in body) await backupVersion(env, body.backupVersionId);
       else if ("profileNamespaceId" in body) await syncProfile(env, body.profileNamespaceId);
       else if ("upstreamCheckToolId" in body) await checkUpstream(env, body.upstreamCheckToolId, Date.now(), { nightly: true });
+      else if ("buildCheckToolId" in body) await checkBuild(env, body.buildCheckToolId, Date.now(), { nightly: true });
       else if ("mirrorSweepRepo" in body) await sweepMirrorRepo(env, body.mirrorSweepRepo);
       else await processJob(env, body.jobId);
       msg.ack();
