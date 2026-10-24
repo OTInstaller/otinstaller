@@ -41,6 +41,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0025 | `0025_trusted_publishers.sql` | Trusted publishing (`ot publish --oidc`): new table `trusted_publishers` (indexes `trusted_publishers_repo`, `trusted_publishers_namespace`); `api_tokens` + `namespace_id` (FK namespaces, cascade), `package`, `trusted_publisher_id` (FK, set null), `oidc_json`, `jti` (unique index `api_tokens_jti`) for the restricted CI tokens; `publish_jobs` + `trusted_publisher_id` (FK, set null), `ci_json`. Apply before an API that selects these columns is deployed: `findToken` reads them on every token request, in the API and the mirror. |
 | 0026 | `0026_request_threads.sql` | New tables `request_comments` (replies on tool requests, moderated like issue comments) and `request_subscriptions` (backfilled with each request's requester); `tool_requests` + `comment_count`, `locked_at`; `content_flags` rebuilt so `target_kind` also takes `request` and `request_comment`; indexes `request_comments_request`, `request_comments_held` (partial), `request_comments_author`, and `content_flags_open` again. |
 | 0027 | `0027_change_proposals.sql` | New table `change_proposals` (a maintainer's change to a community package beyond its pin: the pull request, the proposer's title and note, the files it writes, the version, whether it builds, the reviewer's checks, status, decision and released version); indexes `change_proposals_status`, `change_proposals_tool`, `change_proposals_proposer`. |
+| 0028 | `0028_bump_outcomes.sql` | `bump_prs` rebuilt: `status` also takes `released` and `failed`; new columns `auto`, `merge_sha`, `merged_at`, `run_url`, `attempts`, `error_code`, `error`, `released_at` (merged rows whose version is published become `released`); index `bump_prs_inflight (status, merged_at)`; `tools` + `auto_release` (INTEGER NN default 1: whether `UPSTREAM_WATCH=auto` may release the package's bumps). |
 
 ---
 
@@ -478,11 +479,18 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
   every change) and `locked_at` (set by a triager, or nightly by `lockStaleThreads` 30 days after a published or
   declined request's `updated_at`; replies move `updated_at`).
 
-### 2.12f Bump pull requests (0022)
+### 2.12f Bump pull requests (0022, 0028)
 
 - `bump_prs`: PK `(tool_id, version)` (upstream's release), `pr_number`, `url`, `branch`, `status` (open | merged |
-  closed), `released_version`, `merged_by`, `created_at`, `updated_at`. Written by `bumps.ts:maybeOpenBump` and
-  `releaseBump`.
+  released | failed | closed), `released_version` (the version the latest attempt releases), `merged_by` (null when
+  the registry released it), `auto`, `merge_sha`, `merged_at` (the latest attempt), `run_url` (a failed release
+  workflow run), `attempts`, `error_code`, `error`, `released_at`, `created_at`, `updated_at`. Written by
+  `bumps.ts:maybeOpenBump`, `releaseBump`, `settleBump` and `maybeAutoRelease`.
+  - Transitions: open → merged (guarded, before GitHub is called; back to open when the merge fails) → released |
+    failed; failed → merged (released again, no merge); open | failed → closed (superseded by a newer release, or
+    closed on GitHub, seen by auto mode).
+- `tools.auto_release` (0028): 1 (default) lets `UPSTREAM_WATCH=auto` release the package's pin-only bumps; maintainers
+  switch it with `PUT /packages/:ns/:name/auto-release`.
 
 ### 2.12g Change proposals (0027)
 

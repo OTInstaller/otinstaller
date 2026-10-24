@@ -12,6 +12,7 @@ import { announceVersion } from "./community";
 import { linkPublished } from "./requests";
 import { firstReleasePublished, firstReleaseScanned } from "./submissions";
 import { recordHostedImage } from "./backups";
+import { settleBump } from "./bumps";
 
 export const SCAN_TOKEN_TTL = 60 * 60 * 1000;
 const PARAMETER_TYPES = new Set(["string", "integer", "boolean", "enum"]);
@@ -283,6 +284,8 @@ export async function applyScanResults(env: Env, v: VersionCtx, scanned: ScanRes
       ...templates.rejected(env, refOf(v), v.version, vd.code, vd.message, retryHint(v)),
     });
     if (v.needs_first_review) await firstReleaseScanned(env, v.tool_id, "failed", `${vd.code}: ${vd.message}`);
+    // A bump's release that failed its scan: its maintainers are told, and it can be released again.
+    await settleBump(env, v.tool_id, v.version, { code: vd.code, message: vd.message }).catch((e) => console.error("settling the bump failed", e));
     return { status: "rejected", verdict: vd };
   }
 
@@ -384,6 +387,8 @@ export async function publishVersion(env: Env, versionId: string, opts: { backup
   await firstReleasePublished(env, v.tool_id).catch((e) => console.error("finishing the submission failed", e));
   // Requests for this tool (its own repository, or the upstream a wrapper packages) are answered.
   await linkPublished(env, v.tool_id).catch((e) => console.error("linking tool requests failed", e));
+  // A bump pull request that released this version is done.
+  await settleBump(env, v.tool_id, v.version, "released").catch((e) => console.error("settling the bump failed", e));
   if (v.kind === "guide" && isLatest) await updateLinkHealth(env, v.tool_id);
   const scan = await db.prepare(`SELECT scan_status FROM versions WHERE id = ?`).bind(versionId).first<{ scan_status: string }>();
   await commitStatus(env, v, "success", `Published ${refOf(v)}@${v.version}`);

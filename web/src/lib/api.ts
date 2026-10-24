@@ -646,12 +646,40 @@ export interface UpstreamWatch {
   /** For commit pins: how many commits upstream's default branch has moved on. */
   commits_behind: number | null;
   checked_at: number | null;
-  /** The community bot's open pull request bumping the pin, on the tool detail only. */
-  bump?: { version: string; number: number; url: string };
+  /** The community bot's pull request bumping the pin, on the tool detail only: open, being released, failed, or released in the last two weeks. */
+  bump?: BumpSummary;
 }
 
+export type BumpStatus = "open" | "merged" | "released" | "failed" | "closed";
+
+/** A bump as the tool page shows it to everyone. */
+export interface BumpSummary {
+  version: string;
+  number: number;
+  url: string;
+  status: BumpStatus;
+  /** The package version the latest attempt releases. */
+  released_version?: string;
+  /** In auto mode, when an open bump goes out on its own (ms). */
+  auto_release_at?: number;
+}
+
+/** GET /packages/:ns/:name/bump: the bump with what went wrong (for the people who can release it). */
+export interface BumpDetail {
+  bump: (Omit<BumpSummary, "released_version" | "auto_release_at"> & {
+    released_version: string | null; auto: boolean; merged_at: number | null; released_at: number | null; attempts: number;
+    error_code?: string | null; error?: string | null; run_url?: string | null; auto_release_at: number | null;
+  }) | null;
+  can_release: boolean;
+  auto_release: boolean;
+  mode: UpstreamMode;
+}
+
+/** What the upstream watcher does with a difference (UPSTREAM_WATCH). */
+export type UpstreamMode = "report" | "issues" | "prs" | "auto";
+
 export interface UpstreamSummary {
-  mode: "report" | "issues";
+  mode: UpstreamMode;
   counts: Record<UpstreamWatch["state"], number>;
   behind: (UpstreamWatch & { ref: string })[];
   checked_at: number | null;
