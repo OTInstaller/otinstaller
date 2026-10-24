@@ -46,7 +46,7 @@ export function requiredScope(method: string, path: string): string | null {
   // requests, their replies and votes. Triage, including deciding and locking requests, is "manage".
   if (p === "/feedback" || p === "/flags" || /^\/comments\/[^/]+$/.test(p)) return "feedback";
   if (p === "/requests" || /^\/requests\/\d+\/(vote|subscription|comments(\/[^/]+)?)$/.test(p)) return "feedback";
-  if (/^\/tools\/[^/]+\/[^/]+\/(reports|confirmations|run-reports|follow|issues(\/\d+(\/(comments|subscription))?)?)$/.test(p)) return "feedback";
+  if (/^\/tools\/[^/]+\/[^/]+\/(reports|confirmations|run-reports|problem-reports|follow|issues(\/\d+(\/(comments|subscription))?)?)$/.test(p)) return "feedback";
   if (p === "/publish" || /^\/(imports|sources)(\/|$)/.test(p) || /^\/packages\/[^/]+\/[^/]+\/(manifest|sync|source|pulls)(\/|$)/.test(p)) return "publish";
   // A submitter changing their submission publishes; withdrawing it and reviewers' decisions are "manage".
   if (method === "PUT" && /^\/submissions\/\d+$/.test(p)) return "publish";

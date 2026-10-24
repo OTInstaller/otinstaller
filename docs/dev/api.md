@@ -33,7 +33,8 @@ are also described in `spec/openapi/v1.json`, served at `/v1/openapi.json`, with
 scope `requiredScope(method, path)` names, or `enforceScopes` answers 403 `insufficient_scope` (with
 `required_scope` and a `WWW-Authenticate: Bearer error="insufficient_scope"` header). The rule, by path: `/auth/*`,
 `/internal/*`, `/webhooks/*`, `/installs` and `/health` need none; `/admin*` needs `staff`; any other GET, HEAD or
-OPTIONS needs `read`; `POST /feedback` and `POST /tools/:ns/:name/reports` need `feedback`; `POST /publish`,
+OPTIONS needs `read`; `POST /feedback` and `POST /tools/:ns/:name/reports`, `run-reports` and `problem-reports` need
+`feedback`; `POST /publish`,
 `/imports*`, `/sources*` and `/packages/:ns/:name/manifest|sync|source*` need `publish`; every other write (including
 `POST /namespaces`) needs `manage`. The session cookie,
 and tokens from before 0013 (`scoped = 0`), are not limited. Every successful non-read request made with a token
@@ -47,7 +48,7 @@ anonymous GET.
 
 ## 1. Routes
 
-Total: **193 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
+Total: **194 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
 call; the `for` loops in `routes/trust.ts` (`yank`, `unyank`), `routes/community.ts` (a thread's subscription) and
 `routes/requests.ts` (a vote, a request's subscription) register two each. The mirror Worker's OCI routes are in
 section 6 and are not in this count. There is no route for stars, although the rate-limit comment in `index.ts`
@@ -220,7 +221,7 @@ Logic in `trusted.ts` and `lib/oidc.ts`; see [architecture.md, flow a3](architec
 
 The beta's staff endpoints (`/admin/feedback`, `/admin/beta-metrics`, `/admin/email-test`) are in 1.10.
 
-### 1.9a Community: issues, confirmations, flags, moderation (`routes/community.ts`, 23)
+### 1.9a Community: issues, confirmations, flags, moderation (`routes/community.ts`, 24)
 
 Logic in `community.ts`. Public reads are cached; everything a person sends is `private, no-store`. Writes by
 people (`feedback` scope) go through `poster()`: a timed-out account gets 403 `posting_blocked`, daily limits answer
@@ -271,13 +272,25 @@ are marked emailed only after a send that did not fail. `purgeInbox` (nightly) d
 
 Internal: `fileSystemIssue(env, toolId, kind, body, dedupeKey, source)` (one issue per dedupe key; updated while open),
 `closeSystemIssue`, `announceVersion` (called by `publishVersion`: "does vX fix this?" on open broken and outdated
-issues) and `versionConfirmations`.
+issues, and `outdated_signals:*` issues about older versions closed as fixed) and `versionConfirmations`.
 
 `POST /tools/:ns/:name/run-reports` (user or anonymous, `feedback`, no-store; `community.ts:reportRun`): what `ot`'s
 failure prompt sends, `{version, exit_code | timed_out, os, arch, engine?, ot_version?}` and nothing else. Signed in
 (20 a day) it joins the version's open broken issue as a "broken" confirmation, or opens one; anonymous (10 a day per
-address) it adds to `run_signals` once per address, version and day, and 3 in a week file a system issue
-(`run_signals:<version>`, "unconfirmed"). 404 `version_not_found` for an unknown version.
+address, shared with `problem-reports`) it adds to `run_signals` once per address, version and day (key `runsignal`),
+and 3 in a week, counted with the website's broken reports, file a system issue (`run_signals:<version>`,
+"unconfirmed"; `fileUnconfirmedBroken`, platforms in code spans). 404 `version_not_found` for an unknown version.
+
+`POST /tools/:ns/:name/problem-reports` (anonymous, `feedback`, no-store; `community.ts:reportProblem`): what a tool
+page's **Report a problem** sends without a sign-in, `{kind: broken|outdated, version?, platform?}`. The platform must
+be `linux|darwin|windows` with an optional `/amd64|/arm64`, else it is dropped; outdated always counts against the
+latest version and keeps no platform. It adds to `problem_signals` (migration 0030) once per address, version and kind
+a day; broken shares `ot`'s `runsignal` key and its unconfirmed issue, outdated (key `outdatedsignal`) files
+`outdated_signals:<version>` at 3 in a week unless the package has another open outdated issue. Answers 201
+`{counted}`; 400 `invalid_body`, 404 `version_not_found`, 429 `too_many_posts`.
+
+Both report routes call `siteOrProgram`: a request whose `Origin` header is present and isn't `SITE_URL` is refused
+with 403 `foreign_origin`, so another website can't make its visitors' browsers send counts. `ot` sends no `Origin`.
 
 Tool requests (`routes/requests.ts`, logic in `requests.ts`, 13 routes):
 
@@ -538,6 +551,8 @@ count is greater than `limit`. Windows older than a day are deleted nightly by `
 | Writes by signed-in non-staff users | 30 per 60 s | `write` / user id | 429 `too_many_requests` | index.ts |
 | Reports, signed in | 20 per 86 400 000 ms (day) | `report-user` / user id | 429 `too_many_reports` | routes/trust.ts |
 | Reports, anonymous | 5 per 3 600 000 ms (hour) | `report-ip` / `cf-connecting-ip` (or `"unknown"`) | 429 `too_many_reports` | routes/trust.ts |
+| Run and problem reports, anonymous | 10 per 86 400 000 ms (day), `run-reports` and `problem-reports` together | `runreport-ip` / `cf-connecting-ip` (or `"unknown"`) | 429 `too_many_posts` | community.ts (`anonymousLimit`) |
+| Counting a run or problem report | 1 per 86 400 000 ms (day); over it the report is accepted but not counted | `runsignal` (broken, shared) or `outdatedsignal` / `<address>|<version id>` | none (`counted: false`) | community.ts |
 | Install pings | 1 per day per address and version (extra pings answer 204 and are not counted) | `install` / `cf-connecting-ip` + version id | none (204) | index.ts |
 | Feedback, signed in | 10 per hour | `feedback-user` / user id | 429 `too_many_requests` | routes/beta.ts |
 | Feedback, anonymous | 10 per hour | `feedback-ip` / `cf-connecting-ip` | 429 `too_many_requests` | routes/beta.ts |

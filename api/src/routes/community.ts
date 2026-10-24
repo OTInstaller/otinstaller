@@ -1,5 +1,6 @@
-// Community routes: issues and comments on packages, confirmations, flags (on posts and tool requests), the
-// registry-wide board, moderation queues and the roles admins grant. Rules and storage live in ../community.ts.
+// Community routes: issues and comments on packages, confirmations, failed runs and problems reported without a
+// sign-in, flags (on posts and tool requests), the registry-wide board, moderation queues and the roles admins grant.
+// Rules and storage live in ../community.ts.
 import type { Context } from "hono";
 import type { App, AppEnv, User } from "../env";
 import { apiError } from "../lib/errors";
@@ -10,8 +11,8 @@ import { toolByRef, type ToolRef } from "../trust";
 import { notify } from "../inbox";
 import {
   addComment, canTriage, communityRoles, communityStatus, confirm, createIssue, deletePost, editPost, EDIT_WINDOW, fileSystemIssue, FLAG_KINDS, flagPost, FLAG_REASONS,
-  indexable, ISSUE_KINDS, ISSUE_STATUSES, issueByNumber, issueInput, moderate, OPEN_STATUSES, renderPost, reportRun, requireModerator, requireTriage, runReportInput,
-  setLocked, setStatus, timeout, type FlagKind, type IssueRow, type IssueStatus, type ModerationAction,
+  indexable, ISSUE_KINDS, ISSUE_STATUSES, issueByNumber, issueInput, moderate, OPEN_STATUSES, problemReportInput, renderPost, reportProblem, reportRun, requireModerator,
+  requireTriage, runReportInput, setLocked, setStatus, timeout, type FlagKind, type IssueRow, type IssueStatus, type ModerationAction,
 } from "../community";
 import { moderateRequest } from "../requests";
 
@@ -26,6 +27,17 @@ async function tool(c: Context<AppEnv>): Promise<ToolRef> {
   if (!t || t.namespace_status !== "active" || !t.latest_version_id) apiError(404, "tool_not_found", `${ns}/${name} is not in the registry`);
   if (t.status === "removed") apiError(410, "tool_removed", `${ns}/${name} was removed from the registry`);
   return t;
+}
+
+/**
+ * Reports that need no sign-in come from the registry's own pages or from programs such as ot, which send no Origin.
+ * Another website can't have its visitors' browsers send them.
+ */
+function siteOrProgram(c: Context<AppEnv>) {
+  const origin = c.req.header("origin");
+  if (origin && origin !== c.env.SITE_URL) {
+    apiError(403, "foreign_origin", "reports are taken only from the registry's website and from programs such as ot", `use Report a problem on the tool's page at ${c.env.SITE_URL}`);
+  }
 }
 
 async function issue(c: Context<AppEnv>, t: ToolRef): Promise<IssueRow> {
@@ -221,10 +233,20 @@ export function communityRoutes(app: App) {
 
   // A failed run from ot's prompt: tool, version, exit code, OS and ot version only. A token is optional.
   app.post("/tools/:ns/:name/run-reports", async (c) => {
+    siteOrProgram(c);
     const t = await tool(c);
     const r = runReportInput(await body<Record<string, unknown>>(c));
     c.header("Cache-Control", "private, no-store");
     return c.json(await reportRun(c.env, t, c.get("user"), c.req.header("cf-connecting-ip") ?? "unknown", r), 201);
+  });
+
+  // "Broken" or "outdated" from a tool page's Report a problem, without a sign-in: counted, never who sent it.
+  app.post("/tools/:ns/:name/problem-reports", async (c) => {
+    siteOrProgram(c);
+    const t = await tool(c);
+    const r = problemReportInput(await body<Record<string, unknown>>(c));
+    c.header("Cache-Control", "private, no-store");
+    return c.json(await reportProblem(c.env, t, c.req.header("cf-connecting-ip") ?? "unknown", r), 201);
   });
 
   // "Works for me" or "broken for me" on a version; with {issue} a "broken" counts as a "me too" on that issue.
