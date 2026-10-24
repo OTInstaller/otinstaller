@@ -386,12 +386,18 @@ async function closeOut(env: Env, sub: SubmissionRow) {
   if (request?.status === "in_progress") await setRequestStatus(env, null, request, "accepted", { note: `Submission #${sub.number} didn't go ahead; someone else can package it.` });
 }
 
-/** The submitter withdraws it. */
+/** The submitter withdraws it. A release waiting for review is rejected, so no reviewer can publish it afterwards. */
 export async function withdrawSubmission(env: Env, user: User, sub: SubmissionRow) {
   if (sub.user_id !== user.id && !user.is_admin) apiError(403, "forbidden", "only the submitter can withdraw a submission");
   if (!OPEN_STATUSES.includes(sub.status)) apiError(409, "not_pending", `submission #${sub.number} is ${sub.status.replace("_", " ")}`);
+  const v = await waitingVersion(env, sub);
+  const now = Date.now();
   await env.DB.batch([
-    env.DB.prepare(`UPDATE wrapper_submissions SET status = 'withdrawn', updated_at = ? WHERE id = ?`).bind(Date.now(), sub.id),
+    env.DB.prepare(`UPDATE wrapper_submissions SET status = 'withdrawn', updated_at = ? WHERE id = ?`).bind(now, sub.id),
+    ...(v ? [
+      env.DB.prepare(`UPDATE versions SET status = 'rejected', rejected_reason = 'submission_withdrawn' WHERE id = ? AND status = 'awaiting_review'`).bind(v.id),
+      env.DB.prepare(`UPDATE publish_jobs SET status = 'rejected', error_code = 'submission_withdrawn', error_detail = 'the submitter withdrew the submission', updated_at = ? WHERE version_id = ?`).bind(now, v.id),
+    ] : []),
     audit(env.DB, user.id, "user", "submission.withdraw", "submission", sub.id),
   ]);
   await closeOut(env, sub);

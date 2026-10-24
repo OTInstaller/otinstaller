@@ -652,6 +652,7 @@ reuses a rejected row) by `publish.ts:record` as `scanning` or `rejected`.
 | `scanning` → `awaiting_review` | `scans.ts:applyScanResults`, `guides.ts:settle` |
 | `scanning`/`awaiting_review` → `published` (sets `published_at`) | `scans.ts:publishVersion` |
 | `awaiting_review` → `rejected` (`review_rejected`) | `routes/review.ts` `POST /admin/versions/:id/reject` |
+| `awaiting_review` → `rejected` (`submission_withdrawn`) | `submissions.ts:withdrawSubmission` (`POST /submissions/:n/withdraw`) |
 | `awaiting_review` → `rejected` (`changes_requested`) | `routes/review.ts` `POST /admin/namespaces/:ns/request-changes` |
 | `awaiting_review` → `rejected` (`namespace_rejected`) | `routes/review.ts` `POST /admin/namespaces/:ns/reject` |
 | `published` ↔ `yanked` (sets or clears `yanked_at`) | `trust.ts:setYanked` |

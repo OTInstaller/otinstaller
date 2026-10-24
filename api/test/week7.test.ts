@@ -864,6 +864,29 @@ describe("community submissions", () => {
     expect(((await (await call(`/submissions/${number}`)).json()) as any).submission).toMatchObject({ status: "published", tool: `osintverse-community/${s.name}`, reviewer: reviewer.login.toLowerCase() });
   });
 
+  it("rejects the waiting release when its submitter withdraws, so a reviewer can't publish it later", async () => {
+    const s = await setup();
+    const imp = await draft(s.u, s.upstream);
+    const done = (await (await s.as(s.u.auth).post(`/imports/${imp.id}/finish`, { mode: "submit", dockerfile: DOCKERFILE(s.upstream.path) })).json()) as any;
+    const number = done.submission.number;
+    s.wrapper.files = { "otinstaller.yaml": s.commits[0]!.content.replace("0".repeat(64), "a".repeat(64)), "README.md": s.commits[1]!.content };
+    s.upstream.images = { "0.15.0": DIGEST };
+    const jobId = ((await (await webhook("create", tagEvent(s.instId, s.wrapper.path, s.wrapper.id, "v0.15.0"))).json()) as any).jobId;
+    s.fake();
+    await processJob(await testEnv(), jobId);
+    const tool = await DB().prepare(`SELECT id FROM tools WHERE name = ?`).bind(s.name).first<{ id: string }>();
+    const v = (await loadVersion(await testEnv(), "v.tool_id = ?", tool!.id))!;
+    expect(await applyScanResults(await testEnv(), v, passing)).toMatchObject({ status: "awaiting_review" });
+
+    expect((await s.as(s.u.auth).post(`/submissions/${number}/withdraw`, {})).status).toBe(200);
+    expect(s.bot.archived).toBe(1);
+    expect(await DB().prepare(`SELECT status, rejected_reason FROM versions WHERE id = ?`).bind(v.id).first()).toEqual({ status: "rejected", rejected_reason: "submission_withdrawn" });
+    expect(await DB().prepare(`SELECT status, error_code FROM publish_jobs WHERE id = ?`).bind(jobId).first()).toEqual({ status: "rejected", error_code: "submission_withdrawn" });
+    const reviewer = await user();
+    await DB().prepare(`UPDATE users SET is_reviewer = 1 WHERE id = ?`).bind(reviewer.id).run();
+    expect(((await (await s.as(reviewer.auth).post(`/admin/versions/${v.id}/approve`, {})).json()) as any).error.code).toBe("not_pending");
+  });
+
   it("tags a release of upstream's own wheel, and refuses a PyPI project that isn't upstream's", async () => {
     const s = await setup({ files: { ...pipxFiles, LICENSE: "MIT License" }, tags: ["v2.1.0"] });
     const pypi = (home: string) => ({
