@@ -13,7 +13,7 @@ To connect real GitHub and GitLab apps, follow [docs/publishing-setup.md](docs/p
 
 It also holds `otlite`, the no-Docker edition: a Python CLI (from OSINTVerseHQ/OTinstaller, imported with its
 history into `otlite/`, called `otinstaller` until 1.0) that installs tools from pip or git into per-tool virtualenvs
-on Linux. Its tool catalog has also been converted into registry packages (see [otlite (otlite/)](#otlite-otlite)).
+on Linux and macOS. Its tool catalog has also been converted into registry packages (see [otlite (otlite/)](#otlite-otlite)).
 Moving between the two: [docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md).
 
 | Folder | What it is |
@@ -22,7 +22,7 @@ Moving between the two: [docs/migrating-from-otinstaller.md](docs/migrating-from
 | `cli/` | The `ot` CLI (Go): `init`, `validate`, `search`, `info`, `install`, `run`, `playbook`, `auto`, `extract`, `diff`, `list`, `outdated`, `update`, `uninstall`, `keys`, `doctor`, `login`, `logout`, `whoami`, `import`, `sync`, `feedback` |
 | `api/` | Registry API (Cloudflare Workers + Hono + D1 + Queues + R2): search and read endpoints, GitHub/GitLab sign-in and device flow, API tokens, GitHub App webhooks, publish validation, the import wizard, backups; and the image mirror Worker (`src/mirror/`, `wrangler.mirror.jsonc`) |
 | `web/` | The website (Astro on Cloudflare, Preact islands): home, search, tool and guide pages, docs, policies, the import wizard, dashboard and admin console. `npm run dev` for a dev server, `npm run og` to re-render the social preview image |
-| `otlite/` | `otlite`, the no-Docker edition (Python, Linux): installs tools from pip or git into per-tool virtualenvs, typed inputs, saved results, Debian packaging, its own PyPI release workflow. See below |
+| `otlite/` | `otlite`, the no-Docker edition (Python, Linux and macOS): installs tools from pip or git into per-tool virtualenvs, typed inputs, saved results, Debian packaging, its own PyPI release workflow. See below |
 | `seed/` | The launch seed: first-party tools, community wrappers (including those converted from `otlite`'s catalog), guides |
 | `ops/` | The scanner (`scanner/scan.py`, backups and restore drills in `scanner/backup.py`, its Docker image) and the GitHub Actions workflows for the registry-ops repo |
 | `examples/dns-lookup/` | A tiny real tool used by the end-to-end test |
@@ -132,7 +132,7 @@ commits) and renamed from `otinstaller` to `otlite` at 1.0.0. It keeps its own c
 How it fits with the registry:
 
 - **Two editions.** `ot` installs signed, scanned packages from the registry and runs them in containers on Linux,
-  macOS and Windows. `otlite` installs pinned pip or git releases into per-tool virtualenvs on Linux and needs no
+  macOS and Windows. `otlite` installs pinned pip or git releases into per-tool virtualenvs on Linux and macOS and needs no
   container runtime. Both use the same typed inputs and `results/` layout.
   [docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md) covers the rename and maps `otlite`
   commands to `ot`.

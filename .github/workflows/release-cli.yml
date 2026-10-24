@@ -3,7 +3,7 @@
 #
 # Secrets: RELEASE_GITHUB_TOKEN (contents: write on the release repository), OT_RELEASE_KEY (the Ed25519 private
 # key, PEM), optional TAP_GITHUB_TOKEN (homebrew-tap and scoop-bucket). Variables: OT_RELEASE_PUBLIC_KEY (base64
-# raw public key), optional RELEASE_OWNER and RELEASE_NAME (default otinstaller/ot).
+# raw public key), optional RELEASE_OWNER and RELEASE_NAME (default OTInstaller/ot).
 #
 # Code signing, each off until its settings exist (docs/code-signing.md):
 # - Windows, Azure Trusted Signing: variables AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID,

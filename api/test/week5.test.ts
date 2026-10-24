@@ -57,11 +57,11 @@ async function publisher(active: boolean) {
   return { login, instId, repoId, repo: `${login}/whois-plus` };
 }
 
-async function reviewerToken() {
+async function reviewerToken(opts: { admin?: boolean } = {}) {
   const id = ulid();
   const token = `ot_reviewer_${id}`;
   await DB().batch([
-    DB().prepare(`INSERT INTO users (id, login, is_reviewer, created_at) VALUES (?, ?, 1, ?)`).bind(id, `rev${id.slice(-6)}`, Date.now()),
+    DB().prepare(`INSERT INTO users (id, login, is_reviewer, is_admin, created_at) VALUES (?, ?, 1, ?, ?)`).bind(id, `rev${id.slice(-6)}`, opts.admin ? 1 : 0, Date.now()),
     DB().prepare(`INSERT INTO api_tokens (id, user_id, name, token_hash, created_at) VALUES (?, ?, 'test', ?, ?)`).bind(ulid(), id, await sha256Hex(token), Date.now()),
   ]);
   return { authorization: `Bearer ${token}` };
@@ -219,10 +219,13 @@ describe("scan callback", () => {
 
   it("closes scans that never report back", async () => {
     const p = await publisher(true);
-    const { jobId, versionId } = await tagAndValidate(p);
+    const { jobId, versionId, calls } = await tagAndValidate(p);
     expect(await expireStaleScans(await testEnv(), Date.now() + 2 * 60 * 60 * 1000)).toBeGreaterThanOrEqual(1);
     expect(await DB().prepare(`SELECT status, rejected_reason FROM versions WHERE id = ?`).bind(versionId).first()).toMatchObject({ status: "rejected", rejected_reason: "scan_timeout" });
     expect(await DB().prepare(`SELECT status FROM publish_jobs WHERE id = ?`).bind(jobId).first()).toMatchObject({ status: "error" });
+    // The commit status stops pending, and the publisher is told what to do.
+    expect(statuses(calls).at(-1)).toMatchObject({ state: "error", description: expect.stringMatching(/^scan_timeout: .*push a new tag$/) });
+    expect(emailsTo(calls).at(-1)).toMatchObject({ subject: expect.stringMatching(/was not published$/), text: expect.stringContaining("Reason: scan_timeout") });
   });
 });
 
@@ -278,6 +281,18 @@ describe("manual review of new publishers", () => {
     fakeRelease(p.repo, { "otinstaller.yaml": manifestFor(p.login, "1.0.1"), "README.md": README });
     const out = await processJob(await testEnv(), ((await res.json()) as any).jobId);
     expect(out!.problems[0]!.code).toBe("namespace_not_allowed");
+
+    // An admin can take the decision back: rejected goes to review again, listed under held publishers until then.
+    const queue = (await (await call("/admin/review-queue", { headers: auth })).json()) as any;
+    expect(queue.held).toContainEqual(expect.objectContaining({ namespace: p.login, status: "rejected" }));
+    expect((await call(`/admin/namespaces/${p.login}/reinstate`, { method: "POST", headers: auth, body: "{}" })).status).toBe(403);
+    const admin = await reviewerToken({ admin: true });
+    const back = await call(`/admin/namespaces/${p.login}/reinstate`, { method: "POST", headers: admin, body: JSON.stringify({ notes: "Appeal accepted." }) });
+    expect(await back.json()).toEqual({ status: "pending_review" });
+    expect(((await (await call(`/admin/namespaces/${p.login}/reinstate`, { method: "POST", headers: admin, body: "{}" })).json()) as any).error.code).toBe("not_held");
+    // Suspended namespaces become active again.
+    await call(`/admin/namespaces/${p.login}/suspend`, { method: "POST", headers: admin, body: JSON.stringify({ reason: "Investigating a report." }) });
+    expect(await (await call(`/admin/namespaces/${p.login}/reinstate`, { method: "POST", headers: admin, body: "{}" })).json()).toEqual({ status: "active" });
   });
 
   it("is limited to reviewers, and verify/suspend to admins", async () => {

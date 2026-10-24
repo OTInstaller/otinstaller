@@ -360,10 +360,14 @@ describe("stuck releases", () => {
     await expect(processJob(await testEnv(), jobId)).rejects.toThrow(/dispatch failed/);
     expect(statuses(calls).at(-1)).toMatchObject({ state: "pending", description: "Valid; security scans running" });
 
+    await DB().prepare(`INSERT INTO users (id, login, email, is_admin, created_at) VALUES (?, ?, 'ops@example.org', 1, 1)`).bind(ulid(), `admin${Date.now()}`).run();
     await failJob(await testEnv(), jobId, "scan dispatch failed: 502 down");
     const row = await DB().prepare(`SELECT j.status, v.status AS version_status FROM publish_jobs j JOIN versions v ON v.id = j.version_id WHERE j.id = ?`).bind(jobId).first<any>();
     expect(row).toEqual({ status: "error", version_status: "rejected" });
     expect(statuses(calls).at(-1)).toMatchObject({ state: "error", description: "The registry could not start the checks; push the tag again" });
+    // The admins hear at once: the stuck-job alert only sees jobs still in progress.
+    const alert = calls.filter((c) => c.url === "https://api.resend.com/emails").map((c) => JSON.parse(c.body)).at(-1);
+    expect(alert?.subject).toBe(`A publish job failed after its retries: ${repo} v1.0.0`);
 
     // Pushing the tag again is not refused as an existing version.
     const again = await webhook("create", tagEvent(p.instId, repo, p.repoId, "v1.0.0"));
@@ -497,6 +501,12 @@ describe("CORS", () => {
     const site = await call("/types", { headers: { origin: "https://otinstaller.com" } });
     expect(site.headers.get("access-control-allow-origin")).toBe("https://otinstaller.com");
     expect(site.headers.get("access-control-allow-credentials")).toBe("true");
+    // The site answers on www. too, and so does credentialed CORS.
+    const www = await call("/types", { headers: { origin: "https://www.otinstaller.com" } });
+    expect(www.headers.get("access-control-allow-origin")).toBe("https://www.otinstaller.com");
+    expect(www.headers.get("access-control-allow-credentials")).toBe("true");
+    const lookalike = await call("/types", { headers: { origin: "https://www.otinstaller.com.evil.example" } });
+    expect(lookalike.headers.get("access-control-allow-credentials")).toBeNull();
     const other = await call("/types", { headers: { origin: "https://elsewhere.example" } });
     expect(other.headers.get("access-control-allow-origin")).toBe("*");
     expect(other.headers.get("access-control-allow-credentials")).toBeNull();

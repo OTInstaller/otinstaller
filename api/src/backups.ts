@@ -13,7 +13,7 @@
 //
 // Rules: only public repositories of published packages; 500 MB per bundle and 2 GB per image (bigger ones are
 // skipped and the owner is told; the other artifacts are still kept); mirrors are public only for OSI-approved
-// licenses (others are kept privately, for restores); takedowns delete backups within 30 days unless a legal hold
+// licenses (others are kept privately, for restores); takedowns delete backups after 14 days unless a legal hold
 // applies; owners can opt out of git backups.
 import { requireSecret, type Env } from "./env";
 import { randomToken, sha256Hex, ulid } from "./lib/crypto";
@@ -31,7 +31,7 @@ export const RELEASE_TTL = 3 * 3600_000;
 export const WEEKLY_TTL = 12 * 3600_000;
 export const DOWNLOAD_TTL = 3600;
 export const KEEP_WEEKLY = 4;
-/** Taken-down backups are deleted this long after the removal (the rule is "within 30 days"). */
+/** Taken-down backups are deleted this long after the removal: 14 days, well inside the policy's "within 30 days". */
 export const TAKEDOWN_GRACE = 14 * 86_400_000;
 export const DRILL_TTL = 6 * 3600_000;
 const WEEKLY_PER_DISPATCH = 20;
@@ -262,7 +262,7 @@ export type ReportedItem = { id: string; status: "stored" | "too_large" | "faile
 type BackupRow = { id: string; run_id: string; tool_id: string; version_id: string | null; kind: "git" | "wheel" | "image"; location: string; visibility: string; weekly: number };
 
 export class BackupError extends Error {
-  constructor(public status: 400 | 401 | 404 | 409, public code: string, message: string) {
+  constructor(public status: 400 | 401 | 404 | 409 | 410, public code: string, message: string) {
     super(message);
   }
 }
@@ -445,7 +445,7 @@ export async function latestBundle(env: Env, toolId: string) {
 export async function restoreLink(env: Env, toolId: string, actorId: string, now = Date.now()) {
   const t = await toolCtx(env, toolId);
   if (!t) throw new BackupError(404, "tool_not_found", "no such package");
-  if (t.tool_status === "removed") throw new BackupError(409, "tool_removed", "removed packages cannot be restored from backup");
+  if (t.tool_status === "removed") throw new BackupError(410, "tool_removed", "removed packages cannot be restored from backup");
   const b = await latestBundle(env, toolId);
   if (!b) throw new BackupError(404, "no_backup", `${t.namespace}/${t.name} has no git backup yet`);
   const filename = `${t.name}-${new Date(b.stored_at ?? b.created_at).toISOString().slice(0, 10)}.bundle`;

@@ -1,3 +1,6 @@
+// The registry API Worker (api.otinstaller.com/v1): app setup, CORS, auth and the write limit, the public read routes,
+// error handling, and the fetch, queue and scheduled handlers. Each area's routes live in routes/, their logic in the
+// top-level modules; the remote MCP server is mcp.ts and the edge cache edge-cache.ts.
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
@@ -9,7 +12,9 @@ import { rank } from "./ranking";
 import { cached, findTool, findVersion, latestVersions, notFound, LISTED, publishedVia, rankInput, summary, SUMMARY_COLUMNS, VISIBLE, type SummaryRow } from "./catalog";
 import type { AppEnv, Env, PublishMessage } from "./env";
 import { apiError, d1RetryAfter, errorDocs, rateLimited, windowRetry } from "./lib/errors";
-import { authRoutes } from "./routes/auth";
+import { authMiddleware, authRoutes } from "./routes/auth";
+import { siteOrigins } from "./env";
+import { retryEmails } from "./notify";
 import { webhookRoutes } from "./routes/webhooks";
 import { reviewRoutes } from "./routes/review";
 import { sourceRoutes } from "./routes/sources";
@@ -58,17 +63,19 @@ export type { Env } from "./env";
 
 const app = new Hono<AppEnv>().basePath("/v1");
 
-// Public reads are open to any origin; credentialed calls only from the website. Browsers refuse
+// Public reads are open to any origin; credentialed calls only from the website, with or without www. Browsers refuse
 // `*` together with credentials, so other origins get `*` without them.
 const METHODS = ["GET", "POST", "PATCH", "PUT", "DELETE"];
 const publicCors = cors({ origin: "*", allowMethods: METHODS });
 app.use("*", async (c, next) => {
-  if (c.req.header("origin") !== c.env.SITE_URL) return publicCors(c, next);
-  return cors({ origin: c.env.SITE_URL, credentials: true, allowMethods: METHODS })(c, next);
+  const origin = c.req.header("origin");
+  if (!origin || !siteOrigins(c.env.SITE_URL).includes(origin)) return publicCors(c, next);
+  return cors({ origin, credentials: true, allowMethods: METHODS })(c, next);
 });
-authRoutes(app);
-// Writes (stars, yanks, tokens, imports, reports, ...) are limited to 30 a minute per signed-in user;
-// reviewers and admins are exempt so takedowns are never throttled.
+authMiddleware(app);
+// Writes (yanks, tokens, sign-outs, imports, reports, ...) are limited to 30 a minute per signed-in user;
+// reviewers and admins are exempt so takedowns are never throttled. Registered before every route, the sign-in and
+// token routes included.
 app.use("*", async (c, next) => {
   const u = c.get("user");
   if (u && !u.is_reviewer && !u.is_admin && !["GET", "HEAD", "OPTIONS"].includes(c.req.method)
@@ -77,6 +84,7 @@ app.use("*", async (c, next) => {
   }
   await next();
 });
+authRoutes(app);
 webhookRoutes(app);
 reviewRoutes(app);
 sourceRoutes(app);
@@ -408,6 +416,10 @@ app.get("/tools/:ns/:name/:version/manifest", async (c) => {
     verified_publisher: row.verified === 1,
     source_unavailable: row.source_status === "unavailable",
     moved_to: movedTo,
+    // ot warns on install when the package is deprecated, and names what replaces it.
+    deprecated: row.status === "deprecated" || undefined,
+    deprecated_message: row.status === "deprecated" ? row.deprecated_message ?? undefined : undefined,
+    deprecated_replacement: row.status === "deprecated" ? row.deprecated_replacement ?? undefined : undefined,
     ...(removed ? { manifest: null } : installManifest(JSON.parse(v.manifest_json))),
     // Where ot retries when the original registry refuses (403, 404, denied): the same digest on the mirror,
     // and the registry's copy of the wheel. Only for OSI-approved licenses.
@@ -606,6 +618,8 @@ export default {
     // Publisher profiles from GitHub and GitLab: never synced, or older than 6 hours.
     await refreshDueProfiles(env);
     await alertStuckJobs(env);
+    // Emails Resend didn't take (an outage, a rate limit, a fetch that threw) are tried again.
+    await retryEmails(env).catch((e) => console.error("retrying emails failed", e));
     await expireRuns(env);
     await expireDrills(env);
     // Published versions without an image or wheel backup (older than backups, or failed) get one.

@@ -21,7 +21,7 @@ const SESSION_TTL = 30 * 24 * 3600 * 1000;
 
 function provider(c: Context<AppEnv>): Provider {
   const p = c.req.param("provider");
-  if (p !== "github" && p !== "gitlab" && p !== "osintverse") apiError(404, "unknown_provider", "sign in with github, gitlab or osintverse");
+  if (p !== "github" && p !== "gitlab" && p !== "osintverse") apiError(400, "unknown_provider", "sign in with github, gitlab or osintverse");
   return p;
 }
 
@@ -233,9 +233,13 @@ async function osintverseCallback(c: Context<AppEnv>, state: string | undefined,
   return c.redirect(safeRedirect(c.env, redirect), 302);
 }
 
-export function authRoutes(app: App) {
+/** Who is calling, and whether their token's scopes allow it: registered before every route and the write limit. */
+export function authMiddleware(app: App) {
   app.use("*", authenticate);
   app.use("*", enforceScopes);
+}
+
+export function authRoutes(app: App) {
   deviceRoutes(app);
 
   // ---------- web OAuth ----------
@@ -292,15 +296,16 @@ export function authRoutes(app: App) {
   app.post("/auth/device/token", async (c) => {
     const body = await c.req.json<{ provider?: Provider; device_code?: string; token_name?: string; scopes?: unknown; expires_in_days?: unknown }>().catch(() => ({}) as any);
     const p = body.provider ?? "github";
-    if (p === "osintverse" && body.device_code) return c.json(await pollOsintverseDevice(c, body.device_code, body.token_name));
+    // `ot login` tokens don't expire unless asked to; they can do what the user can, except staff actions. Read before
+    // any device login is used up, so a bad request leaves it to poll again.
+    const { scopes, expiresAt } = tokenRequest(c, body, null);
+    if (p === "osintverse" && body.device_code) return c.json(await pollOsintverseDevice(c, body.device_code, body.token_name, scopes, expiresAt));
     if ((p !== "github" && p !== "gitlab") || !body.device_code) apiError(400, "invalid_body", "send {provider, device_code}");
     const client = oauthClient(c.env, p);
     const r = p === "github" ? await github.pollDeviceFlow(deps.fetch, client.id, body.device_code) : await gitlab.pollDeviceFlow(deps.fetch, client.id, client.secret, body.device_code);
     if (r.status !== "ok") return c.json({ status: r.status });
     const who = p === "github" ? await github.fetchUser(deps.fetch, r.accessToken) : await gitlab.fetchUser(deps.fetch, r.accessToken);
     const userId = await signIn(c.env, p, who, r, null);
-    // `ot login` tokens don't expire unless asked to; they can do what the user can, except staff actions.
-    const { scopes, expiresAt } = tokenRequest(c, body, null);
     const { token } = await mintApiToken(c.env.DB, userId, (body.token_name ?? "ot CLI").slice(0, 60), scopes, expiresAt);
     return c.json({ status: "ok", token, login: who.login, provider: p, scopes, expires_at: expiresAt });
   });

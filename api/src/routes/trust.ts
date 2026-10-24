@@ -120,13 +120,14 @@ export function trustRoutes(app: App) {
     if (!status) apiError(400, "invalid_body", "send {status: 'actioned' | 'dismissed', action?, note}");
     const action = text(b.action, "action", 40, status === "actioned");
     const note = text(b.note, "note", 2000, false);
-    const r = await c.env.DB.prepare(`SELECT id, tool_id FROM reports WHERE id = ?`).bind(c.req.param("id")).first<{ id: string; tool_id: string }>();
+    const r = await c.env.DB.prepare(`SELECT id, tool_id, status FROM reports WHERE id = ?`).bind(c.req.param("id")).first<{ id: string; tool_id: string; status: string }>();
     if (!r) apiError(404, "report_not_found", "no such report");
-    await c.env.DB.batch([
-      c.env.DB.prepare(`UPDATE reports SET status = ?, action = ?, resolution_note = ?, resolved_by = ?, resolved_at = ? WHERE id = ?`)
-        .bind(status, action || null, note || null, reviewer.id, Date.now(), r.id),
-      audit(c.env.DB, reviewer.id, "user", `report.${status}`, "report", r.id, { action, note }),
-    ]);
+    if (r.status !== "open") apiError(409, "already_resolved", `this report was already ${r.status}`);
+    // Guarded, so two reviewers resolving at once can't both record a decision.
+    const res = await c.env.DB.prepare(`UPDATE reports SET status = ?, action = ?, resolution_note = ?, resolved_by = ?, resolved_at = ? WHERE id = ? AND status = 'open'`)
+      .bind(status, action || null, note || null, reviewer.id, Date.now(), r.id).run();
+    if (!res.meta.changes) apiError(409, "already_resolved", "another reviewer resolved this report meanwhile");
+    await audit(c.env.DB, reviewer.id, "user", `report.${status}`, "report", r.id, { action, note }).run();
     return c.json({ id: r.id, status });
   });
 

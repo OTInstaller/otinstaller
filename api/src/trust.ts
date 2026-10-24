@@ -5,6 +5,7 @@ import { sha256Hex, ulid } from "./lib/crypto";
 import type { Manifest } from "./lib/manifest";
 import { latestMetadata, pickLatest } from "./scans";
 import { audit } from "./routes/auth";
+import { bumpCacheEpoch } from "./edge-cache";
 import { ownerEmails, sendEmail, templates } from "./notify";
 import { scheduleDeletion } from "./backups";
 
@@ -56,6 +57,8 @@ export async function setYanked(env: Env, actorId: string, t: ToolRef, version: 
   await env.DB.batch([
     env.DB.prepare(`UPDATE versions SET status = ?, yanked_at = ? WHERE id = ?`).bind(yanked ? "yanked" : "published", yanked ? Date.now() : null, v.id),
     audit(env.DB, actorId, "user", yanked ? "version.yank" : "version.unyank", "version", v.id, { ref: `${t.namespace}/${t.name}`, version }),
+    // @latest moves at once instead of when cached answers run out.
+    bumpCacheEpoch(env.DB),
   ]);
   await recomputeLatest(env, t.id);
   return { ok: true as const, status: yanked ? "yanked" : "published" };
@@ -93,9 +96,11 @@ export async function removeVersion(env: Env, actorId: string, t: ToolRef, versi
       audit(db, actorId, "user", "namespace.suspend", "namespace", t.namespace_id, { reason, after: "removal" }),
     );
   }
+  // Nothing cached before the takedown (manifests, wheel copies, /removed) is served again.
+  stmts.push(bumpCacheEpoch(db, now));
   await db.batch(stmts);
   await recomputeLatest(env, t.id);
-  // Takedowns apply to backups: the mirror stops serving them now, and they are deleted within 30 days.
+  // Takedowns apply to backups: the mirror stops serving them now, and they are deleted after 14 days.
   await scheduleDeletion(env, t.id, versionId, now);
   await sendEmail(env, { to: await ownerEmails(env, t.namespace_id), kind: "removed", key: `removed:${t.id}:${version ?? "all"}`, ...templates.removed(env, ref, version, category, reason) });
   return { ok: true as const };

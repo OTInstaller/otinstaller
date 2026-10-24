@@ -46,6 +46,9 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0030 | `0030_follows.sql` | New table `follows` (who follows which publisher or input type: `kind` CHECK publisher/input, `target`) and index `follows_target`. Apply before an API that reads it is deployed. |
 | 0031 | `0031_dependency_and_base_watch.sql` | New tables `dependency_watch` (a first-party tool's requirements.txt pins against PyPI), `base_images` (each Docker Hub base tag's current digest) and `base_watch` (each build's base image, the digest when its version was first seen, rebuilds); `bump_prs` + `kind` (CHECK upstream/dependency/rebuild, default upstream). Apply before an API that has the build watcher is deployed. |
 | 0032 | `0032_problem_signals.sql` | New table `problem_signals` (anonymous daily counts from a tool page's **Report a problem**: broken or outdated, by version and platform), with `CREATE TABLE IF NOT EXISTS`: production got the table on 24 Oct from this file under its first name, `0030_problem_signals.sql`, so there it is recorded as applied and does nothing. Apply before an API that serves `POST /tools/:ns/:name/problem-reports` is deployed. |
+| 0033 | `0033_email_retries.sql` | `notifications` + `body`, `headers_json`, `attempts` (NN default 0), `sent_at`; partial index `notifications_retry`. Apply before an API that writes them is deployed. |
+| 0034 | `0034_namespace_rename_search.sql` | Trigger `tools_fts_namespace_rename` (AFTER UPDATE OF name ON namespaces): rewrites the namespace's tools' `tools_fts` rows with the new name. |
+| 0035 | `0035_cache_epoch.sql` | New table `settings` (`key` PK, `value`, `updated_at`) with the row `cache_epoch`, which edge-cache keys carry and removals and yanks move on. Apply before an API that reads it is deployed. |
 
 ---
 
@@ -433,7 +436,8 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
 - `to_email` TEXT NN (comma-joined) · `subject` TEXT NN · `kind` TEXT NN (free text: `rejected`, `published`, `in_review`, `alert`, ...)
 - `status` TEXT NN CHECK `('sent', 'skipped', 'failed')` (no default)
 - `error` TEXT · `created_at` INTEGER NN
-- Flow (`notify.ts:sendEmail`): inserted as `sent`, or as `skipped` when `RESEND_API_KEY` is unset; set to `failed` if Resend answers with an error.
+- 0033: `body` TEXT and `headers_json` TEXT (the email, kept until it is sent or given up on) · `attempts` INTEGER NN DEFAULT 0 · `sent_at` INTEGER; partial index `notifications_retry (status, created_at) WHERE body IS NOT NULL`.
+- Flow (`notify.ts:sendEmail`): inserted as `failed` ("not sent yet", with its text), or as `skipped` when `RESEND_API_KEY` is unset; `sent` once Resend accepts it. `retryEmails` (15-minute cron) tries failed rows again, five attempts over two days; a refused message (4xx other than 429) gets `attempts = 5` at once.
 
 ### 2.11a Inbox, email preferences and follows (0017, 0029, 0030)
 

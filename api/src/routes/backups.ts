@@ -70,7 +70,8 @@ export async function wheelResponse(env: Env, ns: string, name: string, version:
       "Content-Length": String(obj.size),
       "Content-Disposition": `attachment; filename="${row.filename ?? `${name}-${version}.whl`}"`,
       ...(row.sha256 ? { "X-Checksum-Sha256": row.sha256 } : {}),
-      "Cache-Control": "public, max-age=86400",
+      // The edge cache drops it at once on a takedown (the cache epoch); browsers and proxies keep it an hour at most.
+      "Cache-Control": "public, max-age=3600",
     },
   });
 }

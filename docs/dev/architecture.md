@@ -684,7 +684,7 @@ and daily for the warning (`cli/internal/cli/trust.go:removedList`).
 ```
  request -> export default fetch -> edge-cache.ts:edgeCached
     EDGE_CACHE == "off" | method != GET | has Authorization | has Cookie  -> app.fetch (D1)
-    key = URL with sorted params + __cors=site|any    -> caches.default.match(key)
+    key = URL with sorted params + __cors=site:<origin>|any + __epoch=<cache epoch, reread every 30 s> -> caches.default.match(key)
        hit  -> restore Cache-Control from x-ot-cache-control, x-edge-cache: hit
        miss -> app.fetch -> store when 200 + "public" + max-age>0 + no set-cookie (waitUntil put)
 
@@ -695,7 +695,8 @@ and daily for the warning (`cli/internal/cli/trust.go:removedList`).
 
 1. `api/src/edge-cache.ts:edgeCached` wraps the whole API fetch handler. Stored responses keep their own
    `Cache-Control` lifetime; the original header is put back on hits because the zone's Browser Cache TTL rewrites
-   it. There is no purge code.
+   it. There is no purge code: removals and yanks move the cache epoch on (`trust.ts`, `bumpCacheEpoch`), and the
+   new key makes every older entry unreachable within 30 seconds.
 2. `catalog.ts:cached(c, seconds)` sets `public, max-age=<seconds>`. Current values (= worst-case staleness):
 
    | Endpoint | max-age |

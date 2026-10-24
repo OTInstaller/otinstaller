@@ -2,15 +2,42 @@
 // allows. Without it every page view and every crawler request for a filter combination on the site
 // was a D1 query, and in October 2026 crawlers alone used up D1's daily read allowance. Every JSON read
 // also gets an ETag, so a client that polls (a script, an agent) gets a 304 instead of the same body again.
-import type { Env } from "./env";
+// The cache can't be purged, so every key carries the cache epoch, which takedowns and yanks move on.
+import { siteOrigins, type Env } from "./env";
 
 const ORIGINAL_CC = "x-ot-cache-control";
 
-/** The cache key: the URL plus which CORS answer the request gets (the site's, with credentials, or `*`). */
-function cacheKey(req: Request, env: Env): Request {
+/** How long an isolate trusts the epoch it last read: a takedown stops being served within this. */
+const EPOCH_TTL = 30_000;
+let epoch = { value: "0", readAt: 0 };
+
+/** The current cache epoch, read from D1 at most every 30 seconds per isolate (and kept as it was if D1 fails). */
+export async function cacheEpoch(env: Env, now = Date.now()): Promise<string> {
+  if (now - epoch.readAt < EPOCH_TTL) return epoch.value;
+  const row = await env.DB.prepare(`SELECT value FROM settings WHERE key = 'cache_epoch'`).first<{ value: string }>().catch(() => null);
+  epoch = { value: row?.value ?? epoch.value, readAt: now };
+  return epoch.value;
+}
+
+/** Moves the cache epoch on, so no answer cached before it is served again: for takedowns and yanks. */
+export function bumpCacheEpoch(db: D1Database, now = Date.now()): D1PreparedStatement {
+  return db.prepare(
+    `INSERT INTO settings (key, value, updated_at) VALUES ('cache_epoch', ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+  ).bind(`${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`, now);
+}
+
+/** Forgets the epoch this isolate read, for tests. */
+export function resetCacheEpoch() {
+  epoch = { value: "0", readAt: 0 };
+}
+
+/** The cache key: the URL, which CORS answer the request gets (the site's, with credentials, or `*`), and the epoch. */
+function cacheKey(req: Request, env: Env, epochValue: string): Request {
   const url = new URL(req.url);
   url.searchParams.sort();
-  url.searchParams.set("__cors", req.headers.get("origin") === env.SITE_URL ? "site" : "any");
+  const origin = req.headers.get("origin");
+  url.searchParams.set("__cors", origin && siteOrigins(env.SITE_URL).includes(origin) ? `site:${origin}` : "any");
+  url.searchParams.set("__epoch", epochValue);
   return new Request(url.toString(), { method: "GET" });
 }
 
@@ -44,7 +71,7 @@ export async function edgeCached(req: Request, env: Env, ctx: ExecutionContext, 
     return notModified(req, await tagged(req, await handle()));
   }
   const cache = caches.default;
-  const key = cacheKey(req, env);
+  const key = cacheKey(req, env, await cacheEpoch(env));
   const hit = await cache.match(key);
   if (hit) {
     const res = new Response(hit.body, hit);

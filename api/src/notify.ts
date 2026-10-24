@@ -17,24 +17,73 @@ export async function sendEmail(env: Env, msg: Email): Promise<"sent" | "skipped
   const to = [...new Set(msg.to.filter(Boolean))];
   if (to.length === 0) return "skipped";
   const now = Date.now();
-  const status = env.RESEND_API_KEY ? "sent" : "skipped";
+  // Claimed as failed ("not sent yet") with its text until Resend accepts it: a fetch that throws leaves it to retryEmails.
   const claimed = await env.DB.prepare(
-    `INSERT INTO notifications (id, idempotency_key, to_email, subject, kind, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO notifications (id, idempotency_key, to_email, subject, kind, status, error, body, headers_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (idempotency_key) DO NOTHING`,
-  ).bind(ulid(now), msg.key, to.join(","), msg.subject, msg.kind, status, now).run();
+  ).bind(
+    ulid(now), msg.key, to.join(","), msg.subject, msg.kind, env.RESEND_API_KEY ? "failed" : "skipped", env.RESEND_API_KEY ? NOT_SENT : null,
+    env.RESEND_API_KEY ? msg.text : null, env.RESEND_API_KEY && msg.headers ? JSON.stringify(msg.headers) : null, now,
+  ).run();
   if (!claimed.meta.changes) return "duplicate";
   if (!env.RESEND_API_KEY) return "skipped";
-  const res = await deps.fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json", "Idempotency-Key": msg.key },
-    body: JSON.stringify({ from: env.EMAIL_FROM ?? "OTInstaller Registry <registry@otinstaller.com>", to, subject: msg.subject, text: msg.text, ...(msg.headers ? { headers: msg.headers } : {}) }),
-  });
-  if (!res.ok) {
-    const err = `${res.status} ${(await res.text()).slice(0, 300)}`;
-    await env.DB.prepare(`UPDATE notifications SET status = 'failed', error = ? WHERE idempotency_key = ?`).bind(err, msg.key).run();
-    return "failed";
+  return deliver(env, { ...msg, to });
+}
+
+const NOT_SENT = "not sent yet";
+/** How many times an email is tried, and for how long a failed one is kept for another try. */
+const MAX_ATTEMPTS = 5;
+const RETRY_FOR = 2 * 86_400_000;
+
+/** One try at Resend with the message's idempotency key (so a retry never sends twice); the row records the outcome. */
+async function deliver(env: Env, msg: Email): Promise<"sent" | "failed"> {
+  let err: string;
+  let permanent = false;
+  try {
+    const res = await deps.fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json", "Idempotency-Key": msg.key },
+      body: JSON.stringify({ from: env.EMAIL_FROM ?? "OTInstaller Registry <registry@otinstaller.com>", to: msg.to, subject: msg.subject, text: msg.text, ...(msg.headers ? { headers: msg.headers } : {}) }),
+    });
+    if (res.ok) {
+      // Sent: the text isn't needed any more.
+      await env.DB.prepare(`UPDATE notifications SET status = 'sent', error = NULL, body = NULL, headers_json = NULL, attempts = attempts + 1, sent_at = ? WHERE idempotency_key = ?`)
+        .bind(Date.now(), msg.key).run();
+      return "sent";
+    }
+    err = `${res.status} ${(await res.text()).slice(0, 300)}`;
+    // A refused address or message won't send on a later try; rate limits and outages may.
+    permanent = res.status >= 400 && res.status < 500 && res.status !== 429;
+  } catch (e) {
+    err = `the request failed: ${(e instanceof Error ? e.message : String(e)).slice(0, 280)}`;
   }
-  return "sent";
+  await env.DB.prepare(
+    `UPDATE notifications SET status = 'failed', error = ?, attempts = CASE WHEN ? THEN ? ELSE attempts + 1 END WHERE idempotency_key = ?`,
+  ).bind(err, permanent ? 1 : 0, MAX_ATTEMPTS, msg.key).run();
+  return "failed";
+}
+
+/**
+ * Every 15 minutes: tries again the emails that failed (an outage, a rate limit, a fetch that threw), at most five
+ * times in all and for two days; after that their text is dropped.
+ */
+export async function retryEmails(env: Env, now = Date.now()) {
+  if (!env.RESEND_API_KEY) return 0;
+  await env.DB.prepare(`UPDATE notifications SET body = NULL, headers_json = NULL WHERE body IS NOT NULL AND status = 'failed' AND (attempts >= ? OR created_at < ?)`)
+    .bind(MAX_ATTEMPTS, now - RETRY_FOR).run();
+  const due = (await env.DB.prepare(
+    `SELECT idempotency_key, to_email, subject, kind, body, headers_json FROM notifications
+     WHERE status = 'failed' AND body IS NOT NULL AND attempts < ? AND created_at >= ? AND created_at < ? ORDER BY created_at LIMIT 25`,
+  ).bind(MAX_ATTEMPTS, now - RETRY_FOR, now - 60_000).all<{ idempotency_key: string; to_email: string; subject: string; kind: string; body: string; headers_json: string | null }>()).results;
+  let sent = 0;
+  for (const r of due) {
+    const out = await deliver(env, {
+      to: r.to_email.split(","), subject: r.subject, text: r.body, kind: r.kind, key: r.idempotency_key,
+      ...(r.headers_json ? { headers: JSON.parse(r.headers_json) as Record<string, string> } : {}),
+    });
+    if (out === "sent") sent++;
+  }
+  return sent;
 }
 
 /** Emails of a namespace's owners (falling back to their linked accounts' emails). */
@@ -118,6 +167,11 @@ export const templates = {
     text: `Tonight's health check ran ${ref} ${version} with its test input and it failed:\n\n${excerpt || "(no output)"}\n\n` +
       `After 3 failures in a row the tool is marked Possibly broken in search. One passing run clears it. Usually a site the tool queries changed; ` +
       `publish a fixed version when you can. You get this email once per run of failures.` + footer(env),
+  }),
+  failedJob: (env: Env, job: { id: string; repo: string | null; tag: string | null; error: string }) => ({
+    subject: `A publish job failed after its retries: ${job.repo ?? "an upload"} ${job.tag ?? ""}`.trim(),
+    text: `The queue gave up on job ${job.id} (${job.repo ?? "an upload"} ${job.tag ?? ""}) after five attempts:\n\n${job.error}\n\n` +
+      `The publisher was told to try again. If it keeps happening, check \`wrangler tail\` and the troubleshooting page.\n\n${env.SITE_URL}/admin`,
   }),
   stuckJobs: (env: Env, jobs: { id: string; repo: string; tag: string; status: string; age_min: number }[]) => ({
     subject: `${jobs.length} publish job(s) stuck for over 30 minutes`,

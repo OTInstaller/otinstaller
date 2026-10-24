@@ -9,7 +9,7 @@ import type { Context } from "hono";
 import type { App, AppEnv } from "../env";
 import { apiError } from "../lib/errors";
 import { randomToken, sha256Hex, ulid } from "../lib/crypto";
-import { audit, mintApiToken, osintverseLogin } from "./auth";
+import { mintApiToken, osintverseLogin } from "./auth";
 
 const TTL = 10 * 60 * 1000;
 const INTERVAL = 5; // seconds between polls
@@ -80,7 +80,7 @@ export async function startOsintverseDevice(c: Context<AppEnv>) {
 }
 
 /** POST /auth/device/token with provider "osintverse": pending, slow_down, expired, denied or ok with a token. */
-export async function pollOsintverseDevice(c: Context<AppEnv>, deviceCode: string, tokenName?: string) {
+export async function pollOsintverseDevice(c: Context<AppEnv>, deviceCode: string, tokenName: string | undefined, scopes: readonly string[], expiresAt: number | null) {
   const db = c.env.DB;
   const now = Date.now();
   const row = await db.prepare(`SELECT * FROM device_logins WHERE device_code_hash = ? AND provider = 'osintverse'`).bind(await sha256Hex(deviceCode)).first<DeviceRow>();
@@ -97,9 +97,9 @@ export async function pollOsintverseDevice(c: Context<AppEnv>, deviceCode: strin
   if (!taken.meta.changes) return { status: "expired" };
   const user = await db.prepare(`SELECT login FROM users WHERE id = ? AND banned_at IS NULL`).bind(row.user_id).first<{ login: string }>();
   if (!user) return { status: "denied" };
-  const { token } = await mintApiToken(db, row.user_id!, (tokenName ?? "ot CLI").slice(0, 60));
-  await audit(db, row.user_id, "user", "token.create", "device_login", row.id, { provider: "osintverse" }).run();
-  return { status: "ok", token, login: user.login, provider: "osintverse" };
+  // mintApiToken writes the token.create audit row, with the scopes and expiry the CLI asked for.
+  const { token } = await mintApiToken(db, row.user_id!, (tokenName ?? "ot CLI").slice(0, 60), scopes, expiresAt);
+  return { status: "ok", token, login: user.login, provider: "osintverse", scopes, expires_at: expiresAt };
 }
 
 /** After the OSINTverse sign-in for a device login: ask the user to approve the CLI. */
