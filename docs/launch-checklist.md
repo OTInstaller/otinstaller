@@ -30,8 +30,9 @@ branch `claude/tool-reporting-feature-f4ea30`.
       It must be in before the API goes out, or `problem-reports` fails.
 - [ ] **(you)** Deploy the API: in `api/`, `npm run deploy`. Checks: `/v1/health` answers 200, and a report with a
       foreign origin is refused without being counted:
-      `curl -s -X POST https://api.otinstaller.com/v1/tools/osintverse-community/sherlock/problem-reports -H "origin: https://example.com" -d '{"kind":"broken"}'`
-      answers 403 `foreign_origin`.
+      `curl.exe -s -X POST https://api.otinstaller.com/v1/tools/osintverse-community/sherlock/problem-reports -H "origin: https://example.com"`
+      answers 403 `foreign_origin`. Use `curl.exe`, since `curl` in Windows PowerShell is `Invoke-WebRequest`; the
+      origin is checked before the body is read, so the request needs none.
 - [ ] **(you)** Deploy the site, after the API: in `web/`, PowerShell `$env:PUBLIC_BETA = "0"; npm run deploy`.
       Checks:
   - a tool page shows "Report a problem" beside "Follow releases" on every tab;
