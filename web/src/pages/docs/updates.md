@@ -16,6 +16,12 @@ machine are behind and updates them through the same checks as a first install.
   release. Every night the registry compares that pin with upstream's latest release, and the tool's page says when
   upstream has moved on. When it is switched on, an outdated issue is filed and a pull request bumps the pin, which a
   maintainer releases.
+- **First-party tools** (written by the project) pin their Python dependencies in `requirements.txt`. Every night the
+  registry compares each pin with PyPI's latest release, the same way, and updates them with a pull request.
+- **Base images**: every night the registry also looks up the base image each build in `osintverse-community` starts
+  from (`python:3.12-slim`, `alpine:3.22`, ...). When it has changed since the build and the build's scan found
+  fixable critical or high vulnerabilities, the registry can rebuild the tool on the newer base, unchanged otherwise,
+  as a new patch version.
 - **Every new version** is built, signed, scanned and smoke-tested before it is published, and the nightly health check
   runs each tool's test input again. For a week after a release, its page and `ot outdated` say how many people found
   it working or broken.
@@ -40,8 +46,10 @@ To look yourself:
 | `ot changelog <tool>` | The release notes of the versions newer than yours (`--all` for every version) |
 | `ot info <tool>` | The latest version's release notes, under "What's new" |
 
-To follow a tool without `ot`, subscribe to its feed, `/<namespace>/<tool>/feed.atom`
-([feeds](/docs/automation#feeds-staying-up-to-date)).
+Signed in on the website, **Follow releases** on a tool's page, **Follow publisher** on a publisher's page and
+**Follow new tools** on an input type's page send you an inbox item and an email for each new version
+([following](/docs/community#following-packages-publishers-and-input-types)). Without an account, subscribe to a
+feed: `/<namespace>/<tool>/feed.atom` ([feeds](/docs/automation#feeds-staying-up-to-date)).
 
 ## Updating
 

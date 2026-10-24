@@ -7264,9 +7264,17 @@
                         "null"
                       ],
                       "properties": {
+                        "kind": {
+                          "enum": [
+                            "upstream",
+                            "dependency",
+                            "rebuild"
+                          ],
+                          "description": "upstream: a community wrapper's pin; dependency: a first-party tool's requirements.txt (version is pkg==1.2,other==3.4); rebuild: the same source built again on a newer base image (number 0, no pull request)"
+                        },
                         "version": {
                           "type": "string",
-                          "description": "Upstream's release the pull request bumps to"
+                          "description": "Upstream's release the pull request bumps to; for a dependency update the pins it changes (pkg==1.2,other==3.4); for a rebuild rebuild:<digest>"
                         },
                         "number": {
                           "type": "integer"
@@ -7470,7 +7478,7 @@
           "Owners"
         ],
         "summary": "Merge and release a bump pull request, or release a failed one again",
-        "description": "The package's maintainers (its submitter, others staff add, the namespace's members) and reviewers. The community bot merges the pull request and starts the release: the release workflow for builds (the version follows upstream's), a tag for wheels. A pull request that changes more than the pin needs a reviewer (403 not_pin_only). A bump whose release failed is released again without merging again, under a new version; one being released answers 409 bump_in_progress. If GitHub merged it but the release didn't start, it answers 503 github_failed and the bump can be released again.",
+        "description": "The package's maintainers (its submitter, others staff add, the namespace's members) and reviewers. The community bot merges the pull request and starts the release: the release workflow for builds (the version follows upstream's), a tag for wheels. A pull request that changes more than the pin needs a reviewer (403 not_pin_only). A bump whose release failed is released again without merging again, under a new version; one being released answers 409 bump_in_progress. If GitHub merged it but the release didn't start, it answers 503 github_failed and the bump can be released again. A first-party tool's dependency update is released the same way, as a patch version. A rebuild on a newer base image has no pull request: it is number 0, and only a failed one can be released again.",
         "parameters": [
           {
             "name": "ns",
@@ -7497,7 +7505,7 @@
             "schema": {
               "type": "integer"
             },
-            "description": "The pull request's number"
+            "description": "The pull request's number; 0 for a rebuild"
           }
         ],
         "responses": {
@@ -8184,8 +8192,8 @@
         "tags": [
           "Auth"
         ],
-        "summary": "The packages you follow for releases",
-        "description": "Newest first, 100 at a time; page with before=<next_before>.",
+        "summary": "What you follow: packages, publishers and input types",
+        "description": "Packages newest first, 100 at a time (page with before=<next_before>); publishers and input types come whole on the first page.",
         "parameters": [
           {
             "name": "before",
@@ -8236,6 +8244,34 @@
                         "integer",
                         "null"
                       ]
+                    },
+                    "publishers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "followed_at": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "inputs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string"
+                          },
+                          "followed_at": {
+                            "type": "integer"
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -8247,6 +8283,204 @@
           }
         },
         "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/me/follows/{kind}/{target}": {
+      "get": {
+        "operationId": "following",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Whether you follow a publisher or an input type",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "publisher",
+                "input"
+              ]
+            },
+            "description": "publisher or input"
+          },
+          {
+            "name": "target",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A namespace's name, or an input type"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "following": {
+                      "type": "boolean"
+                    },
+                    "followed_at": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "follow",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Follow a publisher or an input type",
+        "description": "A publisher: an inbox item (and an email per your releases preference) for each version that becomes the latest of one of its packages, and for each new package. An input type: one for each new tool or guide that takes it. At most 200 publishers and input types.",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "publisher",
+                "input"
+              ]
+            },
+            "description": "publisher or input"
+          },
+          {
+            "name": "target",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A namespace's name, or an input type"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "following": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "feedback",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "unfollow",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Stop following a publisher or an input type",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "publisher",
+                "input"
+              ]
+            },
+            "description": "publisher or input"
+          },
+          {
+            "name": "target",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A namespace's name, or an input type"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "following": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "feedback",
         "security": [
           {
             "bearer": []
@@ -10633,14 +10867,34 @@
                 "description": "What the latest version's smoke test produced, when the scanner recorded it: up to five entities for json and jsonl tools, or the first 2000 characters of stdout. The input was the manifest's own test input.",
                 "type": "object",
                 "properties": {
-                  "output_format": { "type": "string" },
-                  "entities": { "type": "array", "items": { "type": "object" } },
-                  "entity_count": { "type": "integer" },
-                  "stdout": { "type": "string" },
-                  "version": { "type": "string" },
-                  "recorded_at": { "type": "integer", "description": "Unix milliseconds" }
+                  "output_format": {
+                    "type": "string"
+                  },
+                  "entities": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "entity_count": {
+                    "type": "integer"
+                  },
+                  "stdout": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "recorded_at": {
+                    "type": "integer",
+                    "description": "Unix milliseconds"
+                  }
                 },
-                "required": ["output_format", "version", "recorded_at"]
+                "required": [
+                  "output_format",
+                  "version",
+                  "recorded_at"
+                ]
               },
               "repo_url": {
                 "type": "string"
@@ -10665,6 +10919,113 @@
               },
               "manifest": {
                 "$ref": "https://otinstaller.com/schema/v1.json"
+              },
+              "dependencies": {
+                "description": "First-party tools in the community namespace: each exact pin in requirements.txt against PyPI's latest release (the build watcher, nightly)",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "package": {
+                      "type": "string"
+                    },
+                    "pinned": {
+                      "type": "string"
+                    },
+                    "latest": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "latest_at": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "state": {
+                      "enum": [
+                        "current",
+                        "behind",
+                        "unknown",
+                        "error"
+                      ]
+                    }
+                  }
+                }
+              },
+              "base_image": {
+                "description": "Docker builds in the community namespace: the final stage's base image and whether its Docker Hub digest changed since the latest version was first seen",
+                "type": "object",
+                "properties": {
+                  "image": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "state": {
+                    "enum": [
+                      "current",
+                      "updated",
+                      "unknown",
+                      "error"
+                    ]
+                  },
+                  "checked_at": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "rebuilt_at": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "description": "When the registry last started a rebuild of this package"
+                  }
+                }
+              },
+              "bump": {
+                "description": "The package's current bump of any kind: open, being released, failed, or released in the last two weeks",
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "upstream",
+                      "dependency",
+                      "rebuild"
+                    ],
+                    "description": "upstream: a community wrapper's pin; dependency: a first-party tool's requirements.txt (version is pkg==1.2,other==3.4); rebuild: the same source built again on a newer base image (number 0, no pull request)"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "number": {
+                    "type": "integer"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "enum": [
+                      "open",
+                      "merged",
+                      "released",
+                      "failed",
+                      "closed"
+                    ]
+                  },
+                  "released_version": {
+                    "type": "string"
+                  },
+                  "auto_release_at": {
+                    "type": "integer",
+                    "description": "In auto mode, when an open bump goes out on its own (ms)"
+                  }
+                }
               }
             }
           }

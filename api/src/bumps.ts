@@ -6,8 +6,9 @@
 // wheels. A pull request that changes anything besides the pin needs a reviewer. With UPSTREAM_WATCH=auto the nightly
 // check merges and releases a pin-only bump itself a week after upstream's release, unless the maintainers turned that
 // off. Every attempt is followed to its end: released when the version is published, failed (and the maintainers told)
-// when the build, validation or scan didn't publish it; a failed bump can be released again. The table is in
-// migrations 0022 and 0028.
+// when the build, validation or scan didn't publish it; a failed bump can be released again. The same machinery
+// releases the first-party tools' dependency updates and rebuilds on a newer base image (build-watch.ts), told apart
+// by `kind`. The table is in migrations 0022, 0028 and 0031.
 import { deps, type Env, type User } from "./env";
 import { apiError } from "./lib/errors";
 import { semverParts } from "./lib/manifest";
@@ -24,22 +25,24 @@ import { findPin, isCommitPin } from "./upstream-pin";
 import { ISSUE_AFTER, type WatchRow } from "./upstream";
 
 export type BumpStatus = "open" | "merged" | "released" | "failed" | "closed";
+/** upstream: a wrapper's pin; dependency: a first-party tool's requirements.txt; rebuild: the same source on a newer base image. */
+export type BumpKind = "upstream" | "dependency" | "rebuild";
 
 export type BumpRow = {
-  tool_id: string; version: string; pr_number: number; url: string; branch: string; status: BumpStatus; released_version: string | null;
+  tool_id: string; kind: BumpKind; version: string; pr_number: number; url: string; branch: string; status: BumpStatus; released_version: string | null;
   merged_by: string | null; auto: number; merge_sha: string | null; merged_at: number | null; run_url: string | null; attempts: number;
   error_code: string | null; error: string | null; released_at: number | null; created_at: number; updated_at: number;
 };
 
-type Tool = { id: string; name: string; ns: string; namespace_id: string; upstream_url: string; wrapper: string | null; manifest_json: string };
+export type Tool = { id: string; name: string; ns: string; namespace_id: string; upstream_url: string | null; wrapper: string | null; manifest_json: string };
 
-const WORKFLOW = "otinstaller-release.yml";
-const DAY = 86_400_000;
+export const WORKFLOW = "otinstaller-release.yml";
+export const DAY = 86_400_000;
 /** A bump goes out on its own (UPSTREAM_WATCH=auto) a week after upstream's release, and no sooner than this after its pull request opened. */
 export const AUTO_AFTER = 7 * DAY;
-const AUTO_PR_AGE = 4 * DAY;
+export const AUTO_PR_AGE = 4 * DAY;
 /** How many bumps the registry releases on its own in a day, across every wrapper. */
-const AUTO_PER_DAY = 10;
+export const AUTO_PER_DAY = 10;
 /** A release that hasn't reached the registry by then has failed somewhere the registry can't see. */
 const RELEASE_WAIT = 12 * 3_600_000;
 
@@ -78,13 +81,31 @@ export function compareSemver(a: string, b: string): number {
 export async function wrapperVersion(env: Env, toolId: string, latest: string): Promise<string | null> {
   const want = upstreamSemver(latest);
   if (!want) return null;
-  const rows = (await env.DB.prepare(
-    `SELECT version FROM versions WHERE tool_id = ? UNION SELECT released_version FROM bump_prs WHERE tool_id = ? AND released_version IS NOT NULL`,
-  ).bind(toolId, toolId).all<{ version: string }>()).results.map((r) => r.version).filter((v) => /^\d+\.\d+\.\d+(-.+)?$/.test(v));
-  const highest = rows.reduce<string | null>((h, v) => (!h || compareSemver(v, h) > 0 ? v : h), null);
+  const highest = await highestVersion(env, toolId);
   if (!highest || compareSemver(want, highest) > 0) return want;
   const p = semverParts(highest);
   return `${p.major}.${p.minor}.${p.patch + 1}`;
+}
+
+/** The highest version the package ever had (any status) or a bump released. */
+async function highestVersion(env: Env, toolId: string): Promise<string | null> {
+  const rows = (await env.DB.prepare(
+    `SELECT version FROM versions WHERE tool_id = ? UNION SELECT released_version FROM bump_prs WHERE tool_id = ? AND released_version IS NOT NULL`,
+  ).bind(toolId, toolId).all<{ version: string }>()).results.map((r) => r.version).filter((v) => /^\d+\.\d+\.\d+(-.+)?$/.test(v));
+  return rows.reduce<string | null>((h, v) => (!h || compareSemver(v, h) > 0 ? v : h), null);
+}
+
+/** A patch on top of every version the package had: what a dependency update or a rebuild releases. */
+export async function nextPatch(env: Env, toolId: string, fallback: string): Promise<string> {
+  const p = semverParts((await highestVersion(env, toolId)) ?? fallback);
+  return `${p.major}.${p.minor}.${p.patch + 1}`;
+}
+
+/** How a bump is named in notices: the bump to v1.3.0, the dependency update (dnspython 2.9.0), the rebuild. */
+export function bumpLabel(b: Pick<BumpRow, "kind" | "version">): string {
+  if (b.kind === "dependency") return `the dependency update (${b.version.replaceAll("==", " ").replaceAll(",", ", ")})`;
+  if (b.kind === "rebuild") return "the rebuild on a newer base image";
+  return `the bump to ${b.version}`;
 }
 
 // ---------- opening ----------
@@ -123,7 +144,7 @@ async function planBump(env: Env, token: string, t: Tool, w: WatchRow): Promise<
     return next === yaml ? null : { path: "otinstaller.yaml", content: next };
   }
   const dockerfile = await github.fileAt(deps.fetch, token, t.wrapper!, "Dockerfile", "main");
-  const pin = dockerfile ? findPin(dockerfile, t.upstream_url) : null;
+  const pin = dockerfile && t.upstream_url ? findPin(dockerfile, t.upstream_url) : null;
   if (!dockerfile || !pin) return null;
   // Main pins what the published version pins, or what a merged bump whose release failed pinned.
   if (pin.ref !== w.pinned) {
@@ -166,12 +187,12 @@ export async function maybeOpenBump(env: Env, t: Tool, w: WatchRow, now = Date.n
     if (e instanceof HostError) return (console.error("opening the bump pull request failed", e), null);
     throw e;
   }
-  const older = (await env.DB.prepare(`SELECT pr_number FROM bump_prs WHERE tool_id = ? AND status = 'open' AND version != ?`).bind(t.id, latest).all<{ pr_number: number }>()).results;
+  const older = (await env.DB.prepare(`SELECT pr_number FROM bump_prs WHERE tool_id = ? AND kind = 'upstream' AND status = 'open' AND version != ?`).bind(t.id, latest).all<{ pr_number: number }>()).results;
   await env.DB.batch([
     env.DB.prepare(`INSERT OR IGNORE INTO bump_prs (tool_id, version, pr_number, url, branch, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
       .bind(t.id, latest, pr.number, pr.url, branch, now, now),
     // An older bump that never went in is superseded by this one.
-    env.DB.prepare(`UPDATE bump_prs SET status = 'closed', updated_at = ? WHERE tool_id = ? AND status IN ('open', 'failed') AND version != ?`).bind(now, t.id, latest),
+    env.DB.prepare(`UPDATE bump_prs SET status = 'closed', updated_at = ? WHERE tool_id = ? AND kind = 'upstream' AND status IN ('open', 'failed') AND version != ?`).bind(now, t.id, latest),
     audit(env.DB, null, "system", "bump.open", "tool", t.id, { version: latest, pr: pr.url }),
   ]);
   for (const o of older) {
@@ -190,12 +211,22 @@ export async function canRelease(env: Env, user: User | null, t: Pick<Tool, "id"
   return { maintainer: listed || (await isMember(env, t.namespace_id, user.id)), reviewer };
 }
 
-/** Whether a pull request's changes are the pin alone: one line of the Dockerfile, or the manifest's version fields. */
+/**
+ * Whether a pull request's changes are the pin alone: one line of the Dockerfile, the manifest's version fields, or
+ * requirements.txt's exact pins (the same packages before and after, only their versions changed).
+ */
 export function pinOnly(files: { filename: string; patch?: string }[]): boolean {
   if (files.length !== 1 || !files[0]!.patch) return false;
   const changed = files[0]!.patch.split("\n").filter((l) => /^[-+]/.test(l) && !/^(---|\+\+\+)/.test(l));
   if (files[0]!.filename === "Dockerfile") return changed.length === 2 && changed[0]!.startsWith("-") && changed[1]!.startsWith("+");
   if (files[0]!.filename === "otinstaller.yaml") return changed.length > 0 && changed.every((l) => /^[-+]\s*(version|package_version|wheel_sha256):/.test(l));
+  if (files[0]!.filename === "requirements.txt") {
+    // Each line is an exact pin, and the lines read the same before and after with their versions left out.
+    const pin = /^[-+][A-Za-z0-9][A-Za-z0-9._-]*(?:\[[^\]]*\])?\s*==\s*([A-Za-z0-9.!+_-]+)\s*(?:;.*)?$/;
+    if (!changed.length || changed.some((l) => !pin.test(l))) return false;
+    const rest = (side: string) => changed.filter((l) => l[0] === side).map((l) => l.slice(1).replace(/==\s*[A-Za-z0-9.!+_-]+/, "==").toLowerCase()).sort().join("\n");
+    return rest("-") === rest("+");
+  }
   return false;
 }
 
@@ -203,6 +234,7 @@ export function pinOnly(files: { filename: string; patch?: string }[]): boolean 
 export async function releaseBumpAs(env: Env, actor: User, t: Tool, number: number): Promise<{ version: string; released: string; attempt: number }> {
   const who = await canRelease(env, actor, t);
   if (!who.maintainer && !who.reviewer) apiError(403, "not_package_maintainer", "only the package's maintainers and reviewers can merge and release a bump");
+  // A rebuild has no pull request: it is #0, and only ever released again after it failed.
   const bump = await env.DB.prepare(`SELECT * FROM bump_prs WHERE tool_id = ? AND pr_number = ? ORDER BY created_at DESC LIMIT 1`).bind(t.id, number).first<BumpRow>();
   if (!bump || !t.wrapper || bump.status === "released" || bump.status === "closed") apiError(404, "bump_not_found", `${t.ns}/${t.name} has no open or failed bump pull request #${number}`);
   if (bump.status === "merged") apiError(409, "bump_in_progress", `the release of ${bump.released_version ?? "this bump"} is under way`, "wait for it to be published or to fail");
@@ -235,7 +267,7 @@ export async function releaseBump(env: Env, t: Tool, bump: BumpRow, by: { actorI
   let sha = bump.merge_sha;
   if (bump.status === "open") {
     try {
-      sha = await github.mergePull(deps.fetch, token, wrapper, bump.pr_number, `Bump ${t.name} to ${bump.version}`);
+      sha = await github.mergePull(deps.fetch, token, wrapper, bump.pr_number, bump.kind === "dependency" ? `Update ${t.name}'s dependencies` : `Bump ${t.name} to ${bump.version}`);
     } catch (e) {
       await db.prepare(`UPDATE bump_prs SET status = 'open', merged_at = NULL, attempts = attempts - 1, updated_at = ? WHERE tool_id = ? AND version = ?`).bind(now, t.id, bump.version).run();
       if (e instanceof HostError) apiError(409, "bump_not_mergeable", `GitHub won't merge #${bump.pr_number}: ${e.message}`, "resolve it on GitHub, or ask a reviewer");
@@ -244,10 +276,7 @@ export async function releaseBump(env: Env, t: Tool, bump: BumpRow, by: { actorI
     await db.prepare(`UPDATE bump_prs SET merge_sha = ? WHERE tool_id = ? AND version = ?`).bind(sha, t.id, bump.version).run();
   }
   const m = JSON.parse(t.manifest_json) as { version: string; runtime?: { kind?: string } };
-  const released = (await wrapperVersion(env, t.id, bump.version)) ?? (() => {
-    const p = semverParts(m.version);
-    return `${p.major}.${p.minor}.${p.patch + 1}`;
-  })();
+  const released = (bump.kind === "upstream" ? await wrapperVersion(env, t.id, bump.version) : null) ?? (await nextPatch(env, t.id, m.version));
   try {
     if (m.runtime?.kind === "pipx") {
       // The tag must match the manifest's version: a release again needs a new version on main first.
@@ -263,7 +292,7 @@ export async function releaseBump(env: Env, t: Tool, bump: BumpRow, by: { actorI
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     await failBump(env, t.id, bump.version, { code: "release_start_failed", message: `starting the release failed: ${message}` });
-    if (e instanceof HostError) apiError(503, "github_failed", `the pull request is merged, but starting the release of ${released} failed: ${message}`, "try again from the package page");
+    if (e instanceof HostError) apiError(503, "github_failed", `${bump.kind === "rebuild" ? "starting the rebuild" : `the pull request is merged, but starting the release`} of ${released} failed: ${message}`, "try again from the package page");
     throw e;
   }
   const attempt = bump.attempts + 1;
@@ -275,17 +304,19 @@ export async function releaseBump(env: Env, t: Tool, bump: BumpRow, by: { actorI
 }
 
 /** The package's maintainers hear that a bump's release didn't make it, and why. */
-async function failBump(env: Env, toolId: string, version: string, why: { code: string; message: string; runUrl?: string }) {
+export async function failBump(env: Env, toolId: string, version: string, why: { code: string; message: string; runUrl?: string }) {
   const now = Date.now();
   const res = await env.DB.prepare(
     `UPDATE bump_prs SET status = 'failed', error_code = ?, error = ?, run_url = ?, updated_at = ? WHERE tool_id = ? AND version = ? AND status = 'merged'`,
   ).bind(why.code, why.message.slice(0, 500), why.runUrl ?? null, now, toolId, version).run();
   if (!res.meta.changes) return;
-  const t = await env.DB.prepare(`SELECT t.name, n.name AS ns, t.namespace_id FROM tools t JOIN namespaces n ON n.id = t.namespace_id WHERE t.id = ?`).bind(toolId).first<{ name: string; ns: string; namespace_id: string }>();
+  const t = await env.DB.prepare(
+    `SELECT t.name, n.name AS ns, t.namespace_id, b.kind FROM tools t JOIN namespaces n ON n.id = t.namespace_id JOIN bump_prs b ON b.tool_id = t.id AND b.version = ? WHERE t.id = ?`,
+  ).bind(version, toolId).first<{ name: string; ns: string; namespace_id: string; kind: BumpKind }>();
   if (!t) return;
   await notify(env, await maintainers(env, t.namespace_id, toolId), {
     kind: "status", scope: "owner_issues", path: `/${t.ns}/${t.name}`, tool_id: toolId,
-    summary: `${t.ns}/${t.name}: the release of the bump to ${version} failed (${why.code}); release it again from the package page once it's fixed`,
+    summary: `${t.ns}/${t.name}: the release of ${bumpLabel({ kind: t.kind, version })} failed (${why.code}); release it again from the package page once it's fixed`,
   });
 }
 
@@ -294,13 +325,18 @@ async function failBump(env: Env, toolId: string, version: string, why: { code: 
  * the publish job or scan gave. Called when a version is published or rejected, and by the 15-minute sweep.
  */
 export async function settleBump(env: Env, toolId: string, version: string, outcome: "released" | { code: string; message: string; runUrl?: string }) {
-  const bump = await env.DB.prepare(`SELECT version FROM bump_prs WHERE tool_id = ? AND released_version = ? AND status = 'merged'`).bind(toolId, version).first<{ version: string }>();
+  const bump = await env.DB.prepare(`SELECT kind, version FROM bump_prs WHERE tool_id = ? AND released_version = ? AND status = 'merged'`).bind(toolId, version).first<{ kind: BumpKind; version: string }>();
   if (!bump) return;
   if (outcome !== "released") return failBump(env, toolId, bump.version, outcome);
   const now = Date.now();
   await env.DB.prepare(`UPDATE bump_prs SET status = 'released', released_at = ?, updated_at = ? WHERE tool_id = ? AND version = ? AND status = 'merged'`)
     .bind(now, now, toolId, bump.version).run();
-  await closeSystemIssue(env, toolId, `outdated:${bump.version}`, "fixed", `Version ${version}, which pins ${bump.version}, is published.`).catch((e) => console.error("closing the outdated issue failed", e));
+  // Its issues close: the upstream release's outdated issue, or each updated dependency's.
+  const keys = bump.kind === "upstream" ? [`outdated:${bump.version}`] : bump.kind === "dependency" ? bump.version.split(",").map((p) => `dependency:${p}`) : [];
+  for (const key of keys) {
+    await closeSystemIssue(env, toolId, key, "fixed", `Version ${version}, which pins ${key.replace(/^(outdated|dependency):/, "").replace("==", " ")}, is published.`)
+      .catch((e) => console.error("closing the outdated issue failed", e));
+  }
 }
 
 /**
@@ -365,7 +401,7 @@ export async function sweepBumps(env: Env, now = Date.now()) {
  * off; the pull request is still open and changes exactly the planned file; and fewer than ten bumps went out today.
  */
 export async function maybeAutoRelease(env: Env, t: Tool, w: WatchRow, bump: BumpRow | null, now = Date.now()): Promise<boolean> {
-  if (!bump || bump.status !== "open" || !t.wrapper || !w.latest || bump.version !== w.latest) return false;
+  if (!bump || bump.kind !== "upstream" || bump.status !== "open" || !t.wrapper || !w.latest || bump.version !== w.latest) return false;
   if (w.state !== "behind" || !upstreamSemver(w.latest) || !isRedistributable(w.upstream_license) || now < autoReleaseAt(w, bump)) return false;
   if (t.ns !== COMMUNITY_NAMESPACE || !t.wrapper.startsWith(`${COMMUNITY_NAMESPACE}/`)) return false;
   const tool = await env.DB.prepare(`SELECT auto_release, status FROM tools WHERE id = ?`).bind(t.id).first<{ auto_release: number; status: string }>();

@@ -653,6 +653,14 @@ The namespace already belongs to that host. A profile can link the other host (G
 
 ## Transfers and claims
 
+### input_type_not_found
+You tried to follow an input type tools don't take. The types are listed in [the manifest reference](/docs/manifest)
+and at `GET /v1/types`.
+
+### too_many_follows
+You follow 200 publishers and input types already. Stop following some in
+[notification settings](/settings/notifications) first.
+
 ### namespace_not_found
 No namespace has that name. Namespaces come from installing the GitHub App or connecting GitLab.
 

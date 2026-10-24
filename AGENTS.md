@@ -540,6 +540,7 @@ and beta work, so `R2_*`, `ISSUES_REPO`/`ISSUES_TOKEN` and `EDGE_CACHE` are only
 | `submissions.ts` | Community wrapper submissions: checks, `dockerfileChecks`, the community bot (`COMMUNITY_*`), the first-release review gate |
 | `upstream-pin.ts` / `upstream.ts` / `bumps.ts` | Reading a wrapper's upstream pin from its Dockerfile; the nightly upstream watcher (`UPSTREAM_WATCH`); bump pull requests, "merge and release", following each release to released or failed (`settleBump`, `sweepBumps`) and releasing on its own in auto mode |
 | `proposals.ts` | Change proposals: a wrapper's maintainers change its manifest, Dockerfile or README beyond the pin (`checkProposal`), the community bot opens the pull request, a reviewer who isn't the proposer approves it and the bot merges and releases it |
+| `build-watch.ts` | The build watcher: first-party tools' requirements.txt pins against PyPI (issues, dependency update pull requests, auto releases under `UPSTREAM_WATCH`), and each community-namespace build's base image on Docker Hub (rebuilds under `REBUILD_WATCH`) |
 | `first-week.ts` | A new version's first week: its works/broken counts (`firstWeekCounts`) for the status line, the versions list and the activity feed |
 | `known-repos.ts` | **Generated** from otlite's catalog and `seed/candidates.md`; don't edit |
 | `mirror/` | The mirror Worker: `index.ts` (entry) and `registry.ts` (OCI API, `imageExists`, `hideImage`, `deleteImage`) |
@@ -604,7 +605,7 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
   `POST /internal/drills/:id`, `/internal/health[/targets]`. Scans, backup runs and drills each use their own
   single-use token (scan 1 h, run 3 h or 12 h weekly, drill 6 h); the health endpoints use the static shared
   `HEALTH_TOKEN`.
-- The full route table (194 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
+- The full route table (197 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
   `spec/openapi/v1.json` describes the public and owner routes, each with its token scope as `x-scope`; a test in
   `api.test.ts` fails when a route and the document disagree, so add new routes to both.
 - 429s carry `Retry-After`, `RateLimit-Policy` and `retry_after_s` (`rateLimited` in `lib/errors.ts`).
@@ -645,11 +646,12 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
    drills, backfill up to 5 versions with no backup, email inbox items due now. `scheduled()` runs this block on
    **every** trigger, including the nightly, weekly and monthly ones. Nightly also: guide link rechecks (> 20% dead →
    needs update), the reviewer digest, rate-limit purge, backup purge, locking stale closed threads, daily inbox
-   digests and the inbox purge, the `contributor_stats` recount, queuing every community wrapper's upstream check,
+   digests and the inbox purge, the `contributor_stats` recount, queuing every community wrapper's upstream check and every community-namespace build's dependency and base-image check,
    `installs_30d` recompute.
 
 Queue messages (`PublishMessage` in `env.ts`): `{ jobId }`, `{ importId }`, `{ checkVersionId, attempt? }`,
-`{ linkCheckToolId }`, `{ publishVersionId }`, `{ backupVersionId }`, `{ profileNamespaceId }`, `{ upstreamCheckToolId }`;
+`{ linkCheckToolId }`, `{ publishVersionId }`, `{ backupVersionId }`, `{ profileNamespaceId }`, `{ upstreamCheckToolId }`,
+`{ buildCheckToolId }`, `{ mirrorSweepRepo }`;
 anything else is treated as `{ jobId }`. Transient
 failures retry with a delay of 30 × attempts seconds, 5 deliveries in all (the code acks before wrangler's own
 `max_retries` kicks in); a `HostError` with `transient=false` fails immediately. On the last failure a job becomes
@@ -689,8 +691,8 @@ migrations add publish intake (0002), scans/review and `notifications` (0003), s
 `feedback` (0012), and scoped tokens (`api_tokens.scoped`) plus the `install_clients` daily counts by client kind
 (0013), publisher profiles (`namespace_profiles`, `namespace_hosts`, 0014), release-note sources (0015), the community
 (handles, `community_roles`, `issues`, `issue_comments`, `confirmations`, `run_signals`, `content_flags`,
-`issue_subscriptions`, 0016; `problem_signals` from Report a problem, 0030), notifications (`email_prefs`, `inbox`, 0017; following packages' releases, `package_follows`,
-`email_prefs.releases`, `versions.announced_at`, 0029), tool requests (`tool_requests`,
+`issue_subscriptions`, 0016; `problem_signals` from Report a problem, 0032), notifications (`email_prefs`, `inbox`, 0017; following packages' releases, `package_follows`,
+`email_prefs.releases`, `versions.announced_at`, 0029; following publishers and input types, `follows`, 0030), tool requests (`tool_requests`,
 `request_votes`, 0018), `contributor_stats` (0019), community submissions (`tools.needs_first_review`,
 `tool_maintainers`, `wrapper_submissions`, 0020), the upstream watcher (`upstream_watch`, 0021), bump pull requests
 (`bump_prs`, 0022; outcomes and `tools.auto_release`, 0028), direct publishing (`publish_jobs` `namespace_id`/`bundle_key`/`submitted_by`,
@@ -698,7 +700,7 @@ migrations add publish intake (0002), scans/review and `notifications` (0003), s
 publishing (`trusted_publishers`, the CI token columns `api_tokens.namespace_id`/`package`/`trusted_publisher_id`/
 `oidc_json`/`jti`, and `publish_jobs.trusted_publisher_id`/`ci_json`, 0025), request discussions
 (`request_comments`, `request_subscriptions`, flags on requests, 0026) and change proposals (`change_proposals`,
-0027). That is 59 tables plus `tools_fts`; every
+0027), and the build watcher (`dependency_watch`, `base_images`, `base_watch`, `bump_prs.kind`, 0031). That is 63 tables plus `tools_fts`; every
 table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
 
@@ -762,7 +764,7 @@ cron deletes it two days after it expires.
 ### API tests (`api/test/`)
 
 `vitest.config.ts` uses `@cloudflare/vitest-plugin`, so tests run in workerd against the bindings from `wrangler.jsonc`
-with fake secrets and `EDGE_CACHE: "off"`. The config also builds `TEST_SEED` (from `scripts/seed-lib.mjs`),
+with fake secrets, `EDGE_CACHE: "off"` and `UPSTREAM_WATCH: "report"`. The config also builds `TEST_SEED` (from `scripts/seed-lib.mjs`),
 `TEST_FIXTURES` and `TEST_TEMPLATES` (from `spec/`), `TEST_KNOWN_REPOS` (what `known-repos.ts` should hold) and
 `TEST_DOCKERFILES` (every seed wrapper's Dockerfile and upstream); `test/setup.ts` applies the migrations and, when `tools` is empty,
 the seed. Helpers in `test/helpers.ts`: `fakeHosts(routes)` (keys like `"GET https://api.github.com/..."`,
@@ -928,7 +930,7 @@ The plan is [docs/roadmap.md](docs/roadmap.md) (phase 1 built). User docs: `web/
   issue.
 - **Report a problem** (the button in `ToolHeader`, `/<ns>/<name>/report`, `ReportProblem`): doesn't work, shows an
   error, out of date or wrong page become issues when signed in; without a sign-in, broken and out of date are counted
-  (`problem-reports`, `problem_signals`, 0030). Broken counts share `ot`'s once-a-day key and unconfirmed issue;
+  (`problem-reports`, `problem_signals`, 0032). Broken counts share `ot`'s once-a-day key and unconfirmed issue;
   outdated ones (latest version only) open `outdated_signals:<v>` unless another outdated issue is open, closed by
   `announceVersion`. Malware, abuse and legal problems stay the private `ReportForm`.
 - **Notifications** (`inbox.ts`, 0017): inbox rows written with each event, emailed within 15 minutes or as a daily
@@ -936,7 +938,10 @@ The plan is [docs/roadmap.md](docs/roadmap.md) (phase 1 built). User docs: `web/
 - **Following releases** (0029): anyone signed in follows a package (`PUT /tools/:ns/:name/follow`, the "Follow
   releases" island on tool pages) and gets a `release` item (scope `releases`, its own email preference) when a
   version becomes the latest. People following one of its open broken or outdated issues get the issue's item
-  instead. Follows are private: no counts, nothing on profiles.
+  instead. Follows are private: no counts, nothing on profiles. Publishers and input types can be followed too
+  (0030, `PUT /me/follows/publisher|input/:target`, the same island on publisher and input pages): a publisher's
+  followers hear of each of its releases, an input type's of new packages taking it, each person once per release
+  (`notifyFollowers`).
 - **Requests** (`requests.ts`, 0018): one per repository, checked when made (public, not packaged or requested,
   no upstream manifest; a license the registry can't redistribute or an archived repository is declined at once);
   votes; triagers decide; a published package from that repository answers it (`linkPublished`). Each has a
@@ -961,6 +966,12 @@ The plan is [docs/roadmap.md](docs/roadmap.md) (phase 1 built). User docs: `web/
   the 15-minute cron), and a failed bump can be released again under a new version. The wrapper's version is
   upstream's as X.Y.Z (`upstreamSemver`: 2.2 is 2.2.0), or a patch on top when that isn't above every version it had
   (`wrapperVersion`).
+- **Build watcher** (`build-watch.ts`, 0031): nightly, for every Docker package with a source in the community
+  namespace. First-party tools' `requirements.txt` pins are compared with PyPI; under `UPSTREAM_WATCH` they get
+  `dependency:<pkg>==<ver>` issues, one bot pull request per set of releases (`bump_prs.kind = 'dependency'`, released
+  as a patch) and auto releases, through the same release, settle and sweep code as bumps. Each build's base image
+  (last `FROM`, Docker Hub digest) is recorded; `REBUILD_WATCH=rebuild` reruns the release workflow on unchanged source
+  (`kind = 'rebuild'`, #0) when the digest changed and the latest scan has fixable critical or high vulnerabilities.
 - **Change proposals** (`proposals.ts`, 0027): a wrapper's maintainers and reviewers edit its `otinstaller.yaml`,
   Dockerfile or README on the package's Changes tab. `checkProposal` keeps only what differs from main, validates the
   manifest, refuses identity changes (`protected_field`) and secrets, moves the version past every version the package
@@ -1032,8 +1043,9 @@ It is published by copying the folder to the public repo `OTInstaller/agent-plug
 **MCP Registry.** `com.otinstaller/ot` is listed from each `ot` release's `server.json` (written by `cli/cmd/mcpb`;
 descriptions must stay within the registry's 100 characters), `com.otinstaller/registry` from
 `integrations/mcp-registry/server.json` (bump its `version` when the remote tools change). Both are published by hand
-with `mcp-publisher`, signed in with `mcp-publisher login http --domain otinstaller.com` and the owner's private key
-(kept outside the repository in `~/.mcp-registry/`); the registry checks it against
+with the registry's publisher (installed by `go install` as `publisher`), signed in with
+`publisher login http --domain otinstaller.com` and the owner's private key (kept outside the repository in
+`~/.mcp-registry/`); the registry checks it against
 `web/public/.well-known/mcp-registry-auth`. The steps are in [publishing-setup.md](docs/publishing-setup.md),
 section 10, "MCP bundles and the MCP Registry".
 
@@ -1246,7 +1258,7 @@ and verify in the preview build.
 These affect production or other people, so do them only when asked: `npm run deploy` / `wrangler deploy` (api, mirror,
 web or `ops/get`), `wrangler d1 ... --remote`, `wrangler secret put`, pushing `v*` tags on this repo (releases `ot`),
 pushing tags or running workflows on seed repositories (publishes packages), publishing `otlite/` to PyPI (pushing
-`otlite-v*` tags or running `release-otlite.yml`), pushing to `OTInstaller/agent-plugin`, `mcp-publisher publish` to
+`otlite-v*` tags or running `release-otlite.yml`), pushing to `OTInstaller/agent-plugin`, `publisher publish` to
 the MCP Registry, submitting to directories or marketplaces (Anthropic, Cursor), posting outreach issues or PRs or
 launch posts, running `scripts/beta/labels.sh`, triggering backups or drills on production, changing the Cloudflare
 rate-limiting rule, changing GitHub App, OAuth, R2 or registry-ops settings (including creating the community bot's
@@ -1329,6 +1341,9 @@ change. Keep this list current when you fix one or find another.
 - A new version's first-week counts are signed-in confirmations only; anonymous failed-run reports (`run_signals`)
   and Report a problem counts (`problem_signals`) only reach it once they open an issue.
 - Bump pull requests skip wrappers that pin upstream's own image (they get an outdated issue only), and commit pins.
+- The build watcher records a version's base image digest when it first sees the version, not the one it was built on,
+  so a base that changed between the build and that first check is only noticed at its next change. It reads only
+  exact `==` pins in `requirements.txt` and Docker Hub base images.
 - The community bot creates wrapper repositories on GitHub only; a submission whose first release fails its scan
   stays `failed` until the submitter changes it.
 
@@ -1378,6 +1393,7 @@ change. Keep this list current when you fix one or find another.
 | Community bot | The second GitHub App (`COMMUNITY_APP_*`), installed only on `osintverse-community`, that creates wrapper repositories and opens bump pull requests and change proposals' pull requests |
 | Upstream watcher | The nightly check of each wrapper's pin against its upstream's latest release (`upstream_watch`, `UPSTREAM_WATCH`) |
 | Bump pull request | The community bot's pull request changing only a wrapper's pin; maintainers merge and release it, or the registry does in auto mode, and its release ends `released` or `failed` (`bump_prs`) |
+| Build watcher | The nightly check of first-party tools' PyPI dependencies and of every community-namespace build's base image (`build-watch.ts`); dependency updates and rebuilds are `bump_prs` rows of their own `kind` |
 | Change proposal | A wrapper maintainer's change to its manifest, Dockerfile or README, opened as a pull request by the community bot; a reviewer who isn't the proposer approves it (`change_proposals`) |
 | First week | The seven days after a version is published, when its works/broken counts are shown beside the previous version's |
 | Failure prompt | `ot run`'s "Report it as broken?" after a run that failed; sends no inputs or output |

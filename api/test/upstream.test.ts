@@ -287,7 +287,7 @@ describe("bump pull requests", () => {
     // Checking again opens no second pull request.
     await checkUpstream(e, w.toolId);
     expect(b.did.pulls).toHaveLength(1);
-    expect(((await (await call(`/tools/${w.ref}`, {}, e)).json()) as any).upstream.bump).toEqual({ version: "v1.3.0", number: 9, url: `https://github.com/osintverse-community/${w.name}/pull/9`, status: "open" });
+    expect(((await (await call(`/tools/${w.ref}`, {}, e)).json()) as any).upstream.bump).toEqual({ kind: "upstream", version: "v1.3.0", number: 9, url: `https://github.com/osintverse-community/${w.name}/pull/9`, status: "open" });
 
     // Someone unrelated can't release it; a maintainer of the package can.
     const stranger = await person();

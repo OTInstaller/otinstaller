@@ -148,6 +148,22 @@ allows redistribution and the pull request is still open with nothing but the pi
 package page give the date. A package's maintainers can turn this off, or back on, with the switch beside the bump on
 its page; closing the pull request on GitHub stops that one.
 
+### Dependencies and base images
+
+The registry's own first-party tools pin their Python dependencies in `requirements.txt`. Every night each pin is
+compared with PyPI's latest release, and the tool page lists the ones behind. When this is switched on, each new
+release gets an **outdated** issue after three days, and the community bot opens one pull request updating every
+pin that is behind, which a maintainer merges and releases from the package page as a patch version, like a bump
+(and which goes out on its own in automatic mode).
+
+Every night the registry also looks up the base image each Docker build in `osintverse-community` starts from (the
+Dockerfile's last `FROM`, on Docker Hub). When the image has changed since the latest version was built, and that
+version's security scan found critical or high vulnerabilities with a fix available, the registry can rebuild the
+package on the newer image: the same source, built, signed and scanned again as a new patch version, so its scan
+shows whether the newer base fixed them. It rebuilds a package at most every two weeks, never when something was
+merged since the release, and not when its maintainers turned off releases on its own. A rebuild that fails tells
+the maintainers, and **Release again** on the package page tries once more.
+
 ## Changing a community package
 
 A community package's repository belongs to `osintverse-community`, so its maintainers change more than the pin
@@ -200,13 +216,21 @@ versions of packages whose releases you follow, and moderators' decisions about 
 every email has a one-click unsubscribe link. People get at most a dozen community emails a day; the rest wait for
 the next day's digest.
 
-### Following a package's releases
+### Following packages, publishers and input types
 
-**Follow releases** on a tool's page tells you each time a new version becomes its latest: an inbox item, and an
-email as your settings say. An older patch or a release candidate behind the latest stable version doesn't count.
-When you also follow one of its open broken or outdated issues, you hear about the new version on that issue instead,
-once. [Settings → Notifications](/settings/notifications) lists the packages you follow. Nobody else sees what you
-follow. Without an account, each tool has an Atom feed of its releases (`/<namespace>/<tool>/feed.atom`).
+- **Follow releases** on a tool's page tells you each time a new version becomes its latest.
+- **Follow publisher** on a publisher's page tells you the same for every package it publishes, and when it publishes
+  a new one.
+- **Follow new tools** on an input type's page (for example [/input/domain](/input/domain)) tells you when a new tool
+  or guide that takes that type is published. Later versions of it don't count; follow the package for those.
+
+Each comes as an inbox item, and an email as your settings say. An older patch or a release candidate behind the
+latest stable version doesn't count. When one release matches several things you follow, you get one item. When you
+also follow one of the package's open broken or outdated issues, you hear about the new version on that issue
+instead. [Settings → Notifications](/settings/notifications) lists everything you follow; you can follow up to 200
+publishers and input types. Nobody else sees what you follow. Without an account, there are Atom feeds of a tool's
+releases (`/<namespace>/<tool>/feed.atom`), a publisher's (`/<namespace>/feed.atom`) and an input type's
+(`/input/<type>/feed.atom`).
 
 ## Profiles
 

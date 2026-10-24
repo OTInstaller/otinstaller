@@ -2,8 +2,11 @@
 -- platform, never who sent them. Broken counts join ot's failed-run counts (run_signals) toward the version's
 -- unconfirmed issue; outdated counts, always about the latest version, open their own. Logic in src/community.ts
 -- (reportProblem).
+--
+-- IF NOT EXISTS: production got this table on 24 Oct 2026 from this file under its first name,
+-- 0030_problem_signals.sql, before main's 0030 was merged into the branch; there this migration does nothing.
 
-CREATE TABLE problem_signals (
+CREATE TABLE IF NOT EXISTS problem_signals (
   tool_id TEXT NOT NULL REFERENCES tools(id) ON DELETE CASCADE,
   version_id TEXT NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
   day TEXT NOT NULL,

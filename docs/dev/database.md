@@ -4,8 +4,8 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 `api/migrations/*.sql` and the code in `api/src/`, `api/test/` and `api/scripts/`.
 
 - Binding: `DB`, database name `otinstaller`, `migrations_dir: "migrations"` (`api/wrangler.jsonc`).
-- 30 migrations, `0001` to `0030`.
-- Final schema: **59 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 60. FTS5 also creates its own shadow
+- 32 migrations, `0001` to `0032`.
+- Final schema: **63 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 64. FTS5 also creates its own shadow
   tables, which aren't listed here.
 
 ---
@@ -43,7 +43,9 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0027 | `0027_change_proposals.sql` | New table `change_proposals` (a maintainer's change to a community package beyond its pin: the pull request, the proposer's title and note, the files it writes, the version, whether it builds, the reviewer's checks, status, decision and released version); indexes `change_proposals_status`, `change_proposals_tool`, `change_proposals_proposer`. |
 | 0028 | `0028_bump_outcomes.sql` | `bump_prs` rebuilt: `status` also takes `released` and `failed`; new columns `auto`, `merge_sha`, `merged_at`, `run_url`, `attempts`, `error_code`, `error`, `released_at` (merged rows whose version is published become `released`); index `bump_prs_inflight (status, merged_at)`; `tools` + `auto_release` (INTEGER NN default 1: whether `UPSTREAM_WATCH=auto` may release the package's bumps). |
 | 0029 | `0029_package_follows.sql` | New table `package_follows` (who follows which package's releases) and index `package_follows_user`; `email_prefs` + `releases` (CHECK immediate/daily/off, default immediate); `versions` + `announced_at` (backfilled to `published_at`); `inbox` rebuilt so `scope` also takes `releases`, indexes `inbox_user` and `inbox_pending` again. Apply before an API that writes release items is deployed. |
-| 0030 | `0030_problem_signals.sql` | New table `problem_signals` (anonymous daily counts from a tool page's **Report a problem**: broken or outdated, by version and platform). Apply before an API that serves `POST /tools/:ns/:name/problem-reports` is deployed. |
+| 0030 | `0030_follows.sql` | New table `follows` (who follows which publisher or input type: `kind` CHECK publisher/input, `target`) and index `follows_target`. Apply before an API that reads it is deployed. |
+| 0031 | `0031_dependency_and_base_watch.sql` | New tables `dependency_watch` (a first-party tool's requirements.txt pins against PyPI), `base_images` (each Docker Hub base tag's current digest) and `base_watch` (each build's base image, the digest when its version was first seen, rebuilds); `bump_prs` + `kind` (CHECK upstream/dependency/rebuild, default upstream). Apply before an API that has the build watcher is deployed. |
+| 0032 | `0032_problem_signals.sql` | New table `problem_signals` (anonymous daily counts from a tool page's **Report a problem**: broken or outdated, by version and platform), with `CREATE TABLE IF NOT EXISTS`: production got the table on 24 Oct from this file under its first name, `0030_problem_signals.sql`, so there it is recorded as applied and does nothing. Apply before an API that serves `POST /tools/:ns/:name/problem-reports` is deployed. |
 
 ---
 
@@ -433,7 +435,7 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
 - `error` TEXT · `created_at` INTEGER NN
 - Flow (`notify.ts:sendEmail`): inserted as `sent`, or as `skipped` when `RESEND_API_KEY` is unset; set to `failed` if Resend answers with an error.
 
-### 2.11a Inbox, email preferences and follows (0017, 0029)
+### 2.11a Inbox, email preferences and follows (0017, 0029, 0030)
 
 - `email_prefs`: PK `user_id` → `users` (cascade); `community`, `owner_issues`, `releases` (0029), each CHECK
   `('immediate', 'daily', 'off')` default `immediate`; `updated_at`. Written by `PUT /me/email-prefs` and one-click
@@ -444,6 +446,9 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
   `created_at`, `read_at`, `emailed_at`. Indexes `inbox_user (user_id, created_at DESC)`, `inbox_pending (created_at)
   WHERE emailed_at IS NULL`. Written by `inbox.ts:notify` and `notifyFollowers`; delivered by `deliverInbox`.
 - `package_follows` (0029): PK `(tool_id, user_id)`, both cascade, `created_at`; index `package_follows_user`.
+- `follows` (0030): PK `(user_id, kind, target)`, `user_id` cascade, `kind` CHECK `('publisher', 'input')`, `target`
+  (a namespace's name, or an input type; no foreign key, so a follow outlives a renamed namespace), `created_at`; index
+  `follows_target (kind, target)`. At most 200 a person (`PUT /me/follows/:kind/:target`).
 - `versions.announced_at` (0029): set once, by `publishVersion` when the version first becomes the latest; only then
   are followers and open issues told.
 
@@ -463,7 +468,7 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
 - `confirmations`: `tool_id`, `version_id`, `user_id`, `result` (works | broken), `platform`, `engine`, `ot_version`,
   `issue_id`; UNIQUE `(version_id, user_id, platform)`.
 - `run_signals`: anonymous daily counts of failed runs, PK `(version_id, day, platform, engine, exit_class)`.
-- `problem_signals` (0030): anonymous daily counts from **Report a problem**, `kind` (broken | outdated), `platform`
+- `problem_signals` (0032): anonymous daily counts from **Report a problem**, `kind` (broken | outdated), `platform`
   (`''` when unknown, and always for outdated), PK `(version_id, day, kind, platform)`. Broken counts are added to
   `run_signals` toward the version's unconfirmed issue; outdated counts are always against the latest version.
 - `content_flags`: `target_kind` (issue | comment | request | request_comment, since 0026), `target_id`, `flagger_id`, `reason` (personal_data | spam | abuse |
@@ -498,13 +503,16 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
   every change) and `locked_at` (set by a triager, or nightly by `lockStaleThreads` 30 days after a published or
   declined request's `updated_at`; replies move `updated_at`).
 
-### 2.12f Bump pull requests (0022, 0028)
+### 2.12f Bump pull requests (0022, 0028, 0031)
 
-- `bump_prs`: PK `(tool_id, version)` (upstream's release), `pr_number`, `url`, `branch`, `status` (open | merged |
+- `bump_prs`: PK `(tool_id, version)` (upstream's release; for `kind = 'dependency'` the pins it changes,
+  `pkg==1.2,other==3.4`; for `kind = 'rebuild'` `rebuild:<12 hex of the base digest>`), `kind` (0031: upstream |
+  dependency | rebuild), `pr_number` (0 for a rebuild, which has no pull request), `url`, `branch`, `status` (open | merged |
   released | failed | closed), `released_version` (the version the latest attempt releases), `merged_by` (null when
   the registry released it), `auto`, `merge_sha`, `merged_at` (the latest attempt), `run_url` (a failed release
   workflow run), `attempts`, `error_code`, `error`, `released_at`, `created_at`, `updated_at`. Written by
-  `bumps.ts:maybeOpenBump`, `releaseBump`, `settleBump` and `maybeAutoRelease`.
+  `bumps.ts:maybeOpenBump`, `releaseBump`, `settleBump` and `maybeAutoRelease`, and `build-watch.ts` for the other kinds.
+  A rebuild row is inserted already `merged`.
   - Transitions: open → merged (guarded, before GitHub is called; back to open when the merge fails) → released |
     failed; failed → merged (released again, no merge); open | failed → closed (superseded by a newer release, or
     closed on GitHub, seen by auto mode).
@@ -532,6 +540,19 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
   license_changed | renamed | error), `upstream_license`, `releases_etag`, `override_json`, `error`, `checked_at`,
   `changed_at` (when the state or latest release last changed). Written only by `upstream.ts:checkUpstream` and the
   staff override route.
+
+### 2.12h Build watch (0031)
+
+- `dependency_watch`: PK `(tool_id, ecosystem, package)`, `tool_id` → `tools(id)` (cascade), `ecosystem` CHECK
+  `('pypi')`, `package` (as requirements.txt writes it), `pinned`, `latest`, `latest_at`, `state` (current | behind |
+  unknown | error), `error`, `pinned_version_id` (the version requirements.txt was read at), `checked_at`,
+  `changed_at`. Rewritten whole for a tool by `build-watch.ts:checkDependencies`; only tools with
+  `community_packaged = 0`.
+- `base_images`: PK `image` (`<repo>:<tag>` on Docker Hub, e.g. `library/python:3.12-slim`), `digest` (kept when a
+  lookup fails), `error`, `checked_at`, `changed_at`. Looked up again after 20 hours, so one night shares one lookup.
+- `base_watch`: PK `tool_id` → `tools(id)` (cascade), `image` (the last `FROM`), `built_digest` (the digest when the
+  version was first seen), `latest_digest`, `pinned_version_id`, `state` (current | updated | unknown | error),
+  `error`, `rebuilt_at`, `checked_at`, `changed_at`. Written by `build-watch.ts:checkBaseImage` and `maybeRebuild`.
 
 ### 2.12d Community submissions (0020)
 
