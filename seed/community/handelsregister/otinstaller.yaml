@@ -1,0 +1,55 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: handelsregister
+namespace: osintverse-community
+version: 0.9.0
+summary: "Looks up a German company's commercial register entry through handelsregister.ai: officers, filings, financials"
+readme: README.md
+license: AGPL-3.0
+homepage: https://github.com/Handelsregister-AI/handelsregister
+categories: [company, people]
+tags: [germany, company-register, handelsregister, financials]
+inputs:
+  - name: company
+    type: company
+    required: true
+    description: "Company name, best with its city"
+    example: "Siemens AG"
+outputs:
+  - type: organization
+  - type: person
+    description: "Managing directors, board members and other people in the register entry"
+  - type: location
+  - type: document
+    description: "Register publications and key financial figures"
+secrets:
+  - name: HANDELSREGISTER_API_KEY
+    required: true
+    description: "Your handelsregister.ai API key; lookups use paid credits"
+    url: https://handelsregister.ai/
+    pricing: paid
+runtime:
+  kind: pipx
+  package: handelsregister
+  package_version: "0.9.0"
+  index: pypi
+  python: ">=3.8"
+  entrypoint: handelsregister
+  wheel_sha256: "cf988ec7a462d9a221e300fca9e0b13a69821d15f05974bc2a160119913eff8e"
+  command: ["handelsregister", "fetch", "json", "{company}"]
+  output_format: json
+  timeout_seconds: 180
+  typical_seconds: 15
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: true
+  collects_personal_data: true
+  notifies_target: false
+  notes: "Returns the people named in the company's register entry, such as its managing directors."
+test:
+  # Scans and health checks run without secrets, so the CLI reports the missing key with exit code 1.
+  expect_exit_code: 1
+  input: { company: "Siemens AG" }

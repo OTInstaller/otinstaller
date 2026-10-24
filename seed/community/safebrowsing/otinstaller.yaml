@@ -1,0 +1,46 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: safebrowsing
+namespace: osintverse-community
+version: 0.1.4
+summary: "Checks a URL against Google Safe Browsing's lists of malware, phishing and unwanted software sites"
+readme: README.md
+license: MIT
+homepage: https://github.com/Te-k/pysafebrowsing
+categories: [domain-dns, utilities]
+tags: [google, safe-browsing, phishing, url-reputation]
+inputs:
+  - name: url
+    type: url
+    required: true
+    example: "https://example.com/"
+outputs:
+  - type: url
+    description: "Whether the URL is listed, with the threat types and platforms"
+secrets:
+  - name: SAFEBROWSING_API_KEY
+    required: true
+    description: "A Google Cloud API key with the Safe Browsing API enabled (free, for non-commercial use)"
+    url: https://developers.google.com/safe-browsing/v4/get-started
+    pricing: free
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/safebrowsing@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["safebrowsing-url", "{url}"]
+  output_format: json
+  timeout_seconds: 60
+  typical_seconds: 2
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: true
+  collects_personal_data: false
+  notifies_target: false
+test:
+  # Scans and health checks run without secrets, so the wrapper reports the missing key with exit code 3.
+  expect_exit_code: 3
+  input: { url: "https://example.com/" }

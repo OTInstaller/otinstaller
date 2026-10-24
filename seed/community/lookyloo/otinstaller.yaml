@@ -1,0 +1,42 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: lookyloo
+namespace: osintverse-community
+version: 1.43.0
+summary: "Lists captures on CIRCL's public Lookyloo instance that loaded anything from a host name, with titles and dates"
+readme: README.md
+license: BSD-3-Clause
+homepage: https://github.com/Lookyloo/PyLookyloo
+categories: [domain-dns, web-archive]
+tags: [lookyloo, web-captures, phishing, circl]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+    description: "Host name, such as example.com or login.example.com"
+    example: "example.com"
+outputs:
+  - type: other
+    description: "Captures: capture ID, page title and date"
+runtime:
+  kind: pipx
+  package: pylookyloo
+  package_version: "1.43.0"
+  index: pypi
+  python: "<3.16,>=3.11"
+  entrypoint: lookyloo
+  wheel_sha256: "732973d29a99c73c288a90da59e4e211093da62135452789c4e580aff49d372f"
+  command: ["lookyloo", "--search-hostname", "{domain}"]
+  output_format: json
+  timeout_seconds: 120
+  typical_seconds: 5
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+test:
+  input: { domain: "example.com" }

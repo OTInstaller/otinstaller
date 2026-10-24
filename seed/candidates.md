@@ -848,3 +848,165 @@ what happened to it. Star counts are from 22 Oct 2026.
 
 GitLab: the only OSINT project with more than 100 stars, kennbroorg/iKy, is a web app with its own front end and
 Redis, not a command-line tool.
+
+## PyPI clients of data providers (October 2026)
+
+A second pass on 24 Oct 2026, over PyPI rather than GitHub stars: the client packages that data providers useful in
+OSINT, or their users, publish there. It covers internet scanners and threat intelligence, email, people, phone and
+company data, archives and search, and crypto. Each package was read at its latest release (wheel, entry points and
+command-line source), with its licence file and, where possible, a live call to the provider. A package with its own
+command became a community wrapper; a library from one of the big providers became a first-party tool built on it.
+Packages already in the seed or recorded above (greynoise, shodan, ghunt, h8mail, edgar-tool,
+telegram-phone-number-checker) are not repeated. [README.md](README.md) has the rules and what the local runs found.
+
+16 wrapped, 9 used by first-party tools, 122 dropped.
+
+| Repository | PyPI project | License | Outcome | Why |
+| --- | --- | --- | --- | --- |
+| [onyphe/pyonyphe](https://github.com/onyphe/pyonyphe) | `pyonyphe` | MIT | wrapped | `osintverse-community/onyphe` (Docker: the command needs the `cli` extra) |
+| [polyswarm/polyswarm-cli](https://github.com/polyswarm/polyswarm-cli) | `polyswarm` | MIT | wrapped | `osintverse-community/polyswarm` |
+| [joesecurity/jbxapi](https://github.com/joesecurity/jbxapi) | `jbxapi` | MIT | wrapped | `osintverse-community/joe-sandbox` |
+| [fofapro/fofa-py](https://github.com/fofapro/fofa-py) | `FOFA-py` | MIT | wrapped | `osintverse-community/fofa` |
+| [Handelsregister-AI/handelsregister](https://github.com/Handelsregister-AI/handelsregister) | `handelsregister` | AGPL-3.0 | wrapped | `osintverse-community/handelsregister` |
+| [hashlookup/PyHashlookup](https://github.com/hashlookup/PyHashlookup) | `pyhashlookup` | GPL-3.0 | wrapped | `osintverse-community/hashlookup` |
+| [Lookyloo/PyPhishtankLookup](https://github.com/Lookyloo/PyPhishtankLookup) | `pyphishtanklookup` | BSD-3-Clause | wrapped | `osintverse-community/phishtank-lookup` |
+| [D4-project/pybgpranking](https://github.com/D4-project/pybgpranking) | `pybgpranking2` | BSD-3-Clause | wrapped | `osintverse-community/bgpranking` |
+| [Lookyloo/PyLookyloo](https://github.com/Lookyloo/PyLookyloo) | `pylookyloo` | BSD-3-Clause | wrapped | `osintverse-community/lookyloo` |
+| [jjjake/internetarchive](https://github.com/jjjake/internetarchive) | `internetarchive` | AGPL-3.0 | wrapped | `osintverse-community/ia-search` |
+| [commoncrawl/cdx_toolkit](https://github.com/commoncrawl/cdx_toolkit) | `cdx-toolkit` | Apache-2.0 | wrapped | `osintverse-community/cdx-toolkit` |
+| [palewire/savepagenow](https://github.com/palewire/savepagenow) | `savepagenow` | MIT | wrapped | `osintverse-community/savepagenow` |
+| [ggravlingen/pygleif](https://github.com/ggravlingen/pygleif) | `pygleif` | MIT | wrapped | `osintverse-community/gleif` (Docker: this release needs Python 3.13) |
+| [3c7/bazaar](https://github.com/3c7/bazaar) | `malwarebazaar` | MIT | wrapped | `osintverse-community/malwarebazaar` (Docker shim: the key goes in a config file) |
+| [ipdata/python](https://github.com/ipdata/python) | `ipdata` | MIT | wrapped | `osintverse-community/ipdata` (Docker shim: the key goes in a file) |
+| [Te-k/pysafebrowsing](https://github.com/Te-k/pysafebrowsing) | `pysafebrowsing` | MIT | wrapped | `osintverse-community/safebrowsing` (Docker shim: the key goes in a config file) |
+| [VirusTotal/vt-py](https://github.com/VirusTotal/vt-py) | `vt-py` | Apache-2.0 | first-party | `osintverse-community/virustotal` is built on it |
+| [urlscan/urlscan-python](https://github.com/urlscan/urlscan-python) | `urlscan-python` | MIT | first-party | `osintverse-community/urlscan-search` is built on it |
+| [censys/censys-sdk-python](https://github.com/censys/censys-sdk-python) | `censys-platform` | MIT | first-party | `osintverse-community/censys-host` is built on it |
+| [AlienVault-OTX/OTX-Python-SDK](https://github.com/AlienVault-OTX/OTX-Python-SDK) | `OTXv2` | Apache-2.0 | first-party | `osintverse-community/otx-indicators` is built on it |
+| [ipinfo/python](https://github.com/ipinfo/python) | `ipinfo` | Apache-2.0 | first-party | `osintverse-community/ipinfo` is built on it |
+| [VonStruddle/PyHunter](https://github.com/VonStruddle/PyHunter) | `pyhunter` | MIT | first-party | `osintverse-community/hunter-domain-search` is built on it |
+| [kitsunix/pyHIBP](https://gitlab.com/kitsunix/pyHIBP/pyHIBP) | `pyhibp` | AGPL-3.0-or-later | first-party | `osintverse-community/hibp-breaches` is built on it |
+| [RegistrumUK/companies-house-python](https://github.com/RegistrumUK/companies-house-python) | `companies-house` | MIT | first-party | `osintverse-community/companies-house` is built on it |
+| [dgunning/edgartools](https://github.com/dgunning/edgartools) | `edgartools` | MIT | first-party | `osintverse-community/sec-edgar` is built on it |
+| [censys/censys-python](https://github.com/censys/censys-python) | `censys` | Apache-2.0 | dropped | built for Censys Legacy Search, which Censys switched off on 30 Sep 2026 (`osintverse-community/censys-host` uses the Platform API) |
+| [Te-k/pybinaryedge](https://github.com/Te-k/pybinaryedge) | `pybinaryedge` | MIT | dropped | a client for BinaryEdge, which has shut down |
+| [spyse-com/spyse-python](https://github.com/spyse-com/spyse-python) | `spyse-python` | MIT | dropped | a client for Spyse, which has shut down |
+| [spysecli](https://pypi.org/project/spysecli/) | `spysecli` | MIT | dropped | a client for Spyse, which has shut down |
+| [jdhall75/bgpview-client](https://github.com/jdhall75/bgpview-client) | `bgpview-client` | GPL-3.0 | dropped | a client for BGPView, which has shut down |
+| [bgpview](https://pypi.org/project/bgpview/) | `bgpview` | - | dropped | a client for BGPView, which has shut down |
+| [proxycurl-py](https://pypi.org/project/proxycurl-py/) | `proxycurl-py` | - | dropped | a client for Proxycurl, which shut down in July 2025 |
+| [clearbit](https://pypi.org/project/clearbit/) | `clearbit` | MIT | dropped | a client for Clearbit's API, which moved into HubSpot; no wheel |
+| [passivetotal/python_api](https://github.com/passivetotal/python_api) | `passivetotal` | NOASSERTION | dropped | a client for RiskIQ PassiveTotal, whose API no longer answers |
+| [InQuest/python-inquestlabs](https://github.com/InQuest/python-inquestlabs) | `inquestlabs` | GPL-2.0 | dropped | a client for InQuest Labs, which no longer answers |
+| [googleapis/google-api-python-client](https://github.com/googleapis/google-api-python-client) | `google-api-python-client` | Apache-2.0 | dropped | a library for Google Custom Search, which takes no new customers and shuts down on 1 Jan 2027 |
+| [pcko1/etherscan-python](https://github.com/pcko1/etherscan-python) | `etherscan-python` | MIT | dropped | built for Etherscan's V1 API, switched off on 15 Aug 2025 |
+| [alephdata/alephclient](https://github.com/alephdata/alephclient) | `alephclient` | MIT | dropped | a client with no search command, for open-source Aleph, which OCCRP no longer maintains |
+| [netlas-io/netlas-python](https://github.com/netlas-io/netlas-python) | `netlas` | CC-BY-NC-ND-4.0 | dropped | licensed CC-BY-NC-ND-4.0, which doesn't allow redistribution |
+| [D4-project/pyipasnhistory](https://github.com/D4-project/pyipasnhistory) | `pyipasnhistory` | none | dropped | without a licence file |
+| [PaulSec/API-dnsdumpster.com](https://github.com/PaulSec/API-dnsdumpster.com) | `dnsdumpster` | none | dropped | without a licence file, and scrapes DNSDumpster's website instead of its API |
+| [Egor251/fullhunt_api](https://github.com/Egor251/fullhunt_api) | `fullhunt-api` | none | dropped | a library with no command-line tool, without a licence |
+| [everapihq/numlookupapi-python](https://github.com/everapihq/numlookupapi-python) | `numlookupapi` | none | dropped | a library with no command-line tool, without a licence file |
+| [release-art/ch-api](https://github.com/release-art/ch-api) | `ch-api` | none | dropped | a library with no command-line tool, without a licence file (`osintverse-community/companies-house` uses `companies-house`) |
+| [meatyite/python-abuseipdb](https://github.com/meatyite/python-abuseipdb) | `python-abuseipdb` | WTFPL | dropped | licensed WTFPL, which isn't on the redistributable list; no wheel |
+| [SilentPushCLI](https://pypi.org/project/SilentPushCLI/) | `SilentPushCLI` | proprietary | dropped | under a proprietary licence, and an interactive shell |
+| [etherscan-v2](https://pypi.org/project/etherscan-v2/) | `etherscan-v2` | - | dropped | a library with no licence, author or repository |
+| [IntelligenceX/SDK](https://github.com/IntelligenceX/SDK) | `intelx` | none | dropped | against the acceptable use policy (it searches leaked data and breach dumps), and without a licence |
+| [koromodako/aionyphe](https://github.com/koromodako/aionyphe) | `aionyphe` | MIT | dropped | a client that prompts for its key |
+| [sumithemmadi/truecallerpy](https://github.com/sumithemmadi/truecallerpy) | `truecallerpy` | MIT | dropped | a client that needs a Truecaller account login with a one-time code |
+| [Telethon](https://pypi.org/project/Telethon/) | `Telethon` | MIT | dropped | a library that needs a Telegram account login |
+| [ihabunek/toot](https://github.com/ihabunek/toot) | `toot` | GPL-3.0 | dropped | a client that needs a logged-in Mastodon account |
+| [viraptor/wigle](https://github.com/viraptor/wigle) | `wigle` | MIT | dropped | a client that logs in with a username and password to WiGLE's retired v1 API |
+| [pygle](https://pypi.org/project/pygle/) | `pygle` | - | dropped | a WiGLE library without a wheel, whose repository is gone |
+| [pypssl](https://github.com/adulau/crl-monitor/tree/master/client) | `pypssl` | GPL-3.0 | dropped | broken: its `pssl` command is missing from the wheel, and CIRCL Passive SSL is for vetted partners |
+| [CIRCL/PyPDNS](https://github.com/CIRCL/PyPDNS) | `pypdns` | BSD-2-Clause | dropped | a client that takes its credentials only as flags, for CIRCL Passive DNS, which is for vetted partners |
+| [seanmcfeely/ThreatFox](https://github.com/seanmcfeely/ThreatFox) | `threatfox` | GPL-3.0 | dropped | a client that sends the wrong header for abuse.ch's Auth-Key and never exits non-zero |
+| [Aquarthur/urlscanio](https://github.com/Aquarthur/urlscanio) | `urlscanio` | MIT | dropped | a client that turns TLS verification off and writes screenshots into the working folder (`osintverse-community/urlscan-search` uses urlscan's own client) |
+| [heywoodlh/urlscan-py](https://github.com/heywoodlh/urlscan-py) | `urlscan-py` | Apache-2.0 | dropped | a client that prompts on stdin and keeps a database in the home folder |
+| [DomainTools/python_api](https://github.com/DomainTools/python_api) | `domaintools_api` | MIT | dropped | a client whose command turns TLS verification off and takes credentials only as flags or from a file |
+| [sublime-security/emailrep.io-python](https://github.com/sublime-security/emailrep.io-python) | `emailrep` | MIT | dropped | a client for EmailRep, which issues no new keys; its command prints no JSON and always exits 0 |
+| [jugmac00/hibpcli](https://github.com/jugmac00/hibpcli) | `hibpcli` | MIT | dropped | a password checker that prompts for the password |
+| [nikoheikkila/pwnedapi](https://github.com/nikoheikkila/pwnedapi) | `pwnedapi` | MIT | dropped | archived, and built for HIBP's retired v2 API |
+| [kernelmachine/haveibeenpwned](https://github.com/kernelmachine/haveibeenpwned) | `hibp` | Apache-2.0 | dropped | built for HIBP's retired v2 API |
+| [marinko-peso/haveibeenpwned](https://github.com/marinko-peso/haveibeenpwned) | `haveibeenpwned` | MIT | dropped | built for an older HIBP API, without a wheel |
+| [streanger/abuseipdb-wrapper](https://github.com/streanger/abuseipdb-wrapper) | `abuseipdb-wrapper` | MIT | dropped | a client that keeps its key in a keyring behind a password prompt and opens an interactive shell |
+| [maaaaz/pyalienvaultcli](https://github.com/maaaaz/pyalienvaultcli) | `pyalienvaultcli` | none | dropped | a tool that only adds indicators to an OTX pulse, without a licence |
+| [fhightower/robtex-python](https://github.com/fhightower/robtex-python) | `robtex-python` | MIT | dropped | a client that prints a Python dict rather than JSON and then exits 1 |
+| [ace-ecosystem/falcon-sandbox](https://github.com/ace-ecosystem/falcon-sandbox) | `falcon-sandbox` | Apache-2.0 | dropped | a client for CrowdStrike Falcon X that prompts for input |
+| [helmut-hoffer-von-ankershoffen/brave-search-python-client](https://github.com/helmut-hoffer-von-ankershoffen/brave-search-python-client) | `brave-search-python-client` | MIT | dropped | a client that leaves out two modules it imports at start-up and needs a writable working folder |
+| [deedy5/ddgs](https://github.com/deedy5/ddgs) | `ddgs` | MIT | dropped | a search tool that prints errors with exit code 0 and writes JSON only to a file (`osintverse-community/ddgr` covers DuckDuckGo) |
+| [zoomeye-ai/ZoomEye-python](https://github.com/zoomeye-ai/ZoomEye-python) | `zoomeyeai` | GPL-2.0 | dropped | a client that prints only a text table and pins requests 2.26.0 and urllib3 1.26.7 |
+| [knownsec/ZoomEye-python](https://github.com/knownsec/ZoomEye-python) | `zoomeye` | GPL-2.0 | dropped | a client for an endpoint that refuses most regions; it prints only a text table and pins old dependencies |
+| [anti79/hunter-how-cli](https://github.com/anti79/hunter-how-cli) | `hunter-how-cli` | Unlicense | dropped | a client that takes its key only as a flag or from a config file, with no tagged release |
+| [Te-k/pysecuritytrails](https://github.com/Te-k/pysecuritytrails) | `pysecuritytrails` | GPL-3.0 | dropped | unchanged since 2020, and prints the key when it stores it |
+| [JustinAzoff/python-cymruwhois](https://github.com/JustinAzoff/python-cymruwhois) | `cymruwhois` | MIT | dropped | a client that reads targets only from stdin or files and prints bare fields, unchanged since 2017 |
+| [danielquinn/ripestat-cli](https://gitlab.com/danielquinn/ripestat-cli) | `ripe.stat.cli` | AGPL-3.0 | dropped | a client for only four RIPEstat calls, unchanged since 2022 |
+| [RIPE-NCC/ripe-atlas-tools](https://github.com/RIPE-NCC/ripe-atlas-tools) | `ripe.atlas.tools` | GPL-3.0 | dropped | a tool for running and reading RIPE Atlas network measurements rather than looking a target up |
+| [afilipovich/gglsbl](https://github.com/afilipovich/gglsbl) | `gglsbl` | Apache-2.0 | dropped | a library that keeps a local copy of the Safe Browsing lists rather than looking a URL up |
+| [palewire/archiveis](https://github.com/palewire/archiveis) | `archiveis` | MIT | dropped | a client for archive.today, which sits behind a CAPTCHA |
+| [maturban/archivenow](https://github.com/maturban/archivenow) | `archivenow` | MIT | dropped | unmaintained since 2020; archive.today, one of its targets, sits behind a CAPTCHA |
+| [jadchaar/sec-edgar-downloader](https://github.com/jadchaar/sec-edgar-downloader) | `sec-edgar-downloader` | MIT | dropped | a downloader that saves filings into a folder rather than printing results |
+| [sec-edgar/sec-edgar](https://github.com/sec-edgar/sec-edgar) | `secedgar` | Apache-2.0 | dropped | a downloader that saves filings into a folder; its command needs an extra |
+| [Serene-Arc/bulk-downloader-for-reddit](https://github.com/Serene-Arc/bulk-downloader-for-reddit) | `bdfr` | GPL-3.0 | dropped | a downloader that saves posts into a folder, for Reddit's API, which needs approval since November 2025 |
+| [psqnt/blockstream](https://github.com/psqnt/blockstream) | `blockstream` | MIT | dropped | unchanged since 2020, with a command that reads input and output files first |
+| [holgern/pymempool](https://github.com/holgern/pymempool) | `pymempool` | MIT | dropped | a client that prints a text table, not JSON |
+| [seifreed/otxcli](https://github.com/seifreed/otxcli) | `otxcli` | MIT | dropped | only installable on Python 3.14 or later |
+| [seifreed/greynoisecli](https://github.com/seifreed/greynoisecli) | `greynoisecli` | none | dropped | only installable on Python 3.14 or later, and without a licence |
+| [seifreed/viewdns](https://github.com/seifreed/viewdns) | `viewdns` | MIT | dropped | only installable on Python 3.14 or later |
+| [seifreed/filescancli](https://github.com/seifreed/filescancli) | `filescancli` | MIT | dropped | only installable on Python 3.14 or later |
+| [seifreed/hybridanalysis](https://github.com/seifreed/hybridanalysis) | `hybridanalysis` | MIT | dropped | only installable on Python 3.14 or later |
+| [netlascli](https://pypi.org/project/netlascli/) | `netlascli` | - | dropped | only installable on Python 3.14 or later |
+| [LeakIX/LeakIXClient-Python](https://github.com/LeakIX/LeakIXClient-Python) | `leakix` | MIT | dropped | a library with no command-line tool, and LeakIX's leak results can hold exposed secrets |
+| [ip2location/ip2location-io-python](https://github.com/ip2location/ip2location-io-python) | `ip2location-io` | MIT | dropped | a library with no command-line tool |
+| [ip2location/IP2Location-Python](https://github.com/ip2location/IP2Location-Python) | `IP2Location` | MIT | dropped | a library that reads local database files |
+| [ip2location/ip2proxy-python](https://github.com/ip2location/ip2proxy-python) | `IP2Proxy` | MIT | dropped | a library that reads local database files |
+| [whois-api-llc/whois-api-py](https://github.com/whois-api-llc/whois-api-py) | `whois-api` | MIT | dropped | a library with no command-line tool |
+| [pywhoisxmlapi](https://pypi.org/project/pywhoisxmlapi/) | `pywhoisxmlapi` | - | dropped | a library with no command-line tool |
+| [pberba/pulsedive-py](https://github.com/pberba/pulsedive-py) | `pulsedive` | MIT | dropped | a library with no command-line tool, unchanged since 2019 |
+| [jheise/pycriminalip](https://github.com/jheise/pycriminalip) | `criminalip` | MIT | dropped | a library with no command-line tool |
+| [haginara/PyCriminalIP](https://github.com/haginara/PyCriminalIP) | `PyCriminalIP` | MIT | dropped | a library with no command-line tool |
+| [ipcriminal-python](https://pypi.org/project/ipcriminal-python/) | `ipcriminal-python` | - | dropped | a library with no command-line tool |
+| [dbrennand/virustotal-python](https://github.com/dbrennand/virustotal-python) | `virustotal-python` | MIT | dropped | a library with no command-line tool (`osintverse-community/virustotal` uses VirusTotal's own client) |
+| [drobotun/virustotalapi3](https://github.com/drobotun/virustotalapi3) | `vtapi3` | MIT | dropped | a library with no command-line tool (`osintverse-community/virustotal` uses VirusTotal's own client) |
+| [virustotal-api](https://pypi.org/project/virustotal-api/) | `virustotal-api` | - | dropped | a library with no command-line tool (`osintverse-community/virustotal` uses VirusTotal's own client) |
+| [vsecades/AbuseIpDb](https://github.com/vsecades/AbuseIpDb) | `abuseipdb` | MIT | dropped | a library with no command-line tool, without a wheel |
+| [abuseipdb-python-sdk](https://pypi.org/project/abuseipdb-python-sdk/) | `abuseipdb-python-sdk` | - | dropped | a library with no command-line tool |
+| [ipinfo-cli](https://pypi.org/project/ipinfo-cli/) | `ipinfo-cli` | - | dropped | a third-party client that keeps keys in local files (`osintverse-community/ipinfo` uses IPinfo's own client) |
+| [maltiverse/python-maltiverse](https://github.com/maltiverse/python-maltiverse) | `maltiverse` | MIT | dropped | a library with no command-line tool |
+| [peopledatalabs/peopledatalabs-python](https://github.com/peopledatalabs/peopledatalabs-python) | `peopledatalabs` | MIT | dropped | a library with no command-line tool |
+| [piplapis-python](https://pypi.org/project/piplapis-python/) | `piplapis-python` | Apache-2.0 | dropped | a library with no command-line tool |
+| [fullcontact/fullcontact-python-client](https://github.com/fullcontact/fullcontact-python-client) | `python-fullcontact` | NOASSERTION | dropped | a library with no command-line tool |
+| [rocketreach/rocketreach_python](https://github.com/rocketreach/rocketreach_python) | `rocketreach` | MIT | dropped | a library with no command-line tool |
+| [predictalab/predictasearch-python](https://github.com/predictalab/predictasearch-python) | `predictasearch` | MIT | dropped | a library with no command-line tool, without a wheel |
+| [pabluk/libgravatar](https://github.com/pabluk/libgravatar) | `libgravatar` | GPL-3.0 | dropped | a library with no command-line tool, using Gravatar's retired MD5 addresses |
+| [twilio/twilio-python](https://github.com/twilio/twilio-python) | `twilio` | MIT | dropped | a library with no command-line tool |
+| [opensanctions/yente](https://github.com/opensanctions/yente) | `yente` | MIT | dropped | an API server, not a client |
+| [opensanctions/nomenklatura](https://github.com/opensanctions/nomenklatura) | `nomenklatura` | MIT | dropped | a matching library, not a client |
+| [opensanctions](https://pypi.org/project/opensanctions/) | `opensanctions` | MIT | dropped | the old crawler, not a client |
+| [dahlia/wikidata](https://github.com/dahlia/wikidata) | `Wikidata` | GPL-3.0 | dropped | a library with no command-line tool |
+| [LeMyst/WikibaseIntegrator](https://github.com/LeMyst/WikibaseIntegrator) | `WikibaseIntegrator` | MIT | dropped | a library with no command-line tool |
+| [kensho-technologies/qwikidata](https://github.com/kensho-technologies/qwikidata) | `qwikidata` | Apache-2.0 | dropped | a library with no command-line tool, without a wheel |
+| [edgi-govdata-archiving/wayback](https://github.com/edgi-govdata-archiving/wayback) | `wayback` | BSD-3-Clause | dropped | a library with no command-line tool |
+| [mementoweb/py-memento-client](https://github.com/mementoweb/py-memento-client) | `memento-client` | NOASSERTION | dropped | a library with no command-line tool |
+| [comcrawl](https://pypi.org/project/comcrawl/) | `comcrawl` | MIT | dropped | a library with no command-line tool, whose repository is gone (`osintverse-community/cdx-toolkit` covers Common Crawl) |
+| [serpapi/serpapi-python](https://github.com/serpapi/serpapi-python) | `serpapi` | MIT | dropped | a library with no command-line tool |
+| [serpapi/google-search-results-python](https://github.com/serpapi/google-search-results-python) | `google-search-results` | MIT | dropped | a library with no command-line tool, without a wheel |
+| [neoctobers/etherscan](https://github.com/neoctobers/etherscan) | `etherscan` | MIT | dropped | a library with no command-line tool |
+| [corpetty/py-etherscan-api](https://github.com/corpetty/py-etherscan-api) | `py-etherscan-api` | MIT | dropped | a library with no command-line tool |
+| [Marto32/pyetherscan](https://github.com/Marto32/pyetherscan) | `pyetherscan` | MIT | dropped | a library with no command-line tool |
+| [juliankoh/etherscan_py](https://github.com/juliankoh/etherscan_py) | `etherscan-py` | MIT | dropped | a library with no command-line tool |
+| [gerrrg/etherscan](https://github.com/gerrrg/etherscan) | `etherscan2` | MIT | dropped | a library with no command-line tool |
+| [ape364/aioetherscan](https://github.com/ape364/aioetherscan) | `aioetherscan` | MIT | dropped | a library with no command-line tool |
+| [blockcypher/blockcypher-python](https://github.com/blockcypher/blockcypher-python) | `blockcypher` | Apache-2.0 | dropped | a library with no command-line tool |
+| [RustamSultanov/blockchair-python-sdk](https://github.com/RustamSultanov/blockchair-python-sdk) | `blockchair` | MIT | dropped | a library with no command-line tool |
+| [chainalysis](https://pypi.org/project/chainalysis/) | `chainalysis` | - | dropped | a library for a paid data product |
+| [blockchain](https://pypi.org/project/blockchain/) | `blockchain` | MIT | dropped | a library with no command-line tool, without a wheel |
+| [praw-dev/praw](https://github.com/praw-dev/praw) | `praw` | BSD-2-Clause | dropped | a library with no command-line tool, for Reddit's API, which needs approval since November 2025 |
+| [MarshalX/atproto](https://github.com/MarshalX/atproto) | `atproto` | MIT | dropped | a library with no command-line tool (its command generates code) |
+| [halcy/Mastodon.py](https://github.com/halcy/Mastodon.py) | `Mastodon.py` | MIT | dropped | a library with no command-line tool |
+| [PyGithub/PyGithub](https://github.com/PyGithub/PyGithub) | `PyGithub` | LGPL-3.0 | dropped | a library with no command-line tool (`osintverse-community/gitxray` and `octosuite` cover GitHub) |
+| [AnswerDotAI/ghapi](https://github.com/AnswerDotAI/ghapi) | `ghapi` | Apache-2.0 | dropped | a library whose command prints Python objects (`osintverse-community/gitxray` and `octosuite` cover GitHub) |
+| [JamesGardiner/chwrapper](https://github.com/JamesGardiner/chwrapper) | `chwrapper` | MIT | dropped | a library with no command-line tool, without a wheel |
+| [SEC-API-io/sec-api-python](https://github.com/SEC-API-io/sec-api-python) | `sec-api` | MIT | dropped | a library with no command-line tool, for the paid sec-api.io |
+| [edgarminers/python-edgar](https://github.com/edgarminers/python-edgar) | `python-edgar` | MIT | dropped | a library with no command-line tool |
+| [sec-edgar-api](https://pypi.org/project/sec-edgar-api/) | `sec-edgar-api` | MIT | dropped | a library with no command-line tool, archived |
+| [opyncorporates](https://pypi.org/project/opyncorporates/) | `opyncorporates` | MIT | dropped | a library with no command-line tool, unchanged since 2019 |
