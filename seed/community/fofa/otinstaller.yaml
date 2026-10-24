@@ -1,0 +1,60 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: fofa
+namespace: osintverse-community
+version: 2.0.3
+summary: "Shows what the FOFA search engine has seen on an IP address or domain: open ports, protocols and products"
+readme: README.md
+license: MIT
+homepage: https://github.com/fofapro/fofa-py
+categories: [ip-network, domain-dns]
+tags: [fofa, ports, services, search-engine]
+inputs:
+  - name: ip
+    type: ip
+    required: false
+    description: "IP address to look up (give an IP or a domain, not both)"
+    example: "8.8.8.8"
+  - name: domain
+    type: domain
+    required: false
+    description: "Domain to look up (give an IP or a domain, not both)"
+    example: "example.com"
+outputs:
+  - type: ip
+  - type: domain
+  - type: other
+    description: "Open ports, protocols and the products FOFA recognised"
+secrets:
+  - name: FOFA_EMAIL
+    required: true
+    description: "The email address of your FOFA account"
+    url: https://en.fofa.info/vip
+  - name: FOFA_KEY
+    required: true
+    description: "Your FOFA API key; the host API needs a paid FOFA membership"
+    url: https://en.fofa.info/vip
+    pricing: paid
+runtime:
+  kind: pipx
+  package: FOFA-py
+  package_version: "2.0.3"
+  index: pypi
+  entrypoint: fofa
+  wheel_sha256: "2ac349b754b477cec25b79d6372e5f806465a8e961934078979c44a695eca4a6"
+  command: ["fofa", "host", "{ip}", "{domain}"]
+  output_format: json
+  timeout_seconds: 120
+  typical_seconds: 5
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: true
+  collects_personal_data: false
+  notifies_target: false
+test:
+  # Scans and health checks run without secrets, so the CLI stops at the missing account email with exit code 1.
+  expect_exit_code: 1
+  input: { ip: "8.8.8.8" }

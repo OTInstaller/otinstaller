@@ -1,0 +1,56 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: censys-host
+namespace: osintverse-community
+version: 0.1.0
+summary: "Shows what Censys has seen on an IP address: open ports, services and software, network, location, host names"
+readme: README.md
+license: MIT
+homepage: https://github.com/osintverse-community/censys-host
+categories: [ip-network, domain-dns]
+tags: [censys, ports, services, attack-surface]
+inputs:
+  - name: ip
+    type: ip
+    required: true
+    example: "8.8.8.8"
+outputs:
+  - type: ip
+  - type: other
+    description: "Each open port's service, transport, software and labels"
+  - type: organization
+  - type: location
+  - type: domain
+    description: "Host names that point at the address"
+secrets:
+  - name: CENSYS_API_TOKEN
+    required: true
+    description: "A Censys Platform personal access token; free accounts get monthly credits"
+    url: https://accounts.censys.io/settings/personal-access-tokens
+    pricing: free_tier
+  - name: CENSYS_ORG_ID
+    required: false
+    description: "Your Censys organisation ID, to spend the organisation's credits instead of your free ones"
+    url: https://docs.censys.com/reference/get-started
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/censys-host@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["censys-host", "{ip}"]
+  output_format: json
+  timeout_seconds: 60
+  typical_seconds: 3
+network:
+  egress: true
+  domains: ["api.platform.censys.io"]
+ethics:
+  touches_target: false
+  auth_required: true
+  collects_personal_data: false
+  notifies_target: false
+test:
+  # Scans and health checks run without secrets, so the tool reports the missing token with exit code 3.
+  expect_exit_code: 3
+  input: { ip: "8.8.8.8" }

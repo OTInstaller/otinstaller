@@ -1,0 +1,51 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: cdx-toolkit
+namespace: osintverse-community
+version: 0.9.39
+summary: "Lists a domain's pages in Common Crawl's URL index, with each capture's time, status, type and language"
+readme: README.md
+license: Apache-2.0
+homepage: https://github.com/commoncrawl/cdx_toolkit
+categories: [web-archive, domain-dns]
+tags: [common-crawl, urls, web-archive, cdx]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+    description: "Domain or host name; pages on its subdomains are not included"
+    example: "example.com"
+  - name: crawls
+    type: integer
+    required: false
+    default: 1
+    description: "How many of the latest crawls (about one a month) to search"
+  - name: limit
+    type: integer
+    required: false
+    default: 100
+    description: "Most captures to return"
+outputs:
+  - type: url
+runtime:
+  kind: pipx
+  package: cdx-toolkit
+  package_version: "0.9.39"
+  index: pypi
+  python: ">=3.9"
+  entrypoint: cdxt
+  wheel_sha256: "577ae9a9578f33ce4bae6c887074f0f70331bf4d6a66a26d1e20836b3004e431"
+  command: ["cdxt", "--crawl", "{crawls}", "--limit", "{limit}", "iter", "--fields", "url,timestamp,status,mime,languages,length", "--jsonl", "{domain}/*"]
+  output_format: jsonl
+  timeout_seconds: 600
+  typical_seconds: 30
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+test:
+  input: { domain: "example.com", crawls: 1, limit: 20 }

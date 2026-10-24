@@ -1,0 +1,41 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: savepagenow
+namespace: osintverse-community
+version: 1.3.1
+summary: "Asks the Wayback Machine to capture a web page now and prints the archived copy's address"
+readme: README.md
+license: MIT
+homepage: https://github.com/palewire/savepagenow
+categories: [web-archive]
+tags: [wayback-machine, archive-org, evidence, capture]
+inputs:
+  - name: url
+    type: url
+    required: true
+    example: "https://example.com/"
+outputs:
+  - type: url
+    description: "The archived copy on web.archive.org"
+runtime:
+  kind: pipx
+  package: savepagenow
+  package_version: "1.3.1"
+  index: pypi
+  entrypoint: savepagenow
+  wheel_sha256: "1343ec8f97c4ba77d6ea2075be985f25aa798c9a9daf239890a81aad078d00f7"
+  command: ["savepagenow", "--accept-cache", "{url}"]
+  output_format: text
+  timeout_seconds: 300
+  typical_seconds: 30
+network:
+  egress: true
+ethics:
+  touches_target: true
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+  notes: "The Wayback Machine fetches the page from its own servers and keeps a public copy of it."
+# No test: every run would leave a public capture, and Save Page Now limits anonymous captures per address (shared CI
+# runners hit that limit), so scans skip the smoke test and the nightly health check leaves this tool out.

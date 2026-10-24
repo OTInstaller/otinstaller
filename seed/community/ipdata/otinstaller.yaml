@@ -1,0 +1,48 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: ipdata
+namespace: osintverse-community
+version: 4.0.9
+summary: "Looks up an IP address in ipdata: location, network owner, ASN, time zone and threat flags such as Tor or proxy"
+readme: README.md
+license: MIT
+homepage: https://github.com/ipdata/python
+categories: [ip-network]
+tags: [geolocation, asn, threat-intel, tor]
+inputs:
+  - name: ip
+    type: ip
+    required: true
+    example: "8.8.8.8"
+outputs:
+  - type: location
+  - type: organization
+  - type: other
+    description: "Threat flags: Tor, proxy, known attacker or abuser"
+secrets:
+  - name: IPDATA_API_KEY
+    required: true
+    description: "Your ipdata API key (the free plan allows a daily number of lookups)"
+    url: https://dashboard.ipdata.co/sign-up.html
+    pricing: free_tier
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/ipdata@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["ipdata-lookup", "{ip}"]
+  output_format: json
+  timeout_seconds: 60
+  typical_seconds: 2
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: true
+  collects_personal_data: false
+  notifies_target: false
+test:
+  # Scans and health checks run without secrets, so the wrapper reports the missing key with exit code 3.
+  expect_exit_code: 3
+  input: { ip: "8.8.8.8" }

@@ -1,0 +1,48 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: ipinfo
+namespace: osintverse-community
+version: 0.1.0
+summary: "Looks up an IP address in IPinfo: host name, location, time zone, network owner and ASN, and whether it is anycast"
+readme: README.md
+license: MIT
+homepage: https://github.com/osintverse-community/ipinfo
+categories: [ip-network]
+tags: [ipinfo, geolocation, asn, reverse-dns]
+inputs:
+  - name: ip
+    type: ip
+    required: true
+    example: "8.8.8.8"
+outputs:
+  - type: ip
+  - type: domain
+    description: "The address's reverse DNS name"
+  - type: organization
+  - type: location
+secrets:
+  - name: IPINFO_TOKEN
+    required: false
+    description: "Your IPinfo access token; optional, it raises the request limit"
+    url: https://ipinfo.io/signup
+    pricing: free_tier
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/ipinfo@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["ipinfo", "{ip}"]
+  output_format: json
+  timeout_seconds: 60
+  typical_seconds: 2
+network:
+  egress: true
+  domains: ["ipinfo.io"]
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+test:
+  input: { ip: "8.8.8.8" }

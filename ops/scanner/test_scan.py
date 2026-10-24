@@ -1,9 +1,15 @@
 """Unit tests for scan.py helpers. Run: python -m unittest discover ops/scanner"""
+import hashlib
+import io
 import json
+import re
 import subprocess
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
+import health
 import scan
 
 # A public Fulcio certificate from a real keyless signature (dheerajydv19/ot-test-tool, released from main).
@@ -114,6 +120,51 @@ class AnySignerTest(unittest.TestCase):
             self.assertEqual(r["identity"], "pypi:GitHub:alice/tool/release.yml")
             # With a source repository, someone else's provenance still fails.
             self.assertEqual(scan.check_wheel_provenance("tool", "1.0.0", "tool-1.0.0-py3-none-any.whl", "github.com/bob/tool")["status"], "fail")
+
+
+class PipxImageTest(unittest.TestCase):
+    """pipx tools are smoke-tested and health-checked in the image `ot` runs them in. The sandbox is read-only except
+    /tmp, so the image starts there; otherwise a tool that writes into its working folder works in `ot` but fails the
+    scan and the nightly health check."""
+
+    def test_starts_in_tmp(self):
+        workdirs = [line.split()[1] for line in scan.PYTHON_DOCKERFILE.splitlines() if line.startswith("WORKDIR ")]
+        self.assertEqual(workdirs[-1:], ["/tmp"])
+
+    def test_same_dockerfile_as_ot(self):
+        install_go = Path(__file__).resolve().parents[2] / "cli" / "internal" / "runner" / "install.go"
+        if not install_go.exists():
+            self.skipTest("needs the ot source next to ops/ (registry-ops has only the scanner)")
+        found = re.search(r"const pythonDockerfile = `([^`]*)`", install_go.read_text(encoding="utf-8"))
+        self.assertIsNotNone(found, "pythonDockerfile is no longer a raw string constant in install.go")
+        self.assertEqual(scan.PYTHON_DOCKERFILE, found.group(1))
+
+    def test_smoke_test_and_health_check_run_in_it(self):
+        wheel = b"not really a wheel"
+        sha = hashlib.sha256(wheel).hexdigest()
+        meta = {"urls": [{"packagetype": "bdist_wheel", "digests": {"sha256": sha}, "filename": "tool-1.0.0-py3-none-any.whl",
+                          "url": "https://files.pythonhosted.org/tool-1.0.0-py3-none-any.whl"}]}
+        rt = {"kind": "pipx", "package": "tool", "package_version": "1.0.0", "wheel_sha256": sha,
+              "command": ["tool", "{domain}"], "output_format": "json"}
+        dockerfiles, images = [], []
+
+        def run(cmd, timeout=600, check=False):
+            if cmd[:2] == ["docker", "build"]:
+                dockerfiles.append(Path(cmd[-1], "Dockerfile").read_text())
+            elif cmd[:2] == ["docker", "run"]:
+                images.append(cmd[cmd.index("--entrypoint") + 2])
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        with (mock.patch.object(scan, "run", run),
+              mock.patch.object(scan, "http_json", lambda url: meta if url.endswith("/json") else None),
+              mock.patch.object(scan.urllib.request, "urlopen", lambda url, timeout=None: io.BytesIO(wheel)),
+              tempfile.TemporaryDirectory() as tmp):
+            scanned = scan.scan_pipx({"ref": "ns/tool", "runtime": rt, "test_input": {"domain": "example.com"}}, Path(tmp))
+            checked = health.check({"version_id": "v1", "ref": "ns/tool", "runtime": rt, "test_input": {"domain": "example.com"}})
+        self.assertEqual(scanned["smoke"]["status"], "pass")
+        self.assertEqual(checked["result"], "pass", checked["error_excerpt"])
+        self.assertEqual(dockerfiles, [scan.PYTHON_DOCKERFILE] * 2)
+        self.assertEqual(images, ["ot-scan/ns-tool:latest", "ot-health/ns-tool:latest"])
 
 
 if __name__ == "__main__":

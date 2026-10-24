@@ -1,0 +1,56 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: hunter-domain-search
+namespace: osintverse-community
+version: 0.1.0
+summary: "Lists the email addresses Hunter has found for a domain, with names, positions, confidence and the address pattern"
+readme: README.md
+license: MIT
+homepage: https://github.com/osintverse-community/hunter-domain-search
+categories: [email, company, people]
+tags: [hunter, email-addresses, employees, email-pattern]
+inputs:
+  - name: domain
+    type: domain
+    required: true
+    example: "example.com"
+  - name: limit
+    type: integer
+    required: false
+    default: 10
+    description: "Most addresses to return (free plans get 10, paid plans up to 100)"
+outputs:
+  - type: email
+    description: "Addresses with their owner's name, position, department, confidence and where they were seen"
+  - type: person
+  - type: organization
+    description: "The organisation behind the domain, with its usual address pattern"
+secrets:
+  - name: HUNTER_API_KEY
+    required: true
+    description: "Your Hunter API key; a free account includes a monthly allowance of searches"
+    url: https://hunter.io/api-keys
+    pricing: free_tier
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/hunter-domain-search@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["hunter-domain-search", "{domain}", "--limit", "{limit}"]
+  output_format: json
+  timeout_seconds: 60
+  typical_seconds: 3
+network:
+  egress: true
+  domains: ["api.hunter.io"]
+ethics:
+  touches_target: false
+  auth_required: true
+  collects_personal_data: true
+  notifies_target: false
+  notes: "Returns work email addresses and the names, positions and public profiles Hunter links to them."
+test:
+  # Scans and health checks run without secrets, so the tool reports the missing key with exit code 3.
+  expect_exit_code: 3
+  input: { domain: "example.com" }

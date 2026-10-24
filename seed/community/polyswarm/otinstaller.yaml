@@ -1,0 +1,50 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: polyswarm
+namespace: osintverse-community
+version: 4.7.0
+summary: "Looks up a file hash in PolySwarm and shows how its marketplace of malware engines judged the file"
+readme: README.md
+license: MIT
+homepage: https://github.com/polyswarm/polyswarm-cli
+categories: [utilities]
+tags: [malware, hash, threat-intel, file-reputation]
+inputs:
+  - name: hash
+    type: hash
+    required: true
+    description: "MD5, SHA-1 or SHA-256 of a file"
+    example: "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f"
+outputs:
+  - type: document
+    description: "The file's engine verdicts, names, type and first and last seen dates"
+secrets:
+  - name: POLYSWARM_API_KEY
+    required: true
+    description: "Your PolySwarm API key (the free Community plan works)"
+    url: https://polyswarm.network/
+    pricing: free_tier
+runtime:
+  kind: pipx
+  package: polyswarm
+  package_version: "4.7.0"
+  index: pypi
+  python: "<4,>=3.10"
+  entrypoint: polyswarm
+  wheel_sha256: "fdb4b9d2babb2370fc32d347b3a8ded69ea7b898e2ee9887fe8a8bb55b1cebb7"
+  command: ["polyswarm", "--fmt", "json", "search", "hash", "{hash}"]
+  output_format: jsonl
+  timeout_seconds: 120
+  typical_seconds: 5
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: true
+  collects_personal_data: false
+  notifies_target: false
+test:
+  # Scans and health checks run without secrets, so the CLI rejects the missing key with exit code 2.
+  expect_exit_code: 2
+  input: { hash: "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f" }
