@@ -37,7 +37,8 @@ twin is unset (`config.env_value`), and the first run copies `.env`, `accepted.j
   automated install test and a smoke test (--help or --version exits cleanly).
 - Resume: job state lives in SQLite. Finished jobs are skipped on resume and partial
   output is always kept.
-- No usage telemetry. Network access only to GitHub, PyPI and the registry host, plus opt-in crash reports to
+- No usage telemetry. Network access only to GitHub, PyPI and the registry host (including asking PyPI whether a
+  newer otlite is out, never with `OTLITE_NO_UPDATE_CHECK`, `DO_NOT_TRACK` or `CI`), plus opt-in crash reports to
   Sentry (`crash_reports.py`: only after the user says yes, never with `DO_NOT_TRACK`; tests and the Debian build
   force `DO_NOT_TRACK=1`).
 

@@ -8,13 +8,13 @@ otlite is a CLI tool manager that installs, runs, updates, and removes open-sour
 
 ## Installation
 
-`ash
+```bash
 # System-wide (recommended for agents)
 pipx install otlite
 
 # Or from source
 pip install -e .
-`
+```
 
 The command is `otlite`. (`otinstaller` is the old name and still runs it; `ot` is the containerised OTInstaller CLI, a different program.)
 
@@ -43,78 +43,83 @@ Use these instead of tool-specific flags:
 ## Common Commands
 
 ### Initialize
-`ash
+```bash
 otlite init --yes
-`
+```
 
 ### Install tools
-`ash
+```bash
 otlite install sherlock maigret --yes
-`
+```
 
 ### Run tools with typed inputs
-`ash
+```bash
 otlite run sherlock -- u:johndoe
 otlite run ghunt -- e:john@example.com
-`
+```
 
 ### Run all matching tools (--all / -a)
-`ash
+```bash
 otlite run -a u:johndoe
 otlite run --all u:johndoe e:john@example.com
 otlite run --all u:johndoe --include-credentialed
-`
+```
 
 ### Check for updates
-`ash
-otlite check-updates
+```bash
+otlite check-updates --all
 otlite check-updates --tools sherlock,maigret --json
-`
+```
+
+`otlite` itself carries the tool catalog, so newer tool versions arrive with a newer otlite. `check-updates` says
+when one is out (the `otlite` key in its JSON: current, latest, outdated, and the upgrade command for how otlite was
+installed, or null when the check is off); `install` mentions it at most once a day at a terminal. Set
+`OTLITE_NO_UPDATE_CHECK=1` (or `DO_NOT_TRACK`, or `CI`) to never ask PyPI. A failed `update` keeps the installed version.
 
 ### Update tools
-`ash
+```bash
 otlite update --all --yes
 otlite update sherlock maigret --yes
 otlite update --tools sherlock,maigret --yes
-`
+```
 
 ### List and search tools
-`ash
+```bash
 otlite list --json
 otlite list --installed --json
 otlite search username --json
-`
+```
 
 ### Get tool info
-`ash
+```bash
 otlite info sherlock --json
 otlite sherlock --json  # bare name also works
-`
+```
 
 ### Run with auto-detection
-`ash
+```bash
 otlite auto johndoe@example.com --yes
-`
+```
 
 ### Read one result the same way for every tool
-`ash
+```bash
 otlite results --tool sherlock --limit 1 --json   # envelope_path points at the run's .envelope.json
-`
+```
 Each .envelope.json has: envelope (1), tool (name@version), runtime, input, started_at, ended_at, duration_ms, exit_code, status, entities [{type, value}], warnings, output {path, sha256, bytes}.
 
 ### List saved runs, filtered and sorted
-`ash
+```bash
 otlite results --json
 otlite results --tool sherlock --since 7d --sort time --json
 otlite results --status failed --sort duration --limit 0 --json
-`
+```
 
 ### Check API keys
-`ash
+```bash
 otlite keys check --json
 otlite keys list --json
 printf '%s' "$VALUE" | otlite keys set SHODAN_API_KEY --json
-`
+```
 
 ## Agent-Friendly Features
 
@@ -137,16 +142,16 @@ printf '%s' "$VALUE" | otlite keys set SHODAN_API_KEY --json
 
 Most commands support --json. Examples:
 
-`json
+```json
 // otlite list --json
-[{name: sherlock, display_name: Sherlock, description: ..., tier: community, capabilities: [username-search]}]
+[{"name": "sherlock", "display_name": "Sherlock", "description": "...", "tier": "community", "capabilities": ["username-search"]}]
 
 // otlite info sherlock --json
-{name: sherlock, display_name: Sherlock, description: ..., tier: community, install: {method: pip, package: sherlock-project, version: 0.16.2}, entrypoint: {command: sherlock}, capabilities: [username-search, social-media], topics: [username, social-media], api_keys: {required: [], optional: []}, needs_config: false, verified: {date: 2026-09-24, version: 0.16.2, os: Ubuntu 26.04 LTS, python: 3.12.14}, accepts: [username], input_types: {u: --username}}
+{"name": "sherlock", "display_name": "Sherlock", "description": "...", "tier": "community", "install": {"method": "pip", "package": "sherlock-project", "version": "0.16.2"}, "entrypoint": {"command": "sherlock"}, "capabilities": ["username-search", "social-media"], "topics": ["username", "social-media"], "api_keys": {"required": [], "optional": []}, "needs_config": false, "verified": {"date": "2026-09-24", "version": "0.16.2", "os": "Ubuntu 26.04 LTS", "python": "3.12.14"}, "accepts": ["username"], "input_types": {"u": "--username"}}
 
 // otlite check-updates --json
-{results: [{tool: sherlock, current: 0.16.2, latest: 0.17.0, outdated: true}], updates_available: 1, pinned: 0, failed: 0}
-`
+{"results": [{"tool": "sherlock", "current": "0.16.2", "latest": "0.17.0", "outdated": true}], "updates_available": 1, "pinned": 0, "failed": 0, "otlite": {"current": "1.3.0", "latest": "1.4.0", "outdated": true, "upgrade": "pipx upgrade otlite"}}
+```
 
 ## Responsible Use
 
@@ -169,7 +174,7 @@ Working directory:
 │       ├── <timestamp>_<tool>_<target>_<runid>.txt
 │       └── <timestamp>_<tool>_<target>_<runid>.meta.json
 
-## Available Tools (48)
+## Available Tools (47)
 
 Run otlite list --json for the complete list. Key tools include:
 - sherlock, maigret, ghunt, theharvester, spiderfoot

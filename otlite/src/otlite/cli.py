@@ -771,6 +771,8 @@ def install(
     """Install tools by name. Use --all to install all available tools."""
     _require_supported_platform()
     _require_notice(no_color, json_output)
+    if not json_output:
+        _remind_newer_otlite()
 
     tools_registry = _load_registry(verbose)
 
@@ -1478,6 +1480,21 @@ def run(
             raise typer.Exit(code=1)
 
 
+def _stderr_is_terminal() -> bool:
+    return sys.stderr.isatty()
+
+
+def _remind_newer_otlite() -> None:
+    """At a terminal, at most once a day, say that a newer otlite is out."""
+    if not _stderr_is_terminal():
+        return
+    from otlite import updater
+
+    line = updater.daily_reminder()
+    if line:
+        typer.echo(f"note: {line}", err=True)
+
+
 def _check_updates(
     tools_to_check: list[str],
     tools_registry,
@@ -1581,6 +1598,9 @@ def _check_updates(
                 latest_version = get_latest_git_ref(tool.install.url or "")
                 if latest_version is None:
                     error = "could not check for updates"
+                else:
+                    # Installed git versions are the commit's first 12 characters.
+                    latest_version = latest_version[:12]
 
         if error:
             failed_count += 1
@@ -1659,6 +1679,10 @@ def check_updates(
     _, up_to_date_count, pinned_count, failed_count, check_results, detail_lines = _check_updates(
         tools_to_check, tools_registry, json_output
     )
+    from otlite import updater
+
+    # New tool versions arrive with a new otlite, so it is checked too.
+    otlite_notice = updater.notice(cached=False)
 
     if json_output:
         import json
@@ -1670,6 +1694,7 @@ def check_updates(
                     "updates_available": up_to_date_count,
                     "pinned": pinned_count,
                     "failed": failed_count,
+                    "otlite": otlite_notice,
                 }
             )
         )
@@ -1687,6 +1712,9 @@ def check_updates(
             typer.echo(", ".join(parts))
         elif not detail_lines:
             typer.echo("all tools up to date")
+        line = updater.notice_line(otlite_notice)
+        if line:
+            typer.echo(line)
 
     # check-updates is informational only, always exit 0
     raise typer.Exit(code=0)
@@ -1743,6 +1771,12 @@ def update(
     _, up_to_date_count, pinned_count, failed_count, check_results, detail_lines = _check_updates(
         tools_to_check, tools_registry, json_output
     )
+    from otlite import updater
+
+    # Said on stderr, so the JSON list stays as it was.
+    otlite_line = updater.notice_line(updater.notice(cached=False))
+    if otlite_line:
+        typer.echo(f"note: {otlite_line}", err=True)
 
     if check_only:
         # Just show the check results
@@ -1806,7 +1840,8 @@ def update(
             typer.echo(f"updated {result_obj.name} {result_obj.version}")
             updated_count += 1
         except (InstallError, AlreadyInstalled, Exception) as e:
-            typer.echo(f"error: {name}: {e}")
+            # A failed update puts the installed version back.
+            typer.echo(f"error: {name}: {e}; {name} {result['current']} is still installed")
             failed_count += 1
 
     parts = []
@@ -3008,6 +3043,23 @@ def doctor(
                     "pipx not found; otlite runs without it, but upgrades use it. "
                     f"Install it with: {install_hint('pipx')}"
                 ),
+            }
+        )
+
+    # A newer otlite carries newer tool versions; being behind is a note, never a problem.
+    from otlite import updater
+
+    latest = updater.notice(cached=True)
+    if latest and latest["outdated"]:
+        checks.append(
+            {"check": "otlite_version", "status": "note", "message": updater.notice_line(latest)}
+        )
+    elif latest:
+        checks.append(
+            {
+                "check": "otlite_version",
+                "status": "ok",
+                "message": f"otlite {latest['current']} is the latest",
             }
         )
 

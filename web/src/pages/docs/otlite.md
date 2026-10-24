@@ -72,6 +72,7 @@ of them. The full command reference is in the
 | `OTLITE_RESULTS_DIR` | Save results there instead of `./results` |
 | `OTLITE_REGISTRY` | Use another catalog file |
 | `OTLITE_NO_BANNER` | No startup banner |
+| `OTLITE_NO_UPDATE_CHECK=1` | Never ask PyPI whether a newer otlite is out (also off with `DO_NOT_TRACK` or `CI`) |
 | `OTLITE_CRASH_REPORTS=off`, `DO_NOT_TRACK=1` | Never send crash reports (they are off unless you turn them on) |
 
 The `OTINSTALLER_*` names are still read when the `OTLITE_*` one is unset.
