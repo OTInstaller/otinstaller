@@ -105,8 +105,8 @@ func NewApp() *App {
 func (a *App) Root() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "ot",
-		Short:         "Install and run OSINT tools from the OTInstaller Registry",
-		Long:          "ot installs and runs OSINT tools and guides from the OTInstaller Registry (https://otinstaller.com).",
+		Short:         "The OSINT package manager: install, run, update and remove OSINT tools",
+		Long:          "ot is the OSINT package manager: one command installs, runs, updates or removes any tool or guide in the OTInstaller registry (https://otinstaller.com). Every tool takes the same typed inputs, runs in a locked-down container and saves its result in the same JSON shape.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       Version,
