@@ -6,7 +6,7 @@ import pivotMap from "../../spec/pivots.json";
 import typeDescriptions from "../../spec/types.json";
 import openapi from "../../spec/openapi/v1.json";
 import { rank } from "./ranking";
-import { cached, findTool, findVersion, notFound, LISTED, publishedVia, rankInput, summary, SUMMARY_COLUMNS, VISIBLE, type SummaryRow } from "./catalog";
+import { cached, findTool, findVersion, latestVersions, notFound, LISTED, publishedVia, rankInput, summary, SUMMARY_COLUMNS, VISIBLE, type SummaryRow } from "./catalog";
 import type { AppEnv, Env, PublishMessage } from "./env";
 import { apiError, d1RetryAfter, errorDocs, rateLimited, windowRetry } from "./lib/errors";
 import { authRoutes } from "./routes/auth";
@@ -471,6 +471,14 @@ app.get("/facets", async (c) => {
   const counts = (i: number) => Object.fromEntries(((res[i]?.results ?? []) as { k: string | null; n: number }[]).filter((x) => x.k).map((x) => [x.k as string, x.n]));
   cached(c, 600);
   return c.json({ kind, inputs: counts(0), outputs: counts(1), categories: counts(2), runtimes: counts(3), no_keys: ((res[4]?.results ?? [])[0] as { n: number } | undefined)?.n ?? 0 });
+});
+
+// Every package's latest version in one small answer, the same for everyone: `ot` compares installed packages with it
+// once a day, so the check says nothing about what a person has installed.
+app.get("/latest", async (c) => {
+  const result = await latestVersions(c.env.DB);
+  cached(c, 3600);
+  return c.json(result);
 });
 
 // What changed across the registry, newest first: releases, yanks, deprecations and transfers. The site's feeds and

@@ -55,11 +55,17 @@ func (a *App) ensureInstalled(cmd *cobra.Command, ref pkgRef, ra *runArgs) (*sta
 		}
 	}
 	if !ra.Yes {
+		// Another version installed is replaced (and the asked-for one held), so say which.
+		missing, question := ref.Ref()+" is not installed", "Install it now?"
+		if inst, ok := st.Installed[ref.Ref()]; ok {
+			missing = fmt.Sprintf("%s %s is installed, not %s", ref.Ref(), inst.Version, ref.Version)
+			question = fmt.Sprintf("Install %s in its place?", ref.Version)
+		}
 		// Without a terminal, no answer must not mean yes: installing pulls and trusts new code.
 		if !a.interactive() {
-			return nil, &ExitError{Code: ExitUsage, Reason: "not_installed", Err: fmt.Errorf("%s is not installed; run `ot install %s` first, or pass --yes to install it", ref.Ref(), ref.Ref())}
+			return nil, &ExitError{Code: ExitUsage, Reason: "not_installed", Err: fmt.Errorf("%s; run `ot install %s` first, or pass --yes to install it", missing, ref.Ref()+atVersion(ref.Version))}
 		}
-		fmt.Fprintf(a.Err, "%s is not installed. Install it now? [Y/n] ", ref.Ref())
+		fmt.Fprintf(a.Err, "%s. %s [Y/n] ", missing, question)
 		line, _ := bufio.NewReader(a.In).ReadString('\n')
 		if ans := strings.ToLower(strings.TrimSpace(line)); ans != "" && ans != "y" && ans != "yes" {
 			return nil, exitErr(ExitUsage, "not installed; run `ot install %s` first", ref.Ref())
@@ -357,4 +363,12 @@ func (a *App) doctorChecks(ctx context.Context) []doctorCheck {
 	_, aerr := a.API.Search(ctx, api.SearchParams{Limit: 1})
 	check("registry", okOr(aerr == nil, "fail"), a.Config.APIURL+map[bool]string{true: " reachable", false: fmt.Sprintf(" unreachable: %v", aerr)}[aerr == nil])
 	return checks
+}
+
+// atVersion is "@version", or nothing for the latest.
+func atVersion(v string) string {
+	if v == "" {
+		return ""
+	}
+	return "@" + v
 }

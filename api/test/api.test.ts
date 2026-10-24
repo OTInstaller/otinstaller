@@ -231,6 +231,40 @@ describe("facets and health", () => {
   });
 });
 
+describe("latest versions", () => {
+  it("lists every visible package's latest version and lifecycle, and where moved ones went", async () => {
+    const { env } = await import("cloudflare:test");
+    const src = await env.DB.prepare(
+      `SELECT s.tool_id, n.name || '/' || t.name AS ref FROM sources s JOIN tools t ON t.id = s.tool_id JOIN namespaces n ON n.id = t.namespace_id LIMIT 1`,
+    ).first<{ tool_id: string; ref: string }>();
+    await env.DB.batch([
+      env.DB.prepare(`UPDATE tools SET status = 'deprecated', deprecated_replacement = 'osintverse-community/sherlock' WHERE id = 'tool_dheeraj_old-username-scraper'`),
+      env.DB.prepare(`UPDATE sources SET sync_status = 'unavailable' WHERE tool_id = ?`).bind(src!.tool_id),
+    ]);
+    try {
+      const { status, body, headers } = await get("/latest");
+      expect(status).toBe(200);
+      expect(headers.get("cache-control")).toBe("public, max-age=3600");
+      const byRef = Object.fromEntries(body.packages.map((p: any) => [p.ref, p]));
+      // Each latest version is what the package's own page says.
+      for (const ref of ["dheeraj/holehe-lite", "osintverse-community/sherlock", "osintverse/phone-parse"]) {
+        expect(byRef[ref].latest).toBe((await get(`/tools/${ref}`)).body.latest_version);
+      }
+      expect(byRef["newbie/secret-tool"]).toBeUndefined();
+      expect(byRef["dheeraj/old-username-scraper"]).toMatchObject({ status: "deprecated", health: "broken", replacement: "osintverse-community/sherlock" });
+      expect(byRef["dheeraj/holehe-lite"].replacement).toBeUndefined();
+      // A package whose source is gone leaves search but not this list.
+      expect(byRef[src!.ref].source_unavailable).toBe(true);
+      expect(body.moved).toContainEqual({ from: "osintverse-community/holehe", to: "dheeraj/holehe-lite" });
+    } finally {
+      await env.DB.batch([
+        env.DB.prepare(`UPDATE tools SET status = 'active', deprecated_replacement = NULL WHERE id = 'tool_dheeraj_old-username-scraper'`),
+        env.DB.prepare(`UPDATE sources SET sync_status = 'ok' WHERE tool_id = ?`).bind(src!.tool_id),
+      ]);
+    }
+  });
+});
+
 describe("helpers", () => {
   it("builds safe FTS queries", () => {
     expect(ftsQuery("holehe lite")).toBe('"holehe"* "lite"*');

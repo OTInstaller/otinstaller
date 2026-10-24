@@ -708,6 +708,7 @@ and daily for the warning (`cli/internal/cli/trust.go:removedList`).
    | `/tools/:ns/:name/:version/scans` | 300 |
    | `/namespaces/:ns` | 300 |
    | `/pivots`, `/removed` | 600 |
+   | `/latest` | 3600 |
    | `/tools/:ns/:name/docs`, `/guides`, `/readme` | 600 |
    | `/guides/:ns/:name[/:version]` | 60 (`latest`) / 3600 |
    | `/tools/:ns/:name/:version/wheel/:file` | 86400 (header set in `wheelResponse`) |
@@ -770,7 +771,9 @@ The design is [docs/agent-friendly-plan.md](../agent-friendly-plan.md); the rule
          client supports elicitation    -> form with the tool's ethics, egress and notifies_target
          neither (or the form failed)   -> error consent_required + summary + consent_token
                                            (HMAC over tool, artifact and arguments; single use; 10 min; this process)
-     install: RequireSignature (signer recorded and cosign present); no local manifests, yanked, failed or broken
+     install: RequireSignature (signer recorded and cosign present); no local manifests, yanked, failed or broken;
+              on an installed tool the question names both versions, a held one is refused (version_held), a native
+              one too (trust_refused), and the same version answers already_installed
      run: the same runner and sandbox as `ot run`; output saved under <ot home>/results (or --results-dir)
      agent.Record -> <ot home>/agent-audit.jsonl (rotated at 10 MiB)
 ```
