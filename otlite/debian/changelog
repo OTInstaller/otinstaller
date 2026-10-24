@@ -1,3 +1,11 @@
+otlite (1.3.0-1) unstable; urgency=medium
+
+  * Say when a newer otlite is out, with the upgrade command for how it was
+    installed; a failed update keeps the installed version; unpinned git
+    tools are compared by commit; registry entries can carry notes.
+
+ -- Sushant Koul <sushant@osintverse.com>  Sat, 24 Oct 2026 18:00:00 +0530
+
 otlite (1.2.1-1) unstable; urgency=medium
 
   * Typed inputs for openosint and secator.
