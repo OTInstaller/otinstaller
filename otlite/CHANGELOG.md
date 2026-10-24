@@ -7,13 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-24
+
 ### Added
 - Registry entries can carry `notes`, short caveats such as why a tool needs a particular Python or how to sign in first; `otlite info` lists them
+- `check-updates` and `update` say when a newer otlite is out, since newer tool versions arrive with it, and give the upgrade command for how otlite was installed (pipx, uv, or pip); `check-updates --json` has an `otlite` key. `install` mentions it at most once a day at a terminal, and `doctor` shows it. Only PyPI is asked; `OTLITE_NO_UPDATE_CHECK=1`, `DO_NOT_TRACK` or `CI` turn it off
 
 ### Changed
 - The one-line installer no longer needs Python or pipx on the machine: without them it downloads a pinned uv (checked against its SHA-256) into `~/.local/bin` and installs otlite with uv on a Python 3.12 that uv keeps in the home directory, never with sudo. `OTLITE_USE_UV=1` picks this path even when pipx is there
 - `otlite doctor` recognises an otlite installed with uv and gives uv commands for upgrading and reinstalling, instead of a note about pipx
 - The descriptions of auto-archiver, telepathy and openosint are one sentence again; their caveats moved into `notes`
+- A failed `update` (or `install --force`) keeps the installed version: the old copy is moved aside and put back if anything fails, including Ctrl-C. Before, it left the tool uninstalled
+
+### Fixed
+- `check-updates` reported an unpinned git tool as outdated even at upstream's latest commit
+- `llms.txt`: broken code fences and JSON examples, the tool count, and `check-updates` without `--all`
 
 ## [1.2.1] - 2026-10-22
 

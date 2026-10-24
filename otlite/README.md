@@ -93,7 +93,7 @@ otlite run sherlock -- u:johndoe
 
 The installer needs nothing installed first. If the machine has a Python 3.10 to 3.14 and pipx, it installs otlite
 with pipx. Otherwise it downloads uv into `~/.local/bin` and installs otlite with uv on a Python 3.12 that uv keeps in
-your home directory, without sudo. Upgrade later with `pipx upgrade otlite` or `uv tool upgrade otlite`, whichever
+your home directory, without sudo. Newer tool versions come with newer otlite releases, and `otlite check-updates` says when one is out. Upgrade with `pipx upgrade otlite` or `uv tool upgrade otlite`, whichever
 the installer used. If you already have pipx, `pipx install otlite` does the same.
 
 <p align="center">
@@ -457,7 +457,7 @@ not run on macOS.
 No. Root is only needed once, for `sudo apt install python3-venv git`. Everything else lives in your home directory under `~/.otlite/`.
 
 **Does otlite send my data anywhere?**
-otlite itself contacts GitHub and PyPI to install and update tools. It has no usage tracking. Crash reports are off unless you say yes: `otlite init` asks once, and Enter means no. If you turn them on, a report is sent only when otlite itself crashes, and it holds the error, where in otlite's code it happened, and the otlite, Python and OS versions, never your targets, command arguments, tool output, results, API keys, file paths or user name. Turn them on or off with `otlite crash-reports on` or `off`, and send a test report with `otlite crash-reports test`; `DO_NOT_TRACK=1` or `OTLITE_CRASH_REPORTS=off` always turns them off. The tools you run contact the services they are built to query.
+otlite itself contacts GitHub and PyPI to install and update tools, and asks PyPI whether a newer otlite is out (`check-updates`, `update`, `doctor`, and at most once a day when you install a tool at a terminal); `OTLITE_NO_UPDATE_CHECK=1`, `DO_NOT_TRACK=1` or `CI` turn that off. It has no usage tracking. Crash reports are off unless you say yes: `otlite init` asks once, and Enter means no. If you turn them on, a report is sent only when otlite itself crashes, and it holds the error, where in otlite's code it happened, and the otlite, Python and OS versions, never your targets, command arguments, tool output, results, API keys, file paths or user name. Turn them on or off with `otlite crash-reports on` or `off`, and send a test report with `otlite crash-reports test`; `DO_NOT_TRACK=1` or `OTLITE_CRASH_REPORTS=off` always turns them off. The tools you run contact the services they are built to query.
 
 **How do I uninstall it?**
 `otlite remove --all` removes every tool, then `pipx uninstall otlite` (or `uv tool uninstall otlite`) removes otlite itself. `rm -rf ~/.otlite` deletes the config, the API key file and the logs. Results stay wherever you ran your commands.
