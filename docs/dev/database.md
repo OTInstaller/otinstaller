@@ -43,6 +43,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0027 | `0027_change_proposals.sql` | New table `change_proposals` (a maintainer's change to a community package beyond its pin: the pull request, the proposer's title and note, the files it writes, the version, whether it builds, the reviewer's checks, status, decision and released version); indexes `change_proposals_status`, `change_proposals_tool`, `change_proposals_proposer`. |
 | 0028 | `0028_bump_outcomes.sql` | `bump_prs` rebuilt: `status` also takes `released` and `failed`; new columns `auto`, `merge_sha`, `merged_at`, `run_url`, `attempts`, `error_code`, `error`, `released_at` (merged rows whose version is published become `released`); index `bump_prs_inflight (status, merged_at)`; `tools` + `auto_release` (INTEGER NN default 1: whether `UPSTREAM_WATCH=auto` may release the package's bumps). |
 | 0029 | `0029_package_follows.sql` | New table `package_follows` (who follows which package's releases) and index `package_follows_user`; `email_prefs` + `releases` (CHECK immediate/daily/off, default immediate); `versions` + `announced_at` (backfilled to `published_at`); `inbox` rebuilt so `scope` also takes `releases`, indexes `inbox_user` and `inbox_pending` again. Apply before an API that writes release items is deployed. |
+| 0030 | `0030_follows.sql` | New table `follows` (who follows which publisher or input type: `kind` CHECK publisher/input, `target`) and index `follows_target`. Apply before an API that reads it is deployed. |
 
 ---
 
@@ -432,7 +433,7 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
 - `error` TEXT · `created_at` INTEGER NN
 - Flow (`notify.ts:sendEmail`): inserted as `sent`, or as `skipped` when `RESEND_API_KEY` is unset; set to `failed` if Resend answers with an error.
 
-### 2.11a Inbox, email preferences and follows (0017, 0029)
+### 2.11a Inbox, email preferences and follows (0017, 0029, 0030)
 
 - `email_prefs`: PK `user_id` → `users` (cascade); `community`, `owner_issues`, `releases` (0029), each CHECK
   `('immediate', 'daily', 'off')` default `immediate`; `updated_at`. Written by `PUT /me/email-prefs` and one-click
@@ -443,6 +444,9 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
   `created_at`, `read_at`, `emailed_at`. Indexes `inbox_user (user_id, created_at DESC)`, `inbox_pending (created_at)
   WHERE emailed_at IS NULL`. Written by `inbox.ts:notify` and `notifyFollowers`; delivered by `deliverInbox`.
 - `package_follows` (0029): PK `(tool_id, user_id)`, both cascade, `created_at`; index `package_follows_user`.
+- `follows` (0030): PK `(user_id, kind, target)`, `user_id` cascade, `kind` CHECK `('publisher', 'input')`, `target`
+  (a namespace's name, or an input type; no foreign key, so a follow outlives a renamed namespace), `created_at`; index
+  `follows_target (kind, target)`. At most 200 a person (`PUT /me/follows/:kind/:target`).
 - `versions.announced_at` (0029): set once, by `publishVersion` when the version first becomes the latest; only then
   are followers and open issues told.
 

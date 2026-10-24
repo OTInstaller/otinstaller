@@ -8078,8 +8078,8 @@
         "tags": [
           "Auth"
         ],
-        "summary": "The packages you follow for releases",
-        "description": "Newest first, 100 at a time; page with before=<next_before>.",
+        "summary": "What you follow: packages, publishers and input types",
+        "description": "Packages newest first, 100 at a time (page with before=<next_before>); publishers and input types come whole on the first page.",
         "parameters": [
           {
             "name": "before",
@@ -8130,6 +8130,34 @@
                         "integer",
                         "null"
                       ]
+                    },
+                    "publishers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "followed_at": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "inputs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string"
+                          },
+                          "followed_at": {
+                            "type": "integer"
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -8141,6 +8169,204 @@
           }
         },
         "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/me/follows/{kind}/{target}": {
+      "get": {
+        "operationId": "following",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Whether you follow a publisher or an input type",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "publisher",
+                "input"
+              ]
+            },
+            "description": "publisher or input"
+          },
+          {
+            "name": "target",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A namespace's name, or an input type"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "following": {
+                      "type": "boolean"
+                    },
+                    "followed_at": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "follow",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Follow a publisher or an input type",
+        "description": "A publisher: an inbox item (and an email per your releases preference) for each version that becomes the latest of one of its packages, and for each new package. An input type: one for each new tool or guide that takes it. At most 200 publishers and input types.",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "publisher",
+                "input"
+              ]
+            },
+            "description": "publisher or input"
+          },
+          {
+            "name": "target",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A namespace's name, or an input type"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "following": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "feedback",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "unfollow",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Stop following a publisher or an input type",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "publisher",
+                "input"
+              ]
+            },
+            "description": "publisher or input"
+          },
+          {
+            "name": "target",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A namespace's name, or an input type"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "following": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "feedback",
         "security": [
           {
             "bearer": []
