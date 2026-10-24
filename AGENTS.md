@@ -1098,10 +1098,10 @@ table, publish order (namespace → tools → guides), what was not converted an
   an exit code, prints `{"entities": [...]}`), `test_<snake_name>.py` (unittest, no network), a `python:3.12-slim`
   Dockerfile running as uid 10001, `otinstaller.yaml` with a zero-digest placeholder the release workflow fills in,
   `README.md`, MIT `LICENSE`, and `.github/workflows/otinstaller-release.yml` (copied from
-  `spec/templates/github-docker.yml`; copies older than its OIDC publish step lack it). Nine (October 2026) are built
-  on a data provider's official PyPI client (VirusTotal, urlscan.io, Censys, OTX, IPinfo, Hunter, HIBP, Companies
-  House, SEC EDGAR), pinned in `requirements.txt` so the build watcher follows it; they exit 3 when their key is
-  missing, and a script named like its client library gets a `_lookup` suffix so it doesn't import itself.
+  `spec/templates/github-docker.yml`; copies older than its OIDC publish step lack it). Nine (published 24 Oct 2026)
+  are built on a data provider's official PyPI client (VirusTotal, urlscan.io, Censys, OTX, IPinfo, Hunter, HIBP,
+  Companies House, SEC EDGAR), pinned in `requirements.txt` so the build watcher follows it; they exit 3 when their
+  key is missing, and a script named like its client library gets a `_lookup` suffix so it doesn't import itself.
 - `community/<tool>/` (119): wrappers of third-party tools. Docker wrappers pin the upstream version in a Dockerfile and
   build amd64+arm64; pipx wrappers are just a manifest pinning the wheel by `wheel_sha256` plus a README crediting
   upstream. The upstream license must be in the API's `REDISTRIBUTABLE` list (`api/src/imports.ts`), which includes the
@@ -1109,7 +1109,7 @@ table, publish order (namespace → tools → guides), what was not converted an
   `otlite/` catalog by `scripts/pm-catalog-to-wrappers.py` (`--dry-run`, `--offline`; it never overwrites a folder);
   git-pinned ones use versions like `0.0.0-git.<commit>`. 65 more (October 2026) cover every open-source OSINT tool
   over 100 stars that could be wrapped; `seed/candidates.md` lists every candidate with why it was wrapped or dropped.
-  All 65 were published on 22 Oct 2026. 16 more (24 Oct 2026, not yet published) wrap PyPI clients of data providers
+  All 65 were published on 22 Oct 2026. 16 more (published 24 Oct 2026) wrap PyPI clients of data providers
   (ONYPHE, PolySwarm, Joe Sandbox, FOFA, CIRCL's services, the Internet Archive, Common Crawl, GLEIF, MalwareBazaar,
   ipdata, Google Safe Browsing and others; `seed/README.md`, "PyPI clients of data providers"). A CLI that reads its
   key only from a config file gets a Docker shim that writes it from the key's environment variable, as

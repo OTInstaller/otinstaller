@@ -256,6 +256,11 @@ as libraries. 147 packages were read at their latest release (wheel, entry point
 licence file and, where possible, a live call to the provider. Every one and its outcome is in
 [`candidates.md`](candidates.md).
 
+All 25 were published on 24 Oct 2026, at the owner's request without the outreach step:
+- Each repository was created between 16:53 and 16:56 UTC with one commit, as the October ones were.
+- The 11 pipx wrappers were tagged, and the release workflow ran for the 14 Docker builds.
+- Every release was published by 17:04 UTC.
+
 - A package with **its own command** became a community wrapper that runs it unmodified. That is a pipx wrapper when
   the wheel and its console script are enough. It is a Docker wrapper when the command needs:
   - an extra the wheel leaves out (`onyphe`);
@@ -292,6 +297,16 @@ release:
 
 None of the tools that need a key was run with one. `sec-edgar` was not run live either: it needs a personal EDGAR
 identity (a name and email address the SEC asks for).
+
+The registry's scans at release agreed with the local runs:
+- **Smoke tests.** Each one passed with the expected exit code; `savepagenow`'s was skipped.
+- **Docker builds.** The release workflows were the images' first builds, and all 14 built for amd64 and arm64.
+- **Signatures and provenance.** Every image's cosign signature passes. The six pipx wheels with PEP 740 attestations
+  (`handelsregister`, `hashlookup`, `phishtank-lookup`, `lookyloo`, `ia-search`, `cdx-toolkit`) pass provenance
+  against the `homepage` repository; `cdx-toolkit`'s is `commoncrawl/cdx_toolkit`, which PyPI's own homepage link
+  doesn't show. The other five have no attestations and get "warn".
+- **Vulnerabilities.** Only `gleif` warns, with 4 fixable high-severity vulnerabilities in its `python:3.13-slim`
+  image.
 
 | Package | Version | License | Upstream | Runtime | Inputs | Categories |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -355,6 +370,7 @@ Health risks for these:
 | `urlscan-search`, `otx-indicators`, `ipinfo`, `ia-search` | Anonymous rate limits, shared by everything on a CI runner's address |
 | `savepagenow` | No smoke test or health check |
 | `fofa`, `handelsregister`, `hibp-breaches` | Need a paid plan |
+| `gleif` | Its scan warns about 4 fixable high-severity vulnerabilities in the image |
 
 ## How each part gets published
 
