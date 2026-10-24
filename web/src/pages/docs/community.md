@@ -123,6 +123,22 @@ allows redistribution and the pull request is still open with nothing but the pi
 package page give the date. A package's maintainers can turn this off, or back on, with the switch beside the bump on
 its page; closing the pull request on GitHub stops that one.
 
+### Dependencies and base images
+
+The registry's own first-party tools pin their Python dependencies in `requirements.txt`. Every night each pin is
+compared with PyPI's latest release, and the tool page lists the ones behind. When this is switched on, each new
+release gets an **outdated** issue after three days, and the community bot opens one pull request updating every
+pin that is behind, which a maintainer merges and releases from the package page as a patch version, like a bump
+(and which goes out on its own in automatic mode).
+
+Every night the registry also looks up the base image each Docker build in `osintverse-community` starts from (the
+Dockerfile's last `FROM`, on Docker Hub). When the image has changed since the latest version was built, and that
+version's security scan found critical or high vulnerabilities with a fix available, the registry can rebuild the
+package on the newer image: the same source, built, signed and scanned again as a new patch version, so its scan
+shows whether the newer base fixed them. It rebuilds a package at most every two weeks, never when something was
+merged since the release, and not when its maintainers turned off releases on its own. A rebuild that fails tells
+the maintainers, and **Release again** on the package page tries once more.
+
 ## Changing a community package
 
 A community package's repository belongs to `osintverse-community`, so its maintainers change more than the pin

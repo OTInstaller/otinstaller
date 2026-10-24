@@ -154,6 +154,12 @@ export interface ToolDetail extends ToolSummary {
   community?: { open_broken: number; open_outdated: number };
   /** What the upstream watcher last found, for community wrappers. */
   upstream?: UpstreamWatch;
+  /** The build watcher: a first-party tool's pinned PyPI dependencies against their latest releases. */
+  dependencies?: DependencyWatch[];
+  /** The build watcher: whether the base image changed since the latest version was built. */
+  base_image?: BaseImageWatch;
+  /** The package's current bump of any kind: open, being released, failed, or released in the last two weeks. */
+  bump?: BumpSummary;
   /** The handle of whoever submitted a community package (community submissions). */
   packaged_by?: string;
   /** People who look after a community package besides its namespace. */
@@ -651,9 +657,30 @@ export interface UpstreamWatch {
 }
 
 export type BumpStatus = "open" | "merged" | "released" | "failed" | "closed";
+/** upstream: a wrapper's pin; dependency: a first-party tool's requirements.txt (version is "pkg==1.2,other==3.4"); rebuild: the same source on a newer base image (#0, no pull request). */
+export type BumpKind = "upstream" | "dependency" | "rebuild";
+
+export interface DependencyWatch {
+  package: string;
+  pinned: string;
+  latest: string | null;
+  latest_at: number | null;
+  state: "current" | "behind" | "unknown" | "error";
+}
+
+export interface BaseImageWatch {
+  /** The final build stage's FROM, as the Dockerfile writes it. */
+  image: string | null;
+  /** updated: the base image's digest changed since the latest version was first seen. */
+  state: "current" | "updated" | "unknown" | "error";
+  checked_at: number | null;
+  rebuilt_at: number | null;
+}
 
 /** A bump as the tool page shows it to everyone. */
 export interface BumpSummary {
+  /** Older API answers omit it: an upstream bump. */
+  kind?: BumpKind;
   version: string;
   number: number;
   url: string;

@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { exampleRun, formatCount, guidePageHref, hintParts, inputLabel, upstreamReleasesUrl } from "./format";
+import { bumpName, exampleRun, formatCount, guidePageHref, hintParts, inputLabel, upstreamReleasesUrl } from "./format";
 import { withParam } from "./page";
 
 describe("format", () => {
+  it("names each kind of bump", () => {
+    expect(bumpName({ version: "v1.3.0" })).toBe("the bump to v1.3.0");
+    expect(bumpName({ kind: "dependency", version: "dnspython==2.9.0,requests==2.33.0" })).toBe("the dependency update (dnspython 2.9.0, requests 2.33.0)");
+    expect(bumpName({ kind: "rebuild", version: "rebuild:222222222222" })).toBe("the rebuild on a newer base image");
+  });
+
   it("builds the example run line from required inputs only", () => {
     expect(exampleRun("osintverse-community/holehe", [
       { name: "email", type: "email", required: true },

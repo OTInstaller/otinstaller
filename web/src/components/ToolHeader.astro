@@ -5,6 +5,7 @@ import type { ToolDetail } from "../lib/api";
 import BumpRelease from "../islands/BumpRelease";
 import FollowReleases from "../islands/FollowReleases";
 import { isWrapper } from "../lib/proposals";
+import { bumpName } from "../lib/format";
 
 interface Props {
   tool: ToolDetail;
@@ -35,6 +36,9 @@ const UPSTREAM_NOTE: Record<string, string> = {
 // Where the community bot's bump of the pin stands.
 const bump = t.upstream?.bump;
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+// The build watcher: first-party dependencies behind PyPI, and a dependency update or rebuild under way.
+const behindDeps = (t.dependencies ?? []).filter((d) => d.state === "behind" && d.latest);
+const buildBump = t.bump && t.bump.kind !== "upstream" && t.bump.kind ? t.bump : undefined;
 ---
 <header class="tool-head">
   <nav class="small crumbs" aria-label="Breadcrumb">
@@ -55,7 +59,16 @@ const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
   {wrapper && (
     <p class="notice small"><b>Community-packaged</b> from <a href={upstream!} rel="nofollow noopener">{upstream!.replace(/^https?:\/\//, "")}</a>: the registry's community pins the upstream release; the tool is its authors' work.{t.packaged_by && <> Packaged by <a href={`/people/${t.packaged_by}`}>{t.packaged_by}</a>{(t.maintainers ?? []).filter((m) => m !== t.packaged_by).length > 0 && <>, maintained with {(t.maintainers ?? []).filter((m) => m !== t.packaged_by).map((m, i) => <>{i > 0 && ", "}<a href={`/people/${m}`}>{m}</a></>)}</>}.</>} Maintain that project? <a href={`/${ref}/claim`}>Claim this package</a>.{t.upstream?.state === "behind" && !t.upstream.commits_behind && t.upstream.latest && <> Upstream has released <b>{t.upstream.latest}</b>; this package pins {t.upstream.pinned}.</>}{t.upstream && UPSTREAM_NOTE[t.upstream.state] && <> {UPSTREAM_NOTE[t.upstream.state]}</>}{bump?.status === "open" && <> <a href={bump.url} rel="nofollow noopener">A pull request bumps it to {bump.version}</a>.{bump.auto_release_at && <> It is released on its own on {day(bump.auto_release_at)} unless a maintainer stops it.</>}</>}{bump?.status === "merged" && <> The <a href={bump.url} rel="nofollow noopener">bump to {bump.version}</a> is being built and scanned{bump.released_version && <> as version {bump.released_version}</>}.</>}{bump?.status === "failed" && <> The release of the <a href={bump.url} rel="nofollow noopener">bump to {bump.version}</a> didn't go through; its maintainers can release it again.</>}{bump?.status === "released" && <> Bumped to {bump.version}{bump.released_version && <> in version {bump.released_version}</>}.</>}</p>
   )}
-  {wrapper && bump && <BumpRelease client:idle refName={ref} />}
+  {(behindDeps.length > 0 || buildBump) && (
+    <p class="notice small">
+      {behindDeps.length > 0 && <>PyPI has newer releases of what this tool pins: {behindDeps.map((d, i) => <>{i > 0 && ", "}<b>{d.package} {d.latest}</b> (pins {d.pinned})</>)}.</>}
+      {buildBump?.status === "open" && <> <a href={buildBump.url} rel="nofollow noopener">A pull request updates them</a>.{buildBump.auto_release_at && <> It is released on its own on {day(buildBump.auto_release_at)} unless a maintainer stops it.</>}</>}
+      {buildBump?.status === "merged" && <> {bumpName(buildBump).replace(/^t/, "T")} is being built and scanned{buildBump.released_version && <> as version {buildBump.released_version}</>}.</>}
+      {buildBump?.status === "failed" && <> {bumpName(buildBump).replace(/^t/, "T")} didn't go through; its maintainers can release it again.</>}
+      {buildBump?.status === "released" && <> {bumpName(buildBump).replace(/^t/, "T")} was released{buildBump.released_version && <> as version {buildBump.released_version}</>}.</>}
+    </p>
+  )}
+  {t.bump && t.repo_url && <BumpRelease client:idle refName={ref} />}
   {t.manifest_held_by_registry && <p class="notice small"><b>Manifest held by the registry.</b> The repository has no <code>otinstaller.yaml</code> yet, so releases are unsigned until it is added.</p>}
   {t.source_unavailable && <p class="notice bad"><b>Source unavailable.</b> The repository is gone or private. Installed copies keep working, but no new versions will come.</p>}
   <nav class="tabs" aria-label="Tool sections">

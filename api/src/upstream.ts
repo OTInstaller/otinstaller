@@ -63,7 +63,7 @@ export async function queueUpstreamChecks(env: Env) {
 }
 
 /** The registry App's token on osintverse-community (it can read public repositories), else none. */
-async function readToken(env: Env): Promise<string> {
+export async function readToken(env: Env): Promise<string> {
   const inst = await env.DB.prepare(
     `SELECT i.github_installation_id FROM installations i JOIN namespaces n ON n.id = i.namespace_id WHERE n.name = ? AND i.suspended_at IS NULL LIMIT 1`,
   ).bind(COMMUNITY_NAMESPACE).first<{ github_installation_id: number }>();
