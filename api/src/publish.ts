@@ -380,7 +380,7 @@ export async function handleBatch(batch: MessageBatch<PublishMessage>, env: Env)
       else if ("publishVersionId" in body) await publishApproved(env, body.publishVersionId);
       else if ("backupVersionId" in body) await backupVersion(env, body.backupVersionId);
       else if ("profileNamespaceId" in body) await syncProfile(env, body.profileNamespaceId);
-      else if ("upstreamCheckToolId" in body) await checkUpstream(env, body.upstreamCheckToolId);
+      else if ("upstreamCheckToolId" in body) await checkUpstream(env, body.upstreamCheckToolId, Date.now(), { nightly: true });
       else if ("mirrorSweepRepo" in body) await sweepMirrorRepo(env, body.mirrorSweepRepo);
       else await processJob(env, body.jobId);
       msg.ack();
