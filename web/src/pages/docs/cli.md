@@ -35,7 +35,7 @@ errors as one line of JSON on stderr; see [Scripts, CI and agents](/docs/automat
 | `ot issues <ns/name> [--all]` | The package's open [community issues](/docs/community) (`--all` adds closed ones) |
 | `ot request <repo-url> [--note …] [--vote]` | Ask for an open-source tool to be packaged ([tool requests](/requests)); when someone asked already, `--vote` (or yes at the prompt) votes for theirs. Needs `ot login` |
 | `ot report <ns/name> --works\|--broken [--version X.Y.Z]` | Say the installed version (or `--version`) works or is broken for you; `--works` needs `ot login`, and `--broken` joins or opens the version's broken issue when signed in |
-| `ot report <ns/name> [--reason malware\|policy\|impersonation\|license\|broken\|other --details …] [--version X.Y.Z]` | Report a package privately to the reviewers (opens the form without `--reason`); `--details` is required except for `broken` |
+| `ot report <ns/name> [--reason malware\|policy\|impersonation\|license\|broken\|other --details …] [--version X.Y.Z]` | Report a package privately to the reviewers; `--details` is required except for `broken`. Without `--reason` it opens the tool's **Report a problem** page, where you choose a public issue (or, without an account, a count) or a private report |
 | `ot feedback [--kind bug\|idea\|question\|other] [--about …] [--email …] "message"` | Send feedback to the team with your `ot` version and OS; reads piped text, or opens the form with no message |
 | `ot self-update [--check]` | Update ot itself; the release signature is checked first, and an older release is never installed over a newer one. `ot` notes a newer release once a day at a terminal, and `ot outdated` always does |
 

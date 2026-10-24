@@ -1,35 +1,52 @@
 ---
-// /{ns}/{name}/report: the report form, with what happens to a report so reporters know what to expect.
+// /{ns}/{name}/report: Report a problem. What is wrong decides where it goes (a public issue, a count without an
+// account, or a private report to the reviewers), and the side panel says what happens to each. `?kind=` picks a
+// choice and `?v=` a version (ot report opens it that way).
 import Base from "../../../layouts/Base.astro";
 import ToolHeader from "../../../components/ToolHeader.astro";
-import ReportForm from "../../../islands/ReportForm";
-import { api, type Version } from "../../../lib/api";
+import ReportProblem from "../../../islands/ReportProblem";
+import { api, type IssueList, type Version } from "../../../lib/api";
+import { reportChoice } from "../../../lib/report";
 import { loadTool } from "../../../lib/tool";
 
 const loaded = await loadTool(Astro, "/report");
 if ("response" in loaded) return loaded.response;
 const { tool: t, hasDocs } = loaded;
 const ref = `${t.namespace}/${t.name}`;
-const { versions } = await api<{ versions: Version[] }>(`/tools/${ref}/versions`);
+const [{ versions }, open] = await Promise.all([
+  api<{ versions: Version[] }>(`/tools/${ref}/versions`),
+  // Open issues, so people can join one rather than report the same thing again.
+  api<IssueList>(`/tools/${ref}/issues?status=open`).then((r) => r.issues, () => []),
+]);
+const reportable = versions.filter((v) => v.status !== "removed").map((v) => v.version);
+const choice = reportChoice(Astro.url.searchParams.get("kind"));
+const v = Astro.url.searchParams.get("v");
 Astro.response.headers.set("Cache-Control", "private, no-store");
 ---
-<Base title={`Report ${ref}`} noindex>
-  <ToolHeader tool={t} active="overview" hasDocs={hasDocs} />
+<Base title={`Report a problem with ${ref}`} noindex>
+  <ToolHeader tool={t} active="report" hasDocs={hasDocs} />
   <div class="two-col">
     <div>
-      <h2 class="rt">Report this package</h2>
-      <p class="muted">Reports go to the registry's reviewers. You don't need an account; sign in if you want a reply. The <a href="/policy/acceptable-use">acceptable-use policy</a> says what isn't allowed. A bug in the tool itself is better reported to its authors{t.homepage && <> at <a href={t.homepage} rel="nofollow noopener">{t.homepage.replace(/^https?:\/\//, "")}</a></>}.</p>
-      <ReportForm client:load refName={ref} versions={versions.filter((v) => v.status !== "removed").map((v) => v.version)} version={Astro.url.searchParams.get("v") ?? undefined} />
+      <h2 class="rt">Report a problem</h2>
+      <p class="muted">Say what's wrong with {t.name}, and the report goes where it can be fixed: a problem with the tool to its public <a href={`/${ref}/issues`}>Issues</a>, malware and abuse privately to the registry's reviewers.</p>
+      <ReportProblem client:load refName={ref} versions={reportable} latest={t.latest_version} open={open}
+        initialChoice={choice?.key} initialVersion={v && reportable.includes(v) ? v : undefined} />
     </div>
     <aside class="panel what">
       <h2>What happens next</h2>
+      <h3>It doesn't work, shows an error or is out of date</h3>
+      <ul class="small">
+        <li>Signed in, your report is an issue on the package's Issues tab. Its maintainers hear about it at once, others can say they have the same problem, and you hear when it changes.</li>
+        <li>Without an account it is only counted, once per address a day. Three reports in a week open an issue marked unconfirmed, until someone reproduces it.</li>
+      </ul>
+      <h3>Malware, abuse or a legal problem</h3>
       <ol class="small">
         <li>A reviewer reads it within 72 hours, or 24 hours for malware or credible harm.</li>
         <li>Possible actions, in order of weight: dismiss, ask the publisher to fix, yank the version, remove the package, suspend the namespace, ban the account.</li>
         <li>Malware: removal, a warning to everyone who installed it, a suspended namespace, and an advisory on the <a href="/policy/transparency">transparency page</a>.</li>
         <li>Every removal is listed there with its reason category; report counts are published each quarter.</li>
       </ol>
-      <p class="small muted">Anonymous reports are rate-limited. For vulnerabilities in the registry or in <code>ot</code> itself, email <a href="mailto:security@otinstaller.com">security@otinstaller.com</a>.</p>
+      <p class="small muted">Reports without an account are rate-limited. The <a href="/policy/acceptable-use">acceptable-use policy</a> says what isn't allowed. For vulnerabilities in the registry or in <code>ot</code> itself, email <a href="mailto:security@otinstaller.com">security@otinstaller.com</a>.</p>
     </aside>
   </div>
 </Base>
@@ -37,6 +54,7 @@ Astro.response.headers.set("Cache-Control", "private, no-store");
 <style>
   .rt { margin-top: 0; font-size: var(--fs-4); }
   .what h2 { margin: 0 0 8px; }
-  .what ol { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+  .what h3 { margin: 14px 0 6px; font-size: var(--fs-1); font-weight: 600; }
+  .what ul, .what ol { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
   .what p { margin: 10px 0 0; }
 </style>

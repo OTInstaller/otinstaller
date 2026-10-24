@@ -4,8 +4,8 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 `api/migrations/*.sql` and the code in `api/src/`, `api/test/` and `api/scripts/`.
 
 - Binding: `DB`, database name `otinstaller`, `migrations_dir: "migrations"` (`api/wrangler.jsonc`).
-- 27 migrations, `0001` to `0027`.
-- Final schema: **57 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 58. FTS5 also creates its own shadow
+- 32 migrations, `0001` to `0032`.
+- Final schema: **63 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 64. FTS5 also creates its own shadow
   tables, which aren't listed here.
 
 ---
@@ -45,6 +45,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0029 | `0029_package_follows.sql` | New table `package_follows` (who follows which package's releases) and index `package_follows_user`; `email_prefs` + `releases` (CHECK immediate/daily/off, default immediate); `versions` + `announced_at` (backfilled to `published_at`); `inbox` rebuilt so `scope` also takes `releases`, indexes `inbox_user` and `inbox_pending` again. Apply before an API that writes release items is deployed. |
 | 0030 | `0030_follows.sql` | New table `follows` (who follows which publisher or input type: `kind` CHECK publisher/input, `target`) and index `follows_target`. Apply before an API that reads it is deployed. |
 | 0031 | `0031_dependency_and_base_watch.sql` | New tables `dependency_watch` (a first-party tool's requirements.txt pins against PyPI), `base_images` (each Docker Hub base tag's current digest) and `base_watch` (each build's base image, the digest when its version was first seen, rebuilds); `bump_prs` + `kind` (CHECK upstream/dependency/rebuild, default upstream). Apply before an API that has the build watcher is deployed. |
+| 0032 | `0032_problem_signals.sql` | New table `problem_signals` (anonymous daily counts from a tool page's **Report a problem**: broken or outdated, by version and platform), with `CREATE TABLE IF NOT EXISTS`: production got the table on 24 Oct from this file under its first name, `0030_problem_signals.sql`, so there it is recorded as applied and does nothing. Apply before an API that serves `POST /tools/:ns/:name/problem-reports` is deployed. |
 
 ---
 
@@ -467,6 +468,9 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
 - `confirmations`: `tool_id`, `version_id`, `user_id`, `result` (works | broken), `platform`, `engine`, `ot_version`,
   `issue_id`; UNIQUE `(version_id, user_id, platform)`.
 - `run_signals`: anonymous daily counts of failed runs, PK `(version_id, day, platform, engine, exit_class)`.
+- `problem_signals` (0032): anonymous daily counts from **Report a problem**, `kind` (broken | outdated), `platform`
+  (`''` when unknown, and always for outdated), PK `(version_id, day, kind, platform)`. Broken counts are added to
+  `run_signals` toward the version's unconfirmed issue; outdated counts are always against the latest version.
 - `content_flags`: `target_kind` (issue | comment | request | request_comment, since 0026), `target_id`, `flagger_id`, `reason` (personal_data | spam | abuse |
   off_topic | other), `note`, `status` (open | upheld | dismissed); UNIQUE per target and flagger.
 - `issue_subscriptions`: `(issue_id, user_id)` with `reason` (author, commented, confirmed, manual) and `muted`.

@@ -37,6 +37,9 @@ p { margin: 0.65em 0; }
 .mono { font-family: var(--font-mono); }
 .lead { font-size: var(--fs-3); color: var(--text-muted); max-width: 70ch; text-wrap: pretty; }
 .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+/* A radio or checkbox whose label and help wrap beside it rather than under it. */
+.option { display: flex; gap: 10px; align-items: flex-start; }
+.option > input { flex: none; margin: 0.3em 0 0; }
 .stack > * + * { margin-top: 14px; }
 .grow { flex: 1 1 auto; min-width: 0; }
 .section { padding: 48px 0; }
@@ -98,6 +101,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { border-color
 option { color: var(--text); background-color: var(--bg-raised); }
 input::placeholder { color: var(--text-faint); }
 textarea { width: 100%; line-height: 1.5; }
+/* A one-line field as wide as the textareas around it. */
+input.wide { display: block; width: 100%; }
 label { font-size: var(--fs-1); }
 .kbd { display: inline-block; padding: 0 6px; border: 1px solid var(--border-strong); background: var(--bg-subtle); font-size: var(--fs-0); color: var(--text-muted); line-height: 1.6; }
 .segmented { display: inline-flex; border: 1px solid var(--border-strong); flex-wrap: wrap; }

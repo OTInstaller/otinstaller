@@ -2910,7 +2910,7 @@
           "Community"
         ],
         "summary": "Report a failed run (what ot's prompt sends)",
-        "description": "Only the version, exit code or timeout, OS, architecture, engine and ot version; never inputs or output. With a token it counts as broken for you and joins (or opens) the version's broken issue; without one it only adds to a daily count, and enough reports in a week open an unconfirmed issue.",
+        "description": "Only the version, exit code or timeout, OS, architecture, engine and ot version; never inputs or output. With a token it counts as broken for you and joins (or opens) the version's broken issue; without one it only adds to a daily count, shared with the website's broken reports, and enough reports in a week open an unconfirmed issue. Requests with an Origin header other than the registry's website are refused (`foreign_origin`).",
         "responses": {
           "201": {
             "description": "Created",
@@ -2937,6 +2937,9 @@
             }
           },
           "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
             "$ref": "#/components/responses/Error"
           },
           "404": {
@@ -3001,6 +3004,109 @@
                   },
                   "ot_version": {
                     "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-scope": "feedback",
+        "security": [
+          {},
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/tools/{ns}/{name}/problem-reports": {
+      "post": {
+        "operationId": "report_problem",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Report that a tool is broken or out of date, without a sign-in (the tool page's Report a problem)",
+        "description": "Only counted: once per address, version and kind a day, never stored with who sent it. Broken counts join failed runs reported from ot toward the version's unconfirmed issue, opened at three in a week; outdated is always about the latest version and opens its own unconfirmed issue at three in a week, unless the package already has an open outdated issue. Requests with an Origin header other than the registry's website are refused (`foreign_origin`). Signed-in people describe a problem as an issue instead (`POST /tools/{ns}/{name}/issues`).",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "counted": {
+                      "type": "boolean",
+                      "description": "False when this address already reported this version and kind today"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "broken",
+                      "outdated"
+                    ]
+                  },
+                  "version": {
+                    "type": "string",
+                    "description": "Broken only; the latest version when left out. Outdated always counts against the latest version."
+                  },
+                  "platform": {
+                    "type": "string",
+                    "description": "linux, darwin or windows, optionally with /amd64 or /arm64; anything else is dropped"
                   }
                 }
               }

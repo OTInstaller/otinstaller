@@ -1,8 +1,9 @@
 // "Works for me" on a tool page: a signed-in person says the latest version works on their platform, or goes to
-// open a broken issue. Each answer is one count by version and platform, never a rating.
+// report it broken (with or without an account). Each answer is one count by version and platform, never a rating.
 import { useState } from "preact/hooks";
 import { api, ApiError, signInUrl } from "../lib/api";
 import { guessPlatform } from "../lib/community";
+import { reportHref } from "../lib/report";
 
 export default function WorksForMe({ refName, version, back }: { refName: string; version: string; back: string }) {
   const [state, setState] = useState<"idle" | "busy" | "done" | "signin" | "error">("idle");
@@ -32,7 +33,7 @@ export default function WorksForMe({ refName, version, back }: { refName: string
     <p class="row small works">
       <span class="muted">Used {version}?</span>
       <button class="btn btn-sm" type="button" disabled={state === "busy"} onClick={works}>It works for me</button>
-      <a class="btn btn-sm" href={`/${refName}/issues?kind=broken#new`}>It's broken for me</a>
+      <a class="btn btn-sm" href={reportHref(refName, { kind: "broken", version })} rel="nofollow">It's broken for me</a>
     </p>
   );
 }

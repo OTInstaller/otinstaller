@@ -25,6 +25,11 @@ inputs, output or file paths. Signed in, the report adds you to the version's br
 sign-in we keep only a daily count per version and platform; your address is hashed with a salt to count it once a
 day and the hash is deleted after a day. `OT_NO_TELEMETRY=1` turns the question off.
 
+**Report a problem** on a tool's page works the same way without an account. Counting a tool as broken sends the
+version and the platform your browser reports (such as `linux/amd64`); counting it as out of date sends only which
+tool it is. We keep a daily count per version, kind and platform, and hash your address with a salt to count it once
+a day; the hash is deleted after a day. Signed in, a report is an issue like any other.
+
 Tool requests are public too: the repository, your handle and the note you wrote. Votes are counted on each request;
 who voted is not shown. Community submissions are public in the same way: your handle, the manifest and Dockerfile
 you sent, and the wrapper repository's README, which says you packaged it.

@@ -17,6 +17,34 @@ Items marked **(you)** need the owner of the GitHub, GitLab, Cloudflare, Resend,
 | otlite installer | `curl -fsSL https://get.otinstaller.com/otlite \| sh` answers 200 (`otlite/scripts/install.sh` from `main`, through `ops/get`) |
 | Site pages | `/agents`, the homepage for AI agents, with its Markdown twin `/agents.md`; `/otlite` and `/otlite/tools`, both listing every tool from `web/src/data/otlite-catalog.json`; tool pages show the sample output recorded by the scanner's smoke test |
 
+## Report a problem on every tool page (migration applied, not deployed yet)
+
+Every tool page gets a **Report a problem** button. It opens `/<ns>/<name>/report`, which asks what is wrong. Signed in,
+"It doesn't work", "It shows an error", "It's out of date" and "Something on this page is wrong" open issues. Signed
+out, broken and out of date are counted (`POST /v1/tools/:ns/:name/problem-reports`, migration 0032), toward the
+same unconfirmed issue `ot`'s failure prompt feeds. Malware, abuse and legal problems stay private reports. Both
+anonymous report routes now refuse requests with another website's `Origin` (403 `foreign_origin`). Built on the
+branch `claude/tool-reporting-feature-f4ea30`.
+
+- [x] Apply the migration. The table went into production on 24 Oct from the branch, before `main`'s 0030 was merged
+      into it, so D1 records it as `0030_problem_signals.sql`. The file is now `0032_problem_signals.sql` with
+      `CREATE TABLE IF NOT EXISTS`: the next `npx wrangler d1 migrations apply otinstaller --remote` (in `api/`)
+      records it without changing anything.
+- [ ] **(you)** Deploy from `main` once the pull request is merged, not from the branch: before `main` was merged
+      into it, the branch lacked the follows and the build watcher below, and deploying it would have rolled them back.
+- [ ] **(you)** Deploy the API: in `api/`, `npm run deploy`. Checks: `/v1/health` answers 200, and a report with a
+      foreign origin is refused without being counted:
+      `curl.exe -s -X POST https://api.otinstaller.com/v1/tools/osintverse-community/sherlock/problem-reports -H "origin: https://example.com"`
+      answers 403 `foreign_origin`. Use `curl.exe`, since `curl` in Windows PowerShell is `Invoke-WebRequest`; the
+      origin is checked before the body is read, so the request needs none.
+- [ ] **(you)** Deploy the site, after the API: in `web/`, PowerShell `$env:PUBLIC_BETA = "0"; npm run deploy`.
+      Checks:
+  - a tool page shows "Report a problem" beside "Follow releases" on every tab;
+  - `/<tool>/report` offers the five choices;
+  - signed out, "It doesn't work" offers "Count it as broken" and the sign-in links;
+  - the overview's side rail no longer has "Report this tool";
+  - no CSP errors in the browser.
+
 ## Follows and the build watcher (deployed 24 October 2026)
 
 Following publishers and input types ([#107](https://github.com/OTInstaller/otinstaller/pull/107), migration 0030),

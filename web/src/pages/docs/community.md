@@ -1,12 +1,35 @@
 ---
 layout: ../../layouts/Docs.astro
 title: Community
-description: Issues, "works for me", triage and moderation, and the API behind them.
+description: Reporting a problem, issues, "works for me", triage and moderation, and the API behind them.
 ---
 
 The people who run a tool are the first to know when it breaks, falls behind its upstream, or says something
 untrue. The registry gives them a place to say so, in public, where maintainers and other users can see and act on
-it. Reading everything needs no account; taking part needs a GitHub, GitLab or OSINTverse sign-in.
+it. Reading everything needs no account, and neither does counting a tool as broken or out of date; writing needs a
+GitHub, GitLab or OSINTverse sign-in.
+
+## Report a problem
+
+Every tool page has a **Report a problem** button at the top. It asks what is wrong and sends it where it can be
+fixed:
+
+| You choose | Signed in | Without an account |
+| --- | --- | --- |
+| It doesn't work | A broken issue | Counted as broken |
+| It shows an error | A broken issue, with the error message in a field of its own | Counted as broken; the message needs a sign-in |
+| It's out of date | An outdated issue | Counted as out of date, always against the latest version |
+| Something on this page is wrong | A wrong-information issue | Needs a sign-in |
+| Malware, abuse or a legal problem | A private report to the registry's reviewers | The same; no account needed |
+
+Before you write anything, the page lists the open issues of that kind, so you can add yourself to one with **I have
+this problem too** rather than report it again. Take the value you looked up out of any error message you paste.
+
+Without an account a report is only counted. It sends the version (and, for broken, the platform your browser
+reports), never any text, and each address counts once a day. When three broken reports of a version come in within
+a week, from the website or from `ot`'s failure prompt, the registry opens an issue marked unconfirmed and the
+maintainers hear about it. Three out-of-date reports in a week do the same for the latest version, unless the package
+already has an open outdated issue; the next version closes it. `ot report <ns/name>` opens the same page.
 
 ## Issues
 
@@ -26,12 +49,14 @@ the problem: never personal data about anyone. See the [community guidelines](/p
 
 An issue moves from **open** to **confirmed** (someone who can triage reproduced it) and then to **fixed**,
 **won't fix** or **duplicate**. You can close your own issue as fixed. When a new version is published, open broken
-and outdated issues get a note asking whether it fixes them.
+and outdated issues get a note asking whether it fixes them, and unconfirmed out-of-date reports about older versions
+are closed.
 
 ## Works for me
 
 On a tool page, **It works for me** records that the latest version works on your platform; **It's broken for me**
-takes you to a new broken issue, and **I have this problem too** on an issue adds you to it. Each person counts once
+opens [Report a problem](#report-a-problem) with "It doesn't work" chosen, and **I have this problem too** on an issue
+adds you to it. Each person counts once
 per version and platform, and the counts from the last 30 days appear in the tool's status line next to the
 registry's own nightly health check. They are counts, never ratings.
 
@@ -170,9 +195,9 @@ dheeraj/holehe-lite 1.2.0 failed (exit 1). Report it as broken? This sends the t
 
 It asks at most once a week per tool and version, and never from agents (`ot mcp`), scripts without a terminal, CI,
 `--json` runs, local manifests, or with `OT_NO_TELEMETRY=1` or `"telemetry": false` in `config.json`. Signed in
-(`ot login`), a yes adds you to the version's open broken issue, or opens one. Without a sign-in it only counts:
-when three different addresses report the same version within a week, the registry opens an issue marked
-unconfirmed, and someone who can reproduce it confirms it.
+(`ot login`), a yes adds you to the version's open broken issue, or opens one. Without a sign-in it only counts, once
+per address a day, together with broken reports from the website: when three reports of the same version come in
+within a week, the registry opens an issue marked unconfirmed, and someone who can reproduce it confirms it.
 
 | Command | What |
 | --- | --- |
@@ -220,7 +245,7 @@ and your avatar is left off your posts.
 
 | Who | Can |
 | --- | --- |
-| Anyone | Read issues, the status line, the [community board](/community) and [tool requests](/requests) |
+| Anyone | Read issues, the status line, the [community board](/community) and [tool requests](/requests); count a tool as broken or out of date, and report malware or abuse privately |
 | Signed in | Open issues, reply, say it works or is broken, follow a thread, flag a post or request, ask for a tool, vote for and reply on requests |
 | The package's maintainers | Triage its issues, lock threads, hide comments on its issues; for community packages, merge and release bump pull requests and propose changes |
 | Triagers | Triage any package's issues, decide tool requests and lock their replies, approve held posts and requests, hide posts, pause an account for up to 7 days |
@@ -255,6 +280,7 @@ Everything is in the [registry API](/docs/api) (OpenAPI tag "Community"):
 | `POST /v1/tools/<ns>/<name>/issues` | Open an issue (token scope `feedback`) |
 | `PUT /v1/tools/<ns>/<name>/confirmations` | Works or broken for you (scope `feedback`) |
 | `POST /v1/tools/<ns>/<name>/run-reports` | A failed run, as `ot` sends it: `{version, exit_code \| timed_out, os, arch, engine, ot_version}`; anonymous or scope `feedback` |
+| `POST /v1/tools/<ns>/<name>/problem-reports` | Broken or out of date without a sign-in, as **Report a problem** sends it: `{kind, version?, platform?}`; only counted. Both report calls refuse a browser's request from another website (`foreign_origin`) |
 | `GET /v1/requests` | Tool requests (`status`, `sort=votes\|new`, `before`) |
 | `POST /v1/requests` | Ask for a tool (scope `feedback`); `PUT /v1/requests/<number>/vote` to vote |
 | `POST /v1/requests/<number>/comments` | Reply on a request (scope `feedback`); `GET /v1/requests/<number>` includes the replies, `PUT .../subscription` follows it |

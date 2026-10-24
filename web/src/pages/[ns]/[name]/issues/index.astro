@@ -9,6 +9,7 @@ import { api, apiOrNull, type CommunityStatus, type IssueKind, type IssueList, t
 import { KIND_LABEL, STATE_TONE } from "../../../../lib/community";
 import { loadTool } from "../../../../lib/tool";
 import { cacheFor, withParam } from "../../../../lib/page";
+import { reportHref } from "../../../../lib/report";
 
 const loaded = await loadTool(Astro, "/issues");
 if ("response" in loaded) return loaded.response;
@@ -62,8 +63,8 @@ const href = (k: string, v: string | null) => {
 
   <section id="new" class="new" aria-labelledby="new-h">
     <h2 id="new-h">Open an issue</h2>
-    <p class="small muted">Issues are public. The package's maintainers and the registry's triagers see them, and people who follow the package can confirm them. Follow the <a href="/policy/community">community guidelines</a>; for malware or abuse, <a href={`/${ref}/report`}>report it privately</a> instead.</p>
-    <IssueComposer client:visible refName={ref} versions={versions} back={`${Astro.site}${ref}/issues#new`} />
+    <p class="small muted">Issues are public. The package's maintainers and the registry's triagers see them, and people who follow the package can confirm them. Follow the <a href="/policy/community">community guidelines</a>; for malware or abuse, <a href={reportHref(ref, { kind: "abuse" })} rel="nofollow">report it privately</a> instead.</p>
+    <IssueComposer client:visible refName={ref} versions={versions} initialKind={kind ?? undefined} back={`${Astro.site}${ref}/issues${kind ? `?kind=${kind}` : ""}#new`} />
   </section>
 </Base>
 

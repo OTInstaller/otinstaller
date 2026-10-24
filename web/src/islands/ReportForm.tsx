@@ -1,4 +1,5 @@
-// The report form on /{ns}/{name}/report. Anonymous reports are allowed; signed-in ones carry the reporter.
+// The private half of the report page (/{ns}/{name}/report): malware, abuse and legal problems go to the registry's
+// reviewers, never to the public. Anonymous reports are allowed; signed-in ones carry the reporter.
 import { useState } from "preact/hooks";
 import { api } from "../lib/api";
 import { ErrorNote } from "./shared";
@@ -8,8 +9,7 @@ const REASONS: [string, string][] = [
   ["policy", "Breaks the acceptable use policy (stalkerware, credential stuffing, …)"],
   ["impersonation", "Impersonates another tool, vendor or person"],
   ["license", "Copyright or license problem"],
-  ["broken", "Broken or misleading (privately; an issue is usually better)"],
-  ["other", "Something else"],
+  ["other", "Something else the reviewers should see"],
 ];
 
 export default function ReportForm({ refName, versions, version }: { refName: string; versions: string[]; version?: string }) {
@@ -38,21 +38,18 @@ export default function ReportForm({ refName, versions, version }: { refName: st
   return (
     <form class="stack" onSubmit={submit}>
       <fieldset class="stack">
-        <legend>What is wrong?</legend>
+        <legend>Which of these?</legend>
         {REASONS.map(([value, label]) => (
           <label class="row"><input type="radio" name="reason" value={value} checked={reason === value} onChange={() => setReason(value)} required /> {label}</label>
         ))}
       </fieldset>
-      {reason === "broken" && (
-        <p class="notice small">If the tool just doesn't work, <a href={`/${refName}/issues?kind=broken#new`}>open a public issue</a> instead: others can confirm it, and the maintainers can answer you there.</p>
-      )}
       <label for="ver">Version</label>
       <select id="ver" value={v} onChange={(e) => setV((e.target as HTMLSelectElement).value)}>
         <option value="">All versions / not sure</option>
         {versions.map((x) => <option value={x}>{x}</option>)}
       </select>
-      <label for="details">Details{reason !== "broken" && " (required)"}</label>
-      <textarea id="details" rows={7} value={details} onInput={(e) => setDetails((e.target as HTMLTextAreaElement).value)} required={reason !== "broken"}
+      <label for="details">Details</label>
+      <textarea id="details" rows={7} value={details} onInput={(e) => setDetails((e.target as HTMLTextAreaElement).value)} required
         placeholder="What did you see, and how can a reviewer reproduce it? Links to evidence help." maxLength={4000} />
       <ErrorNote error={error} />
       <div class="row">

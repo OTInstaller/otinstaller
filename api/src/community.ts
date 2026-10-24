@@ -1,6 +1,7 @@
 // Community issues and discussion on packages: who may post and triage, how posts are screened, rendered and
-// moderated, "works for me" confirmations, flags, and the system issues the registry files itself (the upstream
-// watcher, many failed runs). Routes live in routes/community.ts; the tables are in migration 0016.
+// moderated, "works for me" confirmations, flags, problems reported without a sign-in, and the system issues the
+// registry files itself (the upstream watcher, many failed or out-of-date reports). Routes live in
+// routes/community.ts; the tables are in migrations 0016 and 0032.
 import type { Env, User } from "./env";
 import { ulid } from "./lib/crypto";
 import { apiError, rateLimited, windowRetry } from "./lib/errors";
@@ -422,7 +423,7 @@ export interface RunReport {
   ot_version: string | null;
 }
 
-/** How many failed-run reports from different addresses in a week open an "unconfirmed" issue. */
+/** How many reports without a sign-in in a week open an "unconfirmed" issue; each address counts once a day. */
 export const SIGNALS_FOR_ISSUE = 3;
 
 /** Validates a report from ot's failure prompt: only these fields, never inputs or output. */
@@ -469,27 +470,118 @@ export async function reportRun(env: Env, t: ToolRef, user: User | null, address
     return { issue: issue.number, created: true, moderation: issue.moderation };
   }
   // Anonymous: one count per address, version and day, and a few reports a day per address.
-  if (await overLimit(env, "runreport-ip", address, 10, 86_400_000)) {
-    rateLimited("too_many_posts", "at most 10 reports a day from one address", "sign in with `ot login` to report more", windowRetry(86_400_000), 10, 86400);
-  }
+  await anonymousLimit(env, address, "sign in with `ot login` to report more");
   const counted = !(await overLimit(env, "runsignal", `${address}|${v.id}`, 1, 86_400_000));
   if (counted) {
     await env.DB.prepare(
       `INSERT INTO run_signals (tool_id, version_id, day, platform, engine, exit_class, count) VALUES (?, ?, date('now'), ?, ?, ?, 1)
        ON CONFLICT (version_id, day, platform, engine, exit_class) DO UPDATE SET count = count + 1`,
     ).bind(t.id, v.id, platform, r.engine ?? "", r.timed_out ? "timeout" : "exit").run();
-    const week = (await env.DB.prepare(`SELECT COALESCE(SUM(count), 0) AS n FROM run_signals WHERE version_id = ? AND day >= date('now', '-7 days')`).bind(v.id).first<{ n: number }>())!.n;
-    if (week >= SIGNALS_FOR_ISSUE) {
-      const rows = (await env.DB.prepare(`SELECT platform, SUM(count) AS n FROM run_signals WHERE version_id = ? AND day >= date('now', '-7 days') GROUP BY platform ORDER BY n DESC`).bind(v.id)
-        .all<{ platform: string; n: number }>()).results;
-      await fileSystemIssue(env, t.id, "broken", {
-        title: `Several reports of ${r.version} failing (unconfirmed)`,
-        markdown: `In the last 7 days, \`ot run\` sent ${week} reports, without a sign-in, that ${r.version} failed:\n\n${rows.map((x) => `- ${x.platform}: ${x.n}`).join("\n")}\n\nIf it fails for you too, say so here; if it works, say that instead.`,
-        version: r.version,
-      }, `run_signals:${r.version}`, "run_signals");
-    }
+    await fileUnconfirmedBroken(env, t, v);
   }
   return { counted };
+}
+
+/** At most 10 reports a day from one address without a sign-in, failed runs from ot and the website's together. */
+async function anonymousLimit(env: Env, address: string, hint: string) {
+  if (await overLimit(env, "runreport-ip", address, 10, 86_400_000)) {
+    rateLimited("too_many_posts", "at most 10 reports a day from one address", hint, windowRetry(86_400_000), 10, 86400);
+  }
+}
+
+type SignalRow = { platform: string; n: number };
+const total = (rows: SignalRow[]) => rows.reduce((n, x) => n + x.n, 0);
+/** Counts by platform, each in a code span: ot's platforms are free text, and must never render as links. */
+const byPlatform = (rows: SignalRow[]) => rows.map((x) => `\`${x.platform || "unknown"}\`: ${x.n}`).join(", ");
+
+/**
+ * Opens (or updates) a version's "unconfirmed" broken issue once failed runs from ot and broken reports from the
+ * website, sent without a sign-in, reach SIGNALS_FOR_ISSUE in a week.
+ */
+async function fileUnconfirmedBroken(env: Env, t: ToolRef, v: { id: string; version: string }) {
+  const runs = (await env.DB.prepare(`SELECT platform, SUM(count) AS n FROM run_signals WHERE version_id = ? AND day >= date('now', '-7 days') GROUP BY platform ORDER BY n DESC`)
+    .bind(v.id).all<SignalRow>()).results;
+  const site = (await env.DB.prepare(`SELECT platform, SUM(count) AS n FROM problem_signals WHERE version_id = ? AND kind = 'broken' AND day >= date('now', '-7 days') GROUP BY platform ORDER BY n DESC`)
+    .bind(v.id).all<SignalRow>()).results;
+  const week = total(runs) + total(site);
+  if (week < SIGNALS_FOR_ISSUE) return;
+  const from = [
+    ...(runs.length ? [`- from \`ot run\`: ${total(runs)} (${byPlatform(runs)})`] : []),
+    ...(site.length ? [`- from the website: ${total(site)} (${byPlatform(site)})`] : []),
+  ];
+  await fileSystemIssue(env, t.id, "broken", {
+    title: `Several reports of ${v.version} failing (unconfirmed)`,
+    markdown: `In the last 7 days, ${week} reports sent without a sign-in say that ${v.version} failed:\n\n${from.join("\n")}\n\nIf it fails for you too, say so here; if it works, say that instead.`,
+    version: v.version,
+  }, `run_signals:${v.version}`, "run_signals");
+}
+
+// ---------- problems reported from the website ----------
+
+export const PROBLEM_KINDS = ["broken", "outdated"] as const;
+export type ProblemKind = (typeof PROBLEM_KINDS)[number];
+
+export interface ProblemReport {
+  kind: ProblemKind;
+  version: string | null;
+  platform: string;
+}
+
+/** The platforms the site guesses from a browser (guessPlatform in web/src/lib/community.ts); anything else is dropped. */
+const SITE_PLATFORM = /^(linux|darwin|windows)(\/(amd64|arm64))?$/;
+
+/** Validates a report from a tool page's "Report a problem" without a sign-in: the kind, and maybe the version and platform. */
+export function problemReportInput(b: Record<string, unknown>): ProblemReport {
+  const kind = (PROBLEM_KINDS as readonly unknown[]).includes(b.kind) ? (b.kind as ProblemKind) : null;
+  if (!kind) apiError(400, "invalid_body", "send {kind: 'broken' | 'outdated', version?, platform?}");
+  const version = b.version ?? "";
+  if (version !== "" && (typeof version !== "string" || !/^[A-Za-z0-9._\/+-]{1,40}$/.test(version))) apiError(400, "invalid_body", "version must be a version number, such as 1.2.0");
+  return { kind, version: version === "" ? null : (version as string), platform: typeof b.platform === "string" && SITE_PLATFORM.test(b.platform) ? b.platform : "" };
+}
+
+/**
+ * A problem reported from a tool page without a sign-in: only counted, once per address, version and kind a day, and
+ * never stored with who sent it. Broken counts join ot's failed-run counts toward the version's unconfirmed issue, and
+ * share their once-a-day key, so a person counts once whichever way they report. Outdated is always about the latest
+ * version, the only one that can be behind its upstream project.
+ */
+export async function reportProblem(env: Env, t: ToolRef, address: string, r: ProblemReport) {
+  const v = r.kind === "broken" && r.version
+    ? await env.DB.prepare(`SELECT id, version FROM versions WHERE tool_id = ? AND version = ? AND status IN ('published', 'yanked')`).bind(t.id, r.version).first<{ id: string; version: string }>()
+    : await env.DB.prepare(`SELECT id, version FROM versions WHERE id = ?`).bind(t.latest_version_id).first<{ id: string; version: string }>();
+  if (!v) apiError(404, "version_not_found", `${t.namespace}/${t.name} has no version ${r.version ?? "published"}`);
+  await anonymousLimit(env, address, "sign in to describe it in an issue");
+  const counted = !(await overLimit(env, r.kind === "broken" ? "runsignal" : "outdatedsignal", `${address}|${v.id}`, 1, 86_400_000));
+  if (counted) {
+    await env.DB.prepare(
+      `INSERT INTO problem_signals (tool_id, version_id, day, kind, platform, count) VALUES (?, ?, date('now'), ?, ?, 1)
+       ON CONFLICT (version_id, day, kind, platform) DO UPDATE SET count = count + 1`,
+    ).bind(t.id, v.id, r.kind, r.kind === "broken" ? r.platform : "").run();
+    if (r.kind === "broken") await fileUnconfirmedBroken(env, t, v);
+    else await fileUnconfirmedOutdated(env, t, v);
+  }
+  return { counted };
+}
+
+/**
+ * Opens (or updates) an "unconfirmed" outdated issue once enough reports in a week say the latest version is behind
+ * its upstream project, unless the package already has another open outdated issue (the upstream watcher's, or one a
+ * person filed). The next version closes it (announceVersion).
+ */
+async function fileUnconfirmedOutdated(env: Env, t: ToolRef, v: { id: string; version: string }) {
+  const week = (await env.DB.prepare(`SELECT COALESCE(SUM(count), 0) AS n FROM problem_signals WHERE version_id = ? AND kind = 'outdated' AND day >= date('now', '-7 days')`)
+    .bind(v.id).first<{ n: number }>())!.n;
+  if (week < SIGNALS_FOR_ISSUE) return;
+  const key = `outdated_signals:${v.version}`;
+  const other = await env.DB.prepare(
+    `SELECT 1 FROM issues WHERE tool_id = ? AND kind = 'outdated' AND status IN ('open', 'confirmed') AND moderation = 'visible' AND deleted_at IS NULL AND (dedupe_key IS NULL OR dedupe_key != ?)`,
+  ).bind(t.id, key).first();
+  if (other) return;
+  await fileSystemIssue(env, t.id, "outdated", {
+    title: `Several reports say ${v.version} is out of date (unconfirmed)`,
+    markdown: `In the last 7 days, ${week} reports sent from the website without a sign-in say that ${v.version}, the latest version here, is behind its upstream project.\n\nIf you know which newer version is out, say so here. Publishing a newer version closes this issue.`,
+    version: v.version,
+  }, key, "problem_signals");
 }
 
 // ---------- the status line ----------
@@ -760,9 +852,17 @@ export async function closeSystemIssue(env: Env, toolId: string, dedupeKey: stri
 
 /**
  * A new version is out: open broken and outdated issues get a system comment asking whether it fixes them, and the
- * people following each one are told (called once per version, when it becomes the latest).
+ * people following each one are told, and "unconfirmed" outdated issues about older versions are closed (called once
+ * per version, when it becomes the latest).
  */
 export async function announceVersion(env: Env, toolId: string, version: string) {
+  // Reports that an older version was out of date are answered by this one (substr: _ is a LIKE wildcard).
+  const stale = (await env.DB.prepare(
+    `SELECT dedupe_key FROM issues WHERE tool_id = ? AND substr(dedupe_key, 1, 17) = 'outdated_signals:' AND dedupe_key != ? AND status IN ('open', 'confirmed')`,
+  ).bind(toolId, `outdated_signals:${version}`).all<{ dedupe_key: string }>()).results;
+  for (const s of stale) {
+    await closeSystemIssue(env, toolId, s.dedupe_key, "fixed", `Version ${version} is out. If it is still behind its upstream project, report it again from the tool page.`);
+  }
   const open = (await env.DB.prepare(
     `SELECT i.id, i.number, i.title, n.name || '/' || t.name AS ref FROM issues i JOIN tools t ON t.id = i.tool_id JOIN namespaces n ON n.id = t.namespace_id
      WHERE i.tool_id = ? AND ${ANNOUNCED_ISSUES}`,

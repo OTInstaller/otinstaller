@@ -1,5 +1,6 @@
 // Community: issues and comments on packages, holds and screening, triage roles, locks and edits, confirmations,
-// flags and moderation, counters, rate limits, system issues and token scopes.
+// flags and moderation, counters, rate limits, system issues, failed runs and problems reported without a sign-in, and
+// token scopes.
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { announceVersion, closeSystemIssue, fileSystemIssue, REDACTED, renderPost, screen } from "../src/community";
@@ -422,6 +423,95 @@ describe("failed runs reported from ot", () => {
     expect((await report(null, { ...base, exit_code: null })).status).toBe(400);
     expect((await report(null, { ...base, version: "0.0.0" })).status).toBe(404);
     expect(requiredScope("POST", `/v1/tools/${TOOL}/run-reports`)).toBe("feedback");
+  });
+});
+
+describe("problems reported from the website without a sign-in", () => {
+  const OTHER = "osintverse/email-header-parser";
+  const OTHER_ID = "tool_osintverse_email-header-parser";
+  const post = (path: string, body: Record<string, unknown>, ip: string, origin?: string) =>
+    call(path, { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": ip, ...(origin ? { origin } : {}) }, body: JSON.stringify(body) });
+  const problem = (body: Record<string, unknown>, ip: string, opts: { ref?: string; origin?: string } = {}) => post(`/tools/${opts.ref ?? TOOL}/problem-reports`, body, ip, opts.origin);
+  const run = (version: string, ip: string, origin?: string) => post(`/tools/${TOOL}/run-reports`, { version, exit_code: 1, os: "linux", arch: "arm64" }, ip, origin);
+  const json = async (res: Response) => (await res.json()) as any;
+  const latest = async (toolId: string) => (await DB().prepare(`SELECT latest_version_id AS id FROM tools WHERE id = ?`).bind(toolId).first<{ id: string }>())!.id;
+  /** A fresh version of the package, so each test's counts and issues are its own. */
+  const fresh = async (v: string) => {
+    const [major, minor, patch] = v.split(".").map(Number);
+    await DB().prepare(`INSERT INTO versions (id, tool_id, version, semver_major, semver_minor, semver_patch, manifest_json, status, published_at, created_at) VALUES (?, ?, ?, ?, ?, ?, '{}', 'published', 1, 1)`)
+      .bind(ulid(), TOOL_ID, v, major, minor, patch).run();
+  };
+
+  it("takes a kind and maybe a version, and counts the latest version when none is given", async () => {
+    expect((await problem({ kind: "wrong_info" }, "192.0.2.1")).status).toBe(400);
+    expect((await problem({}, "192.0.2.1")).status).toBe(400);
+    expect((await problem({ kind: "broken", version: "1.2.0; drop" }, "192.0.2.1")).status).toBe(400);
+    expect((await json(await problem({ kind: "broken", version: "0.0.0" }, "192.0.2.1"))).error.code).toBe("version_not_found");
+    const res = await problem({ kind: "broken", platform: "linux/amd64" }, "192.0.2.1");
+    expect(res.status).toBe(201);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(await json(res)).toEqual({ counted: true });
+    expect((await DB().prepare(`SELECT kind, platform, count FROM problem_signals WHERE version_id = ?`).bind(await latest(TOOL_ID)).all()).results)
+      .toEqual([{ kind: "broken", platform: "linux/amd64", count: 1 }]);
+    expect(requiredScope("POST", `/v1/tools/${TOOL}/problem-reports`)).toBe("feedback");
+  });
+
+  it("counts each address once a day, with ot's failed runs, toward one unconfirmed issue", async () => {
+    await fresh("6.1.0");
+    expect(await json(await run("6.1.0", "192.0.2.11"))).toEqual({ counted: true });
+    // The same address reporting on the website the same day isn't counted again.
+    expect(await json(await problem({ kind: "broken", version: "6.1.0" }, "192.0.2.11"))).toEqual({ counted: false });
+    expect(await json(await problem({ kind: "broken", version: "6.1.0", platform: "windows/amd64" }, "192.0.2.12"))).toEqual({ counted: true });
+    expect(await json(await problem({ kind: "broken", version: "6.1.0", platform: "windows/amd64" }, "192.0.2.12"))).toEqual({ counted: false });
+    expect(await DB().prepare(`SELECT COUNT(*) AS n FROM issues WHERE tool_id = ? AND dedupe_key = 'run_signals:6.1.0'`).bind(TOOL_ID).first()).toEqual({ n: 0 });
+    // A platform the site never sends is dropped, so it can't put a link into the issue.
+    await problem({ kind: "broken", version: "6.1.0", platform: "www.evil.example/x" }, "192.0.2.13");
+    const issues = (await DB().prepare(`SELECT title, kind, author_kind, body_md FROM issues WHERE tool_id = ? AND dedupe_key = 'run_signals:6.1.0'`).bind(TOOL_ID).all<any>()).results;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ title: "Several reports of 6.1.0 failing (unconfirmed)", kind: "broken", author_kind: "system" });
+    expect(issues[0].body_md).toContain("from `ot run`: 1 (`linux/arm64`: 1)");
+    expect(issues[0].body_md).toContain("from the website: 2 (");
+    expect(issues[0].body_md).toContain("`windows/amd64`: 1");
+    expect(issues[0].body_md).toContain("`unknown`: 1");
+    expect(issues[0].body_md).not.toContain("evil");
+  });
+
+  it("counts outdated against the latest version, files it only when no other outdated issue is open, and closes it on the next version", async () => {
+    await fileSystemIssue(env as any, OTHER_ID, "outdated", { title: "Upstream released 2.0.0", markdown: "Released 3 days ago.", version: "2.0.0" }, "outdated:report-test", "upstream_watch");
+    for (const ip of ["192.0.2.21", "192.0.2.22", "192.0.2.23"]) {
+      // Only the latest version can be out of date, so the version is ignored; the platform says nothing about it.
+      expect(await json(await problem({ kind: "outdated", version: "0.0.1", platform: "linux/amd64" }, ip, { ref: OTHER }))).toEqual({ counted: true });
+    }
+    expect((await DB().prepare(`SELECT kind, platform, count FROM problem_signals WHERE version_id = ?`).bind(await latest(OTHER_ID)).all()).results)
+      .toEqual([{ kind: "outdated", platform: "", count: 3 }]);
+    // The upstream watcher's issue already says so.
+    expect(await DB().prepare(`SELECT COUNT(*) AS n FROM issues WHERE tool_id = ? AND dedupe_key LIKE 'outdated\\_signals:%' ESCAPE '\\'`).bind(OTHER_ID).first()).toEqual({ n: 0 });
+    await closeSystemIssue(env as any, OTHER_ID, "outdated:report-test", "fixed");
+    await problem({ kind: "outdated" }, "192.0.2.24", { ref: OTHER });
+    const issue = await DB().prepare(`SELECT id, title, kind, author_kind, status FROM issues WHERE tool_id = ? AND dedupe_key = 'outdated_signals:1.0.0'`).bind(OTHER_ID).first<any>();
+    expect(issue).toMatchObject({ title: "Several reports say 1.0.0 is out of date (unconfirmed)", kind: "outdated", author_kind: "system", status: "open" });
+    await announceVersion(env as any, OTHER_ID, "1.1.0");
+    expect(await DB().prepare(`SELECT status FROM issues WHERE id = ?`).bind(issue.id).first()).toEqual({ status: "fixed" });
+    expect(await DB().prepare(`SELECT body_md FROM issue_comments WHERE issue_id = ? AND author_kind = 'system'`).bind(issue.id).first())
+      .toEqual({ body_md: expect.stringContaining("Version 1.1.0 is out") });
+  });
+
+  it("shares the daily limit per address with ot's failed runs", async () => {
+    await fresh("6.2.0");
+    for (let i = 0; i < 5; i++) expect((await run("6.2.0", "192.0.2.40")).status).toBe(201);
+    for (let i = 0; i < 5; i++) expect((await problem({ kind: "broken", version: "6.2.0" }, "192.0.2.40")).status).toBe(201);
+    const over = await problem({ kind: "broken", version: "6.2.0" }, "192.0.2.40");
+    expect(over.status).toBe(429);
+    expect((await json(over)).error).toMatchObject({ code: "too_many_posts", hint: "sign in to describe it in an issue" });
+  });
+
+  it("refuses reports another website sends from its visitors' browsers", async () => {
+    await fresh("6.3.0");
+    const foreign = await problem({ kind: "broken", version: "6.3.0" }, "192.0.2.50", { origin: "https://evil.example" });
+    expect(foreign.status).toBe(403);
+    expect((await json(foreign)).error.code).toBe("foreign_origin");
+    expect((await run("6.3.0", "192.0.2.50", "https://evil.example")).status).toBe(403);
+    expect((await problem({ kind: "broken", version: "6.3.0" }, "192.0.2.50", { origin: (env as any).SITE_URL })).status).toBe(201);
   });
 });
 

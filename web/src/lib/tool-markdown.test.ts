@@ -90,6 +90,7 @@ describe("toolMarkdown", () => {
     expect(md).toContain("- JSON: https://api.otinstaller.com/v1/tools/acme/finder");
     expect(md).toContain("- Docs: https://otinstaller.com/acme/finder/docs");
     expect(md).toContain("- README: https://github.com/acme/finder#readme");
+    expect(md).toContain("- Report a problem: https://otinstaller.com/acme/finder/report");
   });
 
   it("says when a tool runs offline and has no keys", () => {

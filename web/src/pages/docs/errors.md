@@ -300,7 +300,12 @@ Only the package's maintainers, the registry's triagers and staff can triage iss
 
 ### too_many_posts
 There is a daily limit per account: 5 issues (2 for accounts under a week old), 30 comments, 60 confirmations,
-20 flags, 5 tool requests and 60 votes. Try again tomorrow.
+20 flags, 5 tool requests and 60 votes. Without an account, one address can send 10 reports a day, failed runs from
+`ot` and **Report a problem** on the website together; sign in to report more. Try again tomorrow.
+
+### foreign_origin
+A report that needs no sign-in came from another website. The registry takes those only from its own tool pages
+(**Report a problem**) and from programs such as `ot`, so no other site can make its visitors' browsers send them.
 
 ### person_not_found
 Nobody has that handle, or they chose to hide their profile.

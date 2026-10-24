@@ -8,6 +8,7 @@ import { formatDate } from "../../../lib/format";
 import { isHostedImage, scanRuns } from "../../../lib/evidence";
 import { loadTool } from "../../../lib/tool";
 import { cacheFor } from "../../../lib/page";
+import { reportHref } from "../../../lib/report";
 
 const loaded = await loadTool(Astro, "/security");
 if ("response" in loaded) return loaded.response;
@@ -96,7 +97,7 @@ function describe(kind: string, s: any): string {
         </section>
       </div>
     )}
-  <p class="small muted foot">How releases are checked: <a href="/docs/security">security model</a>. Found a problem? Email <a href="mailto:security@otinstaller.com">security@otinstaller.com</a>, or <a href={`/${ref}/report`}>report this tool</a>.</p>
+  <p class="small muted foot">How releases are checked: <a href="/docs/security">security model</a>. Found a problem? Email <a href="mailto:security@otinstaller.com">security@otinstaller.com</a>, or <a href={reportHref(ref, { kind: "abuse" })} rel="nofollow">report it privately</a>.</p>
 </Base>
 
 <style>
