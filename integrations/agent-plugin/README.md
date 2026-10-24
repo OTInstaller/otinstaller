@@ -1,8 +1,10 @@
 # OTInstaller agent plugin
 
-Open-source OSINT tools for AI agents, with your consent. This plugin connects Claude Code or Cursor to
-[OTInstaller](https://otinstaller.com) through `ot mcp`, the MCP server built into the `ot` command. It adds skills for
-investigating, packaging tools and writing guides.
+The OSINT package manager for AI agents, with your consent. Your agent installs and runs any of the over 130 tools in
+[OTInstaller](https://otinstaller.com), the largest registry built only for OSINT tools, with one call each: no
+cloning, no Python versions, no flags to look up, and every result in the same JSON. This plugin connects Claude Code
+or Cursor to `ot mcp`, the MCP server built into the `ot` command, and adds skills for investigating, packaging tools
+and writing guides.
 
 Tools run on **your machine**, each in a locked-down container. The agent asks you before any run that touches a
 target, goes online or involves a person's identifiers, and every run is logged locally (`ot mcp audit`). Read

@@ -28,7 +28,7 @@ no equivalent, and lists what changes underneath.
 
 | | otlite | ot |
 | --- | --- | --- |
-| Platforms | Linux only | Linux, macOS, Windows |
+| Platforms | Linux and macOS | Linux, macOS, Windows |
 | Install from | apt (Debian/Kali), PyPI, pipx | Release binaries, Homebrew, Scoop; `ot self-update` |
 | Where tools come from | A catalog bundled in each release | The registry, `https://api.otinstaller.com/v1` |
 | How a tool runs | Directly on the host, in its own virtualenv | In a container (Docker or Podman) with all capabilities dropped, or `--native` for pipx packages |

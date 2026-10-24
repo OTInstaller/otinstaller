@@ -1,8 +1,8 @@
 {
   "name": "otinstaller",
   "displayName": "OTInstaller",
-  "version": "0.1.2",
-  "description": "Search, install and run open-source OSINT tools from the OTInstaller Registry, on your machine and in a sandbox, asking you before any run that touches a target.",
+  "version": "0.1.3",
+  "description": "The OSINT package manager for your agent: search, install and run any tool in the OTInstaller registry with one call, on your machine and in a sandbox, asking you before any run that touches a target.",
   "author": { "name": "OTInstaller Registry", "email": "support@otinstaller.com", "url": "https://otinstaller.com" },
   "homepage": "https://otinstaller.com/docs/agents",
   "repository": "https://github.com/OTInstaller/agent-plugin",

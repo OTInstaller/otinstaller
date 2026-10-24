@@ -1,6 +1,9 @@
 # ot
 
-`ot` installs and runs OSINT tools and investigation guides from the [OTInstaller Registry](https://otinstaller.com).
+`ot` is the OSINT package manager. One command installs, runs, updates or removes any tool in the
+[OTInstaller registry](https://otinstaller.com), the largest registry built only for OSINT tools (over 130 of them).
+No more cloning repositories, fixing Python versions and learning each tool's flags: every tool takes the same typed
+inputs, runs in a container that can't read your files, and saves its result in the same JSON shape.
 
 Put `ot` (or `ot.exe`) somewhere on your PATH, then check your machine:
 

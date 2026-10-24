@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "com.otinstaller/registry",
   "title": "OTInstaller Registry",
-  "description": "Read-only search of the OTInstaller registry of OSINT tools and guides, with consent classes.",
-  "version": "1.0.0",
+  "description": "Search the largest registry built only for OSINT tools: inputs, outputs and consent class per tool.",
+  "version": "1.0.1",
   "websiteUrl": "https://otinstaller.com/docs/agents#remote-server",
   "repository": { "url": "https://github.com/OTInstaller/otinstaller", "source": "github", "subfolder": "api" },
   "remotes": [{ "type": "streamable-http", "url": "https://api.otinstaller.com/mcp" }]

@@ -1,12 +1,12 @@
 {
   "name": "otinstaller",
   "owner": { "name": "OTInstaller Registry", "email": "support@otinstaller.com" },
-  "metadata": { "description": "The OTInstaller plugin for Claude Code: OSINT tools for AI agents, with consent." },
+  "metadata": { "description": "The OTInstaller plugin for Claude Code: the OSINT package manager for AI agents, with consent." },
   "plugins": [
     {
       "name": "otinstaller",
       "source": "./",
-      "description": "Search, install and run open-source OSINT tools through ot's MCP server, asking you before any run that touches a target.",
+      "description": "Install and run any tool in the OTInstaller registry with one call through ot's MCP server, asking you before any run that touches a target.",
       "category": "security"
     }
   ]
