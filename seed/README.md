@@ -385,6 +385,11 @@ build watcher has nothing to follow but its base image. Otherwise they follow th
 None was dropped. Each provider's terms allow a client that a person runs for themselves, with their own key where
 one is needed, though some keep their free use to non-commercial use, which each README says.
 
+All six were published on 24 Oct 2026, at the owner's request without the outreach step:
+- Each repository was created between 19:25 and 19:26 UTC with one commit, "Add <name>", as the PyPI pass's were.
+- The release workflow ran for each, for amd64 and arm64.
+- Every release was published by 19:29 UTC.
+
 | Package | API | Key | Inputs | Categories |
 | --- | --- | --- | --- | --- |
 | `osintverse-community/shodan-internetdb` | Shodan InternetDB | none | `ip` | ip-network |
@@ -436,6 +441,20 @@ written against their live answers, but a full `--ip` run used up the day's free
 | `pulsedive` | Some properties come with a `++` prefix, alone (`++title`) or beside the plain one (`cidr` and `++cidr`) | The tool reads either and merges DNS records from both |
 | `pulsedive` | Records carry comments anyone can post (some are injection attempts) and WHOIS contacts | Both are left out |
 
+The registry's scans at release agreed with the local runs:
+- **Smoke tests.** `shodan-internetdb`, `hackertarget` and `pulsedive` exited 0 with results from the scan runner (3,
+  25 and 12 entities), which their tool pages show as sample output; `abuseipdb`, `urlhaus` and `opensanctions`
+  exited 3 without a key.
+- **Signatures.** Every image's cosign signature passes.
+- **Vulnerabilities.** None is fixable at critical or high. The 44 high-severity ones without a fix are in the
+  `python:3.12-slim` base, as in the other first-party tools.
+
+The release workflow was started a second time in each repository, two minutes after the first. Those runs rebuilt the
+image, pushed a second "Release 0.1.0" commit to `main` pinning the new digest, and then failed because the tag
+`v0.1.0` already existed. The registry published from the tag, so it pins the first build. GHCR's `0.1.0` tag and
+`main`'s `otinstaller.yaml` name the second build, which is signed by the same workflow. The next release rebuilds
+anyway, so nothing depends on the difference. Run the release workflow once per version.
+
 Health risks for these:
 
 | Package | Risk |
@@ -468,7 +487,7 @@ The step-by-step runbook with commands is in the session notes (`seeding.md`); i
 - The 25 packages from the PyPI pass were run before release; "PyPI clients of data providers" above says how and
   what the runs changed. The 9 first-party tools' unit tests pass.
 - The 6 first-party tools over HTTP were run before release and their unit tests pass; "Data providers without a
-  PyPI client" above says how.
+  PyPI client" above says how, and what the registry's scans said when they were published.
 - Unit tests pass for all 11 first-party tools (`python -m unittest` in each folder). The network ones were also run
   against their live APIs with their test inputs.
 - These wrappers were run locally with their exact command and test input: sherlock, socialscan, checkdmarc,
