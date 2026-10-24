@@ -92,3 +92,10 @@ export function requireSecret(env: Env, name: keyof Env): string {
   if (typeof v !== "string" || v === "") apiError(503, "not_configured", `${name} is not configured on this server`);
   return v;
 }
+
+/** The site's origins: SITE_URL and its www. twin (the site answers on both), for credentialed CORS. */
+export function siteOrigins(siteUrl: string): string[] {
+  const u = new URL(siteUrl);
+  const other = u.hostname.startsWith("www.") ? u.hostname.slice(4) : `www.${u.hostname}`;
+  return [u.origin, `${u.protocol}//${other}${u.port ? `:${u.port}` : ""}`];
+}

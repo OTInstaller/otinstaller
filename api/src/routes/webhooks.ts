@@ -95,7 +95,16 @@ async function onTag(env: Env, deliveryId: string, p: Payload): Promise<{ status
     `INSERT INTO publish_jobs (id, delivery_id, provider, repo, repo_id, tag, installation_id, status, created_at, updated_at)
      VALUES (?, ?, 'github', ?, ?, ?, ?, 'queued', ?, ?) ON CONFLICT (delivery_id) DO NOTHING`,
   ).bind(jobId, deliveryId, p.repository.full_name, repoId, tag, p.installation.id, now, now).run();
-  if (!r.meta.changes) return { status: "duplicate delivery" };
+  if (!r.meta.changes) {
+    // A redelivery (GitHub's "Redeliver" button) runs a job again when the queue gave up on it; one in progress or
+    // finished stays as it is.
+    const again = await env.DB.prepare(
+      `UPDATE publish_jobs SET status = 'queued', error_code = NULL, error_detail = NULL, updated_at = ? WHERE delivery_id = ? AND status = 'error' RETURNING id`,
+    ).bind(now, deliveryId).first<{ id: string }>();
+    if (!again) return { status: "duplicate delivery" };
+    await env.PUBLISH_QUEUE.send({ jobId: again.id });
+    return { status: "queued again", jobId: again.id };
+  }
   await env.PUBLISH_QUEUE.send({ jobId });
   return { status: "queued", jobId };
 }

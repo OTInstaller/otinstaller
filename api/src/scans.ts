@@ -419,6 +419,7 @@ export async function expireStaleScans(env: Env, now = Date.now()) {
     `SELECT id FROM versions WHERE status = 'scanning' AND scan_token_expires_at IS NOT NULL AND scan_token_expires_at < ?`,
   ).bind(now).all<{ id: string }>();
   for (const { id } of stale.results) {
+    const v = await loadVersion(env, "v.id = ?", id);
     await env.DB.batch([
       env.DB.prepare(`UPDATE versions SET status = 'rejected', rejected_reason = 'scan_timeout', scan_token_hash = NULL WHERE id = ?`).bind(id),
       env.DB.prepare(
@@ -428,6 +429,16 @@ export async function expireStaleScans(env: Env, now = Date.now()) {
          WHERE version_id = ?`,
       ).bind(now, id),
     ]);
+    if (!v) continue;
+    // The publisher hears about it like any other rejection: the commit status stops pending, and an email says what to do.
+    const message = "the security scan did not report back within an hour";
+    await commitStatus(env, v, "error", `scan_timeout: ${message}; ${retryHint(v)}`).catch((e) => console.error("the commit status failed", e));
+    await sendEmail(env, {
+      to: await ownerEmails(env, v.namespace_id), kind: "rejected", key: `rejected:${v.id}`,
+      ...templates.rejected(env, refOf(v), v.version, "scan_timeout", message, retryHint(v)),
+    }).catch((e) => console.error("the scan timeout email failed", e));
+    if (v.needs_first_review) await firstReleaseScanned(env, v.tool_id, "failed", `scan_timeout: ${message}`).catch((e) => console.error("updating the submission failed", e));
+    await settleBump(env, v.tool_id, v.version, { code: "scan_timeout", message }).catch((e) => console.error("settling the bump failed", e));
   }
   return stale.results.length;
 }

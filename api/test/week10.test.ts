@@ -184,6 +184,11 @@ describe("reports", () => {
     expect((await post(`/admin/reports/${id}/resolve`, reviewer.auth, { status: "actioned", action: "removed version", note: "confirmed" })).status).toBe(200);
     const after = (await (await call("/admin/reports?status=actioned", { headers: reviewer.auth })).json()) as any;
     expect(after.reports.find((r: any) => r.id === id)).toMatchObject({ action: "removed version", resolved_by: reviewer.login });
+    // Resolved once only: a second decision is refused, and the first stands.
+    const again = await post(`/admin/reports/${id}/resolve`, reviewer.auth, { status: "dismissed", note: "late" });
+    expect(again.status).toBe(409);
+    expect(((await again.json()) as any).error.code).toBe("already_resolved");
+    expect(await DB().prepare(`SELECT status, action FROM reports WHERE id = ?`).bind(id).first()).toEqual({ status: "actioned", action: "removed version" });
   });
 });
 
@@ -446,4 +451,13 @@ describe("write limits", () => {
     await DB().prepare(`INSERT INTO rate_limits (key, window_start, count) VALUES (?, ?, 100)`).bind(r.key, r.start).run();
     expect((await post(`/admin/reports/none/resolve`, reviewer.auth, { status: "dismissed" })).status).toBe(404);
   }, 30_000);
+
+  it("counts token and sign-in routes too", async () => {
+    const owner = await person();
+    const key = (await sha256Hex(`${env.TOKEN_ENC_KEY}|write|${owner.id}`)).slice(0, 32);
+    if (Date.now() % 60_000 > 55_000) await new Promise((r) => setTimeout(r, 60_000 - (Date.now() % 60_000) + 50));
+    await DB().prepare(`INSERT INTO rate_limits (key, window_start, count) VALUES (?, ?, 30) ON CONFLICT DO UPDATE SET count = 30`).bind(key, Math.floor(Date.now() / 60_000) * 60_000).run();
+    const res = await post("/me/tokens", owner.auth, { name: "ci", scopes: ["read"] });
+    expect(res.status).toBe(429);
+  });
 });

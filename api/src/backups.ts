@@ -262,7 +262,7 @@ export type ReportedItem = { id: string; status: "stored" | "too_large" | "faile
 type BackupRow = { id: string; run_id: string; tool_id: string; version_id: string | null; kind: "git" | "wheel" | "image"; location: string; visibility: string; weekly: number };
 
 export class BackupError extends Error {
-  constructor(public status: 400 | 401 | 404 | 409, public code: string, message: string) {
+  constructor(public status: 400 | 401 | 404 | 409 | 410, public code: string, message: string) {
     super(message);
   }
 }
@@ -445,7 +445,7 @@ export async function latestBundle(env: Env, toolId: string) {
 export async function restoreLink(env: Env, toolId: string, actorId: string, now = Date.now()) {
   const t = await toolCtx(env, toolId);
   if (!t) throw new BackupError(404, "tool_not_found", "no such package");
-  if (t.tool_status === "removed") throw new BackupError(409, "tool_removed", "removed packages cannot be restored from backup");
+  if (t.tool_status === "removed") throw new BackupError(410, "tool_removed", "removed packages cannot be restored from backup");
   const b = await latestBundle(env, toolId);
   if (!b) throw new BackupError(404, "no_backup", `${t.namespace}/${t.name} has no git backup yet`);
   const filename = `${t.name}-${new Date(b.stored_at ?? b.created_at).toISOString().slice(0, 10)}.bundle`;

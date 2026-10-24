@@ -1,4 +1,4 @@
-import { SELF } from "cloudflare:test";
+import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { ftsQuery } from "../src/index";
 import { rank } from "../src/ranking";
@@ -20,6 +20,18 @@ describe("search", () => {
   it("finds tools by text, with prefix matching", async () => {
     const { body } = await get("/tools?q=hole");
     expect(refs(body)[0]).toBe("dheeraj/holehe-lite");
+  });
+
+  it("follows a renamed namespace", async () => {
+    const before = await get("/tools?q=zebrafinch");
+    expect(before.body.results).toEqual([]);
+    await env.DB.prepare(`UPDATE namespaces SET name = 'zebrafinch' WHERE id = 'ns_sigstore'`).run();
+    try {
+      expect(refs((await get("/tools?q=zebrafinch")).body)).toContain("zebrafinch/cosign");
+    } finally {
+      await env.DB.prepare(`UPDATE namespaces SET name = 'sigstore' WHERE id = 'ns_sigstore'`).run();
+    }
+    expect((await get("/tools?q=zebrafinch")).body.results).toEqual([]);
   });
 
   it("puts an exact name match first", async () => {

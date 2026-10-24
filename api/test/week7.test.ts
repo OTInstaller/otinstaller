@@ -349,7 +349,7 @@ describe("importing a GitHub repository", () => {
     fakeGithub(r);
     const imp = (await (await post("/imports", u.auth, { repo: `https://github.com/${r.path}` })).json()) as any;
     expect(imp).toMatchObject({ existing_manifest: true, status: "ready", finish_modes: ["connect"], signals: ["otinstaller.yaml"] });
-    expect((await post(`/imports/${imp.id}/finish`, u.auth, { mode: "pr" })).status).toBe(400);
+    expect((await post(`/imports/${imp.id}/finish`, u.auth, { mode: "pr" })).status).toBe(409);
     expect(await (await post(`/imports/${imp.id}/finish`, u.auth, { mode: "connect" })).json()).toMatchObject({ status: "finished", finish_mode: "connect" });
   });
 

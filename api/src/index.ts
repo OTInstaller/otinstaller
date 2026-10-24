@@ -9,7 +9,9 @@ import { rank } from "./ranking";
 import { cached, findTool, findVersion, latestVersions, notFound, LISTED, publishedVia, rankInput, summary, SUMMARY_COLUMNS, VISIBLE, type SummaryRow } from "./catalog";
 import type { AppEnv, Env, PublishMessage } from "./env";
 import { apiError, d1RetryAfter, errorDocs, rateLimited, windowRetry } from "./lib/errors";
-import { authRoutes } from "./routes/auth";
+import { authMiddleware, authRoutes } from "./routes/auth";
+import { siteOrigins } from "./env";
+import { retryEmails } from "./notify";
 import { webhookRoutes } from "./routes/webhooks";
 import { reviewRoutes } from "./routes/review";
 import { sourceRoutes } from "./routes/sources";
@@ -58,17 +60,19 @@ export type { Env } from "./env";
 
 const app = new Hono<AppEnv>().basePath("/v1");
 
-// Public reads are open to any origin; credentialed calls only from the website. Browsers refuse
+// Public reads are open to any origin; credentialed calls only from the website, with or without www. Browsers refuse
 // `*` together with credentials, so other origins get `*` without them.
 const METHODS = ["GET", "POST", "PATCH", "PUT", "DELETE"];
 const publicCors = cors({ origin: "*", allowMethods: METHODS });
 app.use("*", async (c, next) => {
-  if (c.req.header("origin") !== c.env.SITE_URL) return publicCors(c, next);
-  return cors({ origin: c.env.SITE_URL, credentials: true, allowMethods: METHODS })(c, next);
+  const origin = c.req.header("origin");
+  if (!origin || !siteOrigins(c.env.SITE_URL).includes(origin)) return publicCors(c, next);
+  return cors({ origin, credentials: true, allowMethods: METHODS })(c, next);
 });
-authRoutes(app);
-// Writes (stars, yanks, tokens, imports, reports, ...) are limited to 30 a minute per signed-in user;
-// reviewers and admins are exempt so takedowns are never throttled.
+authMiddleware(app);
+// Writes (yanks, tokens, sign-outs, imports, reports, ...) are limited to 30 a minute per signed-in user;
+// reviewers and admins are exempt so takedowns are never throttled. Registered before every route, the sign-in and
+// token routes included.
 app.use("*", async (c, next) => {
   const u = c.get("user");
   if (u && !u.is_reviewer && !u.is_admin && !["GET", "HEAD", "OPTIONS"].includes(c.req.method)
@@ -77,6 +81,7 @@ app.use("*", async (c, next) => {
   }
   await next();
 });
+authRoutes(app);
 webhookRoutes(app);
 reviewRoutes(app);
 sourceRoutes(app);
@@ -606,6 +611,8 @@ export default {
     // Publisher profiles from GitHub and GitLab: never synced, or older than 6 hours.
     await refreshDueProfiles(env);
     await alertStuckJobs(env);
+    // Emails Resend didn't take (an outage, a rate limit, a fetch that threw) are tried again.
+    await retryEmails(env).catch((e) => console.error("retrying emails failed", e));
     await expireRuns(env);
     await expireDrills(env);
     // Published versions without an image or wheel backup (older than backups, or failed) get one.
