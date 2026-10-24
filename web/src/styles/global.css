@@ -93,6 +93,9 @@ input[type="search"], input[type="text"], input[type="email"], input[type="url"]
   transition: border-color var(--dur-1);
 }
 input:focus-visible, select:focus-visible, textarea:focus-visible { border-color: var(--text); outline-offset: 0; }
+/* The option list is drawn by the OS from the option's own colours, so a select with a transparent background
+   (the paste box's "treat as") would otherwise show light text on a light popup in dark mode. */
+option { color: var(--text); background-color: var(--bg-raised); }
 input::placeholder { color: var(--text-faint); }
 textarea { width: 100%; line-height: 1.5; }
 label { font-size: var(--fs-1); }
