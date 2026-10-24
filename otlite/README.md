@@ -3,8 +3,9 @@
 </p>
 
 <p align="center">
-  <b>Install, run, update and remove open-source tools by name.</b><br>
-  One command interface for dozens of open-source intelligence (OSINT) tools, each in its own virtualenv.
+  <b>One command to install, run, update and remove popular open-source tools.</b><br>
+  The maintainers pick, pin and test every open-source intelligence (OSINT) tool in the catalogue, so you only run them.<br>
+  Each tool gets its own virtualenv, all API keys live in one file, and every result is saved and sorted.
 </p>
 
 <p align="center">
@@ -81,6 +82,17 @@ otlite run spiderfoot -- d:example.com
 ```
 
 The same install-and-run pattern works for every tool in the catalogue. Each tool is pinned to a tested version, gets its own virtualenv, has its typed inputs turned into its own flags, and saves its output with a timestamp and a SHA-256.
+
+The same comparison, job by job:
+
+| Job | By hand | With otlite |
+| --- | --- | --- |
+| Install | Clone the repository, find a Python it works with, create a virtualenv, install its requirements | `otlite install spiderfoot` |
+| Run | Look up the tool's own flags | Typed inputs for every tool: `d:example.com`, `u:johndoe`, `e:john@example.com` |
+| API keys | One config file or environment variable per tool | One file, `~/.otlite/.env`; each tool receives only the keys it declares |
+| Results | Whatever the tool prints, wherever it prints it | Saved under `./results/` with a `.meta.json` sidecar, sorted with `otlite results` |
+| Update | Pull each repository and reinstall its requirements | `otlite update --all` moves every tool to the version this otlite release pins |
+| Remove | Delete the folder and hope nothing else used its packages | `otlite remove spiderfoot` |
 
 ## Quick start
 
