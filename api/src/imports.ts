@@ -154,14 +154,44 @@ export function pyprojectInfo(text: string): { name: string | null; scripts: str
   return { name, scripts };
 }
 
+/** The [metadata] name and console scripts of a setuptools setup.cfg ([options.entry_points] console_scripts). */
+export function setupCfgInfo(text: string): { name: string | null; scripts: string[] } {
+  let section = "";
+  let name: string | null = null;
+  let inScripts = false;
+  const scripts: string[] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.replace(/\s+[#;].*$/, "");
+    const sec = /^\[([^\]]+)\]\s*$/.exec(line.trim());
+    if (sec && !/^\s/.test(line)) {
+      section = sec[1]!.trim();
+      inScripts = false;
+      continue;
+    }
+    if (!line.trim()) continue;
+    // console_scripts = followed by indented "name = module:function" lines (the first may sit on the same line).
+    const kv = /^([A-Za-z0-9_.-]+)\s*[=:]\s*(.*)$/.exec(line);
+    if (kv && !/^\s/.test(line)) {
+      inScripts = section === "options.entry_points" && kv[1] === "console_scripts";
+      if (section === "metadata" && kv[1] === "name" && !name) name = kv[2]!.trim() || null;
+      const first = inScripts ? /^([A-Za-z0-9_.-]+)\s*=/.exec(kv[2]!.trim()) : null;
+      if (first) scripts.push(first[1]!);
+      continue;
+    }
+    const entry = inScripts ? /^\s+([A-Za-z0-9_.-]+)\s*=/.exec(line) : null;
+    if (entry) scripts.push(entry[1]!);
+  }
+  return { name, scripts };
+}
+
 const IGNORED_FILE = /^(\.|license|licence|copying|notice|authors|contributing|code_of_conduct|security|changelog)/i;
 
-/** The plan's detection order: a Dockerfile, a pyproject.toml with console scripts, then docs or Markdown only. */
-export function detectKind(root: DirEntry[], pyproject: { scripts: string[] } | null): { kind: Kind | null; signals: string[] } {
+/** The plan's detection order: a Dockerfile, a console script (pyproject.toml or setup.cfg), then docs or Markdown only. */
+export function detectKind(root: DirEntry[], pyproject: { scripts: string[]; from?: string } | null): { kind: Kind | null; signals: string[] } {
   const files = root.filter((e) => e.type === "file").map((e) => e.name);
   const dirs = root.filter((e) => e.type === "dir").map((e) => e.name);
   if (files.includes("Dockerfile")) return { kind: "docker", signals: ["Dockerfile"] };
-  if (pyproject?.scripts.length) return { kind: "pipx", signals: [`pyproject.toml console script "${pyproject.scripts[0]}"`] };
+  if (pyproject?.scripts.length) return { kind: "pipx", signals: [`${pyproject.from ?? "pyproject.toml"} console script "${pyproject.scripts[0]}"`] };
   const signals: string[] = [];
   if (dirs.includes("docs")) signals.push("docs/ folder");
   if (files.includes("mkdocs.yml")) signals.push("mkdocs.yml");
@@ -484,7 +514,10 @@ export async function detect(env: Env, repo: Repo): Promise<{ facts: Facts; draf
     }
     if (has(MANIFEST_FILE)) refuse(409, "upstream_has_manifest", `${repo.path} already has ${MANIFEST_FILE}; its maintainer can publish it, so it needs no wrapper`);
   }
-  const py = has("pyproject.toml") ? pyprojectInfo((await r.file("pyproject.toml")) ?? "") : null;
+  // Console scripts from pyproject.toml, or from setup.cfg for setuptools projects that declare them there.
+  const toml = has("pyproject.toml") ? pyprojectInfo((await r.file("pyproject.toml")) ?? "") : null;
+  const cfg = !toml?.scripts.length && has("setup.cfg") ? setupCfgInfo((await r.file("setup.cfg")) ?? "") : null;
+  const py = cfg?.scripts.length ? { name: toml?.name ?? cfg.name, scripts: cfg.scripts, from: "setup.cfg" } : toml;
   const existingText = has(MANIFEST_FILE) ? await r.file(MANIFEST_FILE) : null;
   const latestTag = latestReleaseTag(await r.tags());
   const version = latestTag?.slice(1);
@@ -541,7 +574,7 @@ export async function detect(env: Env, repo: Repo): Promise<{ facts: Facts; draf
   }
   const facts: Facts = { ...base, signals, kind, existingManifest: false, image, pypi, docs };
   const { manifest, assumed } = buildDraft(facts, kind);
-  if (!kind) warnings.push("could not tell what this repository is (no Dockerfile, pyproject.toml console script, docs/ or Markdown-only content); choose a kind to continue");
+  if (!kind) warnings.push("could not tell what this repository is (no Dockerfile, console script in pyproject.toml or setup.cfg, docs/ or Markdown-only content); choose a kind to continue");
   return { facts, draft: manifest, assumed, warnings };
 }
 

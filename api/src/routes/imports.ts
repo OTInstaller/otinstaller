@@ -53,7 +53,8 @@ async function view(env: Env, row: ImportRow) {
     warnings: detection?.warnings ?? [],
     existing_manifest: facts?.existingManifest ?? false,
     app_installed: facts?.appInstalled ?? null,
-    install_url: row.provider === "github" && facts && !facts.appInstalled ? installUrl(env) : undefined,
+    // A community wrapper's upstream belongs to someone else: the community bot creates the wrapper, so no App is needed there.
+    install_url: row.provider === "github" && row.community !== 1 && facts && !facts.appInstalled ? installUrl(env) : undefined,
     can_hold_manifest: facts?.canHoldManifest ?? false,
     community: row.community === 1,
     wrapper_repo: row.wrapper_path ?? undefined,

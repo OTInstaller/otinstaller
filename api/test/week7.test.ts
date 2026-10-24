@@ -7,7 +7,7 @@ import { dockerfileChecks } from "../src/submissions";
 import { findPin } from "../src/upstream-pin";
 import { RELEASE_TEMPLATES } from "../src/release-templates";
 import {
-  buildDraft, categoriesFrom, detectKind, detectQueued, latestReleaseTag, licenseFromText, missingFields, parseRepoRef, pyprojectInfo, summaryFrom,
+  buildDraft, categoriesFrom, detectKind, detectQueued, latestReleaseTag, licenseFromText, missingFields, parseRepoRef, pyprojectInfo, setupCfgInfo, summaryFrom,
   type Facts,
 } from "../src/imports";
 import { encrypt, sha256Hex, ulid } from "../src/lib/crypto";
@@ -46,6 +46,11 @@ describe("detection", () => {
     expect(pyprojectInfo(`[build-system]\nrequires = ["hatchling"]\n\n[project]\nname = "holehe-lite"  # pypi name\nversion = "1.0"\n\n[project.scripts]\nholehe = "holehe.cli:main"\n`))
       .toEqual({ name: "holehe-lite", scripts: ["holehe"] });
     expect(pyprojectInfo(`[tool.poetry]\nname = 'sherlock'\n[tool.poetry.scripts]\nsherlock = 'sherlock:main'\n`)).toEqual({ name: "sherlock", scripts: ["sherlock"] });
+    // setuptools projects that keep their console scripts in setup.cfg.
+    expect(setupCfgInfo(`[metadata]\nname = email_validator\nversion = attr: email_validator.__version__\n\n[options.entry_points]\nconsole_scripts =\n    email_validator=email_validator.__main__:main\n    other = pkg.cli:run  # second\n\n[flake8]\nmax-line-length = 120\n`))
+      .toEqual({ name: "email_validator", scripts: ["email_validator", "other"] });
+    expect(setupCfgInfo(`[options.entry_points]\nconsole_scripts = tool = tool.cli:main\ngui_scripts =\n    toolw = tool.gui:main\n`)).toEqual({ name: null, scripts: ["tool"] });
+    expect(detectKind(files("setup.cfg", "README.md"), { scripts: ["email_validator"], from: "setup.cfg" })).toEqual({ kind: "pipx", signals: ['setup.cfg console script "email_validator"'] });
   });
 
   it("maps topics to categories, shortens long descriptions, and picks the newest release", () => {
@@ -518,6 +523,9 @@ describe("community wrappers", () => {
     fakeGithub(upstream, githubRoutes(wrapper, wrapperCommits));
     const imp = (await (await post("/imports", u.auth, { repo: `https://github.com/${upstream.path}`, community: true })).json()) as any;
     expect(imp).toMatchObject({ community: true, namespace: "osintverse-community", finish_modes: ["submit", "wrapper"], can_hold_manifest: false });
+    // The App isn't installed on the upstream repository, and needn't be: the wizard isn't held up.
+    expect(imp.app_installed).toBe(false);
+    expect(imp.install_url).toBeUndefined();
     expect(imp.draft).toMatchObject({ name, namespace: "osintverse-community", homepage: `https://github.com/${upstream.path}`, runtime: { image: `ghcr.io/${upstream.path}@${DIGEST}` } });
     await patch(`/imports/${imp.id}`, u.auth, {
       manifest: { inputs: [{ name: "username", type: "username", required: true }], outputs: [{ type: "account" }], ethics: completion.ethics,
@@ -854,6 +862,29 @@ describe("community submissions", () => {
     expect(await DB().prepare(`SELECT needs_first_review FROM tools WHERE id = ?`).bind(tool.id).first()).toEqual({ needs_first_review: 0 });
     expect(await DB().prepare(`SELECT reason FROM tool_maintainers WHERE tool_id = ? AND user_id = ?`).bind(tool.id, s.u.id).first()).toEqual({ reason: "submitter" });
     expect(((await (await call(`/submissions/${number}`)).json()) as any).submission).toMatchObject({ status: "published", tool: `osintverse-community/${s.name}`, reviewer: reviewer.login.toLowerCase() });
+  });
+
+  it("rejects the waiting release when its submitter withdraws, so a reviewer can't publish it later", async () => {
+    const s = await setup();
+    const imp = await draft(s.u, s.upstream);
+    const done = (await (await s.as(s.u.auth).post(`/imports/${imp.id}/finish`, { mode: "submit", dockerfile: DOCKERFILE(s.upstream.path) })).json()) as any;
+    const number = done.submission.number;
+    s.wrapper.files = { "otinstaller.yaml": s.commits[0]!.content.replace("0".repeat(64), "a".repeat(64)), "README.md": s.commits[1]!.content };
+    s.upstream.images = { "0.15.0": DIGEST };
+    const jobId = ((await (await webhook("create", tagEvent(s.instId, s.wrapper.path, s.wrapper.id, "v0.15.0"))).json()) as any).jobId;
+    s.fake();
+    await processJob(await testEnv(), jobId);
+    const tool = await DB().prepare(`SELECT id FROM tools WHERE name = ?`).bind(s.name).first<{ id: string }>();
+    const v = (await loadVersion(await testEnv(), "v.tool_id = ?", tool!.id))!;
+    expect(await applyScanResults(await testEnv(), v, passing)).toMatchObject({ status: "awaiting_review" });
+
+    expect((await s.as(s.u.auth).post(`/submissions/${number}/withdraw`, {})).status).toBe(200);
+    expect(s.bot.archived).toBe(1);
+    expect(await DB().prepare(`SELECT status, rejected_reason FROM versions WHERE id = ?`).bind(v.id).first()).toEqual({ status: "rejected", rejected_reason: "submission_withdrawn" });
+    expect(await DB().prepare(`SELECT status, error_code FROM publish_jobs WHERE id = ?`).bind(jobId).first()).toEqual({ status: "rejected", error_code: "submission_withdrawn" });
+    const reviewer = await user();
+    await DB().prepare(`UPDATE users SET is_reviewer = 1 WHERE id = ?`).bind(reviewer.id).run();
+    expect(((await (await s.as(reviewer.auth).post(`/admin/versions/${v.id}/approve`, {})).json()) as any).error.code).toBe("not_pending");
   });
 
   it("tags a release of upstream's own wheel, and refuses a PyPI project that isn't upstream's", async () => {
