@@ -44,6 +44,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0028 | `0028_bump_outcomes.sql` | `bump_prs` rebuilt: `status` also takes `released` and `failed`; new columns `auto`, `merge_sha`, `merged_at`, `run_url`, `attempts`, `error_code`, `error`, `released_at` (merged rows whose version is published become `released`); index `bump_prs_inflight (status, merged_at)`; `tools` + `auto_release` (INTEGER NN default 1: whether `UPSTREAM_WATCH=auto` may release the package's bumps). |
 | 0029 | `0029_package_follows.sql` | New table `package_follows` (who follows which package's releases) and index `package_follows_user`; `email_prefs` + `releases` (CHECK immediate/daily/off, default immediate); `versions` + `announced_at` (backfilled to `published_at`); `inbox` rebuilt so `scope` also takes `releases`, indexes `inbox_user` and `inbox_pending` again. Apply before an API that writes release items is deployed. |
 | 0030 | `0030_follows.sql` | New table `follows` (who follows which publisher or input type: `kind` CHECK publisher/input, `target`) and index `follows_target`. Apply before an API that reads it is deployed. |
+| 0031 | `0031_dependency_and_base_watch.sql` | New tables `dependency_watch` (a first-party tool's requirements.txt pins against PyPI), `base_images` (each Docker Hub base tag's current digest) and `base_watch` (each build's base image, the digest when its version was first seen, rebuilds); `bump_prs` + `kind` (CHECK upstream/dependency/rebuild, default upstream). Apply before an API that has the build watcher is deployed. |
 
 ---
 
@@ -498,13 +499,16 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
   every change) and `locked_at` (set by a triager, or nightly by `lockStaleThreads` 30 days after a published or
   declined request's `updated_at`; replies move `updated_at`).
 
-### 2.12f Bump pull requests (0022, 0028)
+### 2.12f Bump pull requests (0022, 0028, 0031)
 
-- `bump_prs`: PK `(tool_id, version)` (upstream's release), `pr_number`, `url`, `branch`, `status` (open | merged |
+- `bump_prs`: PK `(tool_id, version)` (upstream's release; for `kind = 'dependency'` the pins it changes,
+  `pkg==1.2,other==3.4`; for `kind = 'rebuild'` `rebuild:<12 hex of the base digest>`), `kind` (0031: upstream |
+  dependency | rebuild), `pr_number` (0 for a rebuild, which has no pull request), `url`, `branch`, `status` (open | merged |
   released | failed | closed), `released_version` (the version the latest attempt releases), `merged_by` (null when
   the registry released it), `auto`, `merge_sha`, `merged_at` (the latest attempt), `run_url` (a failed release
   workflow run), `attempts`, `error_code`, `error`, `released_at`, `created_at`, `updated_at`. Written by
-  `bumps.ts:maybeOpenBump`, `releaseBump`, `settleBump` and `maybeAutoRelease`.
+  `bumps.ts:maybeOpenBump`, `releaseBump`, `settleBump` and `maybeAutoRelease`, and `build-watch.ts` for the other kinds.
+  A rebuild row is inserted already `merged`.
   - Transitions: open → merged (guarded, before GitHub is called; back to open when the merge fails) → released |
     failed; failed → merged (released again, no merge); open | failed → closed (superseded by a newer release, or
     closed on GitHub, seen by auto mode).
@@ -532,6 +536,19 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
   license_changed | renamed | error), `upstream_license`, `releases_etag`, `override_json`, `error`, `checked_at`,
   `changed_at` (when the state or latest release last changed). Written only by `upstream.ts:checkUpstream` and the
   staff override route.
+
+### 2.12h Build watch (0031)
+
+- `dependency_watch`: PK `(tool_id, ecosystem, package)`, `tool_id` → `tools(id)` (cascade), `ecosystem` CHECK
+  `('pypi')`, `package` (as requirements.txt writes it), `pinned`, `latest`, `latest_at`, `state` (current | behind |
+  unknown | error), `error`, `pinned_version_id` (the version requirements.txt was read at), `checked_at`,
+  `changed_at`. Rewritten whole for a tool by `build-watch.ts:checkDependencies`; only tools with
+  `community_packaged = 0`.
+- `base_images`: PK `image` (`<repo>:<tag>` on Docker Hub, e.g. `library/python:3.12-slim`), `digest` (kept when a
+  lookup fails), `error`, `checked_at`, `changed_at`. Looked up again after 20 hours, so one night shares one lookup.
+- `base_watch`: PK `tool_id` → `tools(id)` (cascade), `image` (the last `FROM`), `built_digest` (the digest when the
+  version was first seen), `latest_digest`, `pinned_version_id`, `state` (current | updated | unknown | error),
+  `error`, `rebuilt_at`, `checked_at`, `changed_at`. Written by `build-watch.ts:checkBaseImage` and `maybeRebuild`.
 
 ### 2.12d Community submissions (0020)
 

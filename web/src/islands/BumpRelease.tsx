@@ -1,8 +1,10 @@
-// A community package's bump pull request, for its maintainers and reviewers: "Merge and release" when the community
-// bot has opened one, where its release stands once started, why it failed and "Release again", and in auto mode
-// when it goes out on its own, with the switch that lets the registry release this package's bumps or not.
+// A community package's bump, for its maintainers and reviewers: "Merge and release" when the community bot has
+// opened a pull request (a wrapper's pin, or a first-party tool's dependencies), where its release (or a rebuild on a
+// newer base image) stands once started, why it failed and "Release again", and in auto mode when it goes out on its
+// own, with the switch that lets the registry release this package's updates or not.
 import { useEffect, useState } from "preact/hooks";
 import { api, type BumpDetail } from "../lib/api";
+import { bumpName } from "../lib/format";
 import { Confirm, ErrorNote, when } from "./shared";
 
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
@@ -43,7 +45,7 @@ export default function BumpRelease({ refName }: { refName: string }) {
     await load();
   });
 
-  const link = <a href={bump.url} rel="nofollow noopener">the bump to {bump.version}</a>;
+  const link = <a href={bump.url} rel="nofollow noopener">{bumpName(bump)}</a>;
   const releasable = bump.status === "open" || bump.status === "failed";
   return (
     <div class="stack bump small">
@@ -55,7 +57,7 @@ export default function BumpRelease({ refName }: { refName: string }) {
         </p>
       )}
       {!done && bump.status === "merged" && (
-        <p>{link} is merged; version {bump.released_version} is being built and scanned{bump.merged_at && <>, started {when(bump.merged_at)}</>}.</p>
+        <p>{link} {bump.kind === "rebuild" ? "started" : "is merged"}; version {bump.released_version} is being built and scanned{bump.merged_at && <>, started {when(bump.merged_at)}</>}.</p>
       )}
       {!done && bump.status === "failed" && (
         <p class="notice warn">
@@ -67,7 +69,7 @@ export default function BumpRelease({ refName }: { refName: string }) {
       {releasable && !done && (
         <p class="row">
           {confirming
-            ? <Confirm text={bump.status === "failed" ? `Release ${bump.version} again?` : `Merge it and release ${bump.version}?`}
+            ? <Confirm text={bump.status === "failed" ? `Release ${bumpName(bump)} again?` : `Merge and release ${bumpName(bump)}?`}
                 confirm={bump.status === "failed" ? "Release again" : "Merge and release"} danger={false} onConfirm={release} onCancel={() => setConfirming(false)} />
             : <button class="btn btn-sm btn-primary" type="button" disabled={busy} onClick={() => setConfirming(true)}>{bump.status === "failed" ? "Release again" : "Merge and release"}</button>}
         </p>
@@ -76,7 +78,7 @@ export default function BumpRelease({ refName }: { refName: string }) {
         <p class="row">
           <label class="row">
             <input type="checkbox" checked={data.auto_release} disabled={busy} onChange={(e) => setAuto((e.target as HTMLInputElement).checked)} />
-            Release pin-only bumps of this package on their own, a week after upstream's release
+            Release this package's pin-only updates (and rebuilds on a newer base image) on their own, a week after the release they update to
           </label>
         </p>
       )}

@@ -66,6 +66,13 @@ export function hintParts(text: string, apiUrl: string, here?: string): HintPart
 }
 
 /** Where an upstream project lists its releases, from a repository homepage on GitHub or GitLab; null otherwise. */
+/** How a bump is named: the bump to v1.3.0, the dependency update (dnspython 2.9.0), the rebuild on a newer base image. */
+export function bumpName(b: { kind?: string; version: string }): string {
+  if (b.kind === "dependency") return `the dependency update (${b.version.replaceAll("==", " ").replaceAll(",", ", ")})`;
+  if (b.kind === "rebuild") return "the rebuild on a newer base image";
+  return `the bump to ${b.version}`;
+}
+
 export function upstreamReleasesUrl(homepage: string | null | undefined): string | null {
   const gh = /^https:\/\/github\.com\/([^/?#]+\/[^/?#]+?)(?:\.git)?\/?$/.exec(homepage ?? "");
   if (gh) return `https://github.com/${gh[1]}/releases`;

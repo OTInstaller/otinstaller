@@ -831,6 +831,16 @@ The remote server is separate and runs nothing:
    --> every 15 min sweepBumps: rejected version or job, failed release workflow run, nothing in 12 h --> failed;
        a failed bump is released again (no merge, new version)
 
+ nightly queueBuildChecks --> {buildCheckToolId} --> checkBuild (Docker packages with a source in osintverse-community):
+   checkDependencies (community_packaged = 0): requirements.txt at git_sha (only when the version changed) -->
+   parseRequirements --> PyPI JSON per pin --> dependency_watch rows; UPSTREAM_WATCH=issues: dependency:<pkg>==<ver>
+   issues; =prs: maybeOpenDependencyBump (one otinstaller/deps-<hash> PR, bump_prs kind dependency); =auto:
+   maybeAutoReleaseDependencies --> releaseBump (nextPatch) --> the same settle and sweep as bumps
+   checkBaseImage: Dockerfile's last FROM (baseImage) --> dockerHubRef --> hubDigest (auth.docker.io token + HEAD
+   manifest, cached in base_images for 20 h) --> base_watch (built_digest when the version is first seen; updated
+   when it differs); REBUILD_WATCH=rebuild: maybeRebuild (vuln scan warn, main at git_sha, tools.auto_release, 14 days,
+   5 a day) --> bump_prs kind rebuild (#0, merged) --> dispatch otinstaller-release.yml --> settleBump / sweepBumps
+
  GET /packages/:ns/:name/files (maintainer: main's otinstaller.yaml, Dockerfile, README.md via the community bot)
    --> POST /packages/:ns/:name/proposals {title, note, files}: createProposal --> checkProposal (only what changed;
        validate, protected_field, version past every version, dockerfileChecks, screen) --> community bot:
