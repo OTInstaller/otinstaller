@@ -17,6 +17,30 @@ Items marked **(you)** need the owner of the GitHub, GitLab, Cloudflare, Resend,
 | otlite installer | `curl -fsSL https://get.otinstaller.com/otlite \| sh` answers 200 (`otlite/scripts/install.sh` from `main`, through `ops/get`) |
 | Site pages | `/agents`, the homepage for AI agents, with its Markdown twin `/agents.md`; `/otlite` and `/otlite/tools`, both listing every tool from `web/src/data/otlite-catalog.json`; tool pages show the sample output recorded by the scanner's smoke test |
 
+## Keeping tools up to date (merged 24 October 2026, not deployed)
+
+Four pull requests: `ot`'s daily update note, holds and `GET /v1/latest`
+([#99](https://github.com/OTInstaller/otinstaller/pull/99)); bump release outcomes and `UPSTREAM_WATCH=auto`
+([#100](https://github.com/OTInstaller/otinstaller/pull/100), migration 0028); following a package's releases
+([#101](https://github.com/OTInstaller/otinstaller/pull/101), migration 0029); otlite 1.3.0
+([#102](https://github.com/OTInstaller/otinstaller/pull/102)). All merged into `main` (`0f71ec0`) on 24 Oct; on that
+commit the Go tests, `npm test` in `api/` (462) and `web/` (205), and otlite's 571 tests pass, and
+`npx wrangler deploy --dry-run` builds the API. Applying the migrations was refused to the session by the permission
+classifier, so nothing is deployed yet. Production D1 lists exactly 0028 and 0029 as unapplied; its Time Travel
+bookmark before them is `00000321-00000000-0000510e-e78c8e70e661837cf50f8ac32043c858`.
+
+- [ ] **(you)** Apply the migrations: in `api/`, `npx wrangler d1 migrations apply otinstaller --remote`. Both must be
+      in before the API goes out: without 0029, `/me/email-prefs` and the inbox email cron fail.
+- [ ] **(you)** Deploy the API: in `api/`, `npm run deploy`. Checks: `curl -s https://api.otinstaller.com/v1/latest`
+      lists packages with `latest`, and `/v1/health` answers 200.
+- [ ] **(you)** Deploy the site: in `web/`, PowerShell `$env:PUBLIC_BETA = "0"; npm run deploy`. Checks:
+      `/docs/updates` loads, a tool page shows "Follow releases", and `/settings/notifications` has the releases
+      setting. The privacy policy's new lines (the daily update check, follows) go live with it.
+- [ ] **(you)** Release `ot` 0.16.0 (push the tag `v0.16.0`), then list it in the MCP Registry and publish the agent
+      plugin 0.1.2 (`integrations/agent-plugin/`). The site's update docs say "from ot 0.16".
+- [ ] **(you)** Release otlite 1.3.0: add a `debian/changelog` entry if the `.deb` should say 1.3.0, then push the tag
+      `otlite-v1.3.0`.
+
 ## D1 outages answered with 503 (deployed 23 October 2026)
 
 Sentry's OTINSTALLER-A and -B were twelve `D1_ERROR: internal error; reference = ...` events from 21 to 23 Oct, on
