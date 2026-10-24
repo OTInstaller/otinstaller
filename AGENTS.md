@@ -43,6 +43,17 @@ feeds keep people up to date, and `/learn` is where to start.
 The repository also holds `otlite/`, the no-Docker edition `otlite` (the Python package manager formerly called
 `otinstaller`; see [otlite/](#otlite-the-no-docker-edition-otlite)).
 
+**How we describe it.** Copy leads with the outcome, then says what the product is, then shows what it replaces:
+- **Headline:** "Stop fixing OSINT tools. Start using them."
+- **One-liner:** "OTInstaller is the package manager and largest registry built only for OSINT tools."
+  - "Largest" is always qualified that way and always sits next to a count: the live number on site pages, "over
+    130 tools" (update it as the registry grows) in static files.
+- **otlite** is "every popular OSINT tool, managed for you": we pick, pin and test the tools.
+- **"What it replaces":** the job-by-job rows on the home page (`web/src/pages/index.astro`) are the source of truth
+  for the comparison. They cover install, run, results, API keys, keeping it working, trust and removal. The READMEs,
+  the FAQ, the blog post and the launch drafts repeat them.
+- **Under `otlite/`:** files there follow `otlite/AGENTS.md` (no AI wording, no marketing filler).
+
 The launch is **public**: the closed beta planned for week 12 never ran (nobody was invited), and the site is built
 with `PUBLIC_BETA=0`. `ot feedback` and issues on `OTInstaller/feedback` stay as the feedback channels.
 [docs/launch-checklist.md](docs/launch-checklist.md) records what is deployed and what is left; as of 22 Oct 2026 the

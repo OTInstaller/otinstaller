@@ -1,20 +1,35 @@
-# OTInstaller Registry
+# OTInstaller
 
-A free, public registry of OSINT tools and guides, and `ot`, the CLI that installs and runs them.
-This repository holds weeks 1–7 of the plan: the manifest spec, the `ot` CLI, the registry API's read side,
-publishing intake (GitHub/GitLab sign-in, the GitHub App webhook, the queue that validates tagged releases), and
-security scans with the review queue (scanner, verdicts, publishing, reviewer decisions, emails), and GitLab support
-with sync (connecting GitLab projects, GitLab webhooks and CI templates, and a poller that catches missed tags, renames,
-archiving and deleted repositories), and the import wizard (detecting what a repository contains, drafting its manifest,
-opening a pull or merge request, registry-held manifests, and bulk imports of up to 50 repositories), and source and
-artifact backups (week 11: the image mirror at mirror.otinstaller.com, wheel and git bundle copies in R2, `ot`'s
-fallback to them, Restore from backup, and a monthly restore drill).
-To connect real GitHub and GitLab apps, follow [docs/publishing-setup.md](docs/publishing-setup.md).
+**Stop fixing OSINT tools. Start using them.**
 
-It also holds `otlite`, the no-Docker edition: a Python CLI (from OSINTVerseHQ/OTinstaller, imported with its
-history into `otlite/`, called `otinstaller` until 1.0) that installs tools from pip or git into per-tool virtualenvs
-on Linux and macOS. Its tool catalog has also been converted into registry packages (see [otlite (otlite/)](#otlite-otlite)).
-Moving between the two: [docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md).
+OTInstaller is the package manager and largest registry built only for OSINT tools: over 130 tools and a set of
+investigation guides, free at [otinstaller.com](https://otinstaller.com). One command installs, runs, updates or
+removes any of them on Windows, macOS or Linux.
+
+| Job | Today | With OTInstaller |
+| --- | --- | --- |
+| Install a tool | Clone it, find a Python it still works with, make a virtualenv, untangle conflicting requirements, then repeat for the next tool | `ot install osintverse-community/holehe`, or just run it |
+| Run it | Read each README for its flags | The same typed inputs for every tool: `ot run osintverse-community/holehe e:ada@example.com` |
+| Use the results | Text, CSV, HTML and JSON, a different shape per tool | Every run saved under `results/` in one JSON shape, ready for scripts and AI agents |
+| API keys | Spread across config files and shell history | One keychain: `ot keys set ABUSEIPDB_API_KEY`; each tool gets only its own keys |
+| Keep it working | Find out a tool broke in the middle of a case | Every tool run every night; `ot outdated`, `ot update --all` |
+| Trust it | Run a stranger's script with full access to your files | Pinned, scanned and run in a container that can't read your files |
+| Remove it | Leftovers in your system Python | `ot uninstall osintverse-community/holehe` |
+
+Two editions share the same typed inputs and `results/` layout:
+
+- **`ot`** (Windows, macOS, Linux; needs Docker or Podman) installs signed, scanned packages from the registry and
+  runs them in a sandbox. Start with the [quick start](https://otinstaller.com/docs/quick-start).
+- **`otlite`** (Linux and macOS, no Docker) is one CLI for popular OSINT tools, managed for you: each tool pinned and
+  tested, in its own virtualenv, with every API key in one file. See [otinstaller.com/otlite](https://otinstaller.com/otlite).
+
+## This repository
+
+It holds everything behind OTInstaller: the manifest spec, the `ot` CLI, the registry API and image mirror, the
+website, the scanner and backup jobs, the launch seed, and `otlite` (imported with its history into `otlite/`, called
+`otinstaller` until 1.0). [AGENTS.md](AGENTS.md) is the guide to working on it and [docs/dev/](docs/dev/README.md) the
+developer reference. To connect real GitHub and GitLab apps, follow [docs/publishing-setup.md](docs/publishing-setup.md).
+Moving between the two editions: [docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md).
 
 | Folder | What it is |
 | --- | --- |
