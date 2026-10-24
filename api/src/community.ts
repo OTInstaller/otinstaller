@@ -7,7 +7,7 @@ import { apiError, rateLimited, windowRetry } from "./lib/errors";
 import { findPersonalData, imagesToAlt, renderPage } from "./content";
 import { audit } from "./routes/auth";
 import { overLimit, type ToolRef } from "./trust";
-import { maintainers, notify, requestSubscribers, subscribers } from "./inbox";
+import { ANNOUNCED_ISSUES, maintainers, notify, requestSubscribers, subscribers } from "./inbox";
 import { FIRST_WEEK, inFirstWeek } from "./first-week";
 
 export const ISSUE_KINDS = ["broken", "outdated", "wrong_info", "feature", "question"] as const;
@@ -759,13 +759,14 @@ export async function closeSystemIssue(env: Env, toolId: string, dedupeKey: stri
 }
 
 /**
- * A new version is out: open broken and outdated issues get a system comment asking whether it fixes them, so the
- * people subscribed can check (called when a version is published).
+ * A new version is out: open broken and outdated issues get a system comment asking whether it fixes them, and the
+ * people following each one are told (called once per version, when it becomes the latest).
  */
 export async function announceVersion(env: Env, toolId: string, version: string) {
   const open = (await env.DB.prepare(
-    `SELECT id FROM issues WHERE tool_id = ? AND kind IN ('broken', 'outdated') AND status IN ('open', 'confirmed') AND moderation = 'visible' AND deleted_at IS NULL AND author_kind = 'user'`,
-  ).bind(toolId).all<{ id: string }>()).results;
+    `SELECT i.id, i.number, i.title, n.name || '/' || t.name AS ref FROM issues i JOIN tools t ON t.id = i.tool_id JOIN namespaces n ON n.id = t.namespace_id
+     WHERE i.tool_id = ? AND ${ANNOUNCED_ISSUES}`,
+  ).bind(toolId).all<{ id: string; number: number; title: string; ref: string }>()).results;
   if (!open.length) return;
   const now = Date.now();
   const db = env.DB;
@@ -774,6 +775,12 @@ export async function announceVersion(env: Env, toolId: string, version: string)
       .bind(ulid(now), i.id, `Version ${version} is out. If it fixes this for you, say so here, or close the issue if you opened it.`, now),
     db.prepare(`UPDATE issues SET comment_count = comment_count + 1, last_activity_at = ? WHERE id = ?`).bind(now, i.id),
   ]));
+  for (const i of open) {
+    await notify(env, await subscribers(env, i.id), {
+      kind: "comment", scope: "community", summary: `${i.ref} ${version} is out: does it fix #${i.number}? ${i.title}`,
+      path: `/${i.ref}/issues/${i.number}`, tool_id: toolId, issue_id: i.id,
+    });
+  }
 }
 
 /** Locks closed threads with no activity for AUTO_LOCK (nightly): issues, and requests published or declined. */

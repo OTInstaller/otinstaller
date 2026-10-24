@@ -257,6 +257,37 @@ export function communityRoutes(app: App) {
     });
   }
 
+  // ---------- following a package's releases ----------
+
+  // Whether the signed-in person follows the package's releases.
+  app.get("/tools/:ns/:name/follow", async (c) => {
+    const u = requireUser(c);
+    const t = await tool(c);
+    const f = await c.env.DB.prepare(`SELECT created_at FROM package_follows WHERE tool_id = ? AND user_id = ?`).bind(t.id, u.id).first<{ created_at: number }>();
+    c.header("Cache-Control", "private, no-store");
+    return c.json({ following: !!f, followed_at: f?.created_at ?? null });
+  });
+
+  // Follow: an inbox item (and an email, per the "releases" preference) for each new version that becomes the latest.
+  app.put("/tools/:ns/:name/follow", async (c) => {
+    const u = requireUser(c);
+    const t = await tool(c);
+    await c.env.DB.prepare(`INSERT INTO package_follows (tool_id, user_id, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING`).bind(t.id, u.id, Date.now()).run();
+    c.header("Cache-Control", "private, no-store");
+    return c.json({ following: true });
+  });
+
+  // Unfollow works for any package someone follows, even one removed since.
+  app.delete("/tools/:ns/:name/follow", async (c) => {
+    const u = requireUser(c);
+    const { ns, name } = c.req.param() as { ns: string; name: string };
+    const t = await toolByRef(c.env, ns, name);
+    if (!t) apiError(404, "tool_not_found", `${ns}/${name} is not in the registry`);
+    await c.env.DB.prepare(`DELETE FROM package_follows WHERE tool_id = ? AND user_id = ?`).bind(t.id, u.id).run();
+    c.header("Cache-Control", "private, no-store");
+    return c.json({ following: false });
+  });
+
   app.post("/flags", async (c) => {
     const u = requireUser(c);
     const b = await body<{ target_kind: string; target_id: string; reason: string; note: string }>(c);

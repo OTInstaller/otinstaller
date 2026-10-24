@@ -1,15 +1,20 @@
 // Notifications for people who take part in the community: inbox items written with each event (new issues on a
-// package you maintain, replies and status changes on threads you follow, moderation of your posts, roles), and
-// their delivery by email, at once (grouped every 15 minutes) or as a daily digest, with one-click unsubscribe.
+// package you maintain, replies and status changes on threads you follow, new versions of packages you follow,
+// moderation of your posts, roles), and their delivery by email, at once (grouped every 15 minutes) or as a daily
+// digest, with one-click unsubscribe.
 // Routes live in routes/inbox.ts; publisher and staff emails stay in notify.ts.
 import type { Env } from "./env";
 import { hmacSha256Hex, safeEqual, ulid } from "./lib/crypto";
 import { sendEmail } from "./notify";
 
-export type Scope = "community" | "owner_issues" | "account";
+export type Scope = "community" | "owner_issues" | "releases" | "account";
 export type Pref = "immediate" | "daily" | "off";
+
+/** The issues a new version is announced on (columns of `issues i`): open, visible broken and outdated issues people filed. */
+export const ANNOUNCED_ISSUES = `i.kind IN ('broken', 'outdated') AND i.status IN ('open', 'confirmed') AND i.moderation = 'visible' AND i.deleted_at IS NULL AND i.author_kind = 'user'`;
+
 export const PREFS: Pref[] = ["immediate", "daily", "off"];
-export const PREF_SCOPES = ["community", "owner_issues"] as const;
+export const PREF_SCOPES = ["community", "owner_issues", "releases"] as const;
 
 /** Most emails one person gets in a day; more items wait for the next day's digest. */
 const PER_USER_DAILY = 12;
@@ -17,7 +22,7 @@ const PER_USER_DAILY = 12;
 const SETTLE = 2 * 60_000;
 
 export interface Item {
-  kind: "issue_opened" | "comment" | "status" | "moderation" | "role" | "proposal";
+  kind: "issue_opened" | "comment" | "status" | "moderation" | "role" | "proposal" | "release";
   scope: Scope;
   summary: string;
   path: string;
@@ -47,6 +52,22 @@ export async function requestSubscribers(env: Env, requestId: string): Promise<s
 export async function maintainers(env: Env, namespaceId: string, toolId?: string): Promise<string[]> {
   return (await env.DB.prepare(`SELECT user_id FROM namespace_members WHERE namespace_id = ? UNION SELECT user_id FROM tool_maintainers WHERE tool_id = ?`)
     .bind(namespaceId, toolId ?? "").all<{ user_id: string }>()).results.map((r) => r.user_id);
+}
+
+/**
+ * A new version of a package: one inbox item for each of its followers, written by a single statement however many
+ * there are. People who follow one of the package's open broken or outdated issues are left out: they hear about the
+ * version on that issue (announceVersion), so nobody gets two items for one release.
+ */
+export async function notifyFollowers(env: Env, toolId: string, item: Omit<Item, "scope" | "tool_id">, now = Date.now()) {
+  await env.DB.prepare(
+    `INSERT INTO inbox (id, user_id, kind, scope, tool_id, issue_id, actor_id, summary, path, created_at)
+     SELECT ? || upper(hex(randomblob(8))), f.user_id, ?, 'releases', f.tool_id, NULL, NULL, ?, ?, ?
+     FROM package_follows f JOIN users u ON u.id = f.user_id
+     WHERE f.tool_id = ? AND u.banned_at IS NULL AND f.user_id NOT IN (
+       SELECT s.user_id FROM issue_subscriptions s JOIN issues i ON i.id = s.issue_id WHERE i.tool_id = ? AND s.muted = 0 AND ${ANNOUNCED_ISSUES})`,
+  ).bind(ulid(now).slice(0, 10), item.kind, item.summary.slice(0, 300), item.path, now, toolId, toolId).run()
+    .catch((e) => console.error("writing release notifications failed", e));
 }
 
 /** Writes items now; failures are logged, never thrown, so taking part never fails over a notification. */
@@ -91,7 +112,8 @@ export async function deliverInbox(env: Env, mode: "immediate" | "daily", now = 
   const db = env.DB;
   const rows = (await db.prepare(
     `SELECT i.id, i.user_id, i.kind, i.scope, i.summary, i.path, i.created_at,
-       CASE i.scope WHEN 'account' THEN 'immediate' WHEN 'community' THEN COALESCE(p.community, 'immediate') ELSE COALESCE(p.owner_issues, 'immediate') END AS pref,
+       CASE i.scope WHEN 'account' THEN 'immediate' WHEN 'community' THEN COALESCE(p.community, 'immediate')
+         WHEN 'releases' THEN COALESCE(p.releases, 'immediate') ELSE COALESCE(p.owner_issues, 'immediate') END AS pref,
        COALESCE(u.email, (SELECT a.email FROM accounts a WHERE a.user_id = u.id AND a.email IS NOT NULL LIMIT 1)) AS email
      FROM inbox i JOIN users u ON u.id = i.user_id LEFT JOIN email_prefs p ON p.user_id = i.user_id
      WHERE i.emailed_at IS NULL AND i.created_at <= ? AND i.created_at > ? AND u.banned_at IS NULL
@@ -108,7 +130,8 @@ export async function deliverInbox(env: Env, mode: "immediate" | "daily", now = 
     const today = (await db.prepare(`SELECT COUNT(*) AS n FROM notifications WHERE kind = 'community' AND to_email = ? AND created_at > ?`)
       .bind(items[0]!.email, now - 86_400_000).first<{ n: number }>())?.n ?? 0;
     if (today >= PER_USER_DAILY && mode === "immediate") continue;
-    const scope = items.some((i) => i.scope === "owner_issues") && !items.some((i) => i.scope === "community") ? "owner_issues" : "community";
+    // The unsubscribe link turns off the first of these the email carries.
+    const scope = (["community", "releases", "owner_issues"] as const).find((s) => items.some((i) => i.scope === s)) ?? "community";
     const result = await sendEmail(env, await composeEmail(env, userId, items, scope, mode));
     if (result === "failed") continue;
     await db.batch(items.map((i) => db.prepare(`UPDATE inbox SET emailed_at = ? WHERE id = ?`).bind(now, i.id)));
