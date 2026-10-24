@@ -869,7 +869,7 @@ export async function finishImport(env: Env, user: User, row: ImportRow, mode: F
     if (row.community !== 1 || mode !== "wrapper") refuse(400, "invalid_mode", `community imports finish with mode "wrapper" (and only they do)`);
     return finishWrapper(env, user, row, facts, opts.wrapper);
   }
-  if (facts.existingManifest && mode !== "connect") refuse(400, "manifest_in_repo", `the repository already has ${MANIFEST_FILE}; finish with mode "connect"`);
+  if (facts.existingManifest && mode !== "connect") refuse(409, "manifest_in_repo", `the repository already has ${MANIFEST_FILE}; finish with mode "connect"`);
   if (!facts.existingManifest && mode === "connect") refuse(400, "invalid_mode", `"connect" is for repositories that already have ${MANIFEST_FILE}; use "pr" or "registry"`);
   const draft = JSON.parse(row.draft_manifest_json ?? "{}") as Record<string, any>;
   const problems = await draftProblems(env, row, draft);

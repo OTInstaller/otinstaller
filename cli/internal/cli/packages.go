@@ -501,6 +501,16 @@ func trustWarnings(r *api.ManifestResponse) []string {
 	if r.SourceGone {
 		w = append(w, "the source repository of "+r.Ref+" is no longer available; it will get no new versions")
 	}
+	if r.Deprecated {
+		msg := r.Ref + " is deprecated"
+		if r.DeprecatedMessage != "" {
+			msg += ": " + r.DeprecatedMessage
+		}
+		if r.DeprecatedReplacement != "" {
+			msg += "; `ot install " + r.DeprecatedReplacement + "` installs its replacement"
+		}
+		w = append(w, msg)
+	}
 	return w
 }
 

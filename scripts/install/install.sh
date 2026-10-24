@@ -30,7 +30,18 @@ case "$(uname -m)" in
   *) fail "unsupported CPU $(uname -m)" ;;
 esac
 
-tag="${OT_VERSION:-$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1)}"
+# The latest release: get.otinstaller.com answers for the default repository without GitHub's API limit (60 requests
+# an hour per address, shared by everyone behind the same one); GitHub's API is the fallback.
+latest_tag() {
+  case "$REPO" in
+    [Oo][Tt][Ii][Nn][Ss][Tt][Aa][Ll][Ll][Ee][Rr]/ot)
+      t="$(curl -fsSL https://get.otinstaller.com/ot/latest 2>/dev/null | sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' | head -n 1)" || t=""
+      if [ -n "$t" ]; then printf '%s\n' "$t"; return; fi
+      ;;
+  esac
+  curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1
+}
+tag="${OT_VERSION:-$(latest_tag)}"
 [ -n "$tag" ] || fail "could not find the latest release of $REPO"
 version="${tag#v}"
 archive="ot_${version}_${os}_${arch}.tar.gz"

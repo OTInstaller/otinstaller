@@ -127,18 +127,22 @@ type ToolDetail struct {
 
 // ManifestResponse is what install needs: the manifest plus the trust facts recorded at publish.
 type ManifestResponse struct {
-	Ref            string          `json:"ref"`
-	Version        string          `json:"version"`
-	Status         string          `json:"status"`
-	RemovedReason  string          `json:"removed_reason,omitempty"`
-	SignerIdentity string          `json:"signer_identity,omitempty"`
-	SignerIssuer   string          `json:"signer_issuer,omitempty"`
-	ScanStatus     string          `json:"scan_status,omitempty"`
-	Health         string          `json:"health,omitempty"`
-	Verified       bool            `json:"verified_publisher"`
-	SourceGone     bool            `json:"source_unavailable"`
-	MovedTo        string          `json:"moved_to,omitempty"`
-	Manifest       json.RawMessage `json:"manifest"`
+	Ref            string `json:"ref"`
+	Version        string `json:"version"`
+	Status         string `json:"status"`
+	RemovedReason  string `json:"removed_reason,omitempty"`
+	SignerIdentity string `json:"signer_identity,omitempty"`
+	SignerIssuer   string `json:"signer_issuer,omitempty"`
+	ScanStatus     string `json:"scan_status,omitempty"`
+	Health         string `json:"health,omitempty"`
+	Verified       bool   `json:"verified_publisher"`
+	SourceGone     bool   `json:"source_unavailable"`
+	MovedTo        string `json:"moved_to,omitempty"`
+	// Deprecated is set when the package's owner marked it superseded, with their message and its replacement.
+	Deprecated            bool            `json:"deprecated,omitempty"`
+	DeprecatedMessage     string          `json:"deprecated_message,omitempty"`
+	DeprecatedReplacement string          `json:"deprecated_replacement,omitempty"`
+	Manifest              json.RawMessage `json:"manifest"`
 	// ManifestFull is the manifest with every field. Manifest leaves out optional fields added since ot v0.12, whose
 	// schema rejects them; see registryManifest in the cli package.
 	ManifestFull json.RawMessage `json:"manifest_full,omitempty"`

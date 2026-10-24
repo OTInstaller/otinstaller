@@ -42,6 +42,20 @@ describe("edge cache", () => {
     expect(second.headers.get("access-control-allow-origin")).toBe("*");
   });
 
+  it("stops serving everything cached before a takedown or yank", async () => {
+    const { bumpCacheEpoch, resetCacheEpoch } = await import("../src/edge-cache");
+    const e = await cachedEnv();
+    const path = `/tools?q=epoch${uniq()}`;
+    resetCacheEpoch();
+    await call(path, {}, e);
+    expect((await call(path, {}, e)).headers.get("x-edge-cache")).toBe("hit");
+    await bumpCacheEpoch(env.DB).run();
+    // Within the 30 seconds an isolate trusts the epoch it read, then never again.
+    resetCacheEpoch();
+    expect((await call(path, {}, e)).headers.get("x-edge-cache")).toBeNull();
+    expect((await call(path, {}, e)).headers.get("x-edge-cache")).toBe("hit");
+  });
+
   it("never caches signed-in reads, writes or errors", async () => {
     const e = await cachedEnv();
     const me = await person();

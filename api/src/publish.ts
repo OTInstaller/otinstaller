@@ -18,7 +18,7 @@ import { commitStatus, dispatchScan, expectedSigner, loadVersion, publishVersion
 import { backupVersion, hostedImage, sweepMirrorRepo } from "./backups";
 import { imageExists, imagePlatforms } from "./mirror/registry";
 import { copyImages, queueContentChecks, rawFileUrl, recheckLinks, relatedToolProblems, renderRelease, runContentChecks, storeContent, type RenderedRelease } from "./guides";
-import { ownerEmails, sendEmail, templates } from "./notify";
+import { ownerEmails, sendEmail, staffEmails, templates } from "./notify";
 import { COMMUNITY_NAMESPACE, detectQueued, failImport, heldManifestFor, parseRepoRef } from "./imports";
 import { markSubmittedTool } from "./submissions";
 import { checkUpstream } from "./upstream";
@@ -338,16 +338,16 @@ async function record(env: Env, job: Job, sha: string, ns: Namespace, m: Manifes
 }
 
 /**
- * Marks a job that kept failing on transient errors, so it shows up in the stuck-job alert. That includes
- * a valid release whose scan never got dispatched: its version is closed so the author can push the tag
- * again, and the commit status says so instead of staying pending.
+ * Marks a job that kept failing on transient errors as `error` and tells the admins at once (the stuck-job alert only
+ * sees jobs still in progress). That includes a valid release whose scan never got dispatched: its version is closed
+ * so the author can push the tag again, and the commit status says so instead of staying pending.
  */
 export async function failJob(env: Env, jobId: string, error: string) {
   const db = env.DB;
   const now = Date.now();
   const job = await db.prepare(
-    `SELECT j.status, j.version_id, j.bundle_key, v.scan_dispatched_at FROM publish_jobs j LEFT JOIN versions v ON v.id = j.version_id WHERE j.id = ?`,
-  ).bind(jobId).first<{ status: string; version_id: string | null; bundle_key: string | null; scan_dispatched_at: number | null }>();
+    `SELECT j.status, j.version_id, j.bundle_key, j.repo, j.tag, v.scan_dispatched_at FROM publish_jobs j LEFT JOIN versions v ON v.id = j.version_id WHERE j.id = ?`,
+  ).bind(jobId).first<{ status: string; version_id: string | null; bundle_key: string | null; repo: string | null; tag: string | null; scan_dispatched_at: number | null }>();
   if (!job) return;
   const undispatched = job.status === "scanning" && job.version_id !== null && job.scan_dispatched_at === null;
   if (!["queued", "validating"].includes(job.status) && !undispatched) return;
@@ -361,6 +361,10 @@ export async function failJob(env: Env, jobId: string, error: string) {
   await db.batch(stmts);
   const v = job.version_id ? await loadVersion(env, "v.id = ?", job.version_id) : null;
   if (v) await commitStatus(env, v, "error", "The registry could not start the checks; push the tag again").catch(() => {});
+  await sendEmail(env, {
+    to: await staffEmails(env, "admins"), kind: "alert", key: `failed-job:${jobId}`,
+    ...templates.failedJob(env, { id: jobId, repo: job.repo, tag: job.tag, error: error.slice(0, 1000) }),
+  }).catch((e) => console.error("the failed-job alert failed", e));
 }
 
 /** Publishes a release approved with its namespace, unless something else got to it first. */

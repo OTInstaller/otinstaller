@@ -48,7 +48,7 @@ anonymous GET.
 
 ## 1. Routes
 
-Total: **197 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
+Total: **198 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
 call; the `for` loops in `routes/trust.ts` (`yank`, `unyank`), `routes/community.ts` (a thread's subscription) and
 `routes/requests.ts` (a vote, a request's subscription) register two each. The mirror Worker's OCI routes are in
 section 6 and are not in this count. There is no route for stars, although the rate-limit comment in `index.ts`
@@ -73,7 +73,7 @@ in code; a Cloudflare rate-limiting rule on the zone covers `/mcp`, `/v1/tools*`
 | GET | `/guides` | none | 60 (inherited) | index.ts | Re-dispatches internally to `/v1/tools?kind=guide` with `app.fetch`, so the `/tools` response (and its `max-age=60`) is returned |
 | GET | `/tools/:ns/:name` | none | `cached(c, 60)` | index.ts | Follows aliases (`moved_to`); not found goes through `notFound()`: 410 `tool_removed` or 404 `tool_not_found`. `sample` is the latest version's passing `smoke` scan row's `sample` (entities or stdout from the test input) with `version` and `recorded_at`, when the scanner sent one |
 | GET | `/tools/:ns/:name/versions` | none | `cached(c, 60)` | index.ts | Published, yanked and removed versions, semver-sorted, each with `changelog`, `changelog_html` (rendered by `changelog.ts:renderNotes`) and `changelog_source`; versions under a week old also carry `first_week` (`{works, broken, ends_at}`, `first-week.ts:firstWeekCounts`), which `ot outdated` reads |
-| GET | `/tools/:ns/:name/:version/manifest` | none | `cached(c, version === "latest" ? 60 : 3600)` | index.ts | Removed versions return status and `removed_reason` with `manifest: null`; otherwise adds `installFallbacks()` (`mirror_image` / `wheel_url`). `manifest` is `compatManifest()` (`lib/manifest.ts`): without the optional fields added after ot v0.12, whose install-time validation rejects them; `manifest_full` carries them when anything was left out |
+| GET | `/tools/:ns/:name/:version/manifest` | none | `cached(c, version === "latest" ? 60 : 3600)` | index.ts | Removed versions return status and `removed_reason` with `manifest: null`; otherwise adds `installFallbacks()` (`mirror_image` / `wheel_url`). A deprecated package adds `deprecated`, `deprecated_message` and `deprecated_replacement`, which `ot install` warns with. `manifest` is `compatManifest()` (`lib/manifest.ts`): without the optional fields added after ot v0.12, whose install-time validation rejects them; `manifest_full` carries them when anything was left out |
 | GET | `/tools/:ns/:name/:version/scans` | none | `cached(c, 300)` | index.ts | PII scan summaries reduced to `{hits: <count>}` |
 | GET | `/tools/:ns/:name/:version` | none | `cached(c, 3600)` | index.ts | Also 3600 for `latest` (unlike `/manifest`, which uses 60 for `latest`); carries the same release-notes fields |
 | GET | `/namespaces` | none | `cached(c, 600)` | routes/profiles.ts | Publishers with a visible package (at most 500), most installed first, for the sitemap and llms.txt |
@@ -110,7 +110,7 @@ in code; a Cloudflare rate-limiting rule on the zone covers `/mcp`, `/v1/tools*`
 | GET | `/auth/:provider/callback` | state cookie | - | routes/auth.ts | Exchanges the code, signs in or links (when already signed in with the session cookie; an `ot_` token on the callback never links: `linkingUserId`), sets `ot_session` (30 days, httpOnly, Secure, Lax), 302 |
 | POST | `/auth/logout` | session cookie (optional) | - | routes/auth.ts | Deletes the session row and cookie; 204 |
 | POST | `/auth/device/start` | none | - | routes/auth.ts | `{provider}` (default github); osintverse uses the registry's own device flow |
-| POST | `/auth/device/token` | none (device code) | - | routes/auth.ts | `{provider, device_code, token_name, scopes?, expires_in_days?}`; on success mints a scoped `ot_` API token (default `read,publish,manage,feedback`, no expiry) and answers with its `scopes` and `expires_at`. For `osintverse` it goes to `pollOsintverseDevice` (`routes/device.ts`), which ignores `scopes` and `expires_in_days` |
+| POST | `/auth/device/token` | none (device code) | - | routes/auth.ts | `{provider, device_code, token_name, scopes?, expires_in_days?}`; on success mints a scoped `ot_` API token (default `read,publish,manage,feedback`, no expiry) and answers with its `scopes` and `expires_at`. For `osintverse` it goes to `pollOsintverseDevice` (`routes/device.ts`) with the same `scopes` and expiry, read before the device login is used up |
 | GET | `/auth/osintverse/device` | none | - | routes/device.ts | HTML code-entry form |
 | POST | `/auth/osintverse/device` | none (user code) | - | routes/device.ts | Form `code`; valid pending code redirects to OSINTverse sign-in (400 HTML page otherwise) |
 | POST | `/auth/osintverse/device/confirm` | one-time confirm token (form) | - | routes/device.ts | Form `id`, `confirm`, `decision`; approve or deny; 410 HTML page if expired |
@@ -133,7 +133,7 @@ in code; a Cloudflare rate-limiting rule on the zone covers `/mcp`, `/v1/tools*`
 
 | Method | Path | Auth | Caching | Defined in | Notes |
 | --- | --- | --- | --- | --- | --- |
-| POST | `/webhooks/github` | HMAC (`GITHUB_WEBHOOK_SECRET`) | - | routes/webhooks.ts | 5 MB max (413). `ping`, `installation`, `installation_repositories`, `create` (tag → `{jobId}` queued, 202), `push`, `release`, `repository` |
+| POST | `/webhooks/github` | HMAC (`GITHUB_WEBHOOK_SECRET`) | - | routes/webhooks.ts | 5 MB max (413). `ping`, `installation`, `installation_repositories`, `create` (tag → `{jobId}` queued, 202; a redelivery of a delivery whose job ended `error` queues it again, `queued again`), `push`, `release`, `repository` |
 | POST | `/webhooks/gitlab` | GitLab token (per source) | - | routes/webhooks.ts | 5 MB max. `tag_push` (202 when queued), `release`, `push`; a bad token returns 401 `bad_signature` built by hand (no `docs`/`hint`) |
 
 ### 1.5a Publisher profiles (owner)
@@ -452,7 +452,7 @@ over the author indexes from 0019.
 
 | Method | Path | Auth | Caching | Defined in | Notes |
 | --- | --- | --- | --- | --- | --- |
-| GET | `/admin/review-queue` | reviewer | - | routes/review.ts | Pending namespaces with their waiting versions, plus `content_review` (held releases of active namespaces) |
+| GET | `/admin/review-queue` | reviewer | - | routes/review.ts | Pending namespaces with their waiting versions, plus `content_review` (held releases of active namespaces) and `held` (suspended and rejected namespaces, for reinstating) |
 | POST | `/admin/namespaces/:ns/approve` | reviewer | - | routes/review.ts | `{notes?}`; activates and queues `{publishVersionId}` per waiting version (batches of 100) |
 | POST | `/admin/namespaces/:ns/request-changes` | reviewer | - | routes/review.ts | `{notes}` required; closes waiting versions as `changes_requested`, emails owners |
 | POST | `/admin/namespaces/:ns/reject` | reviewer | - | routes/review.ts | `{reason}` required; failure commit statuses, email |
@@ -460,8 +460,9 @@ over the author indexes from 0019.
 | POST | `/admin/versions/:id/reject` | reviewer | - | routes/review.ts | `{reason}` required |
 | POST | `/admin/namespaces/:ns/verify` | admin | - | routes/review.ts | Sets `verified = 1` |
 | POST | `/admin/namespaces/:ns/suspend` | admin | - | routes/review.ts | `{reason}` required |
+| POST | `/admin/namespaces/:ns/reinstate` | admin | - | routes/review.ts | `{notes?}`: suspended → `active`, rejected → `pending_review` (guarded); anything else 409 `not_held`; audited `namespace.reinstate` |
 | GET | `/admin/reports` | reviewer | - | routes/trust.ts | `?status=open|actioned|dismissed|all` (default open); malware first; ≤200 |
-| POST | `/admin/reports/:id/resolve` | reviewer | - | routes/trust.ts | `{status: actioned|dismissed, action, note}` |
+| POST | `/admin/reports/:id/resolve` | reviewer | - | routes/trust.ts | `{status: actioned|dismissed, action, note}`; only an open report (guarded update), else 409 `already_resolved` |
 | POST | `/admin/tools/:ns/:name/:version/remove` | reviewer | - | routes/trust.ts | `{category, reason, suspend_namespace?}`; remove one version |
 | POST | `/admin/tools/:ns/:name/remove` | reviewer | - | routes/trust.ts | Remove the whole package |
 | POST | `/admin/users/:login/ban` | admin | - | routes/trust.ts | `{reason}`; deletes sessions, revokes tokens; refuses admins (409 `cannot_ban_admin`) |
@@ -545,10 +546,10 @@ handler that returns ends the chain):
   `edgeCached(req, env, ctx, () => app.fetch(req, env, ctx))`. Every successful GET with a JSON or text body gets a
   weak `ETag` (a hash of the body), and a matching `If-None-Match` gets a 304, cached or signed in. `edgeCached` (`edge-cache.ts`) bypasses the
   cache when `env.EDGE_CACHE === "off"`, the method isn't `GET`, or the request has an `authorization` or `cookie`
-  header. The key is the URL with sorted query params plus `__cors=site|any` (site when `Origin === SITE_URL`). It
+  header. The key is the URL with sorted query params plus `__cors=site:<origin>|any` (site when `Origin` is SITE_URL or its www. twin) and `__epoch=<cache epoch>`. It
   stores only `200` responses whose `Cache-Control` contains `public` and a non-zero `max-age`, and no `set-cookie`,
   via `caches.default.put` in `waitUntil`; the original header is saved in `x-ot-cache-control`. On a hit it restores
-  `cache-control` from that header, removes it, and adds `x-edge-cache: hit`. There is no purge. The `/guides` alias
+  `cache-control` from that header, removes it, and adds `x-edge-cache: hit`. There is no purge; instead removals and yanks move the cache epoch on (`settings.cache_epoch`, `bumpCacheEpoch`), which each isolate rereads at most every 30 s (`cacheEpoch`), so nothing cached before them is served again. The `/guides` alias
   calls `app.fetch` directly, so its inner `/tools` request is not separately edge cached (the outer `/guides` GET is).
 - `queue`: `handleBatch` (section 4).
 - `scheduled`: section 5.

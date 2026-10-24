@@ -144,3 +144,43 @@ describe("test email", () => {
     expect(await bad.json()).toMatchObject({ status: "failed", error: expect.stringMatching(/^401 .*invalid/) });
   });
 });
+describe("email delivery", () => {
+  const row = (key: string) => DB().prepare(`SELECT status, error, attempts, body IS NOT NULL AS has_body, sent_at IS NOT NULL AS sent FROM notifications WHERE idempotency_key = ?`).bind(key).first<any>();
+
+  it("records an email as sent only once Resend takes it, and tries a failed one again", async () => {
+    const { sendEmail, retryEmails } = await import("../src/notify");
+    const e = await testEnv();
+    const answers: (Response | "throw")[] = ["throw", new Response("down", { status: 503 }), new Response('{"id":"x"}')];
+    const keys: string[] = [];
+    fakeHosts({
+      "POST https://api.resend.com/emails": (req: Request) => {
+        keys.push(req.headers.get("idempotency-key") ?? "");
+        const a = answers.shift()!;
+        if (a === "throw") throw new Error("connection reset");
+        return a;
+      },
+    });
+    const key = `retry-test:${ulid()}`;
+    expect(await sendEmail(e, { to: ["a@example.org"], subject: "Hello", text: "Body", kind: "test", key })).toBe("failed");
+    expect(await row(key)).toMatchObject({ status: "failed", error: expect.stringContaining("connection reset"), attempts: 1, has_body: 1 });
+    // Not before a minute has passed, then once per run.
+    const later = Date.now() + 2 * 60_000;
+    expect(await retryEmails(e, later)).toBe(0);
+    expect(await row(key)).toMatchObject({ status: "failed", error: expect.stringMatching(/^503/), attempts: 2 });
+    expect(await retryEmails(e, later)).toBe(1);
+    expect(await row(key)).toEqual({ status: "sent", error: null, attempts: 3, has_body: 0, sent: 1 });
+    expect(keys).toEqual([key, key, key]);
+  });
+
+  it("doesn't retry an email Resend refuses for good, and drops its text", async () => {
+    const { sendEmail, retryEmails } = await import("../src/notify");
+    const e = await testEnv();
+    let tries = 0;
+    fakeHosts({ "POST https://api.resend.com/emails": () => (tries++, new Response("invalid to", { status: 422 })) });
+    const key = `refused-test:${ulid()}`;
+    expect(await sendEmail(e, { to: ["not-an-address"], subject: "Hello", text: "Body", kind: "test", key })).toBe("failed");
+    await retryEmails(e, Date.now() + 2 * 60_000);
+    expect(tries).toBe(1);
+    expect(await row(key)).toMatchObject({ status: "failed", attempts: 5, has_body: 0 });
+  });
+});

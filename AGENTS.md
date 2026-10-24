@@ -438,7 +438,9 @@ on stderr (`spec/schema/error-v1.json`, shared with the API); its `code` is the 
   in `.meta.json` or in logs. Containers get only `HOME` and the declared secrets; `--native` pipx tools inherit ot's
   whole environment.
 - Sandboxed pipx tools are built into `ot-local/<ns>-<name>:<version>` on `python:3.12-slim` with `WORKDIR /tmp` (the only
-  writable folder); `--native` uses ot's own `PIPX_HOME`/`PIPX_BIN_DIR`.
+  writable folder); `--native` uses ot's own `PIPX_HOME`/`PIPX_BIN_DIR`. The scanner's smoke test and health check run
+  pipx tools in the same image (`PYTHON_DOCKERFILE` in `ops/scanner/scan.py`, which `test_scan.py` keeps equal to
+  `pythonDockerfile`), so a change to one goes into the other.
 - Removed packages (`tool_removed`) are refused with exit 4; `cache/removed.json` drives warnings.
 
 ### Environment variables
@@ -557,7 +559,9 @@ registration order in `index.ts` matters (guides before `/tools/:ns/:name/:versi
 Added after crawlers used up D1's daily read allowance and every read answered 500. Anonymous `GET`s (no `authorization`
 or `cookie` header) go through `caches.default`, keyed by URL with sorted query params plus whether the origin is the
 site (credentialed CORS) or not. Only 200s with `public` and a non-zero `max-age` and no `set-cookie` are stored, for as
-long as their own `Cache-Control` says; there is no purge. On a hit the original `Cache-Control` is restored (from
+long as their own `Cache-Control` says; there is no purge by URL, but every key carries the cache epoch
+(`settings.cache_epoch`, reread every 30 s per isolate), which removals and yanks move on (`bumpCacheEpoch`), so
+nothing cached before a takedown is served again. On a hit the original `Cache-Control` is restored (from
 `x-ot-cache-control`) and `x-edge-cache: hit` is set. Consequences:
 
 - A public endpoint's `cached(c, seconds)` value is how stale production can be after a change. Per-user or
@@ -605,7 +609,7 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
   `POST /internal/drills/:id`, `/internal/health[/targets]`. Scans, backup runs and drills each use their own
   single-use token (scan 1 h, run 3 h or 12 h weekly, drill 6 h); the health endpoints use the static shared
   `HEALTH_TOKEN`.
-- The full route table (197 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
+- The full route table (198 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
   `spec/openapi/v1.json` describes the public and owner routes, each with its token scope as `x-scope`; a test in
   `api.test.ts` fails when a route and the document disagree, so add new routes to both.
 - 429s carry `Retry-After`, `RateLimit-Policy` and `retry_after_s` (`rateLimited` in `lib/errors.ts`).
@@ -700,7 +704,9 @@ migrations add publish intake (0002), scans/review and `notifications` (0003), s
 publishing (`trusted_publishers`, the CI token columns `api_tokens.namespace_id`/`package`/`trusted_publisher_id`/
 `oidc_json`/`jti`, and `publish_jobs.trusted_publisher_id`/`ci_json`, 0025), request discussions
 (`request_comments`, `request_subscriptions`, flags on requests, 0026) and change proposals (`change_proposals`,
-0027), and the build watcher (`dependency_watch`, `base_images`, `base_watch`, `bump_prs.kind`, 0031). That is 63 tables plus `tools_fts`; every
+0027), the build watcher (`dependency_watch`, `base_images`, `base_watch`, `bump_prs.kind`, 0031), email retries
+(`notifications.body`/`attempts`/`sent_at`, 0033), search following a namespace rename (a trigger, 0034) and the edge
+cache's epoch (`settings`, 0035). That is 64 tables plus `tools_fts`; every
 table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
 
@@ -758,7 +764,7 @@ cron deletes it two days after it expires.
   `private, no-store` (only a few do today; the rest are safe only because requests with a cookie or `authorization`
   header bypass the edge cache).
 - camelCase in TS, snake_case in SQL and JSON responses, kebab-case file names. Each file opens with a `//` comment saying
-  what it owns and where related logic lives (`env.ts` and `index.ts` don't yet); exported functions get `/** */` docs; sections use
+  what it owns and where related logic lives; exported functions get `/** */` docs; sections use
   `// ---------- name ----------`. Double quotes, semicolons, two-space indent, long lines are normal here.
 
 ### API tests (`api/test/`)
@@ -1098,13 +1104,13 @@ table, publish order (namespace → tools → guides), what was not converted an
   an exit code, prints `{"entities": [...]}`), `test_<snake_name>.py` (unittest, no network), a `python:3.12-slim`
   Dockerfile running as uid 10001, `otinstaller.yaml` with a zero-digest placeholder the release workflow fills in,
   `README.md`, MIT `LICENSE`, and `.github/workflows/otinstaller-release.yml` (copied from
-  `spec/templates/github-docker.yml`; copies older than its OIDC publish step lack it). Nine (October 2026) are built
-  on a data provider's official PyPI client (VirusTotal, urlscan.io, Censys, OTX, IPinfo, Hunter, HIBP, Companies
-  House, SEC EDGAR), pinned in `requirements.txt` so the build watcher follows it; they exit 3 when their key is
-  missing, and a script named like its client library gets a `_lookup` suffix so it doesn't import itself. Six more
-  (October 2026) call a provider's HTTP API with `urllib` alone, for providers with no usable PyPI client (Shodan
-  InternetDB, HackerTarget, AbuseIPDB, URLhaus, Pulsedive, OpenSanctions; `seed/README.md`, "Data providers without
-  a PyPI client"); they send keys in headers where the API allows it and exit 3 the same way.
+  `spec/templates/github-docker.yml`; copies older than its OIDC publish step lack it). Nine (published 24 Oct 2026)
+  are built on a data provider's official PyPI client (VirusTotal, urlscan.io, Censys, OTX, IPinfo, Hunter, HIBP,
+  Companies House, SEC EDGAR), pinned in `requirements.txt` so the build watcher follows it; they exit 3 when their
+  key is missing, and a script named like its client library gets a `_lookup` suffix so it doesn't import itself.
+  Six more (25 Oct 2026, not yet published) call a provider's HTTP API with `urllib` alone, for providers with no
+  usable PyPI client (Shodan InternetDB, HackerTarget, AbuseIPDB, URLhaus, Pulsedive, OpenSanctions; `seed/README.md`,
+  "Data providers without a PyPI client"); they send keys in headers where the API allows it and exit 3 the same way.
 - `community/<tool>/` (119): wrappers of third-party tools. Docker wrappers pin the upstream version in a Dockerfile and
   build amd64+arm64; pipx wrappers are just a manifest pinning the wheel by `wheel_sha256` plus a README crediting
   upstream. The upstream license must be in the API's `REDISTRIBUTABLE` list (`api/src/imports.ts`), which includes the
@@ -1112,7 +1118,7 @@ table, publish order (namespace → tools → guides), what was not converted an
   `otlite/` catalog by `scripts/pm-catalog-to-wrappers.py` (`--dry-run`, `--offline`; it never overwrites a folder);
   git-pinned ones use versions like `0.0.0-git.<commit>`. 65 more (October 2026) cover every open-source OSINT tool
   over 100 stars that could be wrapped; `seed/candidates.md` lists every candidate with why it was wrapped or dropped.
-  All 65 were published on 22 Oct 2026. 16 more (24 Oct 2026, not yet published) wrap PyPI clients of data providers
+  All 65 were published on 22 Oct 2026. 16 more (published 24 Oct 2026) wrap PyPI clients of data providers
   (ONYPHE, PolySwarm, Joe Sandbox, FOFA, CIRCL's services, the Internet Archive, Common Crawl, GLEIF, MalwareBazaar,
   ipdata, Google Safe Browsing and others; `seed/README.md`, "PyPI clients of data providers"). A CLI that reads its
   key only from a config file gets a Docker shim that writes it from the key's environment variable, as
@@ -1307,7 +1313,7 @@ needs the owner's go-ahead.
 | Scan rejected | `scans` rows and the verdict codes; `GET /v1/tools/:ns/:name/:version/scans` | [Failed scans](docs/dev/troubleshooting.md#failed-scans-and-what-the-publisher-sees) |
 | Backup `expired`, `failed` or `too_large` | `backup_runs` / `backups` rows; `R2_*` secrets; `MIRROR_PUSH_TOKEN` on both sides | [Backup runs](docs/dev/troubleshooting.md#backup-runs-that-expire-or-fail-too_large) |
 | Drill failed email | the `restore_drills` row | [Restore drill failures](docs/dev/troubleshooting.md#restore-drill-failures) |
-| Change not visible on the public API | `x-edge-cache: hit` and the endpoint's `max-age`; there is no purge | [Edge-cache staleness](docs/dev/troubleshooting.md#edge-cache-staleness) |
+| Change not visible on the public API | `x-edge-cache: hit` and the endpoint's `max-age`; takedowns and yanks move the cache epoch, other changes wait it out | [Edge-cache staleness](docs/dev/troubleshooting.md#edge-cache-staleness) |
 | Every read answers 500 | D1 daily read allowance (the 21 Oct 2026 crawler outage); filter links must stay `nofollow` | [D1 read limits](docs/dev/troubleshooting.md#d1-read-limit-exhaustion) |
 | Works in `astro dev`, broken in production | CSP violations in the browser console of the preview build | [CSP failures](docs/dev/troubleshooting.md#csp-failures-on-the-site) |
 | CORS errors in the browser | Origin vs the API's `SITE_URL` (exact match) | [CORS from localhost](docs/dev/troubleshooting.md#cors-errors-from-localhost) |
@@ -1325,34 +1331,21 @@ change. Keep this list current when you fix one or find another.
 
 **Security and correctness**
 
-- Takedowns lag in the edge cache: the wheel copy route sends `max-age=86400`, exact-version manifests 3600 s and
-  `/removed` 600 s (plus the CLI's own cache), though `scheduleDeletion` says serving stops at once.
-- The mirror hides a single taken-down image only partly: its blobs and `tags/list` are still served (the blob check
-  looks only at a repository-wide marker). The same goes for a publisher's unreleased (`pending/`) image: its manifest
-  is hidden, but its blobs are readable by anyone who knows their digests.
-- The write rate limit skips everything registered by `authRoutes` (`POST /me/tokens`, logout, device login), though
-  its comment says tokens are covered; CORS credentials work only for the exact `SITE_URL`, not `www.`.
-- Jobs that fail after the last retry become `error` and never reach the stuck-job alert, despite `failJob`'s comment.
-- `expireStaleScans` leaves the commit status pending and sends no email.
-- `sendEmail` records `sent` before calling Resend, so a thrown fetch loses the email silently; failed emails are never
-  retried.
-- Review: nothing moves a namespace out of `rejected` or `suspended`; a report can be resolved twice.
+- Takedowns reach the edge cache within 30 seconds (the cache epoch), but `ot`'s own `cache/removed.json` is
+  refreshed daily, so an installed copy's removal warning can lag a day (installing it is refused at once).
 - A pinned signer of a package published directly can't be changed by its owner (a reviewer has to clear
   `signer_identity` on its versions by hand), and only keyless signatures count.
 - Trusted publishing accepts only github.com Actions and gitlab.com CI (not GitHub Enterprise or self-managed GitLab
   issuers). A package published only from CI has no `sources` row, so it gets no git backups or sync. A GitLab job has
   one ID token, so if the answer to its exchange is lost, `ot publish --oidc` can't retry in that job
   (`oidc_token_reused`).
-- `tools_fts` triggers fire only on `tools`, so renaming a namespace leaves the old name in search.
-- Redelivering a GitHub webhook is a no-op once the first delivery created a job.
-- `ot install` doesn't warn about deprecated packages (the manifest response doesn't carry deprecation).
-- The install scripts ask `api.github.com` for the latest release without a token (60 requests an hour per IP).
-  `ot self-update` and `ot outdated` ask `get.otinstaller.com/ot/latest` first and use the API only as a fallback.
-- The same error code has two statuses in places (`tool_removed` 410/409, `manifest_in_repo` 409/400,
-  `unknown_provider` 404/400); `manifest_name_mismatch` exists only in the API.
-- `ot login --osintverse` ignores `--scope` and token expiry: the OSINTverse device poll (`pollOsintverseDevice` in
-  `routes/device.ts`) mints with the default four scopes and never reads `scopes` or `expires_in_days`, unlike the
-  GitHub and GitLab path. It also writes `token.create` to the audit log twice (once in `mintApiToken`, once itself).
+- Nothing renames a namespace when its GitHub organisation or GitLab group is renamed (search would follow, since
+  0034, if one were renamed by hand).
+- `ot install` warns about deprecated packages only from the `ot` release after 0.16.0, and the install scripts' use
+  of `get.otinstaller.com/ot/latest` reaches people with that release too (the scripts are served from the latest
+  release).
+- `manifest_name_mismatch` exists only in the API: it guards editing a registry-held manifest, which the CLI never
+  does.
 - Namespaces that already exist with a reserved name (`api/src/lib/reserved.ts` only affects new ones) keep it; none
   did in production as of 23 Oct 2026.
 - Stars are still never written (no route records one), though ranking and `stars` columns read them.
@@ -1370,20 +1363,10 @@ change. Keep this list current when you fix one or find another.
 - The community bot creates wrapper repositories on GitHub only; a submission whose first release fails its scan
   stays `failed` until the submitter changes it.
 
-**Docs debt**
-
-- `api/.dev.vars.example` lacks `OPS_DISPATCH_TOKEN`, `OPS_INSTALLATION_ID`, `RESEND_API_KEY`, `R2_*` and more; the
-  secrets comment in `wrangler.jsonc` lacks `HEALTH_TOKEN`, `SENTRY_DSN` and `ISSUES_TOKEN` ([config.md](docs/dev/config.md)).
-- Stale comments: "within 30 days" for takedown deletion in `backups.ts` and `trust.ts` (the code uses 14);
-  `release-cli.yml` says `otinstaller/ot`.
-- The root `README.md` still describes `otlite/` as Linux-only; it runs on macOS too since 1.2.
-
 **Hygiene**
 
 - CI runs no Go, API, site or scanner tests; there is no `engines` field for Node; `cli/internal/api`, `keys`,
   `state` and `selfupdate` have no test files of their own.
-- `ops/scanner/__pycache__/scan.cpython-313.pyc` is committed and the root `.gitignore` has no `__pycache__/` rule.
-- `api/src/env.ts` and `index.ts` miss their opening purpose comment.
 - Schema: `versions.status` allows `received`/`validating`, which nothing writes; `tools.latest_version_id` and
   `audit_log.actor_id` have no foreign key.
 

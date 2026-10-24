@@ -210,8 +210,8 @@ describe("Sign in with OSINTverse (web)", () => {
 
 describe("ot login --osintverse (device flow)", () => {
   const start = (e: Env) => call("/auth/device/start", { method: "POST", headers: { "content-type": "application/json", "user-agent": "ot/1.0 (linux)" }, body: JSON.stringify({ provider: "osintverse" }) }, e);
-  const poll = (e: Env, device_code: string) =>
-    call("/auth/device/token", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ provider: "osintverse", device_code, token_name: "ot CLI on test" }) }, e);
+  const poll = (e: Env, device_code: string, extra: Record<string, unknown> = {}) =>
+    call("/auth/device/token", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ provider: "osintverse", device_code, token_name: "ot CLI on test", ...extra }) }, e);
   const enterCode = (e: Env, code: string) =>
     call("/auth/osintverse/device", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ code }).toString() }, e);
   const confirm = (e: Env, page: string, decision: "approve" | "deny", cookie = "") => {
@@ -245,9 +245,15 @@ describe("ot login --osintverse (device flow)", () => {
     expect(((await (await poll(e, d.device_code)).json()) as any).status).toBe("pending");
 
     expect(await (await confirm(e, page, "approve")).text()).toContain("ot is signed in");
-    const ok = (await (await poll(e, d.device_code)).json()) as any;
-    expect(ok).toMatchObject({ status: "ok", login: "hedy", provider: "osintverse" });
+    // A bad scope is refused before the login is used up; ot login --scope and token expiry are honoured.
+    expect((await poll(e, d.device_code, { scopes: ["root"] })).status).toBe(400);
+    const ok = (await (await poll(e, d.device_code, { scopes: ["read", "feedback"], expires_in_days: 30 })).json()) as any;
+    expect(ok).toMatchObject({ status: "ok", login: "hedy", provider: "osintverse", scopes: ["read", "feedback"], expires_at: expect.any(Number) });
     expect(ok.token).toMatch(/^ot_/);
+    const minted = await env.DB.prepare(`SELECT id, scopes, expires_at FROM api_tokens WHERE token_hash = ?`).bind(await sha256Hex(ok.token)).first<any>();
+    expect(minted).toMatchObject({ scopes: "read,feedback", expires_at: ok.expires_at });
+    expect(await env.DB.prepare(`SELECT COUNT(*) AS n FROM audit_log WHERE action = 'token.create' AND target_id = ?`).bind(minted.id).first()).toEqual({ n: 1 });
+    expect(await env.DB.prepare(`SELECT COUNT(*) AS n FROM audit_log WHERE action = 'token.create' AND target_kind = 'device_login'`).first()).toEqual({ n: 0 });
     const me = (await (await call("/me", { headers: { authorization: `Bearer ${ok.token}` } }, e)).json()) as any;
     expect(me.accounts).toEqual([{ provider: "osintverse", login: "hedy" }]);
     // The token is handed out once.

@@ -176,6 +176,14 @@ describe("GitHub App webhooks", () => {
     const again = await webhook("create", tagEvent(102, "mallory/tool", 30, "v1.0.0"), "delivery-1");
     expect(await again.json()).toMatchObject({ status: "duplicate delivery" });
     expect(sent).toHaveLength(1);
+
+    // The queue gave up on it: redelivering the same delivery runs the job again.
+    const job = (await DB().prepare(`SELECT id FROM publish_jobs WHERE delivery_id = 'delivery-1'`).first<{ id: string }>())!.id;
+    await DB().prepare(`UPDATE publish_jobs SET status = 'error', error_code = 'internal_error', error_detail = 'GitHub answered 502' WHERE id = ?`).bind(job).run();
+    const redelivered = await webhook("create", tagEvent(102, "mallory/tool", 30, "v1.0.0"), "delivery-1");
+    expect(await redelivered.json()).toEqual({ status: "queued again", jobId: job });
+    expect(sent).toHaveLength(2);
+    expect(await DB().prepare(`SELECT status, error_code FROM publish_jobs WHERE id = ?`).bind(job).first()).toEqual({ status: "queued", error_code: null });
   });
 
   it("ignores non-release tags, unconnected repos and branches", async () => {

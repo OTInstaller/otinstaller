@@ -145,7 +145,11 @@ export function reviewRoutes(app: App) {
         scans: scans.results.map((s) => ({ kind: s.kind, result: s.result, summary: JSON.parse(s.summary_json ?? "null") })),
       });
     }
-    return c.json({ queue, content_review });
+    // Publishers taken out (suspended) or turned down (rejected), which an admin can reinstate.
+    const heldNamespaces = (await db.prepare(
+      `SELECT name AS namespace, status, review_notes, reviewed_at FROM namespaces WHERE status IN ('suspended', 'rejected') ORDER BY COALESCE(reviewed_at, created_at) DESC LIMIT 100`,
+    ).all<{ namespace: string; status: string; review_notes: string | null; reviewed_at: number | null }>()).results;
+    return c.json({ queue, content_review, held: heldNamespaces });
   });
 
   app.post("/admin/namespaces/:ns/approve", async (c) => {
@@ -270,5 +274,22 @@ export function reviewRoutes(app: App) {
       audit(c.env.DB, admin.id, "user", "namespace.suspend", "namespace", ns.id, { reason }),
     ]);
     return c.json({ status: "suspended" });
+  });
+
+  // Undoes a suspension (the namespace is active again) or a rejection (it goes back to review, so its next release is
+  // seen by a reviewer like a new publisher's).
+  app.post("/admin/namespaces/:ns/reinstate", async (c) => {
+    const admin = requireAdmin(c);
+    const ns = await namespaceByName(c.env, c.req.param("ns"));
+    if (ns.status !== "suspended" && ns.status !== "rejected") apiError(409, "not_held", `${ns.name} is ${ns.status}, not suspended or rejected`);
+    const note = await notes(c, "notes", false);
+    const next = ns.status === "suspended" ? "active" : "pending_review";
+    const res = await c.env.DB.batch([
+      c.env.DB.prepare(`UPDATE namespaces SET status = ?, reviewed_by = ?, reviewed_at = ?, review_notes = ? WHERE id = ? AND status = ?`)
+        .bind(next, admin.id, Date.now(), note || null, ns.id, ns.status),
+      audit(c.env.DB, admin.id, "user", "namespace.reinstate", "namespace", ns.id, { from: ns.status, to: next, notes: note }),
+    ]);
+    if (!res[0]!.meta.changes) apiError(409, "not_held", `${ns.name} changed meanwhile; reload`);
+    return c.json({ status: next });
   });
 }

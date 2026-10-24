@@ -171,7 +171,7 @@ export function sourceRoutes(app: App) {
     const u = requireUser(c);
     const role = await c.env.DB.prepare(`SELECT role FROM namespace_members WHERE namespace_id = ? AND user_id = ?`).bind(t.namespace_id, u.id).first<{ role: string }>();
     if (role?.role !== "owner" && !u.is_admin) apiError(403, "forbidden", "only the package's owners can switch its source");
-    if (t.status === "removed") apiError(409, "tool_removed", `${ns}/${name} was removed`);
+    if (t.status === "removed") apiError(410, "tool_removed", `${ns}/${name} was removed`);
     const { repo } = await c.req.json<{ repo?: string }>().catch(() => ({} as { repo?: string }));
     if (!repo?.trim()) apiError(400, "invalid_body", "send {repo: 'https://gitlab.com/group/name'}");
     return c.json({ ref: `${ns}/${name}`, source: await switchSource(c.env, u.id, t.id, repo) });

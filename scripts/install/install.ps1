@@ -13,7 +13,15 @@ $repo = if ($env:OT_RELEASE_REPO) { $env:OT_RELEASE_REPO } else { 'otinstaller/o
 $publicKey = '__OT_RELEASE_PUBLIC_KEY__'
 
 $arch = switch ($env:PROCESSOR_ARCHITECTURE) { 'AMD64' { 'amd64' } 'ARM64' { 'arm64' } default { throw "unsupported CPU $($env:PROCESSOR_ARCHITECTURE)" } }
-$tag = if ($env:OT_VERSION) { $env:OT_VERSION } else { (Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest").tag_name }
+# The latest release: get.otinstaller.com answers for the default repository without GitHub's API limit (60 requests
+# an hour per address, shared by everyone behind the same one); GitHub's API is the fallback.
+function Get-LatestTag {
+  if ($repo -ieq 'otinstaller/ot') {
+    try { $v = (Invoke-RestMethod 'https://get.otinstaller.com/ot/latest').version; if ($v) { return $v } } catch {}
+  }
+  (Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest").tag_name
+}
+$tag = if ($env:OT_VERSION) { $env:OT_VERSION } else { Get-LatestTag }
 $version = $tag.TrimStart('v')
 $archive = "ot_${version}_windows_$arch.zip"
 # OT_DOWNLOAD_BASE serves a release from elsewhere (the CI install test uses a local server); the checksum and

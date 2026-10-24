@@ -215,3 +215,16 @@ func TestPlaybookYesInstallsMissing(t *testing.T) {
 		t.Fatalf("exit %d: %s", code, errb)
 	}
 }
+
+func TestTrustWarningsNameDeprecation(t *testing.T) {
+	r := &api.ManifestResponse{Ref: "dheeraj/old", SignerIdentity: "x", Verified: true, Deprecated: true, DeprecatedMessage: "Use the new one", DeprecatedReplacement: "dheeraj/new"}
+	w := trustWarnings(r)
+	want := "dheeraj/old is deprecated: Use the new one; `ot install dheeraj/new` installs its replacement"
+	if len(w) != 1 || w[0] != want {
+		t.Errorf("warnings: %q", w)
+	}
+	r.DeprecatedMessage, r.DeprecatedReplacement = "", ""
+	if w := trustWarnings(r); len(w) != 1 || w[0] != "dheeraj/old is deprecated" {
+		t.Errorf("warnings without a message: %q", w)
+	}
+}
