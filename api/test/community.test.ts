@@ -545,3 +545,91 @@ describe("following a package's releases", () => {
     expect((await req(who, "GET", "/me/email-prefs")).body.releases).toBe("off");
   });
 });
+
+describe("following publishers and input types", () => {
+  /** A new dheeraj package taking a domain, published for the first time, then once more. */
+  async function newPackage(name: string, versions: string[]) {
+    const { publishVersion } = await import("../src/scans");
+    const { testEnv } = await import("./helpers");
+    const toolId = `tool_dheeraj_${name}`;
+    await DB().prepare(`INSERT INTO tools (id, namespace_id, kind, name, summary, created_at, updated_at) VALUES (?, 'ns_dheeraj', 'tool', ?, 'Follow test tool', 1, 1)`).bind(toolId, name).run();
+    const base = await DB().prepare(`SELECT v.manifest_json FROM tools t JOIN versions v ON v.id = t.latest_version_id WHERE t.id = 'tool_dheeraj_whois-lite'`).first<{ manifest_json: string }>();
+    for (const version of versions) {
+      const [major, minor, patch] = version.split(".").map(Number);
+      const id = ulid();
+      await DB().prepare(
+        `INSERT INTO versions (id, tool_id, version, semver_major, semver_minor, semver_patch, semver_pre, manifest_json, runtime_kind, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, '', ?, 'docker', 'awaiting_review', ?)`,
+      ).bind(id, toolId, version, major, minor, patch, JSON.stringify({ ...JSON.parse(base!.manifest_json), name, version }), Date.now()).run();
+      await publishVersion(await testEnv(), id);
+    }
+    return toolId;
+  }
+  const items = async (who: Who, toolId: string) =>
+    (await DB().prepare(`SELECT kind, scope, summary, path FROM inbox WHERE user_id = ? AND tool_id = ? ORDER BY created_at, summary`).bind(who.id, toolId).all<any>()).results;
+
+  it("follows and unfollows publishers and input types, and lists them", async () => {
+    const who = await person();
+    expect((await req(null, "PUT", "/me/follows/publisher/dheeraj")).res.status).toBe(401);
+    expect((await req(who, "GET", "/me/follows/publisher/dheeraj")).body).toEqual({ following: false, followed_at: null });
+    expect((await req(who, "PUT", "/me/follows/publisher/dheeraj")).body).toEqual({ following: true });
+    expect((await req(who, "PUT", "/me/follows/input/domain")).body).toEqual({ following: true });
+    const state = await req(who, "GET", "/me/follows/input/domain");
+    expect(state.body.following).toBe(true);
+    expect(state.res.headers.get("cache-control")).toBe("private, no-store");
+    const mine = (await req(who, "GET", "/me/follows")).body;
+    expect(mine.publishers).toEqual([expect.objectContaining({ name: "dheeraj" })]);
+    expect(mine.inputs).toEqual([{ type: "domain", followed_at: state.body.followed_at }]);
+    expect((await req(who, "DELETE", "/me/follows/publisher/dheeraj")).body).toEqual({ following: false });
+    expect((await req(who, "GET", "/me/follows")).body.publishers).toEqual([]);
+
+    expect((await req(who, "PUT", "/me/follows/input/string")).body.error.code).toBe("input_type_not_found");
+    expect((await req(who, "PUT", "/me/follows/input/planet")).body.error.code).toBe("input_type_not_found");
+    expect((await req(who, "PUT", "/me/follows/publisher/no-such-publisher")).body.error.code).toBe("namespace_not_found");
+    // A namespace still waiting for review can't be followed.
+    expect((await req(who, "PUT", "/me/follows/publisher/newbie")).body.error.code).toBe("namespace_not_found");
+    expect((await req(who, "PUT", "/me/follows/planet/earth")).res.status).toBe(404);
+  });
+
+  it("stops at 200 follows", async () => {
+    const who = await person();
+    await DB().batch(Array.from({ length: 199 }, (_, i) =>
+      DB().prepare(`INSERT INTO follows (user_id, kind, target, created_at) VALUES (?, 'publisher', ?, 1)`).bind(who.id, `filler-${i}`)));
+    expect((await req(who, "PUT", "/me/follows/publisher/dheeraj")).body).toEqual({ following: true });
+    const res = await req(who, "PUT", "/me/follows/input/email");
+    expect(res.res.status).toBe(429);
+    expect(res.body.error.code).toBe("too_many_follows");
+    // Following again what you already follow still answers.
+    expect((await req(who, "PUT", "/me/follows/publisher/dheeraj")).body).toEqual({ following: true });
+  });
+
+  it("takes the feedback scope to follow and read to look", async () => {
+    expect(requiredScope("PUT", "/v1/me/follows/publisher/dheeraj")).toBe("feedback");
+    expect(requiredScope("DELETE", "/v1/me/follows/input/domain")).toBe("feedback");
+    expect(requiredScope("GET", "/v1/me/follows/input/domain")).toBe("read");
+    const reader = await person({ scopes: "read" });
+    expect((await req(reader, "PUT", "/me/follows/input/domain")).body.error.code).toBe("insufficient_scope");
+  });
+
+  it("tells publisher followers of every release and input followers of new packages only, once each", async () => {
+    const pub = await person();
+    await req(pub, "PUT", "/me/follows/publisher/dheeraj");
+    const input = await person();
+    await req(input, "PUT", "/me/follows/input/domain");
+    const other = await person();
+    await req(other, "PUT", "/me/follows/input/email");
+    const all = await person();
+    await req(all, "PUT", "/me/follows/publisher/dheeraj");
+    await req(all, "PUT", "/me/follows/input/domain");
+
+    const toolId = await newPackage("follow-me", ["1.0.0", "1.1.0"]);
+    const ref = "dheeraj/follow-me";
+    const fresh = { kind: "release", scope: "releases", summary: `dheeraj published a new tool: ${ref}`, path: `/${ref}` };
+    const next = { kind: "release", scope: "releases", summary: `${ref} 1.1.0 is out`, path: `/${ref}/versions#v1.1.0` };
+    expect(await items(pub, toolId)).toEqual([fresh, next]);
+    expect(await items(input, toolId)).toEqual([{ ...fresh, summary: `New tool for domain: ${ref}` }]);
+    expect(await items(other, toolId)).toEqual([]);
+    // The closest follow words the item, and nobody gets two for one release.
+    expect(await items(all, toolId)).toEqual([fresh, next]);
+  });
+});
