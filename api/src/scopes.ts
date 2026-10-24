@@ -42,11 +42,11 @@ export function requiredScope(method: string, path: string): string | null {
   if (/^\/(auth|internal|webhooks)\//.test(p) || p === "/installs" || p === "/health" || p === "/unsubscribe") return null;
   if (p.startsWith("/admin")) return "staff";
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") return "read";
-  // Taking part: reports, feedback, issues, comments, confirmations, subscriptions, flags, requests, their replies and
-  // votes. Triage, including deciding and locking requests, is "manage".
+  // Taking part: reports, feedback, issues, comments, confirmations, subscriptions, following a package, flags,
+  // requests, their replies and votes. Triage, including deciding and locking requests, is "manage".
   if (p === "/feedback" || p === "/flags" || /^\/comments\/[^/]+$/.test(p)) return "feedback";
   if (p === "/requests" || /^\/requests\/\d+\/(vote|subscription|comments(\/[^/]+)?)$/.test(p)) return "feedback";
-  if (/^\/tools\/[^/]+\/[^/]+\/(reports|confirmations|run-reports|issues(\/\d+(\/(comments|subscription))?)?)$/.test(p)) return "feedback";
+  if (/^\/tools\/[^/]+\/[^/]+\/(reports|confirmations|run-reports|follow|issues(\/\d+(\/(comments|subscription))?)?)$/.test(p)) return "feedback";
   if (p === "/publish" || /^\/(imports|sources)(\/|$)/.test(p) || /^\/packages\/[^/]+\/[^/]+\/(manifest|sync|source|pulls)(\/|$)/.test(p)) return "publish";
   // A submitter changing their submission publishes; withdrawing it and reviewers' decisions are "manage".
   if (method === "PUT" && /^\/submissions\/\d+$/.test(p)) return "publish";

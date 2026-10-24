@@ -7,6 +7,7 @@ import * as github from "./hosts/github";
 import { githubRepo, gitlabRepo, type CommitState } from "./hosts/repo";
 import { audit } from "./routes/auth";
 import { ownerEmails, sendEmail, templates } from "./notify";
+import { notifyFollowers } from "./inbox";
 import { updateLinkHealth } from "./guides";
 import { announceVersion } from "./community";
 import { linkPublished } from "./requests";
@@ -374,12 +375,25 @@ export async function publishVersion(env: Env, versionId: string, opts: { backup
     db.prepare(`UPDATE tools SET latest_version_id = ?, updated_at = ? WHERE id = ?`).bind(latest.id, now, v.tool_id),
     audit(db, null, "system", "version.published", "version", versionId, { ref: refOf(v), version: v.version }),
   ];
-  if (isLatest) stmts.push(...latestMetadata(db, v.tool_id, v.kind, versionId, m));
-  await db.batch(stmts);
+  if (isLatest) {
+    stmts.push(...latestMetadata(db, v.tool_id, v.kind, versionId, m));
+    // A version is announced once, when it first becomes the latest: not a prerelease behind a stable one, an older
+    // patch, a re-publish or a retried queue message.
+    stmts.push(db.prepare(`UPDATE versions SET announced_at = ? WHERE id = ? AND announced_at IS NULL`).bind(now, versionId));
+  }
+  const results = await db.batch(stmts);
+  const announce = isLatest && !!results.at(-1)?.meta.changes;
   // An image a publisher pushed to the mirror goes public now, recorded as its own backup.
   if (m.runtime?.kind === "docker") await recordHostedImage(env, versionId, v.tool_id, m.runtime.image ?? "");
-  // People following open broken or outdated issues are asked whether the new version fixes them.
-  await announceVersion(env, v.tool_id, v.version).catch((e) => console.error("announcing the version on issues failed", e));
+  if (announce) {
+    // People following open broken or outdated issues are asked whether the new version fixes them; the package's
+    // other followers hear that it is out.
+    await announceVersion(env, v.tool_id, v.version).catch((e) => console.error("announcing the version on issues failed", e));
+    await notifyFollowers(env, v.tool_id, {
+      kind: "release", summary: `${refOf(v)} ${v.version} is out`,
+      path: v.kind === "guide" ? `/guides/${refOf(v)}` : `/${refOf(v)}/versions#v${v.version}`,
+    });
+  }
   // A reviewed community submission is out: its submitter becomes a maintainer.
   await firstReleasePublished(env, v.tool_id).catch((e) => console.error("finishing the submission failed", e));
   // Requests for this tool (its own repository, or the upstream a wrapper packages) are answered.

@@ -85,6 +85,8 @@ marked (you). In order:
       the rest works.
 - [ ] **(you)** After a week of upstream watcher reports (Admin console → Upstream), decide whether to set
       `UPSTREAM_WATCH` to `issues`, and later `prs`.
+- [ ] **(you)** Apply migration 0029 (following packages' releases) before deploying an API that has it: without it
+      `/me/email-prefs` and the inbox email cron fail. Then deploy the site for the "Follow releases" button.
 - [x] Release `ot` v0.15.0 once the API above is live (its new commands need it): `ot publish` (with `--image`,
       `--sign` and `--oidc`), `ot namespace create|trust|trusted|untrust`, `ot issues`, `ot request`, `ot changelog`,
       `ot report --works|--broken`, the failure prompt and the first-week note in `ot outdated`. Push the tag `v0.15.0`

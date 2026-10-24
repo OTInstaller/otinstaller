@@ -5,7 +5,12 @@ import Base from "../layouts/Base.astro";
 
 const q = Astro.url.searchParams;
 const scope = q.get("s");
-const what = scope === "owner_issues" ? "emails about new issues on packages you maintain" : scope === "community" ? "emails about issues you follow" : null;
+const WHAT: Record<string, string> = {
+  owner_issues: "emails about new issues on packages you maintain",
+  community: "emails about issues you follow",
+  releases: "emails about new versions of packages you follow",
+};
+const what = (scope && WHAT[scope]) || null;
 Astro.response.headers.set("Cache-Control", "private, no-store");
 ---
 <Base title="Unsubscribe" noindex>

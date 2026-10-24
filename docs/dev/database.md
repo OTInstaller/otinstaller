@@ -40,6 +40,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0024 | `0024_hosted_images.sql` | Images hosted on the mirror (`ot publish --image`): new table `mirror_pushes` (every manifest a publisher pushes: repo, digest, tag, user, token, size; indexes `mirror_pushes_repo`, `mirror_pushes_created`), for the push limits and the nightly sweep; `backups` + `hosted` (INTEGER NN default 0: the image row is the image itself, never an install fallback). The mirror Worker binds the same database from then on. |
 | 0025 | `0025_trusted_publishers.sql` | Trusted publishing (`ot publish --oidc`): new table `trusted_publishers` (indexes `trusted_publishers_repo`, `trusted_publishers_namespace`); `api_tokens` + `namespace_id` (FK namespaces, cascade), `package`, `trusted_publisher_id` (FK, set null), `oidc_json`, `jti` (unique index `api_tokens_jti`) for the restricted CI tokens; `publish_jobs` + `trusted_publisher_id` (FK, set null), `ci_json`. Apply before an API that selects these columns is deployed: `findToken` reads them on every token request, in the API and the mirror. |
 | 0026 | `0026_request_threads.sql` | New tables `request_comments` (replies on tool requests, moderated like issue comments) and `request_subscriptions` (backfilled with each request's requester); `tool_requests` + `comment_count`, `locked_at`; `content_flags` rebuilt so `target_kind` also takes `request` and `request_comment`; indexes `request_comments_request`, `request_comments_held` (partial), `request_comments_author`, and `content_flags_open` again. |
+| 0029 | `0029_package_follows.sql` | New table `package_follows` (who follows which package's releases) and index `package_follows_user`; `email_prefs` + `releases` (CHECK immediate/daily/off, default immediate); `versions` + `announced_at` (backfilled to `published_at`); `inbox` rebuilt so `scope` also takes `releases`, indexes `inbox_user` and `inbox_pending` again. Apply before an API that writes release items is deployed. |
 | 0027 | `0027_change_proposals.sql` | New table `change_proposals` (a maintainer's change to a community package beyond its pin: the pull request, the proposer's title and note, the files it writes, the version, whether it builds, the reviewer's checks, status, decision and released version); indexes `change_proposals_status`, `change_proposals_tool`, `change_proposals_proposer`. |
 
 ---
@@ -429,6 +430,20 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
 - `status` TEXT NN CHECK `('sent', 'skipped', 'failed')` (no default)
 - `error` TEXT · `created_at` INTEGER NN
 - Flow (`notify.ts:sendEmail`): inserted as `sent`, or as `skipped` when `RESEND_API_KEY` is unset; set to `failed` if Resend answers with an error.
+
+### 2.11a Inbox, email preferences and follows (0017, 0029)
+
+- `email_prefs`: PK `user_id` → `users` (cascade); `community`, `owner_issues`, `releases` (0029), each CHECK
+  `('immediate', 'daily', 'off')` default `immediate`; `updated_at`. Written by `PUT /me/email-prefs` and one-click
+  unsubscribe.
+- `inbox`: PK `id` (ULID), `user_id` → `users` (cascade), `kind` (free text: issue_opened, comment, status, moderation,
+  role, proposal, release), `scope` CHECK `('community', 'owner_issues', 'releases', 'account')` (which preference
+  decides the email; 0029 rebuilt the table for `releases`), `tool_id`, `issue_id`, `actor_id`, `summary`, `path`,
+  `created_at`, `read_at`, `emailed_at`. Indexes `inbox_user (user_id, created_at DESC)`, `inbox_pending (created_at)
+  WHERE emailed_at IS NULL`. Written by `inbox.ts:notify` and `notifyFollowers`; delivered by `deliverInbox`.
+- `package_follows` (0029): PK `(tool_id, user_id)`, both cascade, `created_at`; index `package_follows_user`.
+- `versions.announced_at` (0029): set once, by `publishVersion` when the version first becomes the latest; only then
+  are followers and open issues told.
 
 ### 2.12a Community (0016)
 

@@ -2,7 +2,7 @@
 layout: ../../layouts/Policy.astro
 title: Privacy
 description: What the OTInstaller Registry stores about you, and what it doesn't.
-updated: 2026-10-23
+updated: 2026-10-24
 ---
 
 ## Using tools
@@ -36,7 +36,8 @@ of your visible posts and answers, and your recent issues and requests; never yo
 - You can edit a post for 24 hours and withdraw it at any time; a withdrawn post's text is deleted.
 - A post a moderator redacts is overwritten for good. The database keeps a backup copy for 30 days.
 - Flags you send, and moderators' decisions, are recorded with your account and never shown publicly.
-- Your inbox lists what happened on issues you follow and packages you maintain; read items are deleted after 90
+- Your inbox lists what happened on issues you follow, packages you maintain and packages whose releases you follow
+  (which packages you follow is private); read items are deleted after 90
   days and all items after a year. Community emails go to the address your sign-in provider gave us, as often as you
   choose in [notification settings](/settings/notifications), and each has a one-click unsubscribe.
 

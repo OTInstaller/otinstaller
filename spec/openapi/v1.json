@@ -3852,6 +3852,196 @@
         ]
       }
     },
+    "/tools/{ns}/{name}/follow": {
+      "get": {
+        "operationId": "package_following",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Whether you follow a package's releases",
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "following": {
+                      "type": "boolean"
+                    },
+                    "followed_at": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "follow_package",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Follow a package's releases",
+        "description": "An inbox item, and an email per your releases preference, for each new version that becomes the package's latest. People following one of its open broken or outdated issues hear about the version there instead.",
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "following": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "feedback",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "unfollow_package",
+        "tags": [
+          "Community"
+        ],
+        "summary": "Stop following a package's releases",
+        "description": "Works for a package removed since.",
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "following": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "feedback",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/tools/{ns}/{name}/issues/{number}/status": {
       "post": {
         "operationId": "set_issue_status",
@@ -7593,6 +7783,13 @@
                         "daily",
                         "off"
                       ]
+                    },
+                    "releases": {
+                      "enum": [
+                        "immediate",
+                        "daily",
+                        "off"
+                      ]
                     }
                   }
                 }
@@ -7641,6 +7838,13 @@
                         "daily",
                         "off"
                       ]
+                    },
+                    "releases": {
+                      "enum": [
+                        "immediate",
+                        "daily",
+                        "off"
+                      ]
                     }
                   }
                 }
@@ -7675,14 +7879,100 @@
                       "daily",
                       "off"
                     ]
+                  },
+                  "releases": {
+                    "enum": [
+                      "immediate",
+                      "daily",
+                      "off"
+                    ]
                   }
                 }
               }
             }
           }
         },
-        "description": "community: threads you follow; owner_issues: new issues on your packages. Moderation and role notices are always sent.",
+        "description": "community: threads you follow; owner_issues: new issues on your packages; releases: new versions of packages you follow. Moderation and role notices are always sent.",
         "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/me/follows": {
+      "get": {
+        "operationId": "list_follows",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "The packages you follow for releases",
+        "description": "Newest first, 100 at a time; page with before=<next_before>.",
+        "parameters": [
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "next_before from the previous page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "follows": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "ref": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "latest_version": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "followed_at": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "next_before": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "read",
         "security": [
           {
             "bearer": []

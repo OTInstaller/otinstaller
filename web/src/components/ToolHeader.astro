@@ -3,6 +3,7 @@
 // and at most three badges. The evidence lives in the body of the page, not up here.
 import type { ToolDetail } from "../lib/api";
 import BumpRelease from "../islands/BumpRelease";
+import FollowReleases from "../islands/FollowReleases";
 import { isWrapper } from "../lib/proposals";
 
 interface Props {
@@ -42,6 +43,7 @@ const UPSTREAM_NOTE: Record<string, string> = {
     {t.verified && <span class="badge ok">Verified publisher</span>}
     {t.health === "broken" && <span class="badge warn">Possibly broken</span>}
     {t.status === "deprecated" && <span class="badge warn">Deprecated</span>}
+    <FollowReleases client:idle refName={ref} back={`/${ref}`} />
   </div>
   <p class="lead">{t.summary}</p>
   {t.deprecated_message && (
