@@ -179,10 +179,14 @@ ORDER BY created_at DESC LIMIT 5;
 Symptoms: a change (publish, yank, removal, review decision) is not visible to anonymous clients or the site's SSR
 pages, while signed-in views show it. Check with `curl -sI <url>`: `x-edge-cache: hit` means the answer came from
 `caches.default`. Worst-case staleness is the endpoint's `max-age` (table in flow i): 60 s for search and tool
-pages, 1 h for an exact version's manifest, 24 h for the wheel route.
+pages, 1 h for an exact version's manifest, 1 h for the wheel route. Removals and yanks don't wait: they move the
+cache epoch on (`settings.cache_epoch`), and within 30 seconds nothing cached before them is served.
 
-There is no purge in code. Workarounds:
+There is no purge by URL in code. Workarounds:
 
+- To drop everything cached at once, move the epoch on as a takedown does:
+  `UPDATE settings SET value = lower(hex(randomblob(4))), updated_at = unixepoch() * 1000 WHERE key = 'cache_epoch';`
+  (a production write: the owner's go-ahead first).
 - Wait out the `max-age`.
 - To see the origin's answer, send any `Authorization` or `Cookie` header: `edgeCached` skips the cache when either
   header is present, even an invalid one (`curl -H "Authorization: Bearer x" ...`).
@@ -239,8 +243,10 @@ build the site with `PUBLIC_API_URL=http://127.0.0.1:8787`.
 `notify.ts:sendEmail` first claims the idempotency key in `notifications`, then calls Resend:
 
 - no `RESEND_API_KEY`: rows are inserted with `status = 'skipped'`;
-- Resend non-2xx: `status = 'failed'`, `error = "<status> <body>"`;
-- otherwise the row stays `sent`.
+- with a key, rows are inserted as `failed` with `error = 'not sent yet'` and the text kept in `body`; Resend accepting
+  it makes the row `sent` (and drops the text); a non-2xx or a fetch that throws leaves it `failed` with the error.
+- Every 15 minutes `retryEmails` sends failed rows again (same idempotency key, so never twice), five tries in all
+  over two days; a 4xx other than 429 is not retried. After that the text is dropped.
 
 ```sql
 SELECT kind, status, COUNT(*) AS n FROM notifications
