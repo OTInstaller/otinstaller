@@ -7,7 +7,7 @@ import { dockerfileChecks } from "../src/submissions";
 import { findPin } from "../src/upstream-pin";
 import { RELEASE_TEMPLATES } from "../src/release-templates";
 import {
-  buildDraft, categoriesFrom, detectKind, detectQueued, latestReleaseTag, licenseFromText, missingFields, parseRepoRef, pyprojectInfo, summaryFrom,
+  buildDraft, categoriesFrom, detectKind, detectQueued, latestReleaseTag, licenseFromText, missingFields, parseRepoRef, pyprojectInfo, setupCfgInfo, summaryFrom,
   type Facts,
 } from "../src/imports";
 import { encrypt, sha256Hex, ulid } from "../src/lib/crypto";
@@ -46,6 +46,11 @@ describe("detection", () => {
     expect(pyprojectInfo(`[build-system]\nrequires = ["hatchling"]\n\n[project]\nname = "holehe-lite"  # pypi name\nversion = "1.0"\n\n[project.scripts]\nholehe = "holehe.cli:main"\n`))
       .toEqual({ name: "holehe-lite", scripts: ["holehe"] });
     expect(pyprojectInfo(`[tool.poetry]\nname = 'sherlock'\n[tool.poetry.scripts]\nsherlock = 'sherlock:main'\n`)).toEqual({ name: "sherlock", scripts: ["sherlock"] });
+    // setuptools projects that keep their console scripts in setup.cfg.
+    expect(setupCfgInfo(`[metadata]\nname = email_validator\nversion = attr: email_validator.__version__\n\n[options.entry_points]\nconsole_scripts =\n    email_validator=email_validator.__main__:main\n    other = pkg.cli:run  # second\n\n[flake8]\nmax-line-length = 120\n`))
+      .toEqual({ name: "email_validator", scripts: ["email_validator", "other"] });
+    expect(setupCfgInfo(`[options.entry_points]\nconsole_scripts = tool = tool.cli:main\ngui_scripts =\n    toolw = tool.gui:main\n`)).toEqual({ name: null, scripts: ["tool"] });
+    expect(detectKind(files("setup.cfg", "README.md"), { scripts: ["email_validator"], from: "setup.cfg" })).toEqual({ kind: "pipx", signals: ['setup.cfg console script "email_validator"'] });
   });
 
   it("maps topics to categories, shortens long descriptions, and picks the newest release", () => {
@@ -518,6 +523,9 @@ describe("community wrappers", () => {
     fakeGithub(upstream, githubRoutes(wrapper, wrapperCommits));
     const imp = (await (await post("/imports", u.auth, { repo: `https://github.com/${upstream.path}`, community: true })).json()) as any;
     expect(imp).toMatchObject({ community: true, namespace: "osintverse-community", finish_modes: ["submit", "wrapper"], can_hold_manifest: false });
+    // The App isn't installed on the upstream repository, and needn't be: the wizard isn't held up.
+    expect(imp.app_installed).toBe(false);
+    expect(imp.install_url).toBeUndefined();
     expect(imp.draft).toMatchObject({ name, namespace: "osintverse-community", homepage: `https://github.com/${upstream.path}`, runtime: { image: `ghcr.io/${upstream.path}@${DIGEST}` } });
     await patch(`/imports/${imp.id}`, u.auth, {
       manifest: { inputs: [{ name: "username", type: "username", required: true }], outputs: [{ type: "account" }], ethics: completion.ethics,
