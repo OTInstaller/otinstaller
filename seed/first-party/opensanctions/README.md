@@ -25,7 +25,7 @@ Give exactly one of `name` or `company`.
 
 ## Notes
 
-A score of 0.7 or more counts as a match. A name alone matches namesakes, so add `birth_date` and `country` when you know them, and read each match before acting on it; being a politically exposed person is not wrongdoing. The results describe people, so `ot` and agents treat a run as collecting personal data and ask before running it. OpenSanctions' data is licensed CC BY-NC 4.0: cite OpenSanctions when you use it.
+A score of 0.7 or more counts as a match. A name alone matches namesakes, so add `birth_date` and `country` when you know them, and read each match before acting on it; being a politically exposed person is not wrongdoing. The results describe people, so `ot` and agents treat a run as collecting personal data and ask before running it. Outside a commercial agreement, OpenSanctions' data is licensed CC BY-NC 4.0: credit OpenSanctions and don't use it commercially.
 
 ## Next steps
 
