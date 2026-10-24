@@ -4,8 +4,8 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 `api/migrations/*.sql` and the code in `api/src/`, `api/test/` and `api/scripts/`.
 
 - Binding: `DB`, database name `otinstaller`, `migrations_dir: "migrations"` (`api/wrangler.jsonc`).
-- 27 migrations, `0001` to `0027`.
-- Final schema: **57 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 58. FTS5 also creates its own shadow
+- 30 migrations, `0001` to `0030`.
+- Final schema: **59 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 60. FTS5 also creates its own shadow
   tables, which aren't listed here.
 
 ---
@@ -43,6 +43,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0027 | `0027_change_proposals.sql` | New table `change_proposals` (a maintainer's change to a community package beyond its pin: the pull request, the proposer's title and note, the files it writes, the version, whether it builds, the reviewer's checks, status, decision and released version); indexes `change_proposals_status`, `change_proposals_tool`, `change_proposals_proposer`. |
 | 0028 | `0028_bump_outcomes.sql` | `bump_prs` rebuilt: `status` also takes `released` and `failed`; new columns `auto`, `merge_sha`, `merged_at`, `run_url`, `attempts`, `error_code`, `error`, `released_at` (merged rows whose version is published become `released`); index `bump_prs_inflight (status, merged_at)`; `tools` + `auto_release` (INTEGER NN default 1: whether `UPSTREAM_WATCH=auto` may release the package's bumps). |
 | 0029 | `0029_package_follows.sql` | New table `package_follows` (who follows which package's releases) and index `package_follows_user`; `email_prefs` + `releases` (CHECK immediate/daily/off, default immediate); `versions` + `announced_at` (backfilled to `published_at`); `inbox` rebuilt so `scope` also takes `releases`, indexes `inbox_user` and `inbox_pending` again. Apply before an API that writes release items is deployed. |
+| 0030 | `0030_problem_signals.sql` | New table `problem_signals` (anonymous daily counts from a tool page's **Report a problem**: broken or outdated, by version and platform). Apply before an API that serves `POST /tools/:ns/:name/problem-reports` is deployed. |
 
 ---
 
@@ -462,6 +463,9 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
 - `confirmations`: `tool_id`, `version_id`, `user_id`, `result` (works | broken), `platform`, `engine`, `ot_version`,
   `issue_id`; UNIQUE `(version_id, user_id, platform)`.
 - `run_signals`: anonymous daily counts of failed runs, PK `(version_id, day, platform, engine, exit_class)`.
+- `problem_signals` (0030): anonymous daily counts from **Report a problem**, `kind` (broken | outdated), `platform`
+  (`''` when unknown, and always for outdated), PK `(version_id, day, kind, platform)`. Broken counts are added to
+  `run_signals` toward the version's unconfirmed issue; outdated counts are always against the latest version.
 - `content_flags`: `target_kind` (issue | comment | request | request_comment, since 0026), `target_id`, `flagger_id`, `reason` (personal_data | spam | abuse |
   off_topic | other), `note`, `status` (open | upheld | dismissed); UNIQUE per target and flagger.
 - `issue_subscriptions`: `(issue_id, user_id)` with `reason` (author, commented, confirmed, manual) and `muted`.

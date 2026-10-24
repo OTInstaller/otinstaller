@@ -8,7 +8,8 @@ import { isWrapper } from "../lib/proposals";
 
 interface Props {
   tool: ToolDetail;
-  active: "overview" | "docs" | "versions" | "security" | "issues" | "changes";
+  /** The tab this page is; "report" is the report page, which has no tab of its own. */
+  active: "overview" | "docs" | "versions" | "security" | "issues" | "changes" | "report";
   hasDocs: boolean;
 }
 const { tool: t, active, hasDocs } = Astro.props;
@@ -46,7 +47,11 @@ const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
     {t.verified && <span class="badge ok">Verified publisher</span>}
     {t.health === "broken" && <span class="badge warn">Possibly broken</span>}
     {t.status === "deprecated" && <span class="badge warn">Deprecated</span>}
-    <FollowReleases client:idle refName={ref} back={`/${ref}`} />
+    <div class="actions">
+      <FollowReleases client:idle refName={ref} back={`/${ref}`} />
+      {/* On every tab: broken, erroring or out-of-date tools are reported from here. nofollow: the page is noindex. */}
+      {active !== "report" && <a class="btn btn-sm" href={`/${ref}/report`} rel="nofollow">Report a problem</a>}
+    </div>
   </div>
   <p class="lead">{t.summary}</p>
   {t.deprecated_message && (
@@ -69,6 +74,7 @@ const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
   .crumbs a { color: var(--text-muted); text-decoration: none; }
   .crumbs a:hover { color: var(--text); text-decoration: underline; }
   .title-row { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .actions { margin-left: auto; align-self: center; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   h1 { margin: 0; font-size: var(--fs-6); word-break: break-word; }
   .ver { color: var(--text-muted); }
   .lead { margin: 8px 0 10px; }

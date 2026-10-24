@@ -589,7 +589,8 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
 - Owners: yank/unyank, deprecate, claim, transfer, git-backup opt-out, restore, switch source. Anyone: reports, feedback.
 - Community (public reads cached, writes scope `feedback`, triage `manage`): `/tools/:ns/:name/issues[/:n[/comments|
   /status|/lock|/subscription|/viewer]]`, `/tools/:ns/:name/status`, `/tools/:ns/:name/confirmations`,
-  `/tools/:ns/:name/run-reports`, `/issues` (the board), `/comments/:id`, `/flags`, `/moderation/...`,
+  `/tools/:ns/:name/run-reports`, `/tools/:ns/:name/problem-reports` (Report a problem without a sign-in; both refuse
+  another website's `Origin` with `foreign_origin`), `/issues` (the board), `/comments/:id`, `/flags`, `/moderation/...`,
   `/admin/community/roles`; `/tools/:ns/:name/follow`; `/me/inbox`, `/me/email-prefs`, `/me/follows`, `/unsubscribe`; `/requests[/:n[/vote|/status|/viewer]]`;
   `/people/:handle`, `/me/community-profile`; `/submissions[/:n[/approve|/request-changes|/reject|/start|/withdraw|
   /viewer]]` (submitting is `POST /imports/:id/finish {mode: "submit"}`); `/upstream/summary`, `/admin/upstream...`,
@@ -603,7 +604,7 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
   `POST /internal/drills/:id`, `/internal/health[/targets]`. Scans, backup runs and drills each use their own
   single-use token (scan 1 h, run 3 h or 12 h weekly, drill 6 h); the health endpoints use the static shared
   `HEALTH_TOKEN`.
-- The full route table (193 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
+- The full route table (194 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
   `spec/openapi/v1.json` describes the public and owner routes, each with its token scope as `x-scope`; a test in
   `api.test.ts` fails when a route and the document disagree, so add new routes to both.
 - 429s carry `Retry-After`, `RateLimit-Policy` and `retry_after_s` (`rateLimited` in `lib/errors.ts`).
@@ -688,7 +689,7 @@ migrations add publish intake (0002), scans/review and `notifications` (0003), s
 `feedback` (0012), and scoped tokens (`api_tokens.scoped`) plus the `install_clients` daily counts by client kind
 (0013), publisher profiles (`namespace_profiles`, `namespace_hosts`, 0014), release-note sources (0015), the community
 (handles, `community_roles`, `issues`, `issue_comments`, `confirmations`, `run_signals`, `content_flags`,
-`issue_subscriptions`, 0016), notifications (`email_prefs`, `inbox`, 0017; following packages' releases, `package_follows`,
+`issue_subscriptions`, 0016; `problem_signals` from Report a problem, 0030), notifications (`email_prefs`, `inbox`, 0017; following packages' releases, `package_follows`,
 `email_prefs.releases`, `versions.announced_at`, 0029), tool requests (`tool_requests`,
 `request_votes`, 0018), `contributor_stats` (0019), community submissions (`tools.needs_first_review`,
 `tool_maintainers`, `wrapper_submissions`, 0020), the upstream watcher (`upstream_watch`, 0021), bump pull requests
@@ -697,7 +698,7 @@ migrations add publish intake (0002), scans/review and `notifications` (0003), s
 publishing (`trusted_publishers`, the CI token columns `api_tokens.namespace_id`/`package`/`trusted_publisher_id`/
 `oidc_json`/`jti`, and `publish_jobs.trusted_publisher_id`/`ci_json`, 0025), request discussions
 (`request_comments`, `request_subscriptions`, flags on requests, 0026) and change proposals (`change_proposals`,
-0027). That is 58 tables plus `tools_fts`; every
+0027). That is 59 tables plus `tools_fts`; every
 table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
 
@@ -836,7 +837,8 @@ Astro 7 with `output: "server"` on `@astrojs/cloudflare`, Preact islands, no CSS
 - `src/islands/*.tsx`: Preact islands for anything signed-in or interactive (AdminConsole with review, reports,
   transfers, community, upstream, audit, feedback and beta tabs; Dashboard; PackageDetail and JobView (the `/dashboard/{ns}/{name}` and
   `/dashboard/publish/{jobId}` pages); Backups (used by Dashboard and PackageDetail); ImportWizard (four steps; its
-  forms write YAML blocks through `lib/yaml-blocks.ts`), Accounts, ClaimFlow, TransferView, ReportForm, FeedbackForm,
+  forms write YAML blocks through `lib/yaml-blocks.ts`), Accounts, ClaimFlow, TransferView, ReportProblem (the
+  report page: a public issue through `IssueForm`, a count without an account, or the private ReportForm), FeedbackForm,
   VersionActions, SearchDialog; for the community IssueComposer, IssueThread, WorksForMe, FollowReleases, CommunityModeration,
   NotificationSettings, RequestForm, RequestVote, RequestDecision, SubmissionActions, UpstreamWatch, BumpRelease,
   ProposeChange and ProposalActions (a community package's Changes tab, `[ns]/[name]/changes/`)).
@@ -849,8 +851,8 @@ Astro 7 with `output: "server"` on `@astrojs/cloudflare`, Preact islands, no CSS
   `evidence.ts` (the tool page's evidence lines and sample envelope), `install.ts` (the install commands; a test
   keeps `docs/getting-started.md` equal to them), `yaml-blocks.ts`, `feeds.ts` (Atom, JSON Feed, event wording),
   `learn.ts`, `compare.ts` (the input pages' comparison table), `community.ts`, `requests.ts`, `submissions.ts` and
-  `proposals.ts` (labels), `first-week.ts` (wording a new version's first-week counts), `twins.ts` (Markdown twins and
-  `RESERVED`).
+  `proposals.ts` (labels), `first-week.ts` (wording a new version's first-week counts), `report.ts` (the report page's
+  choices, `reportHref`, `withError`), `twins.ts` (Markdown twins and `RESERVED`).
 - `src/styles/`: `tokens.css` (all colours, radii, motion, type scale; light and dark), `global.css` (shared classes),
   `admin.css` (admin console only).
 
@@ -922,7 +924,13 @@ The plan is [docs/roadmap.md](docs/roadmap.md) (phase 1 built). User docs: `web/
 - **Status line** (`GET /tools/:ns/:name/status`): the nightly health check and its history, confirmations from the
   last 30 days by platform, open broken issues, in one sentence with counts, never a score.
 - **`ot` hooks**: the failure prompt (`report_prompt.go`) sends `run-reports` only after a yes; anonymous reports only
-  count (three addresses in a week open an "unconfirmed" issue), signed-in ones join the version's broken issue.
+  count (once per address a day; three in a week open an "unconfirmed" issue), signed-in ones join the version's broken
+  issue.
+- **Report a problem** (the button in `ToolHeader`, `/<ns>/<name>/report`, `ReportProblem`): doesn't work, shows an
+  error, out of date or wrong page become issues when signed in; without a sign-in, broken and out of date are counted
+  (`problem-reports`, `problem_signals`, 0030). Broken counts share `ot`'s once-a-day key and unconfirmed issue;
+  outdated ones (latest version only) open `outdated_signals:<v>` unless another outdated issue is open, closed by
+  `announceVersion`. Malware, abuse and legal problems stay the private `ReportForm`.
 - **Notifications** (`inbox.ts`, 0017): inbox rows written with each event, emailed within 15 minutes or as a daily
   digest per person's preference, at most 12 a day, with a signed one-click unsubscribe (`TOKEN_ENC_KEY`).
 - **Following releases** (0029): anyone signed in follows a package (`PUT /tools/:ns/:name/follow`, the "Follow
@@ -1319,7 +1327,7 @@ change. Keep this list current when you fix one or find another.
   bump closed there is only noticed by auto mode), and a merged proposal whose release fails its scan still shows as
   merged (bumps report their outcome; proposals don't yet).
 - A new version's first-week counts are signed-in confirmations only; anonymous failed-run reports (`run_signals`)
-  only reach it once they open an issue.
+  and Report a problem counts (`problem_signals`) only reach it once they open an issue.
 - Bump pull requests skip wrappers that pin upstream's own image (they get an outdated issue only), and commit pins.
 - The community bot creates wrapper repositories on GitHub only; a submission whose first release fails its scan
   stays `failed` until the submitter changes it.

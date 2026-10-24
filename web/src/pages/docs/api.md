@@ -72,7 +72,8 @@ Each token has scopes. A call outside them gets `403 insufficient_scope`, naming
 | --- | --- |
 | 30 writes a minute | each signed-in user (reviewers and admins exempt) |
 | 10 manual syncs an hour | each package |
-| 5 reports an hour per address, 20 a day per account | reports |
+| 5 reports an hour per address, 20 a day per account | private reports (`POST /tools/<ns>/<name>/reports`) |
+| 10 a day per address without a sign-in; each address counts once per version and kind a day | `POST /tools/<ns>/<name>/run-reports` and `/problem-reports` together |
 | 10 messages an hour | feedback |
 | 1 install count per address, version and day | `POST /installs` (more are accepted but not counted) |
 

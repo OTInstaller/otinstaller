@@ -802,6 +802,15 @@ The remote server is separate and runs nothing:
    ot run fails at a terminal, "y"  ------->  POST /tools/:ns/:name/run-reports {version, exit_code, os, arch, ...}
                                                signed in: confirm(broken) + join or open the version's broken issue
                                                anonymous: run_signals daily count; 3 in a week -> system issue
+   tool page: Report a problem (/report)
+     signed in -------------------------->  POST /tools/:ns/:name/issues (as above; an error message is fenced in the body)
+     signed out, broken or out of date -->  POST /tools/:ns/:name/problem-reports {kind, version?, platform?}
+                                               problem_signals daily count, once per address (broken shares ot's key)
+                                               broken: + run_signals, 3 in a week -> run_signals:<v> system issue
+                                               outdated (latest only): 3 in a week -> outdated_signals:<v>, unless
+                                               another outdated issue is open; announceVersion closes it
+     malware, abuse, legal -------------->  POST /tools/:ns/:name/reports (private, reviewers)
+   both report routes: an Origin other than SITE_URL -> 403 foreign_origin (ot sends none)
    */15 cron: deliverInbox("immediate"); nightly: deliverInbox("daily"), lockStaleThreads, refreshContributorStats
 
  POST /requests {repo} --> readUpstream (as the requester, else the App on osintverse-community, else anonymous)

@@ -167,6 +167,8 @@ export function toolMarkdown(t: ToolDetail): string {
   if (m.readme) links.push(`- README: ${t.repo_url ? `${t.repo_url.replace(/\/+$/, "")}#readme` : `${json}/readme`}`);
   if (t.homepage && t.homepage !== t.repo_url) links.push(`- Homepage: ${t.homepage}`);
   links.push(`- Security details: ${page}/security`);
+  // Where someone (or an agent, for them) says it is broken, out of date or wrong.
+  links.push(`- Report a problem: ${page}/report`);
   parts.push("## Links", links.join("\n"));
   return `${parts.join("\n\n")}\n`;
 }

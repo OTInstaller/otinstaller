@@ -17,6 +17,29 @@ Items marked **(you)** need the owner of the GitHub, GitLab, Cloudflare, Resend,
 | otlite installer | `curl -fsSL https://get.otinstaller.com/otlite \| sh` answers 200 (`otlite/scripts/install.sh` from `main`, through `ops/get`) |
 | Site pages | `/agents`, the homepage for AI agents, with its Markdown twin `/agents.md`; `/otlite` and `/otlite/tools`, both listing every tool from `web/src/data/otlite-catalog.json`; tool pages show the sample output recorded by the scanner's smoke test |
 
+## Report a problem on every tool page (not deployed yet)
+
+Every tool page gets a **Report a problem** button. It opens `/<ns>/<name>/report`, which asks what is wrong. Signed in,
+"It doesn't work", "It shows an error", "It's out of date" and "Something on this page is wrong" open issues. Signed
+out, broken and out of date are counted (`POST /v1/tools/:ns/:name/problem-reports`, migration 0030), toward the
+same unconfirmed issue `ot`'s failure prompt feeds. Malware, abuse and legal problems stay private reports. Both
+anonymous report routes now refuse requests with another website's `Origin` (403 `foreign_origin`). Built on the
+branch `claude/tool-reporting-feature-f4ea30`.
+
+- [ ] **(you)** Apply the migration: in `api/`, `npx wrangler d1 migrations apply otinstaller --remote` (0030 only).
+      It must be in before the API goes out, or `problem-reports` fails.
+- [ ] **(you)** Deploy the API: in `api/`, `npm run deploy`. Checks: `/v1/health` answers 200, and a report with a
+      foreign origin is refused without being counted:
+      `curl -s -X POST https://api.otinstaller.com/v1/tools/osintverse-community/sherlock/problem-reports -H "origin: https://example.com" -d '{"kind":"broken"}'`
+      answers 403 `foreign_origin`.
+- [ ] **(you)** Deploy the site, after the API: in `web/`, PowerShell `$env:PUBLIC_BETA = "0"; npm run deploy`.
+      Checks:
+  - a tool page shows "Report a problem" beside "Follow releases" on every tab;
+  - `/<tool>/report` offers the five choices;
+  - signed out, "It doesn't work" offers "Count it as broken" and the sign-in links;
+  - the overview's side rail no longer has "Report this tool";
+  - no CSP errors in the browser.
+
 ## Keeping tools up to date (deployed 24 October 2026)
 
 Four pull requests: `ot`'s daily update note, holds and `GET /v1/latest`

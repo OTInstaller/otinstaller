@@ -51,7 +51,8 @@ A network error never makes `ot` fall back to the mirror; only an explicit refus
 | The daily update check (at a terminal, at most once a day), `ot outdated` and `ot self-update` download every package's latest version (`GET /v1/latest`) or ask `get.otinstaller.com/ot/latest` which `ot` release is newest | Cloudflare's request logs, as for the install scripts | The same requests for everyone: no token, list of installed tools or machine identifier is sent (`ot outdated` asks about each installed package by name, anonymously); `OT_NO_UPDATE_CHECK=1` turns the daily check off |
 | Signing in | Your login and a hashed session or API token; provider tokens encrypted at rest | Your email address is never shown publicly and accounts are never linked by email |
 | Publishing | The manifest, scan results, backups of public artifacts, and an audit log of staff actions | Private repositories are never read |
-| Reporting a tool | The report text and your reporter identity if signed in | Anonymous reports are allowed and rate-limited by IP, which is not stored |
+| Reporting a tool privately (malware, abuse, legal) | The report text and your reporter identity if signed in | Anonymous reports are allowed and rate-limited by IP, which is not stored |
+| Counting a tool as broken or out of date without an account (**Report a problem**, or a yes to `ot`'s failure prompt) | A daily count per version and kind, with the platform (`ot` also sends the exit code or timeout, engine and `ot` version) | No text, inputs or output; your address only as a salted hash, to count it once a day and deleted after a day |
 
 The [privacy policy](/policy/privacy) is the full statement.
 
@@ -64,4 +65,4 @@ The [privacy policy](/policy/privacy) is the full statement.
 
 ## Reporting a problem
 
-Report a tool from its page, or write to [security@otinstaller.com](mailto:security@otinstaller.com) for vulnerabilities in the registry or `ot`.
+Use **Report a problem** on a tool's page: a tool that is broken or out of date goes to its public issues, malware or abuse privately to the reviewers. Write to [security@otinstaller.com](mailto:security@otinstaller.com) for vulnerabilities in the registry or `ot`.

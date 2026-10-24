@@ -676,7 +676,9 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 - Flags: `--reason` (string: malware, policy, impersonation, license, broken, other); `--details` (string; required
   by the registry except for broken); `--version` (string); `--works` and `--broken` (bool, mutually exclusive,
   exit 2 together).
-- Without `--reason`, `--works` or `--broken`: opens `<site>/<ns>/<name>/report[?v=<version>]`, no API call.
+- Without `--reason`, `--works` or `--broken`: opens `<site>/<ns>/<name>/report[?v=<version>]`, no API call. That is
+  the tool page's **Report a problem**, which sends a problem with the tool to a public issue (or counts it without an
+  account) and malware or abuse to the reviewers; `?v=` picks the version.
 - API: `POST /tools/{ns}/{name}/reports` `{reason, details, version?}`. The report is private to the reviewers; with
   `--reason broken` ot adds a `note:` that `--broken` tells other users too.
 - `--works` / `--broken` (`confirmVersion` in `issues.go`) act on `--version`, else the installed version. `--works`
