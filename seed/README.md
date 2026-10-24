@@ -451,9 +451,10 @@ The registry's scans at release agreed with the local runs:
 
 The release workflow was started a second time in each repository, two minutes after the first. Those runs rebuilt the
 image, pushed a second "Release 0.1.0" commit to `main` pinning the new digest, and then failed because the tag
-`v0.1.0` already existed. The registry published from the tag, so it pins the first build. GHCR's `0.1.0` tag and
-`main`'s `otinstaller.yaml` name the second build, which is signed by the same workflow. The next release rebuilds
-anyway, so nothing depends on the difference. Run the release workflow once per version.
+`v0.1.0` already existed. The registry published from the tag, so it pins the first build, and at 19:40 UTC each
+repository's `main` was put back on the tag, dropping the extra commit. GHCR's `0.1.0` tag still names the second
+build, which the same workflow signed; installs pull by digest, so nothing uses it. Run the release workflow once per
+version.
 
 Health risks for these:
 
