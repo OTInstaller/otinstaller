@@ -821,7 +821,12 @@ The remote server is separate and runs nothing:
    repoState (gone, renamed, archived, license_changed) --> currentPin (override, pipx, Dockerfile at git_sha via
    findPin, upstream's own image) --> latestRelease (releases/latest with If-None-Match | PyPI | compare for commits)
    --> upstream_watch row; UPSTREAM_WATCH=issues: outdated issue 3 days after a release, closed when caught up;
-   =prs: maybeOpenBump (pin-only PR) --> POST /packages/:ns/:name/pulls/:n/release (maintainer) --> merge + release
+   =prs: maybeOpenBump (pin-only PR for a stable release, superseded ones closed) --> POST
+   /packages/:ns/:name/pulls/:n/release (maintainer) --> merge + release (wrapperVersion; status merged);
+   =auto: also maybeAutoRelease (nightly only, a week after the release, tools.auto_release) --> the same release
+   --> publishVersion / applyScanResults --> settleBump: released (outdated issue closed) | failed (maintainers told)
+   --> every 15 min sweepBumps: rejected version or job, failed release workflow run, nothing in 12 h --> failed;
+       a failed bump is released again (no merge, new version)
 
  GET /packages/:ns/:name/files (maintainer: main's otinstaller.yaml, Dockerfile, README.md via the community bot)
    --> POST /packages/:ns/:name/proposals {title, note, files}: createProposal --> checkProposal (only what changed;
