@@ -93,7 +93,8 @@ docs/        publishing-setup.md (operator runbook), launch-checklist.md, migrat
              dev/ (developer reference, see the table above)
 .github/     workflows/ (see CI below) and ISSUE_TEMPLATE/ (bug with severity, idea, config.yml contact links);
              the live issue forms are in the public OTInstaller/feedback repo
-.claude/     launch.json: dev-server definitions (`web` on 4321, `web-preview` on 4322)
+.claude/     launch.json: dev-server definitions (`web` on 4321, `web-preview` on 4322); skills/design/: the site's
+             design system, layout rules and review checklist (read it before changing `web/`)
 LICENSE      Apache 2.0 for the whole repository; otlite/ keeps its own LICENSE and NOTICE
 ```
 
@@ -846,7 +847,7 @@ Astro 7 with `output: "server"` on `@astrojs/cloudflare`, Preact islands, no CSS
   script, global client JS for copy buttons and the `/me` account check), `Docs.astro` (with prev/next links),
   `Policy.astro`.
 - `src/components/*.astro`: server components (PasteBox, InstallBlock, ToolRow, ToolCard, ToolHeader, Evidence,
-  Results, PageReader, Terminal, BetaNotice, CopyCode, CopyCommand, Logo, PageHead, SideNav, ThemeToggle).
+  Results, PageReader, Terminal, BetaNotice, CopyCode, CopyCommand, Logo, PageHead, SideNav, OnThisPage, ThemeToggle).
   The design follows osintverse.com (`docs/web-redesign-plan.md` section 4.9): Geist Mono, dark by default, no radius.
 - `src/islands/*.tsx`: Preact islands for anything signed-in or interactive (AdminConsole with review, reports,
   transfers, community, upstream, audit, feedback and beta tabs; Dashboard; PackageDetail and JobView (the `/dashboard/{ns}/{name}` and
@@ -901,6 +902,10 @@ Environment: `PUBLIC_API_URL` (default production), `PUBLIC_BETA` (`"0"` hides t
   beta.
 - Nothing may be hidden at first paint waiting for JavaScript (no `opacity: 0` reveals), and nothing loops: the old
   reveal-on-scroll hid the whole home page in some browsers. `npm run contrast` checks the token pairs for AA.
+- Grid tracks are `minmax(0, 1fr)`, never a bare `1fr` (one long command widens the whole page on a phone), colours
+  and font sizes come from `tokens.css`, and a page never names its own layout after a global class that draws a
+  surface (`.grid`, `.rows`, `.card`, `.panel`...). `src/lib/design-rules.test.ts` checks all four; the rest of the
+  design rules and the phone and theme checks are in `.claude/skills/design/SKILL.md`.
 - HTML from the registry (READMEs, guide pages) is already sanitized server-side and rendered with `set:html`; don't
   render other untrusted HTML that way.
 - Every component and island file opens with a one-line purpose comment.
@@ -1256,8 +1261,8 @@ effect goes through `agent.Session.DecideRun` and the audit log. If the remote s
 `submissions.ts`), the error codes in `web/src/pages/docs/errors.md`, `web/src/pages/docs/community.md` and
 `policy/community.md`, and the tests in `community.test.ts` (or the matching file).
 
-**Changing the site's look or motion**: tokens first, no inline styles or scripts, test both themes and reduced motion,
-and verify in the preview build.
+**Changing the site's look or motion**: follow `.claude/skills/design/SKILL.md`: tokens first, no inline styles or
+scripts, test both themes, reduced motion and a 375 px phone (its `overflow-check.js`), and verify in the preview build.
 
 ## Git and commits
 
