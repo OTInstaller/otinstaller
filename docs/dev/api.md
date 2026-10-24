@@ -47,7 +47,7 @@ anonymous GET.
 
 ## 1. Routes
 
-Total: **189 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
+Total: **193 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
 call; the `for` loops in `routes/trust.ts` (`yank`, `unyank`), `routes/community.ts` (a thread's subscription) and
 `routes/requests.ts` (a vote, a request's subscription) register two each. The mirror Worker's OCI routes are in
 section 6 and are not in this count. There is no route for stars, although the rate-limit comment in `index.ts`
@@ -255,7 +255,10 @@ Notifications (`routes/inbox.ts`, logic in `inbox.ts`, 6 routes):
 | --- | --- | --- | --- | --- | --- |
 | GET | `/me/inbox` | user | no-store | routes/inbox.ts | 50 newest items with `unread` and `before` paging |
 | POST | `/me/inbox/read` | user | - | routes/inbox.ts | `{ids?}`; all when none are given |
-| GET / PUT | `/me/email-prefs` | user | no-store | routes/inbox.ts | `community` and `owner_issues`: `immediate` / `daily` / `off` |
+| GET / PUT | `/me/email-prefs` | user | no-store | routes/inbox.ts | `community`, `owner_issues` and `releases`: `immediate` / `daily` / `off` |
+| GET | `/me/follows` | user | no-store | routes/inbox.ts | The packages the person follows for releases (`ref`, `kind`, `status`, `latest_version`, `followed_at`), 100 at a time, newest first, `before` paging |
+| GET | `/tools/:ns/:name/follow` | user | no-store | routes/community.ts | `{following, followed_at}` |
+| PUT / DELETE | `/tools/:ns/:name/follow` | user, feedback | no-store | routes/community.ts | Follow (404/410 for a package that isn't live) or stop following a package's releases; DELETE works for a removed package too |
 | POST | `/unsubscribe` | none (signed link) | no-store | routes/inbox.ts | `u`, `s`, `t` from the query or a JSON body (RFC 8058 one-click); 400 `invalid_unsubscribe_link` |
 | GET | `/unsubscribe` | none | - | routes/inbox.ts | 302 to the site's `/unsubscribe` page, which asks before posting |
 

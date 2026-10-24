@@ -534,7 +534,7 @@ and beta work, so `R2_*`, `ISSUES_REPO`/`ISSUES_TOKEN` and `EDGE_CACHE` are only
 | `changelog.ts` | Release notes: captured from the host's release or the version's `CHANGELOG.md` section at publish, cleaned and rendered |
 | `activity.ts` | `GET /activity`: registry events from the audit log, and with `events=community` confirmed/fixed issues and accepted/published requests, worded from fields |
 | `community.ts` | Issues, comments, confirmations, flags, moderation, roles (`triager`, `reviewer`; tool maintainers), screening (`screen`, `holdReason`), `renderPost`, failed-run reports, the status line, system issues (`fileSystemIssue`, `closeSystemIssue`) |
-| `inbox.ts` | Inbox items written with each event, email delivery (immediate every 15 minutes, daily digests), signed unsubscribe links |
+| `inbox.ts` | Inbox items written with each event, release notifications for a package's followers (`notifyFollowers`), email delivery (immediate every 15 minutes, daily digests), signed unsubscribe links |
 | `requests.ts` | Tool requests: checks (`readUpstream`, `packagedFrom`, `knownRepo`), votes, triagers' decisions, `linkPublished` |
 | `people.ts` | Contributor profiles and the nightly `contributor_stats` recount |
 | `submissions.ts` | Community wrapper submissions: checks, `dockerfileChecks`, the community bot (`COMMUNITY_*`), the first-release review gate |
@@ -590,7 +590,7 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
 - Community (public reads cached, writes scope `feedback`, triage `manage`): `/tools/:ns/:name/issues[/:n[/comments|
   /status|/lock|/subscription|/viewer]]`, `/tools/:ns/:name/status`, `/tools/:ns/:name/confirmations`,
   `/tools/:ns/:name/run-reports`, `/issues` (the board), `/comments/:id`, `/flags`, `/moderation/...`,
-  `/admin/community/roles`; `/me/inbox`, `/me/email-prefs`, `/unsubscribe`; `/requests[/:n[/vote|/status|/viewer]]`;
+  `/admin/community/roles`; `/tools/:ns/:name/follow`; `/me/inbox`, `/me/email-prefs`, `/me/follows`, `/unsubscribe`; `/requests[/:n[/vote|/status|/viewer]]`;
   `/people/:handle`, `/me/community-profile`; `/submissions[/:n[/approve|/request-changes|/reject|/start|/withdraw|
   /viewer]]` (submitting is `POST /imports/:id/finish {mode: "submit"}`); `/upstream/summary`, `/admin/upstream...`,
   `/packages/:ns/:name/bump`, `/packages/:ns/:name/pulls/:n/release`; `/proposals`, `/packages/:ns/:name/files`,
@@ -603,7 +603,7 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
   `POST /internal/drills/:id`, `/internal/health[/targets]`. Scans, backup runs and drills each use their own
   single-use token (scan 1 h, run 3 h or 12 h weekly, drill 6 h); the health endpoints use the static shared
   `HEALTH_TOKEN`.
-- The full route table (189 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
+- The full route table (193 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
   `spec/openapi/v1.json` describes the public and owner routes, each with its token scope as `x-scope`; a test in
   `api.test.ts` fails when a route and the document disagree, so add new routes to both.
 - 429s carry `Retry-After`, `RateLimit-Policy` and `retry_after_s` (`rateLimited` in `lib/errors.ts`).
@@ -634,8 +634,10 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
 4. Pass/warn: published right away if the namespace is `active`, otherwise `awaiting_review` until a reviewer approves the
    namespace. PII hits in a guide always go to review. A community submission's first release
    (`tools.needs_first_review`) waits for a staff or community reviewer who isn't its submitter, even in the active
-   community namespace. Emails go out at each step. `publishVersion` also announces the version on open issues, makes a
-   submission's submitter a maintainer, and marks requests for that repository published.
+   community namespace. Emails go out at each step. `publishVersion` also announces the version once, when it first
+   becomes the latest (`versions.announced_at`): on open broken and outdated issues, whose followers are told, and to
+   the package's other followers (`notifyFollowers`). It also makes a submission's submitter a maintainer, and marks
+   requests for that repository published.
 5. Backups: a passing scan's callback answer tells the scanner to back up right away; versions published another way
    (namespace approval, guides) queue `{ backupVersionId }`. See below.
 6. Every 15 minutes: expire stale scans (1 h), poll due sources, alert on jobs stuck > 30 min, expire backup runs and
@@ -686,7 +688,8 @@ migrations add publish intake (0002), scans/review and `notifications` (0003), s
 `feedback` (0012), and scoped tokens (`api_tokens.scoped`) plus the `install_clients` daily counts by client kind
 (0013), publisher profiles (`namespace_profiles`, `namespace_hosts`, 0014), release-note sources (0015), the community
 (handles, `community_roles`, `issues`, `issue_comments`, `confirmations`, `run_signals`, `content_flags`,
-`issue_subscriptions`, 0016), notifications (`email_prefs`, `inbox`, 0017), tool requests (`tool_requests`,
+`issue_subscriptions`, 0016), notifications (`email_prefs`, `inbox`, 0017; following packages' releases, `package_follows`,
+`email_prefs.releases`, `versions.announced_at`, 0029), tool requests (`tool_requests`,
 `request_votes`, 0018), `contributor_stats` (0019), community submissions (`tools.needs_first_review`,
 `tool_maintainers`, `wrapper_submissions`, 0020), the upstream watcher (`upstream_watch`, 0021), bump pull requests
 (`bump_prs`, 0022; outcomes and `tools.auto_release`, 0028), direct publishing (`publish_jobs` `namespace_id`/`bundle_key`/`submitted_by`,
@@ -694,7 +697,7 @@ migrations add publish intake (0002), scans/review and `notifications` (0003), s
 publishing (`trusted_publishers`, the CI token columns `api_tokens.namespace_id`/`package`/`trusted_publisher_id`/
 `oidc_json`/`jti`, and `publish_jobs.trusted_publisher_id`/`ci_json`, 0025), request discussions
 (`request_comments`, `request_subscriptions`, flags on requests, 0026) and change proposals (`change_proposals`,
-0027). That is 57 tables plus `tools_fts`; every
+0027). That is 58 tables plus `tools_fts`; every
 table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
 
@@ -834,7 +837,7 @@ Astro 7 with `output: "server"` on `@astrojs/cloudflare`, Preact islands, no CSS
   transfers, community, upstream, audit, feedback and beta tabs; Dashboard; PackageDetail and JobView (the `/dashboard/{ns}/{name}` and
   `/dashboard/publish/{jobId}` pages); Backups (used by Dashboard and PackageDetail); ImportWizard (four steps; its
   forms write YAML blocks through `lib/yaml-blocks.ts`), Accounts, ClaimFlow, TransferView, ReportForm, FeedbackForm,
-  VersionActions, SearchDialog; for the community IssueComposer, IssueThread, WorksForMe, CommunityModeration,
+  VersionActions, SearchDialog; for the community IssueComposer, IssueThread, WorksForMe, FollowReleases, CommunityModeration,
   NotificationSettings, RequestForm, RequestVote, RequestDecision, SubmissionActions, UpstreamWatch, BumpRelease,
   ProposeChange and ProposalActions (a community package's Changes tab, `[ns]/[name]/changes/`)).
   The import wizard also packages someone else's tool ("Someone else's tool", with `lib/dockerfile-templates.ts`).
@@ -922,6 +925,10 @@ The plan is [docs/roadmap.md](docs/roadmap.md) (phase 1 built). User docs: `web/
   count (three addresses in a week open an "unconfirmed" issue), signed-in ones join the version's broken issue.
 - **Notifications** (`inbox.ts`, 0017): inbox rows written with each event, emailed within 15 minutes or as a daily
   digest per person's preference, at most 12 a day, with a signed one-click unsubscribe (`TOKEN_ENC_KEY`).
+- **Following releases** (0029): anyone signed in follows a package (`PUT /tools/:ns/:name/follow`, the "Follow
+  releases" island on tool pages) and gets a `release` item (scope `releases`, its own email preference) when a
+  version becomes the latest. People following one of its open broken or outdated issues get the issue's item
+  instead. Follows are private: no counts, nothing on profiles.
 - **Requests** (`requests.ts`, 0018): one per repository, checked when made (public, not packaged or requested,
   no upstream manifest; a license the registry can't redistribute or an archived repository is declined at once);
   votes; triagers decide; a published package from that repository answers it (`linkPublished`). Each has a
