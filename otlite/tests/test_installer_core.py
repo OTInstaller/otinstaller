@@ -485,3 +485,117 @@ def test_failed_browser_download_fails_the_install(monkeypatch, tmp_path):
 
     assert not (get_tools_dir() / "testtool").exists()
     assert get_installed("testtool") is None
+
+
+def _old_install(tmp_path):
+    """An installed testtool 1.0 with a file in its folder, as an update finds it."""
+    existing = InstalledTool(
+        name="testtool",
+        version="1.0",
+        method="pip",
+        source="testpkg",
+        ref=None,
+        commit=None,
+        entry_command="testtool",
+        entry_script=None,
+        installed_at="2024-01-01T00:00:00+00:00",
+        updated_at="2024-01-01T00:00:00+00:00",
+    )
+    add_installed(existing)
+    root = get_tools_dir() / "testtool"
+    root.mkdir(parents=True)
+    (root / "old.txt").write_text("1.0")
+    return root
+
+
+def test_failed_update_keeps_the_installed_version(monkeypatch, tmp_path):
+    """an update that fails leaves the old files and the state row as they were."""
+    monkeypatch.setenv("OTLITE_HOME", str(tmp_path))
+    root = _old_install(tmp_path)
+    tool = make_tool_pip("testtool", "testpkg", "2.0")
+
+    with patch("otlite.installer.pip_install.run", side_effect=InstallError("pip failed")):
+        with patch("otlite.installer.venv.create_venv"):
+            with _mock_entrypoint_check():
+                with pytest.raises(InstallError):
+                    install_tool(tool, force=True)
+
+    assert (root / "old.txt").read_text() == "1.0"
+    assert get_installed("testtool").version == "1.0"
+    assert sorted(p.name for p in get_tools_dir().iterdir()) == ["testtool"]
+
+
+def test_interrupted_update_keeps_the_installed_version(monkeypatch, tmp_path):
+    """Ctrl-C during an update puts the old version back."""
+    monkeypatch.setenv("OTLITE_HOME", str(tmp_path))
+    root = _old_install(tmp_path)
+    tool = make_tool_pip("testtool", "testpkg", "2.0")
+
+    with patch("otlite.installer.pip_install.run", side_effect=KeyboardInterrupt):
+        with patch("otlite.installer.venv.create_venv"):
+            with _mock_entrypoint_check():
+                with pytest.raises(KeyboardInterrupt):
+                    install_tool(tool, force=True)
+
+    assert (root / "old.txt").read_text() == "1.0"
+    assert get_installed("testtool").version == "1.0"
+
+
+def test_successful_update_leaves_nothing_behind(monkeypatch, tmp_path):
+    """an update replaces the old files, keeps the install date and leaves no backup folder."""
+    monkeypatch.setenv("OTLITE_HOME", str(tmp_path))
+    root = _old_install(tmp_path)
+    tool = make_tool_pip("testtool", "testpkg", "2.0")
+
+    with patch("otlite.installer.pip_install.run"):
+        with patch("otlite.installer.venv.create_venv"):
+            with patch("otlite.installer.core._get_version_pip", return_value="2.0"):
+                with _mock_entrypoint_check():
+                    result = install_tool(tool, force=True)
+
+    assert result.version == "2.0"
+    assert result.installed_at == "2024-01-01T00:00:00+00:00"
+    assert result.updated_at != "2024-01-01T00:00:00+00:00"
+    assert not (root / "old.txt").exists()
+    assert sorted(p.name for p in get_tools_dir().iterdir()) == ["testtool"]
+
+
+def test_update_killed_earlier_is_put_back_first(monkeypatch, tmp_path):
+    """the copy a killed update moved aside comes back before anything else happens."""
+    monkeypatch.setenv("OTLITE_HOME", str(tmp_path))
+    root = _old_install(tmp_path)
+    root.rename(get_tools_dir() / ".testtool.previous")
+    tool = make_tool_pip("testtool", "testpkg", "2.0")
+
+    with patch("otlite.installer.pip_install.run", side_effect=InstallError("pip failed")):
+        with patch("otlite.installer.venv.create_venv"):
+            with _mock_entrypoint_check():
+                with pytest.raises(InstallError):
+                    install_tool(tool, force=True)
+
+    assert (root / "old.txt").read_text() == "1.0"
+    assert get_installed("testtool").version == "1.0"
+    assert sorted(p.name for p in get_tools_dir().iterdir()) == ["testtool"]
+
+
+def test_incompatible_python_leaves_an_installed_tool_alone(monkeypatch, tmp_path):
+    """an update this Python can't run moves nothing."""
+    monkeypatch.setenv("OTLITE_HOME", str(tmp_path))
+    root = _old_install(tmp_path)
+    tool = replace(make_tool_pip("testtool", "testpkg", "2.0"), requires_python="<3.13")
+
+    with patch("otlite.compat.current_python", return_value=(3, 14, 4)):
+        with pytest.raises(PythonVersionError):
+            install_tool(tool, force=True)
+
+    assert (root / "old.txt").read_text() == "1.0"
+    assert get_installed("testtool").version == "1.0"
+
+
+def test_remove_tool_removes_leftover_backups(monkeypatch, tmp_path):
+    """removing a tool also removes copies an interrupted update left beside it."""
+    monkeypatch.setenv("OTLITE_HOME", str(tmp_path))
+    _old_install(tmp_path)
+    (get_tools_dir() / ".testtool.old").mkdir()
+    assert remove_tool("testtool")
+    assert list(get_tools_dir().iterdir()) == []
