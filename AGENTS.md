@@ -1341,9 +1341,6 @@ change. Keep this list current when you fix one or find another.
   (`oidc_token_reused`).
 - Nothing renames a namespace when its GitHub organisation or GitLab group is renamed (search would follow, since
   0034, if one were renamed by hand).
-- `ot install` warns about deprecated packages only from the `ot` release after 0.16.0, and the install scripts' use
-  of `get.otinstaller.com/ot/latest` reaches people with that release too (the scripts are served from the latest
-  release).
 - `manifest_name_mismatch` exists only in the API: it guards editing a registry-held manifest, which the CLI never
   does.
 - Namespaces that already exist with a reserved name (`api/src/lib/reserved.ts` only affects new ones) keep it; none
