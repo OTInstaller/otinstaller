@@ -526,7 +526,7 @@ and beta work, so `R2_*`, `ISSUES_REPO`/`ISSUES_TOKEN` and `EDGE_CACHE` are only
 | `requests.ts` | Tool requests: checks (`readUpstream`, `packagedFrom`, `knownRepo`), votes, triagers' decisions, `linkPublished` |
 | `people.ts` | Contributor profiles and the nightly `contributor_stats` recount |
 | `submissions.ts` | Community wrapper submissions: checks, `dockerfileChecks`, the community bot (`COMMUNITY_*`), the first-release review gate |
-| `upstream-pin.ts` / `upstream.ts` / `bumps.ts` | Reading a wrapper's upstream pin from its Dockerfile; the nightly upstream watcher (`UPSTREAM_WATCH`); bump pull requests and "merge and release" |
+| `upstream-pin.ts` / `upstream.ts` / `bumps.ts` | Reading a wrapper's upstream pin from its Dockerfile; the nightly upstream watcher (`UPSTREAM_WATCH`); bump pull requests, "merge and release", following each release to released or failed (`settleBump`, `sweepBumps`) and releasing on its own in auto mode |
 | `proposals.ts` | Change proposals: a wrapper's maintainers change its manifest, Dockerfile or README beyond the pin (`checkProposal`), the community bot opens the pull request, a reviewer who isn't the proposer approves it and the bot merges and releases it |
 | `first-week.ts` | A new version's first week: its works/broken counts (`firstWeekCounts`) for the status line, the versions list and the activity feed |
 | `known-repos.ts` | **Generated** from otlite's catalog and `seed/candidates.md`; don't edit |
@@ -677,7 +677,7 @@ migrations add publish intake (0002), scans/review and `notifications` (0003), s
 `issue_subscriptions`, 0016), notifications (`email_prefs`, `inbox`, 0017), tool requests (`tool_requests`,
 `request_votes`, 0018), `contributor_stats` (0019), community submissions (`tools.needs_first_review`,
 `tool_maintainers`, `wrapper_submissions`, 0020), the upstream watcher (`upstream_watch`, 0021), bump pull requests
-(`bump_prs`, 0022), direct publishing (`publish_jobs` `namespace_id`/`bundle_key`/`submitted_by`,
+(`bump_prs`, 0022; outcomes and `tools.auto_release`, 0028), direct publishing (`publish_jobs` `namespace_id`/`bundle_key`/`submitted_by`,
 `namespaces.created_by`, 0023), images hosted on the mirror (`mirror_pushes`, `backups.hosted`, 0024), trusted
 publishing (`trusted_publishers`, the CI token columns `api_tokens.namespace_id`/`package`/`trusted_publisher_id`/
 `oidc_json`/`jti`, and `publish_jobs.trusted_publisher_id`/`ci_json`, 0025), request discussions
@@ -925,7 +925,15 @@ The plan is [docs/roadmap.md](docs/roadmap.md) (phase 1 built). User docs: `web/
   for a reviewer who isn't the submitter (`needs_first_review`); the submitter becomes a maintainer.
 - **Upstream watcher** (`upstream.ts`, 0021; pins from `upstream-pin.ts`): nightly, at most three requests per
   wrapper. `UPSTREAM_WATCH=report` (default) records; `issues` opens and closes outdated issues; `prs` also has the
-  bot open pin-only bump pull requests (`bumps.ts`, 0022), which maintainers merge and release from the package page.
+  bot open pin-only bump pull requests for stable releases (`bumps.ts`, 0022, 0028), which maintainers merge and
+  release from the package page; `auto` also has the nightly check merge and release a pin-only bump itself a week
+  after upstream's release (`maybeAutoRelease`: stable version, redistributable license, still open on GitHub, exactly
+  the planned file, the package's `tools.auto_release` on, at most ten a day). Each release is followed: published
+  settles the bump `released` and closes its outdated issue; a rejected version or publish job, a failed release
+  workflow run or nothing within 12 hours settles it `failed` and tells the maintainers (`settleBump`, `sweepBumps` on
+  the 15-minute cron), and a failed bump can be released again under a new version. The wrapper's version is
+  upstream's as X.Y.Z (`upstreamSemver`: 2.2 is 2.2.0), or a patch on top when that isn't above every version it had
+  (`wrapperVersion`).
 - **Change proposals** (`proposals.ts`, 0027): a wrapper's maintainers and reviewers edit its `otinstaller.yaml`,
   Dockerfile or README on the package's Changes tab. `checkProposal` keeps only what differs from main, validates the
   manifest, refuses identity changes (`protected_field`) and secrets, moves the version past every version the package
@@ -1288,8 +1296,9 @@ change. Keep this list current when you fix one or find another.
 - Stars are still never written (no route records one), though ranking and `stars` columns read them.
 - Community: `contributor_stats` is only as fresh as the last nightly run.
 - Change proposals cover `otinstaller.yaml`, the Dockerfile and the README only (not docs pages or other files). A
-  proposal or bump pull request merged or closed on GitHub directly stays open in the registry (nothing reads
-  `pull_request` webhooks), and a merged proposal whose release fails its scan still shows as merged.
+  proposal merged or closed on GitHub directly stays open in the registry (nothing reads `pull_request` webhooks; a
+  bump closed there is only noticed by auto mode), and a merged proposal whose release fails its scan still shows as
+  merged (bumps report their outcome; proposals don't yet).
 - A new version's first-week counts are signed-in confirmations only; anonymous failed-run reports (`run_signals`)
   only reach it once they open an issue.
 - Bump pull requests skip wrappers that pin upstream's own image (they get an outdated issue only), and commit pins.
@@ -1341,7 +1350,7 @@ change. Keep this list current when you fix one or find another.
 | Submission | A community wrapper someone packaged through the wizard (`wrapper_submissions`); its first release waits for a reviewer |
 | Community bot | The second GitHub App (`COMMUNITY_APP_*`), installed only on `osintverse-community`, that creates wrapper repositories and opens bump pull requests and change proposals' pull requests |
 | Upstream watcher | The nightly check of each wrapper's pin against its upstream's latest release (`upstream_watch`, `UPSTREAM_WATCH`) |
-| Bump pull request | The community bot's pull request changing only a wrapper's pin; maintainers merge and release it (`bump_prs`) |
+| Bump pull request | The community bot's pull request changing only a wrapper's pin; maintainers merge and release it, or the registry does in auto mode, and its release ends `released` or `failed` (`bump_prs`) |
 | Change proposal | A wrapper maintainer's change to its manifest, Dockerfile or README, opened as a pull request by the community bot; a reviewer who isn't the proposer approves it (`change_proposals`) |
 | First week | The seven days after a version is published, when its works/broken counts are shown beside the previous version's |
 | Failure prompt | `ot run`'s "Report it as broken?" after a run that failed; sends no inputs or output |

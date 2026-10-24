@@ -84,7 +84,11 @@ marked (you). In order:
       installed on all repositories of `osintverse-community` (checked 24 Oct). Until then submitting answers 503 and
       the rest works.
 - [ ] **(you)** After a week of upstream watcher reports (Admin console → Upstream), decide whether to set
-      `UPSTREAM_WATCH` to `issues`, and later `prs`.
+      `UPSTREAM_WATCH` to `issues`, and later `prs`. Apply migration 0028 before deploying an API that has it.
+- [ ] **(you)** Once bump pull requests have released cleanly for a while under `prs` (Admin console → Upstream,
+      "Latest bump"), decide whether to set `UPSTREAM_WATCH` to `auto`: pin-only bumps of stable releases then go out
+      on their own a week after upstream's release, at most ten a day, unless a package's maintainers turn it off.
+      Setting `prs` again stops it.
 - [x] Release `ot` v0.15.0 once the API above is live (its new commands need it): `ot publish` (with `--image`,
       `--sign` and `--oidc`), `ot namespace create|trust|trusted|untrust`, `ot issues`, `ot request`, `ot changelog`,
       `ot report --works|--broken`, the failure prompt and the first-week note in `ot outdated`. Push the tag `v0.15.0`

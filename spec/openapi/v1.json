@@ -6006,7 +6006,7 @@
           "Community"
         ],
         "summary": "Community wrappers against their upstream projects",
-        "description": "Counts by state (current, behind, unknown, archived, gone, license_changed, renamed, error) and the wrappers behind an upstream release, from the nightly upstream watcher. mode is what the watcher does with a difference: report, or issues (it also opens and closes outdated issues). Cached for an hour.",
+        "description": "Counts by state (current, behind, unknown, archived, gone, license_changed, renamed, error) and the wrappers behind an upstream release, from the nightly upstream watcher. mode is what the watcher does with a difference: report; issues (it also opens and closes outdated issues); prs (it also opens bump pull requests); or auto (it also merges and releases pin-only bumps a week after upstream's release). Cached for an hour.",
         "responses": {
           "200": {
             "description": "OK",
@@ -6018,7 +6018,9 @@
                     "mode": {
                       "enum": [
                         "report",
-                        "issues"
+                        "issues",
+                        "prs",
+                        "auto"
                       ]
                     },
                     "counts": {
@@ -6931,7 +6933,7 @@
         "tags": [
           "Owners"
         ],
-        "summary": "A community package's open bump pull request, and whether you may release it",
+        "summary": "A community package's current bump pull request, and whether you may release it",
         "parameters": [
           {
             "name": "ns",
@@ -6967,18 +6969,93 @@
                       ],
                       "properties": {
                         "version": {
-                          "type": "string"
+                          "type": "string",
+                          "description": "Upstream's release the pull request bumps to"
                         },
                         "number": {
                           "type": "integer"
                         },
                         "url": {
                           "type": "string"
+                        },
+                        "status": {
+                          "enum": [
+                            "open",
+                            "merged",
+                            "released",
+                            "failed",
+                            "closed"
+                          ],
+                          "description": "merged: the release started; released: the version is published; failed: it wasn't, and it can be released again"
+                        },
+                        "released_version": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "The package version the latest attempt releases"
+                        },
+                        "auto": {
+                          "type": "boolean",
+                          "description": "The registry released it on its own"
+                        },
+                        "merged_at": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "released_at": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "attempts": {
+                          "type": "integer"
+                        },
+                        "error_code": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "Why the release failed (only for people who can release it)"
+                        },
+                        "error": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "run_url": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "The release workflow run that failed"
+                        },
+                        "auto_release_at": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "description": "In auto mode, when an open bump goes out on its own (ms)"
                         }
                       }
                     },
                     "can_release": {
                       "type": "boolean"
+                    },
+                    "auto_release": {
+                      "type": "boolean"
+                    },
+                    "mode": {
+                      "enum": [
+                        "report",
+                        "issues",
+                        "prs",
+                        "auto"
+                      ]
                     }
                   }
                 }
@@ -7000,6 +7077,93 @@
           {
             "session": []
           }
+        ],
+        "description": "The open bump, the one being released, a failed one, or one released in the last two weeks. auto_release says whether the registry may release this package's pin-only bumps on its own (UPSTREAM_WATCH=auto, in mode)."
+      }
+    },
+    "/packages/{ns}/{name}/auto-release": {
+      "put": {
+        "operationId": "set_auto_release",
+        "tags": [
+          "Owners"
+        ],
+        "summary": "Let the registry release this package's bumps on its own, or not",
+        "description": "The package's maintainers and reviewers. With UPSTREAM_WATCH=auto, the nightly check merges and releases a pin-only bump a week after upstream's stable release; {enabled: false} leaves every bump to a person. On by default.",
+        "parameters": [
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Namespace"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Package name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "enabled"
+                ],
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "auto_release": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
         ]
       }
     },
@@ -7009,8 +7173,8 @@
         "tags": [
           "Owners"
         ],
-        "summary": "Merge and release a bump pull request",
-        "description": "The package's maintainers (its submitter, others staff add, the namespace's members) and reviewers. The community bot merges the pull request and starts the release: the release workflow for builds (the version follows upstream's), a tag for wheels. A pull request that changes more than the pin needs a reviewer (403 not_pin_only).",
+        "summary": "Merge and release a bump pull request, or release a failed one again",
+        "description": "The package's maintainers (its submitter, others staff add, the namespace's members) and reviewers. The community bot merges the pull request and starts the release: the release workflow for builds (the version follows upstream's), a tag for wheels. A pull request that changes more than the pin needs a reviewer (403 not_pin_only). A bump whose release failed is released again without merging again, under a new version; one being released answers 409 bump_in_progress. If GitHub merged it but the release didn't start, it answers 503 github_failed and the bump can be released again.",
         "parameters": [
           {
             "name": "ns",
@@ -7057,6 +7221,10 @@
                     "version": {
                       "type": "string",
                       "description": "The package version being released"
+                    },
+                    "attempt": {
+                      "type": "integer",
+                      "description": "Which attempt this is"
                     }
                   }
                 }

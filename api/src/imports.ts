@@ -32,9 +32,9 @@ export type FinishMode = "pr" | "registry" | "connect" | "wrapper";
 export const COMMUNITY_NAMESPACE = "osintverse-community";
 
 // Licenses that allow publishing a wrapper of someone else's tool.
-const REDISTRIBUTABLE = /^(MIT|MIT-0|Apache-2\.0|BSD-[234]-Clause|0BSD|ISC|MPL-2\.0|(A|L)?GPL-[23]\.0(-only|-or-later)?|LGPL-2\.1(-only|-or-later)?|Unlicense|CC0-1\.0|CC-BY(-SA)?-4\.0|EPL-2\.0|EUPL-1\.2|Zlib|Artistic-2\.0|BSL-1\.0)$/;
+const REDISTRIBUTABLE = /^(MIT|MIT-0|Apache-2\.0|BSD-[234]-Clause|0BSD|ISC|MPL-2\.0|(A|L)?GPL-[23]\.0(-only|-or-later)?|LGPL-2\.1(-only|-or-later)?|Unlicense|CC0-1\.0|CC-BY(-SA)?-4\.0|EPL-2\.0|EUPL-1\.2|Zlib|Artistic-2\.0|BSL-1\.0)$/i;
 
-/** Whether a license lets the registry redistribute a tool as a community wrapper (and so take requests for it). */
+/** Whether a license lets the registry redistribute a tool as a community wrapper (and so take requests for it). SPDX ids match whatever their case (GitLab's are lowercase). */
 export const isRedistributable = (license: string | null | undefined): boolean => !!license && REDISTRIBUTABLE.test(license);
 
 /** A refusal that the routes turn into an API error and bulk detection records on the import. */

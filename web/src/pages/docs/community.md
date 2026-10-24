@@ -111,6 +111,18 @@ release** on the package page: the registry merges the pull request and starts t
 and scanned like any other. A pull request that changes more than the pin waits for a reviewer. Maintainers can also
 triage their package's issues.
 
+The package page then follows the release: published, or failed with the reason (the build, the validation or the
+scan) and a link to the workflow run when the build failed. The maintainers get a notification when it fails, and
+**Release again** tries once more under a new version after they fix it. The package's version follows upstream's:
+2.2 becomes 2.2.0, and a version the package already had gets a patch on top. Bumps are only opened for stable
+releases, never for release candidates.
+
+When the registry turns on automatic releases, a pin-only bump is merged and released without a click a week after
+upstream's release (and at least four days after the pull request opened), as long as upstream's license still
+allows redistribution and the pull request is still open with nothing but the pin changed. The outdated issue and the
+package page give the date. A package's maintainers can turn this off, or back on, with the switch beside the bump on
+its page; closing the pull request on GitHub stops that one.
+
 ## Changing a community package
 
 A community package's repository belongs to `osintverse-community`, so its maintainers change more than the pin
