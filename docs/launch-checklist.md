@@ -10,14 +10,14 @@ Items marked **(you)** need the owner of the GitHub, GitLab, Cloudflare, Resend,
 | Thing | State |
 |-------|-------|
 | `ot` | v0.15.0 is the latest release on `OTInstaller/ot` (23 Oct, 19:49 UTC, tag `v0.15.0` on `7808e0d`), with archives, `.deb`/`.rpm`, signed checksums, six `.mcpb` bundles and `server.json`; `get.otinstaller.com/ot` and `/ot.ps1` serve its install scripts, and `/ot/latest` answers `v0.15.0`. Checked: the Windows amd64 archive matches `checksums.txt`, reports `ot version v0.15.0`, and has `ot publish --image/--sign/--oidc` and `ot namespace create/trust/trusted/untrust` |
-| API and site | Deployed from `main` (`6787737` and later docs) on 23 Oct: the API at 19:16 UTC, the mirror (now bound to D1) at 19:18 and the site with `PUBLIC_BETA=0` (no beta strip) at 19:44; migrations up to 0027 applied in production ("Phase 1 and publishing" below). The API and site were deployed again at 20:42 and 20:43 UTC with the D1 outage handling ("D1 outages" below); the mirror wasn't, as nothing it runs changed |
+| API and site | Deployed from `main` (`2afda1c`) on 24 Oct with "Keeping tools up to date" (below): migrations 0028 and 0029 applied, the API at 11:49 UTC and the site with `PUBLIC_BETA=0` at 11:51; migrations up to 0029 are in production. Before that, deployed from `main` (`6787737` and later docs) on 23 Oct: the API at 19:16 UTC, the mirror (now bound to D1) at 19:18 and the site with `PUBLIC_BETA=0` (no beta strip) at 19:44; migrations up to 0027 applied in production ("Phase 1 and publishing" below). The API and site were deployed again at 20:42 and 20:43 UTC with the D1 outage handling ("D1 outages" below); the mirror wasn't, as nothing it runs changed |
 | Agents | `ot mcp` (since v0.13.0), the remote MCP server at `https://api.otinstaller.com/mcp`, the plugin `OTInstaller/agent-plugin` v0.1.1 (23 Oct; `claude plugin validate --strict` passes); MCP Registry entries `com.otinstaller/ot` 0.15.0 (the latest, listed 23 Oct, 19:55 UTC) and `com.otinstaller/registry` 1.0.0 |
 | otlite | 1.0.0, 1.1.0 and 1.2.0 released to PyPI on 22 Oct (09:23, 09:39 and 10:51 UTC) by `release-otlite.yml`, each with a GitHub release `otlite-vX.Y.Z` on `OTInstaller/otinstaller`. 1.2.1 ([PR #48](https://github.com/OTInstaller/otinstaller/pull/48)) followed on 22 Oct at 18:54 UTC and is the latest on PyPI |
 | `otinstaller` shim | 0.2.0 is on PyPI (22 Oct, 11:23 UTC), and its files are on the `otlite-v1.2.0` GitHub release. The workflow publishes it from its own environment `pypi-otinstaller` ([PR #44](https://github.com/OTInstaller/otinstaller/pull/44)), but in the `otlite-v1.2.0` run that job failed with `invalid-publisher` (10:52 UTC), so the Actions history doesn't show how 0.2.0 was uploaded. **(you)** Check that PyPI's trusted publisher for `otinstaller` names the environment `pypi-otinstaller` before the next release |
 | otlite installer | `curl -fsSL https://get.otinstaller.com/otlite \| sh` answers 200 (`otlite/scripts/install.sh` from `main`, through `ops/get`) |
 | Site pages | `/agents`, the homepage for AI agents, with its Markdown twin `/agents.md`; `/otlite` and `/otlite/tools`, both listing every tool from `web/src/data/otlite-catalog.json`; tool pages show the sample output recorded by the scanner's smoke test |
 
-## Keeping tools up to date (merged 24 October 2026, not deployed)
+## Keeping tools up to date (deployed 24 October 2026)
 
 Four pull requests: `ot`'s daily update note, holds and `GET /v1/latest`
 ([#99](https://github.com/OTInstaller/otinstaller/pull/99)); bump release outcomes and `UPSTREAM_WATCH=auto`
@@ -25,17 +25,22 @@ Four pull requests: `ot`'s daily update note, holds and `GET /v1/latest`
 ([#101](https://github.com/OTInstaller/otinstaller/pull/101), migration 0029); otlite 1.3.0
 ([#102](https://github.com/OTInstaller/otinstaller/pull/102)). All merged into `main` (`0f71ec0`) on 24 Oct; on that
 commit the Go tests, `npm test` in `api/` (462) and `web/` (205), and otlite's 571 tests pass, and
-`npx wrangler deploy --dry-run` builds the API. Applying the migrations was refused to the session by the permission
-classifier, so nothing is deployed yet. Production D1 lists exactly 0028 and 0029 as unapplied; its Time Travel
-bookmark before them is `00000321-00000000-0000510e-e78c8e70e661837cf50f8ac32043c858`.
+`npx wrangler deploy --dry-run` builds the API. The migrations and deploys ran on 24 Oct once the owner allowed
+those exact commands in `.claude/settings.local.json`. D1's Time Travel bookmark before the migrations is
+`00000321-00000000-0000510e-e78c8e70e661837cf50f8ac32043c858`.
 
-- [ ] **(you)** Apply the migrations: in `api/`, `npx wrangler d1 migrations apply otinstaller --remote`. Both must be
-      in before the API goes out: without 0029, `/me/email-prefs` and the inbox email cron fail.
-- [ ] **(you)** Deploy the API: in `api/`, `npm run deploy`. Checks: `curl -s https://api.otinstaller.com/v1/latest`
-      lists packages with `latest`, and `/v1/health` answers 200.
-- [ ] **(you)** Deploy the site: in `web/`, PowerShell `$env:PUBLIC_BETA = "0"; npm run deploy`. Checks:
-      `/docs/updates` loads, a tool page shows "Follow releases", and `/settings/notifications` has the releases
-      setting. The privacy policy's new lines (the daily update check, follows) go live with it.
+- [x] Apply the migrations: in `api/`, `npx wrangler d1 migrations apply otinstaller --remote`. 0028 and 0029 applied
+      on 24 Oct, 11:48 UTC.
+- [x] Deploy the API: in `api/`, `npm run deploy`. Now `3ba5eb38-a472-41ec-8884-9e6e00f6a08b` (24 Oct, 11:49 UTC);
+      roll back to `cf3639a6-dc66-4fbd-bf9d-925180288eb8`. Checks: `/v1/health` 200; `/v1/latest` lists 113 packages,
+      `public, max-age=3600`; `/v1/tools/osintverse-community/sherlock/follow` answers 401 signed out;
+      `/v1/upstream/summary` says `report`.
+- [x] Deploy the site with `PUBLIC_BETA=0`: in `web/`, `PUBLIC_BETA=0 npm run deploy`. Now
+      `a59d86c6-1660-41a8-b4e7-16e9f4fe4870` (24 Oct, 11:51 UTC); roll back to `d8c4a74f-7dfa-4c23-a1e7-6be77c66c024`.
+      Checks: `/docs/updates` and its `.md` twin load; `/docs/errors` has `version_held`, `bump_in_progress` and
+      `release_workflow_failed`; the sherlock page shows "Follow releases", which offers sign-in links when signed out;
+      `/settings/notifications` asks to sign in; the privacy policy has the daily check; no beta strip and no CSP
+      errors in the browser.
 - [ ] **(you)** Release `ot` 0.16.0 (push the tag `v0.16.0`), then list it in the MCP Registry and publish the agent
       plugin 0.1.2 (`integrations/agent-plugin/`). The site's update docs say "from ot 0.16".
 - [ ] **(you)** Release otlite 1.3.0: add a `debian/changelog` entry if the `.deb` should say 1.3.0, then push the tag
