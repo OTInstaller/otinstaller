@@ -11,7 +11,7 @@ Items marked **(you)** need the owner of the GitHub, GitLab, Cloudflare, Resend,
 |-------|-------|
 | `ot` | v0.16.0 is the latest release on `OTInstaller/ot` (24 Oct, 12:07 UTC), with the daily update note, holds and `GET /v1/latest`; `/ot/latest` answers `v0.16.0`, and the Windows amd64 archive matches `checksums.txt` and reports `ot version v0.16.0`. Before it, v0.15.0 (23 Oct, 19:49 UTC) |
 | API and site | Deployed from `main` (`f6b3ff4`) on 24 Oct at 12:57 and 12:59 UTC with following publishers and input types and the build watcher ("Follows and the build watcher" below): migrations up to 0031 are in production, and `UPSTREAM_WATCH` is `issues`. Earlier that day, deployed from `main` (`2afda1c`) with "Keeping tools up to date" (below): migrations 0028 and 0029 applied, the API at 11:49 UTC and the site with `PUBLIC_BETA=0` at 11:51; migrations up to 0029 are in production. Before that, deployed from `main` (`6787737` and later docs) on 23 Oct: the API at 19:16 UTC, the mirror (now bound to D1) at 19:18 and the site with `PUBLIC_BETA=0` (no beta strip) at 19:44; migrations up to 0027 applied in production ("Phase 1 and publishing" below). The API and site were deployed again at 20:42 and 20:43 UTC with the D1 outage handling ("D1 outages" below); the mirror wasn't, as nothing it runs changed |
-| Agents | `ot mcp` (since v0.13.0), the remote MCP server at `https://api.otinstaller.com/mcp`, the plugin `OTInstaller/agent-plugin` v0.1.2 (tag `v0.1.2`, 24 Oct); MCP Registry entries `com.otinstaller/ot` 0.15.0 (the latest there: listing 0.16.0 is left to the owner) and `com.otinstaller/registry` 1.0.0 |
+| Agents | `ot mcp` (since v0.13.0), the remote MCP server at `https://api.otinstaller.com/mcp`, the plugin `OTInstaller/agent-plugin` v0.1.2 (tag `v0.1.2`, 24 Oct); MCP Registry entries `com.otinstaller/ot` 0.16.0 (the latest, listed 24 Oct, 13:24 UTC) and `com.otinstaller/registry` 1.0.0 |
 | otlite | 1.3.0 is the latest on PyPI (24 Oct, 12:18 UTC, `release-otlite.yml` with the `otinstaller` shim job passing), with the GitHub release `otlite-v1.3.0`. Before it: 1.0.0, 1.1.0 and 1.2.0 on 22 Oct, and 1.2.1 ([PR #48](https://github.com/OTInstaller/otinstaller/pull/48)) the same evening |
 | `otinstaller` shim | 0.2.0 is on PyPI (22 Oct, 11:23 UTC), and its files are on the `otlite-v1.2.0` GitHub release. The workflow publishes it from its own environment `pypi-otinstaller` ([PR #44](https://github.com/OTInstaller/otinstaller/pull/44)), but in the `otlite-v1.2.0` run that job failed with `invalid-publisher` (10:52 UTC), so the Actions history doesn't show how 0.2.0 was uploaded. **(you)** Check that PyPI's trusted publisher for `otinstaller` names the environment `pypi-otinstaller` before the next release |
 | otlite installer | `curl -fsSL https://get.otinstaller.com/otlite \| sh` answers 200 (`otlite/scripts/install.sh` from `main`, through `ops/get`) |
@@ -66,11 +66,8 @@ those exact commands in `.claude/settings.local.json`. D1's Time Travel bookmark
       errors in the browser.
 - [x] Release `ot` 0.16.0: tag `v0.16.0` pushed, released on `OTInstaller/ot` on 24 Oct at 12:07 UTC. The agent
       plugin 0.1.2 is pushed to `OTInstaller/agent-plugin` with the tag `v0.1.2`.
-- [ ] **(you)** List `ot` 0.16.0 in the MCP Registry (publishing it was refused to the agent). The registry's
-      publisher, installed with `go install`, is `publisher` in Go's bin folder. In an empty folder:
-      `gh release download v0.16.0 --repo OTInstaller/ot --pattern server.json`, then
-      `publisher login http --domain otinstaller.com --private-key "$(cat ~/.mcp-registry/otinstaller.com.ed25519.hex)"`,
-      then `publisher publish server.json`. The release's `server.json` passes `publisher validate` (checked 24 Oct).
+- [x] List `ot` 0.16.0 in the MCP Registry: `com.otinstaller/ot` 0.16.0 is the latest entry (published 24 Oct, 13:24
+      UTC), from the release's `server.json` with `publisher publish`.
 - [x] Release otlite 1.3.0: `debian/changelog` has 1.3.0-1 ([#105](https://github.com/OTInstaller/otinstaller/pull/105)),
       and the tag `otlite-v1.3.0` released it to PyPI on 24 Oct at 12:18 UTC.
 
