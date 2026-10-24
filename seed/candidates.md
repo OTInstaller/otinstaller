@@ -857,7 +857,7 @@ company data, archives and search, and crypto. Each package was read at its late
 command-line source), with its licence file and, where possible, a live call to the provider. A package with its own
 command became a community wrapper; a library from one of the big providers became a first-party tool built on it.
 Six providers with no usable client (AbuseIPDB, Shodan InternetDB, HackerTarget, URLhaus, Pulsedive and
-OpenSanctions) got first-party tools that call their APIs directly, on 25 Oct 2026; the rows below for their
+OpenSanctions) got first-party tools that call their APIs directly, on 24 Oct 2026; the rows below for their
 packages say so. Packages already in the seed or recorded above (greynoise, shodan, ghunt, h8mail, edgar-tool,
 telegram-phone-number-checker) are not repeated. [README.md](README.md) has the rules and what the local runs found.
 

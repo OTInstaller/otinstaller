@@ -374,7 +374,7 @@ Health risks for these:
 
 ## Data providers without a PyPI client (October 2026)
 
-Six providers that the PyPI pass found useful but without a usable client became first-party tools on 25 Oct 2026.
+Six providers that the PyPI pass found useful but without a usable client became first-party tools on 24 Oct 2026.
 Each calls the provider's HTTP API with Python's standard library alone, so it has no `requirements.txt` and the
 build watcher has nothing to follow but its base image. Otherwise they follow the other first-party tools:
 - typed entities;

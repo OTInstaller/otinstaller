@@ -1108,7 +1108,7 @@ table, publish order (namespace → tools → guides), what was not converted an
   are built on a data provider's official PyPI client (VirusTotal, urlscan.io, Censys, OTX, IPinfo, Hunter, HIBP,
   Companies House, SEC EDGAR), pinned in `requirements.txt` so the build watcher follows it; they exit 3 when their
   key is missing, and a script named like its client library gets a `_lookup` suffix so it doesn't import itself.
-  Six more (25 Oct 2026, not yet published) call a provider's HTTP API with `urllib` alone, for providers with no
+  Six more (24 Oct 2026, not yet published) call a provider's HTTP API with `urllib` alone, for providers with no
   usable PyPI client (Shodan InternetDB, HackerTarget, AbuseIPDB, URLhaus, Pulsedive, OpenSanctions; `seed/README.md`,
   "Data providers without a PyPI client"); they send keys in headers where the API allows it and exit 3 the same way.
 - `community/<tool>/` (119): wrappers of third-party tools. Docker wrappers pin the upstream version in a Dockerfile and
