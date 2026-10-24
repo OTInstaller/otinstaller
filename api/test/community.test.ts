@@ -343,7 +343,7 @@ describe("notifications", () => {
     const calls = fakeHosts({ "POST https://api.resend.com/emails": { id: "email" } });
     const maintainer = await withEmail({ member: "ns_dheeraj" });
     const quiet = await withEmail({ member: "ns_dheeraj" });
-    expect((await req(quiet, "PUT", "/me/email-prefs", { owner_issues: "off" })).body).toEqual({ community: "immediate", owner_issues: "off", releases: "immediate" });
+    expect((await req(quiet, "PUT", "/me/email-prefs", { owner_issues: "off" })).body).toEqual({ community: "immediate", owner_issues: "off", releases: "immediate", lifecycle: "immediate", security: "immediate" });
     expect((await req(quiet, "PUT", "/me/email-prefs", { owner_issues: "sometimes" })).res.status).toBe(400);
     const author = await person();
     await newIssue(author, { title: "First of two for the email" });
@@ -564,14 +564,14 @@ describe("following a package's releases", () => {
   it("follows and unfollows, and lists what you follow", async () => {
     expect((await req(null, "PUT", `/tools/${WHOIS}/follow`)).res.status).toBe(401);
     const alice = await person();
-    expect((await req(alice, "GET", `/tools/${WHOIS}/follow`)).body).toEqual({ following: false, followed_at: null });
-    expect((await req(alice, "PUT", `/tools/${WHOIS}/follow`)).body).toEqual({ following: true });
-    expect((await req(alice, "PUT", `/tools/${WHOIS}/follow`)).body).toEqual({ following: true });
+    expect((await req(alice, "GET", `/tools/${WHOIS}/follow`)).body).toEqual({ following: false, level: null, followed_at: null });
+    expect((await req(alice, "PUT", `/tools/${WHOIS}/follow`)).body).toEqual({ following: true, level: "all" });
+    expect((await req(alice, "PUT", `/tools/${WHOIS}/follow`)).body).toEqual({ following: true, level: "all" });
     const state = await req(alice, "GET", `/tools/${WHOIS}/follow`);
     expect(state.body.following).toBe(true);
     expect(state.res.headers.get("cache-control")).toBe("private, no-store");
     const mine = (await req(alice, "GET", "/me/follows")).body;
-    expect(mine.follows).toEqual([expect.objectContaining({ ref: WHOIS, kind: "tool", followed_at: state.body.followed_at })]);
+    expect(mine.follows).toEqual([expect.objectContaining({ ref: WHOIS, kind: "tool", level: "all", followed_at: state.body.followed_at })]);
     expect((await req(alice, "DELETE", `/tools/${WHOIS}/follow`)).body).toEqual({ following: false });
     expect((await req(alice, "GET", "/me/follows")).body.follows).toEqual([]);
     expect((await req(alice, "PUT", "/tools/dheeraj/no-such-tool/follow")).res.status).toBe(404);
@@ -627,8 +627,9 @@ describe("following a package's releases", () => {
   it("has its own email preference and unsubscribe link", async () => {
     const { unsubscribeUrl } = await import("../src/inbox");
     const who = await person();
-    expect((await req(who, "GET", "/me/email-prefs")).body).toEqual({ community: "immediate", owner_issues: "immediate", releases: "immediate" });
-    expect((await req(who, "PUT", "/me/email-prefs", { releases: "daily" })).body).toEqual({ community: "immediate", owner_issues: "immediate", releases: "daily" });
+    const fresh = { community: "immediate", owner_issues: "immediate", releases: "immediate", lifecycle: "immediate", security: "immediate" };
+    expect((await req(who, "GET", "/me/email-prefs")).body).toEqual(fresh);
+    expect((await req(who, "PUT", "/me/email-prefs", { releases: "daily" })).body).toEqual({ ...fresh, releases: "daily" });
     expect((await req(who, "PUT", "/me/email-prefs", { releases: "weekly" })).res.status).toBe(400);
     const url = new URL(await unsubscribeUrl(env as any, who.id, "releases"));
     expect((await call(`/unsubscribe${url.search}`, { method: "POST", body: "List-Unsubscribe=One-Click", headers: { "content-type": "application/x-www-form-urlencoded" } })).status).toBe(200);
@@ -721,5 +722,210 @@ describe("following publishers and input types", () => {
     expect(await items(other, toolId)).toEqual([]);
     // The closest follow words the item, and nobody gets two for one release.
     expect(await items(all, toolId)).toEqual([fresh, next]);
+  });
+});
+
+describe("follow levels, lifecycle changes and security warnings", () => {
+  /** A new dheeraj package, published version by version (`warn` ones as if their scan had warned). */
+  async function newPackage(versions: string[], warn: string[] = []) {
+    const { publishVersion } = await import("../src/scans");
+    const { testEnv } = await import("./helpers");
+    const name = `life-${uniq()}`;
+    const toolId = `tool_dheeraj_${name}`;
+    await DB().prepare(`INSERT INTO tools (id, namespace_id, kind, name, summary, created_at, updated_at) VALUES (?, 'ns_dheeraj', 'tool', ?, 'Lifecycle test tool', 1, 1)`).bind(toolId, name).run();
+    const publish = async (version: string) => {
+      const base = await DB().prepare(`SELECT v.manifest_json FROM tools t JOIN versions v ON v.id = t.latest_version_id WHERE t.id = 'tool_dheeraj_whois-lite'`).first<{ manifest_json: string }>();
+      const [major, minor, patch] = version.split(".").map(Number);
+      const id = ulid();
+      await DB().prepare(
+        `INSERT INTO versions (id, tool_id, version, semver_major, semver_minor, semver_patch, semver_pre, manifest_json, runtime_kind, status, scan_status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, '', ?, 'docker', 'awaiting_review', ?, ?)`,
+      ).bind(id, toolId, version, major, minor, patch, JSON.stringify({ ...JSON.parse(base!.manifest_json), name, version }), warn.includes(version) ? "warn" : "pass", Date.now()).run();
+      await publishVersion(await testEnv(), id);
+    };
+    for (const v of versions) await publish(v);
+    return { name, ref: `dheeraj/${name}`, toolId, publish };
+  }
+  const items = async (who: Who, toolId: string) =>
+    (await DB().prepare(`SELECT kind, scope, summary, path FROM inbox WHERE user_id = ? AND tool_id = ? ORDER BY created_at, summary`).bind(who.id, toolId).all<any>()).results;
+  const followAt = async (ref: string, level?: string) => {
+    const who = await person();
+    await req(who, "PUT", `/tools/${ref}/follow`, level ? { level } : undefined);
+    return who;
+  };
+
+  it("follows at a level, keeps it when following again, and lists it", async () => {
+    const who = await person();
+    const ref = "dheeraj/whois-lite";
+    expect((await req(who, "PUT", `/tools/${ref}/follow`, { level: "releases" })).body).toEqual({ following: true, level: "releases" });
+    expect((await req(who, "PUT", `/tools/${ref}/follow`)).body).toEqual({ following: true, level: "releases" });
+    expect((await req(who, "PUT", `/tools/${ref}/follow`, {})).body.level).toBe("releases");
+    expect((await req(who, "PUT", `/tools/${ref}/follow`, { level: "weekly" })).body.error.code).toBe("invalid_body");
+    expect((await req(who, "PUT", `/tools/${ref}/follow`, { level: "muted" })).body.level).toBe("muted");
+    expect((await req(who, "GET", `/tools/${ref}/follow`)).body).toMatchObject({ following: true, level: "muted" });
+    expect((await req(who, "GET", "/me/follows")).body.follows).toEqual([expect.objectContaining({ ref, level: "muted" })]);
+  });
+
+  it("tells followers about yanks, deprecations, takedowns and moves, as their level says, never the person who acted", async () => {
+    const pkg = await newPackage(["1.0.0", "1.1.0", "1.2.0"]);
+    const all = await followAt(pkg.ref);
+    const rel = await followAt(pkg.ref, "releases");
+    const muted = await followAt(pkg.ref, "muted");
+    const owner = await person({ member: "ns_dheeraj" });
+    await req(owner, "PUT", `/tools/${pkg.ref}/follow`);
+    const life = (summary: string, path = `/${pkg.ref}`) => ({ kind: "lifecycle", scope: "lifecycle", summary, path });
+
+    expect((await req(owner, "POST", `/tools/${pkg.ref}/1.2.0/yank`)).res.status).toBe(200);
+    await req(owner, "POST", `/tools/${pkg.ref}/1.2.0/unyank`);
+    expect(await items(all, pkg.toolId)).toEqual(expect.arrayContaining([
+      life(`${pkg.ref} 1.2.0 was yanked: @latest no longer installs it`, `/${pkg.ref}/versions`),
+      life(`${pkg.ref} 1.2.0 is available again`, `/${pkg.ref}/versions`),
+    ]));
+    expect(await items(all, pkg.toolId)).toHaveLength(2);
+
+    await req(owner, "POST", `/tools/${pkg.ref}/deprecate`, { message: "Use whois-lite.", replacement: "dheeraj/whois-lite" });
+    // A new message on a package that is already deprecated tells nobody again.
+    await req(owner, "POST", `/tools/${pkg.ref}/deprecate`, { message: "Really, use whois-lite." });
+    await req(owner, "DELETE", `/tools/${pkg.ref}/deprecate`);
+    await req(owner, "DELETE", `/tools/${pkg.ref}/deprecate`);
+    expect(await items(all, pkg.toolId)).toEqual(expect.arrayContaining([
+      life(`${pkg.ref} is deprecated; use dheeraj/whois-lite instead: Use whois-lite.`),
+      life(`${pkg.ref} is no longer deprecated`),
+    ]));
+    expect(await items(all, pkg.toolId)).toHaveLength(4);
+
+    const reviewer = await person({ reviewer: true });
+    expect((await req(reviewer, "POST", `/admin/tools/${pkg.ref}/1.0.0/remove`, { category: "license", reason: "The upstream licence forbids redistribution." })).res.status).toBe(200);
+    expect((await req(reviewer, "POST", `/admin/tools/${pkg.ref}/1.1.0/remove`, { category: "malware", reason: "Sends keys to a third party." })).res.status).toBe(200);
+    const taken = life(`${pkg.ref} 1.0.0 was taken down over its license`);
+    const malware = { kind: "security", scope: "security", summary: `${pkg.ref} 1.1.0 was taken down as malware; uninstall it with \`ot uninstall ${pkg.ref}\``, path: `/${pkg.ref}` };
+    expect(await items(all, pkg.toolId)).toEqual(expect.arrayContaining([taken, malware]));
+    expect(await items(all, pkg.toolId)).toHaveLength(6);
+    // The reviewer's reason is never in a notification.
+    expect(JSON.stringify(await items(all, pkg.toolId))).not.toContain("third party");
+    // Following releases only: new versions and security warnings.
+    expect(await items(rel, pkg.toolId)).toEqual([malware]);
+    expect(await items(muted, pkg.toolId)).toEqual([]);
+    // The owner acted every time, so heard nothing, except the takedowns a reviewer did.
+    expect(await items(owner, pkg.toolId)).toEqual(expect.arrayContaining([taken, malware]));
+    expect(await items(owner, pkg.toolId)).toHaveLength(2);
+
+    const { completeTransfer } = await import("../src/transfers");
+    await completeTransfer(env as any, owner.id, {
+      id: ulid(), tool_id: pkg.toolId, from_namespace_id: "ns_dheeraj", to_namespace_id: "ns_osintverse", requested_by: owner.id, kind: "transfer", status: "accepted",
+    } as any);
+    expect(await items(all, pkg.toolId)).toContainEqual(life(`${pkg.ref} moved to osintverse/${pkg.name}; \`ot update\` follows it there`, `/osintverse/${pkg.name}`));
+    // Follows go with the package.
+    expect((await req(all, "GET", "/me/follows")).body.follows[0].ref).toBe(`osintverse/${pkg.name}`);
+  });
+
+  it("tells followers when archiving the repository deprecates the package, and when that is undone", async () => {
+    const { applyMeta } = await import("../src/sync");
+    const pkg = await newPackage(["1.0.0"]);
+    const all = await followAt(pkg.ref);
+    const source = { id: ulid(), tool_id: pkg.toolId, namespace_id: "ns_dheeraj", provider: "github", project_id: "77", path: `dheeraj/${pkg.name}`, url: "", sync_status: "ok", archived: 0, unavailable_since: null } as any;
+    const meta = { path: `dheeraj/${pkg.name}`, defaultBranch: "main", description: null, topics: [], stars: 0, archived: true, visibility: "public" } as any;
+    expect(await applyMeta(env as any, source, meta)).toBe("archived");
+    expect((await items(all, pkg.toolId)).map((i) => i.summary)).toEqual([`${pkg.ref} is deprecated: its source repository was archived`]);
+    expect(await applyMeta(env as any, { ...source, archived: 1 }, { ...meta, archived: false })).toBe("unarchived");
+    expect((await items(all, pkg.toolId)).map((i) => i.summary)).toContain(`${pkg.ref} is no longer deprecated: its source repository was unarchived`);
+  });
+
+  it("warns followers of a release with security warnings, and muting leaves out what a followed publisher would bring", async () => {
+    const pkg = await newPackage(["1.0.0"], ["1.1.0"]);
+    const all = await followAt(pkg.ref);
+    const rel = await followAt(pkg.ref, "releases");
+    const muted = await followAt(pkg.ref, "muted");
+    await req(muted, "PUT", "/me/follows/publisher/dheeraj");
+    await pkg.publish("1.1.0");
+    const out = { kind: "release", scope: "releases", summary: `${pkg.ref} 1.1.0 is out`, path: `/${pkg.ref}/versions#v1.1.0` };
+    const warning = {
+      kind: "security", scope: "security", path: `/${pkg.ref}/security`,
+      summary: `${pkg.ref} 1.1.0 was published with security warnings: its scan found fixable critical or high vulnerabilities`,
+    };
+    expect(await items(all, pkg.toolId)).toEqual(expect.arrayContaining([out, warning]));
+    expect(await items(all, pkg.toolId)).toHaveLength(2);
+    expect(await items(rel, pkg.toolId)).toHaveLength(2);
+    expect(await items(muted, pkg.toolId)).toEqual([]);
+  });
+});
+
+describe("notification settings", () => {
+  /** A person with two sign-in accounts that have email addresses. */
+  async function withAccounts() {
+    const p = await person();
+    await DB().batch([
+      DB().prepare(`UPDATE users SET email = ? WHERE id = ?`).bind(`${p.handle}@github.example`, p.id),
+      DB().prepare(`INSERT INTO accounts (id, user_id, provider, provider_user_id, login, email, created_at) VALUES (?, ?, 'github', ?, ?, ?, 1)`).bind(ulid(), p.id, `gh${uniq()}`, p.handle, `${p.handle}@github.example`),
+      DB().prepare(`INSERT INTO accounts (id, user_id, provider, provider_user_id, login, email, created_at) VALUES (?, ?, 'gitlab', ?, ?, ?, 1)`).bind(ulid(), p.id, `gl${uniq()}`, p.handle, `${p.handle}@gitlab.example`),
+    ]);
+    return p;
+  }
+  const item = (who: Who, scope: string, summary: string, at = Date.now()) =>
+    DB().prepare(`INSERT INTO inbox (id, user_id, kind, scope, summary, path, created_at) VALUES (?, ?, ?, ?, ?, '/x', ?)`).bind(ulid(), who.id, scope === "releases" ? "release" : scope, scope, summary, at).run();
+
+  it("starts from every kind in the inbox and emailed at once, to the first address known", async () => {
+    const p = await withAccounts();
+    const s = (await req(p, "GET", "/me/notification-settings")).body;
+    for (const k of ["community", "owner_issues", "releases", "lifecycle", "security"]) expect(s.scopes[k]).toEqual({ inbox: true, email: "immediate" });
+    expect(s.email).toEqual({
+      to: null, address: `${p.handle}@github.example`,
+      options: [{ provider: "github", address: `${p.handle}@github.example` }, { provider: "gitlab", address: `${p.handle}@gitlab.example` }],
+    });
+    expect(requiredScope("PUT", "/v1/me/notification-settings")).toBe("manage");
+    expect((await req(null, "GET", "/me/notification-settings")).res.status).toBe(401);
+  });
+
+  it("keeps a kind out of the inbox and its unread count, and brings it back", async () => {
+    const p = await withAccounts();
+    await item(p, "lifecycle", "Something was yanked", Date.now() - 1000);
+    await item(p, "releases", "Something is out");
+    expect((await req(p, "GET", "/me")).body.unread).toBe(2);
+    const off = await req(p, "PUT", "/me/notification-settings", { scopes: { lifecycle: { inbox: false, email: "daily" } } });
+    expect(off.body.scopes.lifecycle).toEqual({ inbox: false, email: "daily" });
+    expect(off.body.scopes.releases).toEqual({ inbox: true, email: "immediate" });
+    const inbox = (await req(p, "GET", "/me/inbox")).body;
+    expect(inbox.items.map((i: any) => i.summary)).toEqual(["Something is out"]);
+    expect(inbox.items[0].scope).toBe("releases");
+    expect(inbox.unread).toBe(1);
+    expect((await req(p, "GET", "/me")).body.unread).toBe(1);
+    // The older form keeps the inbox switch, and the newer one keeps what it set.
+    await req(p, "PUT", "/me/email-prefs", { community: "off" });
+    expect((await req(p, "GET", "/me/notification-settings")).body.scopes).toMatchObject({ lifecycle: { inbox: false, email: "daily" }, community: { inbox: true, email: "off" } });
+    expect((await req(p, "GET", "/me/email-prefs")).body).toMatchObject({ lifecycle: "daily", community: "off" });
+    await req(p, "PUT", "/me/notification-settings", { scopes: { lifecycle: { inbox: true } } });
+    expect((await req(p, "GET", "/me/inbox")).body.items).toHaveLength(2);
+
+    // Only what is unread.
+    await req(p, "POST", "/me/inbox/read", { ids: [inbox.items[0].id] });
+    expect((await req(p, "GET", "/me/inbox?unread=1")).body.items.map((i: any) => i.summary)).toEqual(["Something was yanked"]);
+  });
+
+  it("refuses settings it doesn't know", async () => {
+    const p = await withAccounts();
+    for (const body of [{ scopes: { weekly: {} } }, { scopes: { releases: { email: "weekly" } } }, { scopes: { releases: { inbox: "no" } } }, { scopes: [] }, { email_to: "osintverse" }, { email_to: 3 }]) {
+      expect((await req(p, "PUT", "/me/notification-settings", body)).body.error.code).toBe("invalid_body");
+    }
+  });
+
+  it("sends email to the address the person chose, and unsubscribes from the new kinds", async () => {
+    const { deliverInbox, unsubscribeUrl } = await import("../src/inbox");
+    const { fakeHosts } = await import("./helpers");
+    const calls = fakeHosts({ "POST https://api.resend.com/emails": { id: "email" } });
+    const p = await withAccounts();
+    const chosen = await req(p, "PUT", "/me/notification-settings", { email_to: "gitlab" });
+    expect(chosen.body.email).toMatchObject({ to: "gitlab", address: `${p.handle}@gitlab.example` });
+    await item(p, "security", "A security warning for you", Date.now() - 5 * 60_000);
+    await deliverInbox(env as any, "immediate");
+    const mails = calls.filter((c) => c.url === "https://api.resend.com/emails").map((c) => JSON.parse(c.body)).filter((m) => m.text.includes("A security warning for you"));
+    expect(mails).toHaveLength(1);
+    expect(mails[0].to).toEqual([`${p.handle}@gitlab.example`]);
+    expect(mails[0].text).toContain("/settings/notifications");
+    // Back to the first address known.
+    expect((await req(p, "PUT", "/me/notification-settings", { email_to: null })).body.email).toMatchObject({ to: null, address: `${p.handle}@github.example` });
+
+    const url = new URL(await unsubscribeUrl(env as any, p.id, "security"));
+    expect((await call(`/unsubscribe${url.search}`, { method: "POST" })).status).toBe(200);
+    expect((await req(p, "GET", "/me/notification-settings")).body.scopes.security.email).toBe("off");
   });
 });

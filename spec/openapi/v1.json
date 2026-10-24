@@ -3964,7 +3964,7 @@
         "tags": [
           "Community"
         ],
-        "summary": "Whether you follow a package's releases",
+        "summary": "Whether you follow a package, and at which level",
         "parameters": [
           {
             "name": "ns",
@@ -3995,6 +3995,18 @@
                   "properties": {
                     "following": {
                       "type": "boolean"
+                    },
+                    "level": {
+                      "enum": [
+                        "all",
+                        "releases",
+                        "muted"
+                      ],
+                      "description": "all: new versions, lifecycle changes and security warnings; releases: new versions and security warnings; muted: nothing, even through a followed publisher or input type",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "followed_at": {
                       "type": [
@@ -4029,8 +4041,8 @@
         "tags": [
           "Community"
         ],
-        "summary": "Follow a package's releases",
-        "description": "An inbox item, and an email per your releases preference, for each new version that becomes the package's latest. People following one of its open broken or outdated issues hear about the version there instead.",
+        "summary": "Follow a package, or change how much of it reaches you",
+        "description": "An inbox item, and an email as that kind's preference says, for each new version that becomes the package's latest (people following one of its open broken or outdated issues hear about the version there instead), for lifecycle changes (yanked, deprecated, taken down, moved) and for security warnings (a new version with fixable critical or high vulnerabilities, a takedown as malware), as the level says. Leave level out to follow at all, or to keep the level you chose.",
         "parameters": [
           {
             "name": "ns",
@@ -4061,11 +4073,22 @@
                   "properties": {
                     "following": {
                       "type": "boolean"
+                    },
+                    "level": {
+                      "enum": [
+                        "all",
+                        "releases",
+                        "muted"
+                      ],
+                      "description": "all: new versions, lifecycle changes and security warnings; releases: new versions and security warnings; muted: nothing, even through a followed publisher or input type"
                     }
                   }
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
           },
           "401": {
             "$ref": "#/components/responses/Error"
@@ -4085,7 +4108,27 @@
           {
             "session": []
           }
-        ]
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "level": {
+                    "enum": [
+                      "all",
+                      "releases",
+                      "muted"
+                    ],
+                    "description": "all: new versions, lifecycle changes and security warnings; releases: new versions and security warnings; muted: nothing, even through a followed publisher or input type"
+                  }
+                }
+              }
+            }
+          }
+        }
       },
       "delete": {
         "operationId": "unfollow_package",
@@ -7571,8 +7614,8 @@
         "tags": [
           "Community"
         ],
-        "summary": "A contributor's public profile",
-        "description": "Their handle, avatar, roles, when they joined, counts of what they did (recounted nightly; only visible posts count) and their recent issues and requests. Never their email or accounts. Hidden profiles answer 404. Cached for 5 minutes.",
+        "summary": "A person's public profile",
+        "description": "Their handle, avatar, what they wrote about themselves (display name, bio, location, website, links), roles, when they joined, the packages whose page lists them as a maintainer, counts of what they did (recounted nightly; only visible posts count) and their recent issues and requests. Never their email, accounts or namespaces. A handle they had before answers their profile with moved_to. Hidden profiles answer 404. Cached for 5 minutes.",
         "parameters": [
           {
             "name": "handle",
@@ -7595,11 +7638,54 @@
                     "handle": {
                       "type": "string"
                     },
+                    "moved_to": {
+                      "type": "string",
+                      "description": "Their handle now, when you asked for one they had before"
+                    },
                     "avatar_url": {
                       "type": [
                         "string",
                         "null"
                       ]
+                    },
+                    "display_name": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "bio": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "location": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "website": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "links": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "provider": {
+                            "type": "string",
+                            "description": "x, linkedin, mastodon, bluesky, github, gitlab, ... or other"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        }
+                      }
                     },
                     "joined": {
                       "type": "string",
@@ -7661,6 +7747,29 @@
                     },
                     "indexable": {
                       "type": "boolean"
+                    },
+                    "maintains": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "ref": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "tool",
+                              "guide"
+                            ]
+                          },
+                          "summary": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -7925,7 +8034,18 @@
                             "type": "string"
                           },
                           "kind": {
-                            "type": "string"
+                            "type": "string",
+                            "description": "issue_opened, comment, status, moderation, role, proposal, release, lifecycle or security"
+                          },
+                          "scope": {
+                            "enum": [
+                              "community",
+                              "owner_issues",
+                              "releases",
+                              "lifecycle",
+                              "security",
+                              "account"
+                            ]
                           },
                           "summary": {
                             "type": "string"
@@ -7970,10 +8090,430 @@
             "required": false,
             "schema": {
               "type": "integer"
-            }
+            },
+            "description": "next_before from the previous page"
+          },
+          {
+            "name": "unread",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1",
+                "true"
+              ]
+            },
+            "description": "Only unread items"
           }
         ],
         "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "description": "50 at a time (page with before=<next_before>). Kinds you keep out of your inbox in your notification settings are left out, and so is their unread count."
+      }
+    },
+    "/me/notification-settings": {
+      "get": {
+        "operationId": "get_notification_settings",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Your notification settings",
+        "description": "Per kind (community, owner_issues, releases, lifecycle, security), whether items show in your inbox and how often they are emailed, and which of your sign-in accounts' addresses gets the emails. Moderation and role notices always show and are always emailed.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "scopes": {
+                      "type": "object",
+                      "description": "Per kind: whether items show in your inbox, and how often they are emailed",
+                      "properties": {
+                        "community": {
+                          "type": "object",
+                          "properties": {
+                            "inbox": {
+                              "type": "boolean"
+                            },
+                            "email": {
+                              "enum": [
+                                "immediate",
+                                "daily",
+                                "off"
+                              ]
+                            }
+                          }
+                        },
+                        "owner_issues": {
+                          "type": "object",
+                          "properties": {
+                            "inbox": {
+                              "type": "boolean"
+                            },
+                            "email": {
+                              "enum": [
+                                "immediate",
+                                "daily",
+                                "off"
+                              ]
+                            }
+                          }
+                        },
+                        "releases": {
+                          "type": "object",
+                          "properties": {
+                            "inbox": {
+                              "type": "boolean"
+                            },
+                            "email": {
+                              "enum": [
+                                "immediate",
+                                "daily",
+                                "off"
+                              ]
+                            }
+                          }
+                        },
+                        "lifecycle": {
+                          "type": "object",
+                          "properties": {
+                            "inbox": {
+                              "type": "boolean"
+                            },
+                            "email": {
+                              "enum": [
+                                "immediate",
+                                "daily",
+                                "off"
+                              ]
+                            }
+                          }
+                        },
+                        "security": {
+                          "type": "object",
+                          "properties": {
+                            "inbox": {
+                              "type": "boolean"
+                            },
+                            "email": {
+                              "enum": [
+                                "immediate",
+                                "daily",
+                                "off"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "email": {
+                      "type": "object",
+                      "properties": {
+                        "to": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "The sign-in account (github, gitlab, osintverse) whose address gets your emails; null: the first one known"
+                        },
+                        "address": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "options": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "provider": {
+                                "type": "string"
+                              },
+                              "address": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [],
+        "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "set_notification_settings",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Change your notification settings",
+        "description": "Anything left out keeps its value. email_to names one of your sign-in accounts that has an email address; null goes back to the first one known.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "scopes": {
+                    "type": "object",
+                    "properties": {
+                      "community": {
+                        "type": "object",
+                        "properties": {
+                          "inbox": {
+                            "type": "boolean"
+                          },
+                          "email": {
+                            "enum": [
+                              "immediate",
+                              "daily",
+                              "off"
+                            ]
+                          }
+                        }
+                      },
+                      "owner_issues": {
+                        "type": "object",
+                        "properties": {
+                          "inbox": {
+                            "type": "boolean"
+                          },
+                          "email": {
+                            "enum": [
+                              "immediate",
+                              "daily",
+                              "off"
+                            ]
+                          }
+                        }
+                      },
+                      "releases": {
+                        "type": "object",
+                        "properties": {
+                          "inbox": {
+                            "type": "boolean"
+                          },
+                          "email": {
+                            "enum": [
+                              "immediate",
+                              "daily",
+                              "off"
+                            ]
+                          }
+                        }
+                      },
+                      "lifecycle": {
+                        "type": "object",
+                        "properties": {
+                          "inbox": {
+                            "type": "boolean"
+                          },
+                          "email": {
+                            "enum": [
+                              "immediate",
+                              "daily",
+                              "off"
+                            ]
+                          }
+                        }
+                      },
+                      "security": {
+                        "type": "object",
+                        "properties": {
+                          "inbox": {
+                            "type": "boolean"
+                          },
+                          "email": {
+                            "enum": [
+                              "immediate",
+                              "daily",
+                              "off"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "email_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "github",
+                      "gitlab",
+                      "osintverse",
+                      null
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "scopes": {
+                      "type": "object",
+                      "description": "Per kind: whether items show in your inbox, and how often they are emailed",
+                      "properties": {
+                        "community": {
+                          "type": "object",
+                          "properties": {
+                            "inbox": {
+                              "type": "boolean"
+                            },
+                            "email": {
+                              "enum": [
+                                "immediate",
+                                "daily",
+                                "off"
+                              ]
+                            }
+                          }
+                        },
+                        "owner_issues": {
+                          "type": "object",
+                          "properties": {
+                            "inbox": {
+                              "type": "boolean"
+                            },
+                            "email": {
+                              "enum": [
+                                "immediate",
+                                "daily",
+                                "off"
+                              ]
+                            }
+                          }
+                        },
+                        "releases": {
+                          "type": "object",
+                          "properties": {
+                            "inbox": {
+                              "type": "boolean"
+                            },
+                            "email": {
+                              "enum": [
+                                "immediate",
+                                "daily",
+                                "off"
+                              ]
+                            }
+                          }
+                        },
+                        "lifecycle": {
+                          "type": "object",
+                          "properties": {
+                            "inbox": {
+                              "type": "boolean"
+                            },
+                            "email": {
+                              "enum": [
+                                "immediate",
+                                "daily",
+                                "off"
+                              ]
+                            }
+                          }
+                        },
+                        "security": {
+                          "type": "object",
+                          "properties": {
+                            "inbox": {
+                              "type": "boolean"
+                            },
+                            "email": {
+                              "enum": [
+                                "immediate",
+                                "daily",
+                                "off"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "email": {
+                      "type": "object",
+                      "properties": {
+                        "to": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "The sign-in account (github, gitlab, osintverse) whose address gets your emails; null: the first one known"
+                        },
+                        "address": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "options": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "provider": {
+                                "type": "string"
+                              },
+                              "address": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [],
+        "x-scope": "manage",
         "security": [
           {
             "bearer": []
@@ -8072,6 +8612,20 @@
                         "daily",
                         "off"
                       ]
+                    },
+                    "lifecycle": {
+                      "enum": [
+                        "immediate",
+                        "daily",
+                        "off"
+                      ]
+                    },
+                    "security": {
+                      "enum": [
+                        "immediate",
+                        "daily",
+                        "off"
+                      ]
                     }
                   }
                 }
@@ -8127,6 +8681,20 @@
                         "daily",
                         "off"
                       ]
+                    },
+                    "lifecycle": {
+                      "enum": [
+                        "immediate",
+                        "daily",
+                        "off"
+                      ]
+                    },
+                    "security": {
+                      "enum": [
+                        "immediate",
+                        "daily",
+                        "off"
+                      ]
                     }
                   }
                 }
@@ -8168,13 +8736,27 @@
                       "daily",
                       "off"
                     ]
+                  },
+                  "lifecycle": {
+                    "enum": [
+                      "immediate",
+                      "daily",
+                      "off"
+                    ]
+                  },
+                  "security": {
+                    "enum": [
+                      "immediate",
+                      "daily",
+                      "off"
+                    ]
                   }
                 }
               }
             }
           }
         },
-        "description": "community: threads you follow; owner_issues: new issues on your packages; releases: new versions of packages you follow. Moderation and role notices are always sent.",
+        "description": "community: threads you follow; owner_issues: new issues on your packages; releases: new versions of what you follow; lifecycle: yanked, deprecated, taken down or moved packages you follow; security: security warnings on packages you follow. Moderation and role notices are always sent. The older form of /me/notification-settings.",
         "x-scope": "manage",
         "security": [
           {
@@ -8235,6 +8817,14 @@
                           },
                           "followed_at": {
                             "type": "integer"
+                          },
+                          "level": {
+                            "enum": [
+                              "all",
+                              "releases",
+                              "muted"
+                            ],
+                            "description": "all: new versions, lifecycle changes and security warnings; releases: new versions and security warnings; muted: nothing, even through a followed publisher or input type"
                           }
                         }
                       }
@@ -8497,7 +9087,7 @@
         "tags": [
           "Account"
         ],
-        "summary": "Hide or show your contributor profile",
+        "summary": "Hide or show your profile",
         "description": "A hidden profile answers 404 and your avatar is left off your posts; your handle still shows on what you wrote.",
         "requestBody": {
           "required": true,
@@ -8540,6 +9130,330 @@
             "$ref": "#/components/responses/Error"
           }
         },
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/me/profile": {
+      "get": {
+        "operationId": "get_my_profile",
+        "tags": [
+          "Account"
+        ],
+        "summary": "Your profile as you edit it",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "handle": {
+                      "type": "string"
+                    },
+                    "display_name": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "bio": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "location": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "website": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "links": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "provider": {
+                            "type": "string",
+                            "description": "x, linkedin, mastodon, bluesky, github, gitlab, ... or other"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "hidden": {
+                      "type": "boolean"
+                    },
+                    "avatar_url": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "handle_changed_at": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "next_handle_change_at": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "description": "When you can change your handle again (30 days after the last change)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [],
+        "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "update_my_profile",
+        "tags": [
+          "Account"
+        ],
+        "summary": "Change what your profile says",
+        "description": "Anything left out stays as it was; an empty value or null clears it. Display name and location up to 100 characters, bio up to 400, up to 3 links. Profiles are public: text that looks like an email address, phone number, street address, IP address or key is refused (profile_screened).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "display_name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "bio": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "location": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "website": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "links": {
+                    "type": "array",
+                    "maxItems": 3,
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "hidden": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "handle": {
+                      "type": "string"
+                    },
+                    "display_name": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "bio": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "location": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "website": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "links": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "provider": {
+                            "type": "string",
+                            "description": "x, linkedin, mastodon, bluesky, github, gitlab, ... or other"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "hidden": {
+                      "type": "boolean"
+                    },
+                    "avatar_url": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "handle_changed_at": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "next_handle_change_at": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "description": "When you can change your handle again (30 days after the last change)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "parameters": [],
+        "x-scope": "manage",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/me/handle": {
+      "put": {
+        "operationId": "change_handle",
+        "tags": [
+          "Account"
+        ],
+        "summary": "Change your handle",
+        "description": "3 to 40 lowercase letters, digits and hyphens, not reserved, not someone else's handle (now or before) and not a publisher's name you don't belong to. At most once every 30 days. Your old handle stays yours and redirects to your profile.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "handle"
+                ],
+                "properties": {
+                  "handle": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "handle": {
+                      "type": "string"
+                    },
+                    "previous": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "parameters": [],
         "x-scope": "manage",
         "security": [
           {
@@ -11224,11 +12138,30 @@
           "login": {
             "type": "string"
           },
+          "handle": {
+            "type": "string"
+          },
           "admin": {
             "type": "boolean"
           },
           "reviewer": {
             "type": "boolean"
+          },
+          "community_roles": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "triager",
+                "reviewer"
+              ]
+            }
+          },
+          "profile_hidden": {
+            "type": "boolean"
+          },
+          "unread": {
+            "type": "integer",
+            "description": "Unread inbox items, without the kinds you keep out of your inbox"
           },
           "accounts": {
             "type": "array",

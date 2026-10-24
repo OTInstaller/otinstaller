@@ -48,7 +48,7 @@ anonymous GET.
 
 ## 1. Routes
 
-Total: **198 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
+Total: **204 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
 call; the `for` loops in `routes/trust.ts` (`yank`, `unyank`), `routes/community.ts` (a thread's subscription) and
 `routes/requests.ts` (a vote, a request's subscription) register two each. The mirror Worker's OCI routes are in
 section 6 and are not in this count. There is no route for stars, although the rate-limit comment in `index.ts`
@@ -119,7 +119,7 @@ in code; a Cloudflare rate-limiting rule on the zone covers `/mcp`, `/v1/tools*`
 
 | Method | Path | Auth | Caching | Defined in | Notes |
 | --- | --- | --- | --- | --- | --- |
-| GET | `/me` | user | - | routes/auth.ts | Login, admin/reviewer flags, linked accounts, namespaces with role |
+| GET | `/me` | user | - | routes/auth.ts | Login, `handle`, admin/reviewer flags, `community_roles`, `profile_hidden`, `unread` (inbox items not read, without the kinds the person keeps out of their inbox), linked accounts, namespaces with role |
 | GET | `/me/tokens` | user | - | routes/auth.ts | Unrevoked API tokens, with `scopes` and `expires_at` |
 | POST | `/me/tokens` | user | - | routes/auth.ts | `{name, scopes?, expires_in_days?}` (1–365, default 90); 201 with the token shown once. 400 `invalid_scope` for an unknown scope; 403 `insufficient_scope` when a token asks for more than it has, or for `staff` from anything but a reviewer's or admin's session. Audited (`token.create`) |
 | DELETE | `/me/tokens/:id` | user | - | routes/auth.ts | Revoke; 204 or 404 `token_not_found`. Audited (`token.revoke`) |
@@ -250,27 +250,36 @@ people (`feedback` scope) go through `poster()`: a timed-out account gets 403 `p
 | GET / POST / DELETE | `/admin/community/roles[/:handle/:role]` | admin | no-store | routes/community.ts | Grant (`{handle, role: triager|reviewer, note}`, note required) and revoke; audited `role.grant`/`role.revoke` |
 | POST | `/admin/reports/:id/publish-issue` | reviewer | - | routes/community.ts | A private `broken` report becomes a system issue written by the reviewer (no reporter attached); the report is actioned |
 
-Notifications (`routes/inbox.ts`, logic in `inbox.ts`, 6 routes):
+Notifications (`routes/inbox.ts`, logic in `inbox.ts`, 13 routes):
 
 | Method | Path | Auth | Caching | Defined in | Notes |
 | --- | --- | --- | --- | --- | --- |
-| GET | `/me/inbox` | user | no-store | routes/inbox.ts | 50 newest items with `unread` and `before` paging |
+| GET | `/me/inbox` | user | no-store | routes/inbox.ts | 50 newest items (`id`, `kind`, `scope`, `summary`, `path`, `created_at`, `read_at`) with `unread` and `before` paging; `?unread=1` lists only unread ones. Kinds in the person's `inbox_muted_json` are left out of the list and the count |
 | POST | `/me/inbox/read` | user | - | routes/inbox.ts | `{ids?}`; all when none are given |
-| GET / PUT | `/me/email-prefs` | user | no-store | routes/inbox.ts | `community`, `owner_issues` and `releases`: `immediate` / `daily` / `off` |
-| GET | `/me/follows` | user | no-store | routes/inbox.ts | The packages the person follows for releases (`ref`, `kind`, `status`, `latest_version`, `followed_at`), 100 at a time, newest first, `before` paging; on the first page also `publishers` (`name`, `followed_at`) and `inputs` (`type`, `followed_at`) |
+| GET / PUT | `/me/notification-settings` | user (PUT: manage) | no-store | routes/inbox.ts | `{scopes: {community, owner_issues, releases, lifecycle, security: {inbox, email}}, email: {to, address, options}}`; PUT takes part of `scopes` and `email_to` (a provider among the person's accounts with an email address, or null for the first one known), else 400 `invalid_body` |
+| GET / PUT | `/me/email-prefs` | user | no-store | routes/inbox.ts | The older form: `community`, `owner_issues`, `releases`, `lifecycle` and `security`: `immediate` / `daily` / `off`; keeps the inbox switches and the address |
+| GET | `/me/follows` | user | no-store | routes/inbox.ts | The packages the person follows (`ref`, `kind`, `status`, `latest_version`, `level`, `followed_at`), 100 at a time, newest first, `before` paging; on the first page also `publishers` (`name`, `followed_at`) and `inputs` (`type`, `followed_at`) |
 | GET | `/me/follows/:kind/:target` | user | no-store | routes/inbox.ts | Whether the person follows a publisher or an input type (`following`, `followed_at`); another `kind` 404 `not_found`, an input type tools don't take 404 `input_type_not_found` |
 | PUT | `/me/follows/:kind/:target` | user (feedback) | no-store | routes/inbox.ts | Follow a publisher (an active namespace, else 404 `namespace_not_found`) or an input type; at most 200, else 429 `too_many_follows` |
 | DELETE | `/me/follows/:kind/:target` | user (feedback) | no-store | routes/inbox.ts | Stop following; works for a namespace that is gone |
-| GET | `/tools/:ns/:name/follow` | user | no-store | routes/community.ts | `{following, followed_at}` |
-| PUT / DELETE | `/tools/:ns/:name/follow` | user, feedback | no-store | routes/community.ts | Follow (404/410 for a package that isn't live) or stop following a package's releases; DELETE works for a removed package too |
+| GET | `/tools/:ns/:name/follow` | user | no-store | routes/community.ts | `{following, level, followed_at}` |
+| PUT / DELETE | `/tools/:ns/:name/follow` | user, feedback | no-store | routes/community.ts | Follow (404/410 for a package that isn't live), or change the level with `{level: all|releases|muted}` (a new follow is `all`; left out, the level stays; another value 400 `invalid_body`); DELETE stops following and works for a removed package too |
 | POST | `/unsubscribe` | none (signed link) | no-store | routes/inbox.ts | `u`, `s`, `t` from the query or a JSON body (RFC 8058 one-click); 400 `invalid_unsubscribe_link` |
 | GET | `/unsubscribe` | none | - | routes/inbox.ts | 302 to the site's `/unsubscribe` page, which asks before posting |
 
 Items are written by `inbox.ts:notify` with each event: new issues (to the namespace's members, scope `owner_issues`),
 replies and status changes (to the thread's unmuted subscribers, scope `community`), moderation of a post and role
-grants (to the person, scope `account`, always sent). The person who acted never gets one. `deliverInbox` runs on
+grants (to the person, scope `account`, always sent). A version that becomes a package's latest goes to its followers,
+its publisher's and (for a new package) its input types' (`notifyFollowers`, kind `release`, scope `releases`), leaving
+out anyone who muted the package. `notifyPackageFollowers` tells the package's followers by level about lifecycle
+changes (kind and scope `lifecycle`, level `all`: yank and unyank in `trust.ts:setYanked`, deprecation and its end in
+`setDeprecated`/`clearDeprecated` and when an archived repository deprecates it in `sync.ts:applyMeta`, takedowns other
+than malware in `removeVersion`, moves in `transfers.ts:completeTransfer`) and security warnings (kind and scope
+`security`, levels `all` and `releases`: a new latest version whose scan warned, in `publishVersion`, and a takedown as
+malware). Takedown items name the category, never the reviewer's reason. The person who acted never gets one. `deliverInbox` runs on
 every 15-minute cron (`immediate`, items older than 2 minutes grouped into one email per person, at most 12 a day) and
-nightly (`daily` digests and anything held back); emails carry `List-Unsubscribe` and `List-Unsubscribe-Post`, and items
+nightly (`daily` digests and anything held back), to the address of the account the person chose
+(`email_prefs.email_provider`), else `users.email`, else their first account's; emails carry `List-Unsubscribe` and `List-Unsubscribe-Post`, and items
 are marked emailed only after a send that did not fail. `purgeInbox` (nightly) drops read items after 90 days.
 
 Internal: `fileSystemIssue(env, toolId, kind, body, dedupeKey, source)` (one issue per dedupe key; updated while open),
@@ -438,12 +447,16 @@ Maintainers are `tool_maintainers` rows (the submitter, others staff add) and th
 `community.ts:roleBadge` now gives tool maintainers the maintainer badge, so they triage the package's issues, and
 `inbox.ts:maintainers` sends them its new issues.
 
-Contributor profiles (`routes/people.ts`, logic in `people.ts`, 2 routes):
+People's profiles (`routes/people.ts`, logic in `people.ts`, 6 routes):
 
 | Method | Path | Auth | Caching | Defined in | Notes |
 | --- | --- | --- | --- | --- | --- |
-| GET | `/people/:handle` | none | `cached(c, 300)` | routes/people.ts | Handle (case-insensitive), avatar, `joined` (YYYY-MM), `roles` (`staff`, else `triager`/`reviewer`), `counts` from `contributor_stats`, `counted_at`, the 10 newest visible issues and requests, `indexable` (a role, a confirmed or fixed report, a published request or triage); hidden, banned and unknown people 404 `person_not_found`; never email, login or accounts |
+| GET | `/people/:handle` | none | `cached(c, 300)` | routes/people.ts | Handle (case-insensitive), avatar, what they wrote (`display_name`, `bio`, `location`, `website`, `links`), `joined` (YYYY-MM), `roles` (`staff`, else `triager`/`reviewer`), `counts` from `contributor_stats`, `counted_at`, `maintains` (published packages whose `tool_maintainers` lists them), the 10 newest visible issues and requests, `indexable` (a role, a confirmed or fixed report, a published request, triage or a package they maintain); a handle in `handle_aliases` answers the person's profile with `moved_to`; hidden, banned and unknown people 404 `person_not_found`; never email, login, accounts or namespaces |
 | PUT | `/me/community-profile` | user, manage | no-store | routes/people.ts | `{hidden}` sets `users.profile_hidden` (also on `/me` as `profile_hidden`); audited `profile.hide` / `profile.show` |
+| GET | `/me/profile` | user | no-store | routes/people.ts | The person's own profile fields, `handle`, `hidden`, `handle_changed_at` and `next_handle_change_at` |
+| PUT | `/me/profile` | user, manage | no-store | routes/people.ts | Part of `{display_name (100), bio (400), location (100), website, links (up to 3 URLs), hidden}`; an empty value clears. 400 `invalid_body` for bad values, 400 `profile_screened` when `community.ts:screen` finds personal data or a secret; 30 edits a day (`too_many_posts`); audited `profile.update` |
+| PUT | `/me/handle` | user, manage | no-store | routes/people.ts | `{handle}`: the namespace slug shape and not in `RESERVED_HANDLES`, else 400 `invalid_handle`; another person's handle or alias, or a namespace the person isn't a member of, 409 `handle_taken`; once every 30 days, else 429 `handle_change_too_soon` with `Retry-After`. The old handle goes to `handle_aliases`; audited `profile.handle` |
+| POST | `/admin/people/:handle/clear-profile` | reviewer | - | routes/people.ts | Clears the profile's text fields, moves the cache epoch, tells the person (kind `moderation`, scope `account`); audited `profile.clear` |
 
 `refreshContributorStats` recounts everyone who took part on the nightly cron, with one `INSERT OR REPLACE ... SELECT`
 over the author indexes from 0019.

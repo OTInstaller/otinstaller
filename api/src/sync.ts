@@ -7,6 +7,7 @@ import { hostForSource, repoUrl, type RepoHost, type RepoMeta, type SourceRow } 
 import { audit } from "./routes/auth";
 import { ownerEmails, sendEmail } from "./notify";
 import { cleanNotes } from "./changelog";
+import { LIFECYCLE_LEVELS, notifyPackageFollowers } from "./inbox";
 
 export const POLL_INTERVAL = 6 * 3600 * 1000;
 export const RELEASE_TAG = /^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
@@ -76,6 +77,11 @@ export async function applyMeta(env: Env, s: SourceRow, meta: RepoMeta | null): 
     return "transfer_pending";
   }
   const url = repoUrl(s.provider, meta.path);
+  // The package as it was, when archiving the repository is about to deprecate it (or unarchiving to undo that).
+  const before = s.tool_id && meta.archived !== !!s.archived
+    ? await db.prepare(`SELECT n.name || '/' || t.name AS ref, t.status, t.deprecated_message FROM tools t JOIN namespaces n ON n.id = t.namespace_id WHERE t.id = ?`)
+      .bind(s.tool_id).first<{ ref: string; status: string; deprecated_message: string | null }>()
+    : null;
   stmts.push(db.prepare(
     `UPDATE sources SET path = ?, url = ?, default_branch = ?, description = ?, topics = ?, stars = ?, archived = ?, visibility = ?,
        sync_status = 'ok', unavailable_since = NULL, last_error = NULL WHERE id = ?`,
@@ -97,6 +103,14 @@ export async function applyMeta(env: Env, s: SourceRow, meta: RepoMeta | null): 
   if (result === "archived") {
     await notifyOwners(env, s, "source_archived", "Your package was marked deprecated",
       `${meta.path} was archived, so its package is now marked deprecated. Unarchive the repository to undo this.`);
+  }
+  // Its followers hear about it too, when the package's state really changed.
+  if (before && s.tool_id && ((result === "archived" && before.status === "active") ||
+      (result === "unarchived" && before.status === "deprecated" && before.deprecated_message === ARCHIVED_MESSAGE))) {
+    await notifyPackageFollowers(env, s.tool_id, {
+      kind: "lifecycle", scope: "lifecycle", path: `/${before.ref}`,
+      summary: result === "archived" ? `${before.ref} is deprecated: its source repository was archived` : `${before.ref} is no longer deprecated: its source repository was unarchived`,
+    }, LIFECYCLE_LEVELS);
   }
   return result;
 }

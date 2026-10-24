@@ -1,4 +1,5 @@
-// A person's notifications: the inbox, email preferences, what they follow (packages, publishers and input types),
+// A person's notifications: the inbox, their notification settings (per kind, the inbox and how often email comes, and
+// the address it goes to; /me/email-prefs is the older form), what they follow (packages, publishers and input types),
 // and the one-click unsubscribe links in community emails. Writing and delivering items live in ../inbox.ts; following
 // one package is in ./community.ts beside its issues.
 import type { Context } from "hono";
@@ -6,16 +7,22 @@ import schema from "../../../spec/schema/v1.json";
 import type { App, AppEnv } from "../env";
 import { apiError } from "../lib/errors";
 import { requireUser } from "./auth";
-import { PREFS, PREF_SCOPES, unsubscribe, type Pref } from "../inbox";
+import { emailPrefs, hiddenScopes, notificationSettings, saveEmailPrefs, saveNotificationSettings, unsubscribe, visibleScopeSql } from "../inbox";
 
 export function inboxRoutes(app: App) {
+  // Newest first, 50 at a time; ?unread=1 lists only what is unread. Kinds the person keeps out of their inbox are left
+  // out of the list and the count.
   app.get("/me/inbox", async (c) => {
     const u = requireUser(c);
     const before = Number(c.req.query("before") ?? 0) || Number.MAX_SAFE_INTEGER;
+    const onlyUnread = c.req.query("unread") === "1" || c.req.query("unread") === "true";
+    const visible = visibleScopeSql(await hiddenScopes(c.env, u.id));
     const [items, unread] = await Promise.all([
-      c.env.DB.prepare(`SELECT id, kind, summary, path, created_at, read_at FROM inbox WHERE user_id = ? AND created_at < ? ORDER BY created_at DESC LIMIT 50`)
-        .bind(u.id, before).all<{ id: string; kind: string; summary: string; path: string; created_at: number; read_at: number | null }>(),
-      c.env.DB.prepare(`SELECT COUNT(*) AS n FROM inbox WHERE user_id = ? AND read_at IS NULL`).bind(u.id).first<{ n: number }>(),
+      c.env.DB.prepare(
+        `SELECT id, kind, scope, summary, path, created_at, read_at FROM inbox WHERE user_id = ? AND created_at < ? AND ${visible.sql}${onlyUnread ? " AND read_at IS NULL" : ""}
+         ORDER BY created_at DESC LIMIT 50`,
+      ).bind(u.id, before, ...visible.binds).all<{ id: string; kind: string; scope: string; summary: string; path: string; created_at: number; read_at: number | null }>(),
+      c.env.DB.prepare(`SELECT COUNT(*) AS n FROM inbox WHERE user_id = ? AND read_at IS NULL AND ${visible.sql}`).bind(u.id, ...visible.binds).first<{ n: number }>(),
     ]);
     c.header("Cache-Control", "private, no-store");
     return c.json({ items: items.results, unread: unread?.n ?? 0, next_before: items.results.length === 50 ? items.results.at(-1)!.created_at : null });
@@ -35,22 +42,37 @@ export function inboxRoutes(app: App) {
     return c.json({ read: true });
   });
 
-  app.get("/me/email-prefs", async (c) => {
+  // Per kind, whether items show in the inbox and how often they are emailed, and which sign-in account's address
+  // gets the emails (with the addresses to choose from).
+  app.get("/me/notification-settings", async (c) => {
     const u = requireUser(c);
-    const p = await c.env.DB.prepare(`SELECT community, owner_issues, releases FROM email_prefs WHERE user_id = ?`).bind(u.id).first<{ community: Pref; owner_issues: Pref; releases: Pref }>();
     c.header("Cache-Control", "private, no-store");
-    return c.json({ community: p?.community ?? "immediate", owner_issues: p?.owner_issues ?? "immediate", releases: p?.releases ?? "immediate" });
+    return c.json(await notificationSettings(c.env, u.id));
   });
 
-  // The packages the person follows for releases, newest first, with each one's latest version.
+  app.put("/me/notification-settings", async (c) => {
+    const u = requireUser(c);
+    const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
+    const settings = await saveNotificationSettings(c.env, u.id, b);
+    c.header("Cache-Control", "private, no-store");
+    return c.json(settings);
+  });
+
+  app.get("/me/email-prefs", async (c) => {
+    const u = requireUser(c);
+    c.header("Cache-Control", "private, no-store");
+    return c.json(await emailPrefs(c.env, u.id));
+  });
+
+  // The packages the person follows, newest first, with each one's latest version and how much of it reaches them.
   app.get("/me/follows", async (c) => {
     const u = requireUser(c);
     const before = Number(c.req.query("before") ?? 0) || Number.MAX_SAFE_INTEGER;
     const rows = (await c.env.DB.prepare(
-      `SELECT n.name || '/' || t.name AS ref, t.kind, t.status, v.version AS latest_version, f.created_at AS followed_at
+      `SELECT n.name || '/' || t.name AS ref, t.kind, t.status, v.version AS latest_version, f.level, f.created_at AS followed_at
        FROM package_follows f JOIN tools t ON t.id = f.tool_id JOIN namespaces n ON n.id = t.namespace_id LEFT JOIN versions v ON v.id = t.latest_version_id
        WHERE f.user_id = ? AND f.created_at < ? ORDER BY f.created_at DESC LIMIT 100`,
-    ).bind(u.id, before).all<{ ref: string; kind: string; status: string; latest_version: string | null; followed_at: number }>()).results;
+    ).bind(u.id, before).all<{ ref: string; kind: string; status: string; latest_version: string | null; level: string; followed_at: number }>()).results;
     // Publishers and input types are few; they come whole on the first page.
     const others = before === Number.MAX_SAFE_INTEGER
       ? (await c.env.DB.prepare(`SELECT kind, target, created_at FROM follows WHERE user_id = ? ORDER BY created_at DESC`).bind(u.id)
@@ -101,20 +123,7 @@ export function inboxRoutes(app: App) {
   app.put("/me/email-prefs", async (c) => {
     const u = requireUser(c);
     const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
-    for (const k of PREF_SCOPES) {
-      if (b[k] !== undefined && !PREFS.includes(b[k] as Pref)) apiError(400, "invalid_body", `${k} must be one of: ${PREFS.join(", ")}`);
-    }
-    const cur = await c.env.DB.prepare(`SELECT community, owner_issues, releases FROM email_prefs WHERE user_id = ?`).bind(u.id).first<{ community: Pref; owner_issues: Pref; releases: Pref }>();
-    const next = {
-      community: (b.community as Pref) ?? cur?.community ?? "immediate", owner_issues: (b.owner_issues as Pref) ?? cur?.owner_issues ?? "immediate",
-      releases: (b.releases as Pref) ?? cur?.releases ?? "immediate",
-    };
-    await c.env.DB.prepare(
-      `INSERT INTO email_prefs (user_id, community, owner_issues, releases, updated_at) VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT (user_id) DO UPDATE SET community = excluded.community, owner_issues = excluded.owner_issues, releases = excluded.releases,
-         updated_at = excluded.updated_at`,
-    ).bind(u.id, next.community, next.owner_issues, next.releases, Date.now()).run();
-    return c.json(next);
+    return c.json(await saveEmailPrefs(c.env, u.id, b));
   });
 
   // One-click unsubscribe (RFC 8058): mail clients POST to the List-Unsubscribe URL; the site's /unsubscribe page posts

@@ -12,6 +12,7 @@ import { parseRepoRef } from "./imports";
 import { audit } from "./routes/auth";
 import { ownerEmails, sendEmail, staffEmails, templates } from "./notify";
 import type { ToolRef } from "./trust";
+import { LIFECYCLE_LEVELS, notifyPackageFollowers } from "./inbox";
 
 export const CLAIM_FILE = ".otinstaller-claim";
 
@@ -227,5 +228,9 @@ export async function completeTransfer(env: Env, actorId: string, tr: Transfer) 
   const newRef = `${dest!.name}/${tool!.name}`;
   const to = [...(await ownerEmails(env, tr.from_namespace_id)), ...(await ownerEmails(env, tr.to_namespace_id))];
   await sendEmail(env, { to, kind: "transfer", key: `transfer-done:${tr.id}`, ...templates.transferCompleted(env, oldRef, newRef) });
+  // Follows are kept by the package, not its address, so its followers keep following it at the new one.
+  await notifyPackageFollowers(env, tool!.id, {
+    kind: "lifecycle", scope: "lifecycle", actor_id: actorId, path: `/${newRef}`, summary: `${oldRef} moved to ${newRef}; \`ot update\` follows it there`,
+  }, LIFECYCLE_LEVELS);
   return { ref: newRef, alias: oldRef };
 }

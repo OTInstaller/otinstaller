@@ -7,7 +7,9 @@ import { audit, requireUser } from "./auth";
 import { requireMember } from "./sources";
 import { requireAdmin, requireReviewer } from "./review";
 import { cached } from "../catalog";
-import { fileReport, overLimit, REMOVAL_CATEGORIES, REPORT_REASONS, removeVersion, setYanked, toolByRef, transparency, type ToolRef } from "../trust";
+import {
+  clearDeprecated, fileReport, overLimit, REMOVAL_CATEGORIES, REPORT_REASONS, removeVersion, setDeprecated, setYanked, toolByRef, transparency, type ToolRef,
+} from "../trust";
 import { sendEmail, staffEmails, templates } from "../notify";
 
 async function body<T>(c: Context<AppEnv>): Promise<Partial<T>> {
@@ -50,21 +52,14 @@ export function trustRoutes(app: App) {
     if (replacement && !(await toolByRef(c.env, ...(replacement.split("/") as [string, string])))) {
       apiError(400, "invalid_replacement", `${replacement} is not in the registry`, "give the replacement as namespace/name");
     }
-    await c.env.DB.batch([
-      c.env.DB.prepare(`UPDATE tools SET status = 'deprecated', deprecated_message = ?, deprecated_replacement = ? WHERE id = ? AND status != 'removed'`)
-        .bind(message, replacement || null, t.id),
-      audit(c.env.DB, u.id, "user", "tool.deprecate", "tool", t.id, { message, replacement }),
-    ]);
+    await setDeprecated(c.env, u.id, t, message, replacement || null);
     return c.json({ status: "deprecated", message, replacement: replacement || null });
   });
 
   app.delete("/tools/:ns/:name/deprecate", async (c) => {
     const t = await tool(c);
     const u = await requireMember(c, t.namespace_id);
-    await c.env.DB.batch([
-      c.env.DB.prepare(`UPDATE tools SET status = 'active', deprecated_message = NULL, deprecated_replacement = NULL WHERE id = ? AND status = 'deprecated'`).bind(t.id),
-      audit(c.env.DB, u.id, "user", "tool.undeprecate", "tool", t.id),
-    ]);
+    await clearDeprecated(c.env, u.id, t);
     return c.json({ status: "active" });
   });
 

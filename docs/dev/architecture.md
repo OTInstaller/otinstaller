@@ -813,6 +813,15 @@ The remote server is separate and runs nothing:
      malware, abuse, legal -------------->  POST /tools/:ns/:name/reports (private, reviewers)
    both report routes: an Origin other than SITE_URL -> 403 foreign_origin (ot sends none)
    */15 cron: deliverInbox("immediate"); nightly: deliverInbox("daily"), lockStaleThreads, refreshContributorStats
+   PUT /tools/:ns/:name/follow {level} (all | releases | muted), PUT /me/follows/publisher|input/:target
+     publishVersion (first time latest) -> notifyFollowers (releases; muted packages left out), and a security item
+                                           when the version's scan warned
+     setYanked, setDeprecated / clearDeprecated, applyMeta (archived), removeVersion, completeTransfer
+                                        -> notifyPackageFollowers (lifecycle to level all; a malware takedown as security
+                                           to all and releases)
+   inbox rows -> /notifications (kinds the person keeps out of the inbox are left out of the list and the bell's count)
+              -> deliverInbox -> the address of the sign-in account the person chose (email_prefs.email_provider)
+   PUT /me/profile, PUT /me/handle (old handle -> handle_aliases, redirects) -> GET /people/:handle
 
  POST /requests {repo} --> readUpstream (as the requester, else the App on osintverse-community, else anonymous)
                             refuse: exists, packaged, upstream manifest; record declined: license, archived
