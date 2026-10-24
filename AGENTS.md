@@ -80,7 +80,7 @@ web/         Website (Astro 7 SSR on Cloudflare, Preact islands, strict CSP)
 ops/         scanner/ (scan.py, backup.py, health.py, tests, Dockerfile), workflows/ (scan.yml, health.yml) copied
              into registry-ops, get/ (worker.js, wrangler.jsonc: the get.otinstaller.com Worker)
 otlite/      otlite, the no-Docker edition (Python; formerly otinstaller; has its own AGENTS.md)
-seed/        Launch seed: 20 first-party tools, 119 community wrappers, 10 guides, outreach texts
+seed/        Launch seed: 26 first-party tools, 119 community wrappers, 10 guides, outreach texts
 examples/    dns-lookup (scripts/e2e.sh), cosign and tldextract (the local/test seed in api/scripts/seed-lib.mjs
              and scripts/e2e-real.sh)
 scripts/     e2e.sh, e2e-real.sh, e2e-backups.sh, e2e-direct.sh, install/ (install.sh, install.ps1, make-test-release.sh),
@@ -1094,14 +1094,17 @@ section 10, "MCP bundles and the MCP Registry".
 Each folder becomes its own repository under `osintverse-community`; see [seed/README.md](seed/README.md) for the full
 table, publish order (namespace → tools → guides), what was not converted and why, and health risks.
 
-- `first-party/<tool>/` (20): a single stdlib-first Python script (`<snake_name>.py`, argparse, `main(argv=None)` returning
+- `first-party/<tool>/` (26): a single stdlib-first Python script (`<snake_name>.py`, argparse, `main(argv=None)` returning
   an exit code, prints `{"entities": [...]}`), `test_<snake_name>.py` (unittest, no network), a `python:3.12-slim`
   Dockerfile running as uid 10001, `otinstaller.yaml` with a zero-digest placeholder the release workflow fills in,
   `README.md`, MIT `LICENSE`, and `.github/workflows/otinstaller-release.yml` (copied from
   `spec/templates/github-docker.yml`; copies older than its OIDC publish step lack it). Nine (October 2026) are built
   on a data provider's official PyPI client (VirusTotal, urlscan.io, Censys, OTX, IPinfo, Hunter, HIBP, Companies
   House, SEC EDGAR), pinned in `requirements.txt` so the build watcher follows it; they exit 3 when their key is
-  missing, and a script named like its client library gets a `_lookup` suffix so it doesn't import itself.
+  missing, and a script named like its client library gets a `_lookup` suffix so it doesn't import itself. Six more
+  (October 2026) call a provider's HTTP API with `urllib` alone, for providers with no usable PyPI client (Shodan
+  InternetDB, HackerTarget, AbuseIPDB, URLhaus, Pulsedive, OpenSanctions; `seed/README.md`, "Data providers without
+  a PyPI client"); they send keys in headers where the API allows it and exit 3 the same way.
 - `community/<tool>/` (119): wrappers of third-party tools. Docker wrappers pin the upstream version in a Dockerfile and
   build amd64+arm64; pipx wrappers are just a manifest pinning the wheel by `wheel_sha256` plus a README crediting
   upstream. The upstream license must be in the API's `REDISTRIBUTABLE` list (`api/src/imports.ts`), which includes the

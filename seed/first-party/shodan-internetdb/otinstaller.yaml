@@ -1,0 +1,41 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: shodan-internetdb
+namespace: osintverse-community
+version: 0.1.0
+summary: "Looks up an IP address in Shodan's free InternetDB: open ports, host names, software, tags and known CVEs"
+readme: README.md
+license: MIT
+homepage: https://github.com/osintverse-community/shodan-internetdb
+categories: [ip-network]
+tags: [shodan, internetdb, ports, vulnerabilities, passive]
+inputs:
+  - name: ip
+    type: ip
+    required: true
+    example: "8.8.8.8"
+outputs:
+  - type: ip
+    description: "The address with its open ports, software (CPEs), tags and CVEs"
+  - type: domain
+    description: "Host names Shodan saw on the address"
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/shodan-internetdb@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["shodan-internetdb", "{ip}"]
+  output_format: json
+  timeout_seconds: 60
+  typical_seconds: 1
+network:
+  egress: true
+  domains: ["internetdb.shodan.io"]
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+test:
+  input: { ip: "8.8.8.8" }

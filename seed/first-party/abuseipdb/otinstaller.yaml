@@ -1,0 +1,57 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: abuseipdb
+namespace: osintverse-community
+version: 0.1.0
+summary: "Checks an IP address in AbuseIPDB: abuse confidence score, reports and what for, ISP, usage type, Tor, country"
+readme: README.md
+license: MIT
+homepage: https://github.com/osintverse-community/abuseipdb
+categories: [ip-network]
+tags: [abuseipdb, reputation, abuse-reports, threat-intel]
+inputs:
+  - name: ip
+    type: ip
+    required: true
+    example: "8.8.8.8"
+  - name: days
+    type: integer
+    required: false
+    default: 90
+    description: "Count only reports from this many days back (1 to 365)"
+outputs:
+  - type: ip
+    description: "The address with its abuse confidence score, report counts, categories and latest reports"
+  - type: organization
+    description: "The network operator (ISP)"
+  - type: domain
+    description: "The operator's domain and the address's reverse DNS names"
+  - type: location
+secrets:
+  - name: ABUSEIPDB_API_KEY
+    required: true
+    description: "Your AbuseIPDB API key; the free plan allows 1,000 checks a day, for non-commercial use"
+    url: https://www.abuseipdb.com/account/api
+    pricing: free_tier
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/abuseipdb@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["abuseipdb", "{ip}", "--days", "{days}"]
+  output_format: json
+  timeout_seconds: 60
+  typical_seconds: 2
+network:
+  egress: true
+  domains: ["api.abuseipdb.com"]
+ethics:
+  touches_target: false
+  auth_required: true
+  collects_personal_data: false
+  notifies_target: false
+test:
+  # Scans and health checks run without secrets, so the tool reports the missing key with exit code 3.
+  expect_exit_code: 3
+  input: { ip: "8.8.8.8" }

@@ -1,0 +1,67 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: urlhaus
+namespace: osintverse-community
+version: 0.1.0
+summary: "Looks up a URL, domain, IP address or file hash in abuse.ch URLhaus: malware URLs, their status, tags and payloads"
+readme: README.md
+license: MIT
+homepage: https://github.com/osintverse-community/urlhaus
+categories: [domain-dns, ip-network, utilities]
+tags: [urlhaus, abuse-ch, malware, threat-intel]
+inputs:
+  - name: url
+    type: url
+    required: false
+    description: "URL, exactly as listed (give exactly one of url, domain, ip or hash)"
+    example: "http://example.com/bins/x.arm7"
+  - name: domain
+    type: domain
+    required: false
+    description: "Host name: the malware URLs on it (give exactly one of url, domain, ip or hash)"
+    example: "example.com"
+  - name: ip
+    type: ip
+    required: false
+    description: "IP address: the malware URLs on it (give exactly one of url, domain, ip or hash)"
+    example: "8.8.8.8"
+  - name: hash
+    type: hash
+    required: false
+    description: "MD5 or SHA-256 of a file: the URLs that served it (give exactly one of url, domain, ip or hash)"
+    example: "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f"
+outputs:
+  - type: url
+    description: "Listed malware URLs, with status, threat, tags, reporter and date added"
+  - type: domain
+  - type: ip
+  - type: document
+    description: "Malware files (payloads): hashes, file type, size, family and first seen date"
+secrets:
+  - name: ABUSECH_AUTH_KEY
+    required: true
+    description: "Your abuse.ch Auth-Key, free from the abuse.ch authentication portal (URLhaus, MalwareBazaar and ThreatFox share it)"
+    url: https://auth.abuse.ch/
+    pricing: free
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/urlhaus@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["urlhaus", "--url", "{url}", "--domain", "{domain}", "--ip", "{ip}", "--hash", "{hash}"]
+  output_format: json
+  timeout_seconds: 60
+  typical_seconds: 2
+network:
+  egress: true
+  domains: ["urlhaus-api.abuse.ch"]
+ethics:
+  touches_target: false
+  auth_required: true
+  collects_personal_data: false
+  notifies_target: false
+test:
+  # Scans and health checks run without secrets, so the tool reports the missing key with exit code 3.
+  expect_exit_code: 3
+  input: { domain: "example.com" }

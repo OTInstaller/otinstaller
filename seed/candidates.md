@@ -856,7 +856,9 @@ OSINT, or their users, publish there. It covers internet scanners and threat int
 company data, archives and search, and crypto. Each package was read at its latest release (wheel, entry points and
 command-line source), with its licence file and, where possible, a live call to the provider. A package with its own
 command became a community wrapper; a library from one of the big providers became a first-party tool built on it.
-Packages already in the seed or recorded above (greynoise, shodan, ghunt, h8mail, edgar-tool,
+Six providers with no usable client (AbuseIPDB, Shodan InternetDB, HackerTarget, URLhaus, Pulsedive and
+OpenSanctions) got first-party tools that call their APIs directly, on 25 Oct 2026; the rows below for their
+packages say so. Packages already in the seed or recorded above (greynoise, shodan, ghunt, h8mail, edgar-tool,
 telegram-phone-number-checker) are not repeated. [README.md](README.md) has the rules and what the local runs found.
 
 16 wrapped, 9 used by first-party tools, 122 dropped.
@@ -907,7 +909,7 @@ telegram-phone-number-checker) are not repeated. [README.md](README.md) has the 
 | [Egor251/fullhunt_api](https://github.com/Egor251/fullhunt_api) | `fullhunt-api` | none | dropped | a library with no command-line tool, without a licence |
 | [everapihq/numlookupapi-python](https://github.com/everapihq/numlookupapi-python) | `numlookupapi` | none | dropped | a library with no command-line tool, without a licence file |
 | [release-art/ch-api](https://github.com/release-art/ch-api) | `ch-api` | none | dropped | a library with no command-line tool, without a licence file (`osintverse-community/companies-house` uses `companies-house`) |
-| [meatyite/python-abuseipdb](https://github.com/meatyite/python-abuseipdb) | `python-abuseipdb` | WTFPL | dropped | licensed WTFPL, which isn't on the redistributable list; no wheel |
+| [meatyite/python-abuseipdb](https://github.com/meatyite/python-abuseipdb) | `python-abuseipdb` | WTFPL | dropped | licensed WTFPL, which isn't on the redistributable list; no wheel (`osintverse-community/abuseipdb` calls AbuseIPDB's API directly) |
 | [SilentPushCLI](https://pypi.org/project/SilentPushCLI/) | `SilentPushCLI` | proprietary | dropped | under a proprietary licence, and an interactive shell |
 | [etherscan-v2](https://pypi.org/project/etherscan-v2/) | `etherscan-v2` | - | dropped | a library with no licence, author or repository |
 | [IntelligenceX/SDK](https://github.com/IntelligenceX/SDK) | `intelx` | none | dropped | against the acceptable use policy (it searches leaked data and breach dumps), and without a licence |
@@ -928,7 +930,7 @@ telegram-phone-number-checker) are not repeated. [README.md](README.md) has the 
 | [nikoheikkila/pwnedapi](https://github.com/nikoheikkila/pwnedapi) | `pwnedapi` | MIT | dropped | archived, and built for HIBP's retired v2 API |
 | [kernelmachine/haveibeenpwned](https://github.com/kernelmachine/haveibeenpwned) | `hibp` | Apache-2.0 | dropped | built for HIBP's retired v2 API |
 | [marinko-peso/haveibeenpwned](https://github.com/marinko-peso/haveibeenpwned) | `haveibeenpwned` | MIT | dropped | built for an older HIBP API, without a wheel |
-| [streanger/abuseipdb-wrapper](https://github.com/streanger/abuseipdb-wrapper) | `abuseipdb-wrapper` | MIT | dropped | a client that keeps its key in a keyring behind a password prompt and opens an interactive shell |
+| [streanger/abuseipdb-wrapper](https://github.com/streanger/abuseipdb-wrapper) | `abuseipdb-wrapper` | MIT | dropped | a client that keeps its key in a keyring behind a password prompt and opens an interactive shell (`osintverse-community/abuseipdb` calls AbuseIPDB's API directly) |
 | [maaaaz/pyalienvaultcli](https://github.com/maaaaz/pyalienvaultcli) | `pyalienvaultcli` | none | dropped | a tool that only adds indicators to an OTX pulse, without a licence |
 | [fhightower/robtex-python](https://github.com/fhightower/robtex-python) | `robtex-python` | MIT | dropped | a client that prints a Python dict rather than JSON and then exits 1 |
 | [ace-ecosystem/falcon-sandbox](https://github.com/ace-ecosystem/falcon-sandbox) | `falcon-sandbox` | Apache-2.0 | dropped | a client for CrowdStrike Falcon X that prompts for input |
@@ -961,15 +963,15 @@ telegram-phone-number-checker) are not repeated. [README.md](README.md) has the 
 | [ip2location/ip2proxy-python](https://github.com/ip2location/ip2proxy-python) | `IP2Proxy` | MIT | dropped | a library that reads local database files |
 | [whois-api-llc/whois-api-py](https://github.com/whois-api-llc/whois-api-py) | `whois-api` | MIT | dropped | a library with no command-line tool |
 | [pywhoisxmlapi](https://pypi.org/project/pywhoisxmlapi/) | `pywhoisxmlapi` | - | dropped | a library with no command-line tool |
-| [pberba/pulsedive-py](https://github.com/pberba/pulsedive-py) | `pulsedive` | MIT | dropped | a library with no command-line tool, unchanged since 2019 |
+| [pberba/pulsedive-py](https://github.com/pberba/pulsedive-py) | `pulsedive` | MIT | dropped | a library with no command-line tool, unchanged since 2019 (`osintverse-community/pulsedive` calls Pulsedive's API directly) |
 | [jheise/pycriminalip](https://github.com/jheise/pycriminalip) | `criminalip` | MIT | dropped | a library with no command-line tool |
 | [haginara/PyCriminalIP](https://github.com/haginara/PyCriminalIP) | `PyCriminalIP` | MIT | dropped | a library with no command-line tool |
 | [ipcriminal-python](https://pypi.org/project/ipcriminal-python/) | `ipcriminal-python` | - | dropped | a library with no command-line tool |
 | [dbrennand/virustotal-python](https://github.com/dbrennand/virustotal-python) | `virustotal-python` | MIT | dropped | a library with no command-line tool (`osintverse-community/virustotal` uses VirusTotal's own client) |
 | [drobotun/virustotalapi3](https://github.com/drobotun/virustotalapi3) | `vtapi3` | MIT | dropped | a library with no command-line tool (`osintverse-community/virustotal` uses VirusTotal's own client) |
 | [virustotal-api](https://pypi.org/project/virustotal-api/) | `virustotal-api` | - | dropped | a library with no command-line tool (`osintverse-community/virustotal` uses VirusTotal's own client) |
-| [vsecades/AbuseIpDb](https://github.com/vsecades/AbuseIpDb) | `abuseipdb` | MIT | dropped | a library with no command-line tool, without a wheel |
-| [abuseipdb-python-sdk](https://pypi.org/project/abuseipdb-python-sdk/) | `abuseipdb-python-sdk` | - | dropped | a library with no command-line tool |
+| [vsecades/AbuseIpDb](https://github.com/vsecades/AbuseIpDb) | `abuseipdb` | MIT | dropped | a library with no command-line tool, without a wheel (`osintverse-community/abuseipdb` calls AbuseIPDB's API directly) |
+| [abuseipdb-python-sdk](https://pypi.org/project/abuseipdb-python-sdk/) | `abuseipdb-python-sdk` | - | dropped | a library with no command-line tool (`osintverse-community/abuseipdb` calls AbuseIPDB's API directly) |
 | [ipinfo-cli](https://pypi.org/project/ipinfo-cli/) | `ipinfo-cli` | - | dropped | a third-party client that keeps keys in local files (`osintverse-community/ipinfo` uses IPinfo's own client) |
 | [maltiverse/python-maltiverse](https://github.com/maltiverse/python-maltiverse) | `maltiverse` | MIT | dropped | a library with no command-line tool |
 | [peopledatalabs/peopledatalabs-python](https://github.com/peopledatalabs/peopledatalabs-python) | `peopledatalabs` | MIT | dropped | a library with no command-line tool |
@@ -979,9 +981,9 @@ telegram-phone-number-checker) are not repeated. [README.md](README.md) has the 
 | [predictalab/predictasearch-python](https://github.com/predictalab/predictasearch-python) | `predictasearch` | MIT | dropped | a library with no command-line tool, without a wheel |
 | [pabluk/libgravatar](https://github.com/pabluk/libgravatar) | `libgravatar` | GPL-3.0 | dropped | a library with no command-line tool, using Gravatar's retired MD5 addresses |
 | [twilio/twilio-python](https://github.com/twilio/twilio-python) | `twilio` | MIT | dropped | a library with no command-line tool |
-| [opensanctions/yente](https://github.com/opensanctions/yente) | `yente` | MIT | dropped | an API server, not a client |
-| [opensanctions/nomenklatura](https://github.com/opensanctions/nomenklatura) | `nomenklatura` | MIT | dropped | a matching library, not a client |
-| [opensanctions](https://pypi.org/project/opensanctions/) | `opensanctions` | MIT | dropped | the old crawler, not a client |
+| [opensanctions/yente](https://github.com/opensanctions/yente) | `yente` | MIT | dropped | an API server, not a client (`osintverse-community/opensanctions` calls the hosted one) |
+| [opensanctions/nomenklatura](https://github.com/opensanctions/nomenklatura) | `nomenklatura` | MIT | dropped | a matching library, not a client (`osintverse-community/opensanctions` calls OpenSanctions' matching API) |
+| [opensanctions](https://pypi.org/project/opensanctions/) | `opensanctions` | MIT | dropped | the old crawler, not a client (`osintverse-community/opensanctions` calls OpenSanctions' API) |
 | [dahlia/wikidata](https://github.com/dahlia/wikidata) | `Wikidata` | GPL-3.0 | dropped | a library with no command-line tool |
 | [LeMyst/WikibaseIntegrator](https://github.com/LeMyst/WikibaseIntegrator) | `WikibaseIntegrator` | MIT | dropped | a library with no command-line tool |
 | [kensho-technologies/qwikidata](https://github.com/kensho-technologies/qwikidata) | `qwikidata` | Apache-2.0 | dropped | a library with no command-line tool, without a wheel |

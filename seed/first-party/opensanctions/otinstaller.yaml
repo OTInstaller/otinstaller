@@ -1,0 +1,71 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: opensanctions
+namespace: osintverse-community
+version: 0.1.0
+summary: "Screens a person's or company's name against OpenSanctions: sanctions lists, politically exposed persons, watch lists"
+readme: README.md
+license: MIT
+homepage: https://github.com/osintverse-community/opensanctions
+categories: [people, company]
+tags: [opensanctions, sanctions, pep, watchlists, due-diligence]
+inputs:
+  - name: name
+    type: name
+    required: false
+    description: "A person's full name (give exactly one of name or company)"
+    example: "Vladimir Putin"
+  - name: company
+    type: company
+    required: false
+    description: "A company or organisation name (give exactly one of name or company)"
+    example: "Rosneft"
+  - name: birth_date
+    type: string
+    required: false
+    description: "The person's date or year of birth, such as 1952 or 1952-10-07, to tell namesakes apart"
+  - name: country
+    type: string
+    required: false
+    description: "A country linked to the person or company (nationality, residence or jurisdiction), as a name or code"
+  - name: limit
+    type: integer
+    required: false
+    default: 5
+    description: "Most matches to return (up to 25)"
+outputs:
+  - type: person
+    description: "Listed people: score, topics (sanction, role.pep, crime...), sources, countries, positions, birth date"
+  - type: organization
+    description: "Listed companies and organisations"
+  - type: other
+    description: "Other listed things, such as vessels and aircraft"
+secrets:
+  - name: OPENSANCTIONS_API_KEY
+    required: true
+    description: "Your OpenSanctions API key: paid per query for businesses after trial credits; free for journalists, NGOs and researchers who apply"
+    url: https://www.opensanctions.org/account/
+    pricing: paid
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/opensanctions@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["opensanctions", "--name", "{name}", "--company", "{company}", "--birth-date", "{birth_date}", "--country", "{country}", "--limit", "{limit}"]
+  output_format: json
+  timeout_seconds: 60
+  typical_seconds: 2
+network:
+  egress: true
+  domains: ["api.opensanctions.org"]
+ethics:
+  touches_target: false
+  auth_required: true
+  collects_personal_data: true
+  notifies_target: false
+  notes: "Shows the sanctions, PEP and watch-list records whose names match; a match on a name alone may be a different person, and being a politically exposed person is not wrongdoing."
+test:
+  # Scans and health checks run without secrets, so the tool reports the missing key with exit code 3.
+  expect_exit_code: 3
+  input: { name: "Vladimir Putin" }

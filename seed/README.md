@@ -8,7 +8,7 @@ content checks → review → published). Never seed production from `api/script
 
 | Folder | What | Count |
 | --- | --- | --- |
-| [`first-party/`](first-party) | Tools written for the registry, on the result envelope, namespace `osintverse-community` (11 for launch; 9 built on data providers' official PyPI clients in October 2026) | 20 |
+| [`first-party/`](first-party) | Tools written for the registry, on the result envelope, namespace `osintverse-community` (11 for launch; 9 built on data providers' official PyPI clients and 6 on providers' HTTP APIs in October 2026) | 26 |
 | [`community/`](community) | Wrapper repositories for third-party tools, namespace `osintverse-community` (27 for launch, 26 published and `instaloader-profile` dropped; 11 converted from `otinstaller`; 65 open-source tools with more than 100 stars added in October 2026; 16 PyPI clients of data providers added in October 2026) | 119 |
 | [`guides/`](guides) | Launch guides, namespace `osintverse-community` (10 published; `osint-fundamentals` is a draft primer for `/learn`, not published yet) | 11 |
 | [`outreach/`](outreach) | Issue and pull request texts for maintainer outreach | 2 |
@@ -342,7 +342,7 @@ Dropped after reading the package (each reason is in [`candidates.md`](candidate
 | A library with no command, not built into a tool this time | leakix, ip2location-io, whois-api, pulsedive, criminalip, maltiverse, peopledatalabs, rocketreach, twilio, praw, atproto, Mastodon.py, serpapi, blockcypher and more |
 
 Providers with no usable PyPI client at all (AbuseIPDB, Shodan InternetDB, HackerTarget, URLhaus, Pulsedive,
-OpenSanctions) could become first-party tools over plain HTTP.
+OpenSanctions) became first-party tools over plain HTTP: see "Data providers without a PyPI client" below.
 
 Health risks for these:
 
@@ -355,6 +355,78 @@ Health risks for these:
 | `urlscan-search`, `otx-indicators`, `ipinfo`, `ia-search` | Anonymous rate limits, shared by everything on a CI runner's address |
 | `savepagenow` | No smoke test or health check |
 | `fofa`, `handelsregister`, `hibp-breaches` | Need a paid plan |
+
+## Data providers without a PyPI client (October 2026)
+
+Six providers that the PyPI pass found useful but without a usable client became first-party tools on 25 Oct 2026.
+Each calls the provider's HTTP API with Python's standard library alone, so it has no `requirements.txt` and the
+build watcher has nothing to follow but its base image. Otherwise they follow the other first-party tools:
+- typed entities;
+- unit tests with the network mocked;
+- exit code 3 when a required key is missing;
+- `pricing` on every key.
+
+None was dropped. Each provider's terms allow a client that a person runs for themselves, with their own key where
+one is needed, though some keep their free use to non-commercial use, which each README says.
+
+| Package | API | Key | Inputs | Categories |
+| --- | --- | --- | --- | --- |
+| `osintverse-community/shodan-internetdb` | Shodan InternetDB | none | `ip` | ip-network |
+| `osintverse-community/hackertarget` | HackerTarget's host search, DNS, reverse DNS, AS and reverse IP lookups | `HACKERTARGET_API_KEY`, optional (paid) | one of `domain`, `ip` | domain-dns, ip-network |
+| `osintverse-community/abuseipdb` | AbuseIPDB v2 `check` | `ABUSEIPDB_API_KEY` (free tier) | `ip`, `days`? | ip-network |
+| `osintverse-community/urlhaus` | abuse.ch URLhaus v1 `url`, `host` and `payload` | `ABUSECH_AUTH_KEY` (free, shared with `malwarebazaar`) | one of `url`, `domain`, `ip`, `hash` | domain-dns, ip-network, utilities |
+| `osintverse-community/pulsedive` | Pulsedive `indicator.php` | `PULSEDIVE_API_KEY`, optional (free tier) | one of `ip`, `domain`, `url` | ip-network, domain-dns, utilities |
+| `osintverse-community/opensanctions` | OpenSanctions `/match/default` | `OPENSANCTIONS_API_KEY` (paid) | `name` or `company`; `birth_date`?, `country`?, `limit`? | people, company |
+
+What the providers' terms and APIs led to:
+
+- **Shodan InternetDB** needs no key and is free for non-commercial use; Shodan asks commercial users for an
+  enterprise license.
+- **HackerTarget** allows 50 free API calls a day from one address, but only about 20 for the host search, reverse IP
+  and reverse DNS lookups (its `X-API-Quota` header), and cuts free results at 500 lines. A run makes two calls for a
+  domain and three for an address. The tool uses only lookups that send the target nothing but DNS queries:
+  - its port scans, traceroute, ping, zone transfer, HTTP headers, page links and banner tools are left out, and its
+    terms allow scanning only systems you own;
+  - `whois` now needs a membership key, so it is left out too.
+- **AbuseIPDB**'s free plan allows 1,000 checks a day, and its terms keep it to non-commercial use.
+- **abuse.ch**'s terms make URLhaus free for not-for-profit use; commercial users may need a subscription through
+  Spamhaus.
+- **Pulsedive** answers without a key, at about 10 lookups a day from one address (its `X-Requests-Remaining-Day`
+  header); a free account's key raises that.
+  - Its terms of service forbid robots and other automated access in general words, but Pulsedive documents the API
+    for programs, with keys and a list of community client libraries; the tool uses only that API.
+  - It only reads existing records: `analyze.php` would scan the target.
+- **OpenSanctions**' hosted API is not free for non-commercial use in general, so its key is `pricing: paid`.
+  - Businesses pay per query after trial credits; free keys go only to journalists, NGOs and academic researchers who
+    apply.
+  - Its data is CC BY-NC 4.0.
+  - Matches describe people, so the manifest sets `collects_personal_data` and a note for consent prompts.
+
+Every tool was run before release, on Windows with Python 3.13 (the sandbox is Linux with 3.12):
+- its unit tests and `ot validate`;
+- the test command built from `test.input` the way `ops/scanner/scan.py` builds it, with no keys, an empty home
+  folder and stdin closed.
+
+Every exit code matched `expect_exit_code`, and the keyless tools returned real results: InternetDB and Pulsedive for
+8.8.8.8, HackerTarget for otinstaller.com. With a made-up key, AbuseIPDB, URLhaus, OpenSanctions and Pulsedive refused
+it, and each tool exited 1 with the provider's message. None was run with a real key. HackerTarget's IP lookups were
+written against their live answers, but a full `--ip` run used up the day's free allowance and exited 1 with the
+"API count exceeded" message instead. Calling the live APIs while the tools were written, and the runs, found these:
+
+| Package | Found | Change |
+| --- | --- | --- |
+| `hackertarget` | `output=json` works only for some lookups (the others answer 400 with the text in `error`), and errors come as plain text with status 200 (`error invalid host`, `API count exceeded`) | Reads plain text and treats those lines as errors |
+| `hackertarget` | The free allowance for host search, reverse IP and reverse DNS is about 20 calls a day, not 50 | The README and the key's description say so |
+| `pulsedive` | Some properties come with a `++` prefix, alone (`++title`) or beside the plain one (`cidr` and `++cidr`) | The tool reads either and merges DNS records from both |
+| `pulsedive` | Records carry comments anyone can post (some are injection attempts) and WHOIS contacts | Both are left out |
+
+Health risks for these:
+
+| Package | Risk |
+| --- | --- |
+| `abuseipdb`, `urlhaus`, `opensanctions` | Need a key, so the test expects exit code 3; the health check can't tell whether lookups still work |
+| `hackertarget`, `pulsedive`, `shodan-internetdb` | Anonymous limits, shared by everything on a CI runner's address: about 20 HackerTarget host searches a day (a run uses one, plus a DNS lookup), about 10 Pulsedive lookups a day, and InternetDB's undocumented rate limit |
+| `opensanctions` | Needs a paid plan, or a free key for journalists, NGOs and researchers |
 
 ## How each part gets published
 
@@ -376,9 +448,11 @@ The step-by-step runbook with commands is in the session notes (`seeding.md`); i
 
 ## Checked so far
 
-- `ot validate` passes for all 48 launch manifests, and `TestSeedManifests` passes for all 150 in `seed/`.
+- `ot validate` passes for all 48 launch manifests, and `TestSeedManifests` passes for all 156 in `seed/`.
 - The 25 packages from the PyPI pass were run before release; "PyPI clients of data providers" above says how and
   what the runs changed. The 9 first-party tools' unit tests pass.
+- The 6 first-party tools over HTTP were run before release and their unit tests pass; "Data providers without a
+  PyPI client" above says how.
 - Unit tests pass for all 11 first-party tools (`python -m unittest` in each folder). The network ones were also run
   against their live APIs with their test inputs.
 - These wrappers were run locally with their exact command and test input: sherlock, socialscan, checkdmarc,
