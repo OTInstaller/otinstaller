@@ -66,9 +66,11 @@ those exact commands in `.claude/settings.local.json`. D1's Time Travel bookmark
       errors in the browser.
 - [x] Release `ot` 0.16.0: tag `v0.16.0` pushed, released on `OTInstaller/ot` on 24 Oct at 12:07 UTC. The agent
       plugin 0.1.2 is pushed to `OTInstaller/agent-plugin` with the tag `v0.1.2`.
-- [ ] **(you)** List `ot` 0.16.0 in the MCP Registry (publishing it was refused to the agent): in a folder holding the
-      release's `server.json`, `mcp-publisher login http --domain otinstaller.com --private-key "$(cat
-      ~/.mcp-registry/otinstaller.com.ed25519.hex)"`, then `mcp-publisher publish server.json`.
+- [ ] **(you)** List `ot` 0.16.0 in the MCP Registry (publishing it was refused to the agent). The registry's
+      publisher, installed with `go install`, is `publisher` in Go's bin folder. In an empty folder:
+      `gh release download v0.16.0 --repo OTInstaller/ot --pattern server.json`, then
+      `publisher login http --domain otinstaller.com --private-key "$(cat ~/.mcp-registry/otinstaller.com.ed25519.hex)"`,
+      then `publisher publish server.json`. The release's `server.json` passes `publisher validate` (checked 24 Oct).
 - [x] Release otlite 1.3.0: `debian/changelog` has 1.3.0-1 ([#105](https://github.com/OTInstaller/otinstaller/pull/105)),
       and the tag `otlite-v1.3.0` released it to PyPI on 24 Oct at 12:18 UTC.
 

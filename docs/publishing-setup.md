@@ -281,15 +281,16 @@ signed with `mcpb sign` yet.
 
 Listing a release in the registry is a manual step:
 
-1. Once: install [`mcp-publisher`](https://github.com/modelcontextprotocol/registry)
-   (`go install github.com/modelcontextprotocol/registry/cmd/publisher@v1.8.1`). The registry checks that we own
+1. Once: install the registry's publisher, which its docs call `mcp-publisher`
+   (`go install github.com/modelcontextprotocol/registry/cmd/publisher@v1.8.1`; Go names the binary `publisher`, in
+   `$(go env GOPATH)/bin`, and the commands below use that name). The registry checks that we own
    `otinstaller.com` (so the servers can be named `com.otinstaller/*`) by reading the public key the site serves at
    `/.well-known/mcp-registry-auth` (`web/public/.well-known/`). The matching private key is in the owner's
    `~/.mcp-registry/otinstaller.com.ed25519.hex`, outside the repository. Sign in with
-   `mcp-publisher login http --domain otinstaller.com --private-key <that key>`, and again if a publish says the
-   sign-in has expired. If the key is lost, make a new pair, replace the site file, and deploy the site.
-2. For each release: download its `server.json`, check it with `mcp-publisher validate server.json` (or
-   `mcp-publisher publish --dry-run`), then run `mcp-publisher publish server.json`.
+   `publisher login http --domain otinstaller.com --private-key "$(cat ~/.mcp-registry/otinstaller.com.ed25519.hex)"`,
+   and again if a publish says the sign-in has expired. If the key is lost, make a new pair, replace the site file, and deploy the site.
+2. For each release: download its `server.json` (`gh release download vX.Y.Z --repo OTInstaller/ot --pattern
+   server.json`), check it with `publisher validate server.json`, then run `publisher publish server.json`.
 
 The registry is in preview and may change its format; `cli/cmd/mcpb` writes the 2025-12-11 schema.
 
