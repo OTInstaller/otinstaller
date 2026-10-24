@@ -28,7 +28,8 @@ import { peopleRoutes } from "./routes/people";
 import { submissionRoutes } from "./routes/submissions";
 import { refreshContributorStats } from "./people";
 import { publicWatch, queueUpstreamChecks, watchMode, type WatchRow } from "./upstream";
-import { autoReleaseAt, currentBump, sweepBumps } from "./bumps";
+import { autoReleaseAt, currentBump, sweepBumps, type BumpRow } from "./bumps";
+import { dependencyAutoAt, publicBase, publicDependency, queueBuildChecks, type BaseRow, type DependencyRow } from "./build-watch";
 import { upstreamRoutes } from "./routes/upstream";
 import { proposalRoutes } from "./routes/proposals";
 import { deliverInbox, purgeInbox } from "./inbox";
@@ -307,23 +308,30 @@ app.get("/tools/:ns/:name", async (c) => {
     `SELECT COALESCE(u.handle, lower(u.login)) AS handle, m.reason FROM tool_maintainers m JOIN users u ON u.id = m.user_id
      WHERE m.tool_id = ? AND u.profile_hidden = 0 AND u.banned_at IS NULL ORDER BY m.created_at`,
   ).bind(row.id).all<{ handle: string; reason: string }>()).results;
-  // What the upstream watcher last found, for community wrappers.
-  const watch = await c.env.DB.prepare(`SELECT * FROM upstream_watch WHERE tool_id = ?`).bind(row.id).first<WatchRow>();
-  const bump = watch ? await currentBump(c.env, row.id) : null;
+  // What the upstream watcher last found, for community wrappers, and the build watcher, for the community namespace's
+  // builds: their PyPI dependencies (first-party tools) and base image.
+  const [watch, depRows, base] = await Promise.all([
+    c.env.DB.prepare(`SELECT * FROM upstream_watch WHERE tool_id = ?`).bind(row.id).first<WatchRow>(),
+    c.env.DB.prepare(`SELECT * FROM dependency_watch WHERE tool_id = ? ORDER BY package`).bind(row.id).all<DependencyRow>().then((r) => r.results),
+    c.env.DB.prepare(`SELECT * FROM base_watch WHERE tool_id = ?`).bind(row.id).first<BaseRow>(),
+  ]);
+  const bump: BumpRow | null = watch || depRows.length || base ? await currentBump(c.env, row.id) : null;
   // In auto mode an open bump goes out on its own on a set date, unless the maintainers turned that off.
-  const autoAt = bump?.status === "open" && watch && watchMode(c.env) === "auto" &&
+  const autoAt = bump?.status === "open" && watchMode(c.env) === "auto" &&
     (await c.env.DB.prepare(`SELECT auto_release FROM tools WHERE id = ?`).bind(row.id).first<{ auto_release: number }>())?.auto_release
-    ? autoReleaseAt(watch, bump) : undefined;
+    ? (bump.kind === "dependency" ? dependencyAutoAt(depRows, bump) : watch ? autoReleaseAt(watch, bump) : undefined) : undefined;
+  const bumpOut = bump ? {
+    kind: bump.kind, version: bump.version, number: bump.pr_number, url: bump.url, status: bump.status, released_version: bump.released_version ?? undefined,
+    auto_release_at: autoAt,
+  } : undefined;
   cached(c, 60);
   return c.json({
     ...summary(row),
-    upstream: watch ? {
-      ...publicWatch(watch),
-      bump: bump ? {
-        version: bump.version, number: bump.pr_number, url: bump.url, status: bump.status, released_version: bump.released_version ?? undefined,
-        auto_release_at: autoAt,
-      } : undefined,
-    } : undefined,
+    upstream: watch ? { ...publicWatch(watch), bump: bump?.kind === "upstream" ? bumpOut : undefined } : undefined,
+    dependencies: depRows.length ? depRows.map(publicDependency) : undefined,
+    base_image: base ? publicBase(base) : undefined,
+    // The package's current bump of any kind: upstream pin, dependency update or rebuild.
+    bump: bumpOut,
     packaged_by: maintainers.find((m) => m.reason === "submitter")?.handle ?? undefined,
     maintainers: maintainers.length ? maintainers.map((m) => m.handle) : undefined,
     sample: sampleJson ? { ...sampleJson, version: row.latest_version, recorded_at: smoke!.ran_at } : undefined,
@@ -619,6 +627,7 @@ export default {
       await purgeInbox(env);
       await refreshContributorStats(env);
       await queueUpstreamChecks(env);
+      await queueBuildChecks(env);
       await purgeIdleNamespaces(env);
       await purgeCiTokens(env);
       // Images publishers pushed to the mirror that no version uses, and unfinished uploads.

@@ -12,6 +12,9 @@ export interface Env {
   // and closes outdated issues on community wrappers, "prs" also opens bump pull requests (bumps.ts), and "auto" also
   // merges and releases pin-only bumps a week after upstream's release.
   UPSTREAM_WATCH?: string;
+  // Whether the build watcher (build-watch.ts) rebuilds a package on a newer base image when its scan found fixable
+  // critical or high vulnerabilities: "rebuild", or "report" (the default) to only record base image changes.
+  REBUILD_WATCH?: string;
   BACKUPS_BUCKET?: string; // the BACKUPS bucket's name, for presigned URLs; defaults to otinstaller-backups
   R2_ACCOUNT_ID?: string; // with R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY, uploads and downloads go straight to R2
   R2_ACCESS_KEY_ID?: string;
@@ -65,6 +68,8 @@ export type PublishMessage =
   | { backupVersionId: string }
   | { profileNamespaceId: string }
   | { upstreamCheckToolId: string }
+  // The nightly check of one package's dependencies and base image (build-watch.ts).
+  | { buildCheckToolId: string }
   // The nightly clean-up of one mirror repository publishers pushed to (backups.ts:sweepMirrorRepo).
   | { mirrorSweepRepo: string };
 

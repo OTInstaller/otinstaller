@@ -540,6 +540,7 @@ and beta work, so `R2_*`, `ISSUES_REPO`/`ISSUES_TOKEN` and `EDGE_CACHE` are only
 | `submissions.ts` | Community wrapper submissions: checks, `dockerfileChecks`, the community bot (`COMMUNITY_*`), the first-release review gate |
 | `upstream-pin.ts` / `upstream.ts` / `bumps.ts` | Reading a wrapper's upstream pin from its Dockerfile; the nightly upstream watcher (`UPSTREAM_WATCH`); bump pull requests, "merge and release", following each release to released or failed (`settleBump`, `sweepBumps`) and releasing on its own in auto mode |
 | `proposals.ts` | Change proposals: a wrapper's maintainers change its manifest, Dockerfile or README beyond the pin (`checkProposal`), the community bot opens the pull request, a reviewer who isn't the proposer approves it and the bot merges and releases it |
+| `build-watch.ts` | The build watcher: first-party tools' requirements.txt pins against PyPI (issues, dependency update pull requests, auto releases under `UPSTREAM_WATCH`), and each community-namespace build's base image on Docker Hub (rebuilds under `REBUILD_WATCH`) |
 | `first-week.ts` | A new version's first week: its works/broken counts (`firstWeekCounts`) for the status line, the versions list and the activity feed |
 | `known-repos.ts` | **Generated** from otlite's catalog and `seed/candidates.md`; don't edit |
 | `mirror/` | The mirror Worker: `index.ts` (entry) and `registry.ts` (OCI API, `imageExists`, `hideImage`, `deleteImage`) |
@@ -644,11 +645,12 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
    drills, backfill up to 5 versions with no backup, email inbox items due now. `scheduled()` runs this block on
    **every** trigger, including the nightly, weekly and monthly ones. Nightly also: guide link rechecks (> 20% dead →
    needs update), the reviewer digest, rate-limit purge, backup purge, locking stale closed threads, daily inbox
-   digests and the inbox purge, the `contributor_stats` recount, queuing every community wrapper's upstream check,
+   digests and the inbox purge, the `contributor_stats` recount, queuing every community wrapper's upstream check and every community-namespace build's dependency and base-image check,
    `installs_30d` recompute.
 
 Queue messages (`PublishMessage` in `env.ts`): `{ jobId }`, `{ importId }`, `{ checkVersionId, attempt? }`,
-`{ linkCheckToolId }`, `{ publishVersionId }`, `{ backupVersionId }`, `{ profileNamespaceId }`, `{ upstreamCheckToolId }`;
+`{ linkCheckToolId }`, `{ publishVersionId }`, `{ backupVersionId }`, `{ profileNamespaceId }`, `{ upstreamCheckToolId }`,
+`{ buildCheckToolId }`, `{ mirrorSweepRepo }`;
 anything else is treated as `{ jobId }`. Transient
 failures retry with a delay of 30 × attempts seconds, 5 deliveries in all (the code acks before wrangler's own
 `max_retries` kicks in); a `HostError` with `transient=false` fails immediately. On the last failure a job becomes
@@ -697,7 +699,7 @@ migrations add publish intake (0002), scans/review and `notifications` (0003), s
 publishing (`trusted_publishers`, the CI token columns `api_tokens.namespace_id`/`package`/`trusted_publisher_id`/
 `oidc_json`/`jti`, and `publish_jobs.trusted_publisher_id`/`ci_json`, 0025), request discussions
 (`request_comments`, `request_subscriptions`, flags on requests, 0026) and change proposals (`change_proposals`,
-0027). That is 59 tables plus `tools_fts`; every
+0027), and the build watcher (`dependency_watch`, `base_images`, `base_watch`, `bump_prs.kind`, 0031). That is 62 tables plus `tools_fts`; every
 table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
 
@@ -956,6 +958,12 @@ The plan is [docs/roadmap.md](docs/roadmap.md) (phase 1 built). User docs: `web/
   the 15-minute cron), and a failed bump can be released again under a new version. The wrapper's version is
   upstream's as X.Y.Z (`upstreamSemver`: 2.2 is 2.2.0), or a patch on top when that isn't above every version it had
   (`wrapperVersion`).
+- **Build watcher** (`build-watch.ts`, 0031): nightly, for every Docker package with a source in the community
+  namespace. First-party tools' `requirements.txt` pins are compared with PyPI; under `UPSTREAM_WATCH` they get
+  `dependency:<pkg>==<ver>` issues, one bot pull request per set of releases (`bump_prs.kind = 'dependency'`, released
+  as a patch) and auto releases, through the same release, settle and sweep code as bumps. Each build's base image
+  (last `FROM`, Docker Hub digest) is recorded; `REBUILD_WATCH=rebuild` reruns the release workflow on unchanged source
+  (`kind = 'rebuild'`, #0) when the digest changed and the latest scan has fixable critical or high vulnerabilities.
 - **Change proposals** (`proposals.ts`, 0027): a wrapper's maintainers and reviewers edit its `otinstaller.yaml`,
   Dockerfile or README on the package's Changes tab. `checkProposal` keeps only what differs from main, validates the
   manifest, refuses identity changes (`protected_field`) and secrets, moves the version past every version the package
@@ -1324,6 +1332,9 @@ change. Keep this list current when you fix one or find another.
 - A new version's first-week counts are signed-in confirmations only; anonymous failed-run reports (`run_signals`)
   only reach it once they open an issue.
 - Bump pull requests skip wrappers that pin upstream's own image (they get an outdated issue only), and commit pins.
+- The build watcher records a version's base image digest when it first sees the version, not the one it was built on,
+  so a base that changed between the build and that first check is only noticed at its next change. It reads only
+  exact `==` pins in `requirements.txt` and Docker Hub base images.
 - The community bot creates wrapper repositories on GitHub only; a submission whose first release fails its scan
   stays `failed` until the submitter changes it.
 
@@ -1373,6 +1384,7 @@ change. Keep this list current when you fix one or find another.
 | Community bot | The second GitHub App (`COMMUNITY_APP_*`), installed only on `osintverse-community`, that creates wrapper repositories and opens bump pull requests and change proposals' pull requests |
 | Upstream watcher | The nightly check of each wrapper's pin against its upstream's latest release (`upstream_watch`, `UPSTREAM_WATCH`) |
 | Bump pull request | The community bot's pull request changing only a wrapper's pin; maintainers merge and release it, or the registry does in auto mode, and its release ends `released` or `failed` (`bump_prs`) |
+| Build watcher | The nightly check of first-party tools' PyPI dependencies and of every community-namespace build's base image (`build-watch.ts`); dependency updates and rebuilds are `bump_prs` rows of their own `kind` |
 | Change proposal | A wrapper maintainer's change to its manifest, Dockerfile or README, opened as a pull request by the community bot; a reviewer who isn't the proposer approves it (`change_proposals`) |
 | First week | The seven days after a version is published, when its works/broken counts are shown beside the previous version's |
 | Failure prompt | `ot run`'s "Report it as broken?" after a run that failed; sends no inputs or output |
