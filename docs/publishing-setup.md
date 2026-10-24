@@ -182,12 +182,18 @@ else changes.
 1. The registry's own App must be installed on **All repositories** of `osintverse-community`, so it sees the tags of
    repositories the bot creates (the publish webhook and the 6-hourly poller both use it).
 2. Create a GitHub App called "OTInstaller Community", owned by the `osintverse-community` organisation, with no
-   webhook. Repository permissions: Administration, Contents, Workflows, Actions and Pull requests **read and
-   write** (pull requests for the upstream watcher's bumps and maintainers' change proposals); Metadata read. Install
-   it on `osintverse-community` only (all repositories).
-3. Set the secrets on the API Worker (owner's step: `wrangler secret put` changes production):
-   `COMMUNITY_APP_ID`, `COMMUNITY_APP_PRIVATE_KEY` (the App's key converted to PKCS#8, like `GITHUB_APP_PRIVATE_KEY`)
-   and `COMMUNITY_INSTALLATION_ID`.
+   webhook. Repository permissions: Administration, Contents, Workflows, Actions, Pull requests and Repository
+   creation **read and write** (pull requests for the upstream watcher's bumps, dependency updates and maintainers'
+   change proposals; GitHub now lists creating repositories as its own permission); Metadata read. Install it on
+   `osintverse-community` only (all repositories). This link opens the form filled in, with the webhook off:
+   `https://github.com/organizations/osintverse-community/settings/apps/new?name=OTInstaller%20Community&url=https%3A%2F%2Fotinstaller.com&public=false&webhook_active=false&administration=write&contents=write&workflows=write&actions=write&pull_requests=write&metadata=read`
+   (set Repository creation by hand). Then generate a private key on the App's page.
+3. Set the secrets on the API Worker (owner's step: `wrangler secret put` changes production), in `api/`:
+   `printf '<app id>' | npx wrangler secret put COMMUNITY_APP_ID`;
+   `openssl pkcs8 -topk8 -nocrypt -in <downloaded .pem> | npx wrangler secret put COMMUNITY_APP_PRIVATE_KEY` (the
+   key as PKCS#8, like `GITHUB_APP_PRIVATE_KEY`); and `COMMUNITY_INSTALLATION_ID` the same way, from
+   `gh api orgs/osintverse-community/installations` (the `otinstaller-community` row). Then delete the downloaded key;
+   a new one can be generated on the App's page.
 4. Grant the reviewer role to the community members who approve first releases and change proposals (Admin console,
    Community tab).
 5. Check it with a throwaway submission of a small MIT tool: the bot creates `osintverse-community/<name>`, the release
