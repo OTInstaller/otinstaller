@@ -329,11 +329,15 @@ def scan_docker(req: dict) -> dict:
     }
 
 
+# The image `ot` runs a pipx tool in (pythonDockerfile in cli/internal/runner/install.go; test_scan.py keeps the two
+# equal), so the smoke test and the health check run it as users do. The sandbox is read-only except /tmp, so it
+# starts there: a tool that writes into its working folder (reports, caches) works in `ot` and must pass here too.
 PYTHON_DOCKERFILE = """FROM python:3.12-slim
 RUN useradd --uid 10001 --create-home ot
 COPY *.whl /tmp/
 RUN pip install --no-cache-dir /tmp/*.whl && rm /tmp/*.whl
 USER ot
+WORKDIR /tmp
 """
 
 

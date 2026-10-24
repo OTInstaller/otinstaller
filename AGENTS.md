@@ -438,7 +438,9 @@ on stderr (`spec/schema/error-v1.json`, shared with the API); its `code` is the 
   in `.meta.json` or in logs. Containers get only `HOME` and the declared secrets; `--native` pipx tools inherit ot's
   whole environment.
 - Sandboxed pipx tools are built into `ot-local/<ns>-<name>:<version>` on `python:3.12-slim` with `WORKDIR /tmp` (the only
-  writable folder); `--native` uses ot's own `PIPX_HOME`/`PIPX_BIN_DIR`.
+  writable folder); `--native` uses ot's own `PIPX_HOME`/`PIPX_BIN_DIR`. The scanner's smoke test and health check run
+  pipx tools in the same image (`PYTHON_DOCKERFILE` in `ops/scanner/scan.py`, which `test_scan.py` keeps equal to
+  `pythonDockerfile`), so a change to one goes into the other.
 - Removed packages (`tool_removed`) are refused with exit 4; `cache/removed.json` drives warnings.
 
 ### Environment variables

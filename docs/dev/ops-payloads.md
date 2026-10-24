@@ -170,8 +170,10 @@ Per runtime:
   (mismatch → signature `fail`). Provenance: `https://pypi.org/integrity/<pkg>/<ver>/<file>/provenance` (PEP 740);
   pass when an attestation publisher's repository equals `source_repo` or `upstream_repo` (host prefix stripped,
   lowercase); none → `absent`; others → `fail`. With neither (a direct upload) any publisher passes, reported as
-  `identities` (`pypi:<kind>:<repo>/<workflow>`, issuer `https://pypi.org`). Builds a `python:3.12-slim` image with the wheel installed
-  (uid 10001) and runs Trivy on it with `--pkg-types library`. GuardDog (`guarddog pypi scan <wheel>
+  `identities` (`pypi:<kind>:<repo>/<workflow>`, issuer `https://pypi.org`). Builds a `python:3.12-slim` image with
+  the wheel installed (`PYTHON_DOCKERFILE`: uid 10001, starting in `/tmp`, the only folder the sandbox can write to;
+  the same Dockerfile `ot` builds pipx tools from, which `test_scan.py` checks) and runs Trivy on it with
+  `--pkg-types library`. GuardDog (`guarddog pypi scan <wheel>
   --output-format json`) restricted to code-behaviour rules: code-execution, cmd-overwrite, download-executable,
   exec-base64, exfiltrate-sensitive-data, obfuscation, silent-process-execution, steganography, dll-hijacking,
   clipboard-access. If GuardDog is not installed, malware count is 0 with a note.
