@@ -9,13 +9,36 @@ Items marked **(you)** need the owner of the GitHub, GitLab, Cloudflare, Resend,
 
 | Thing | State |
 |-------|-------|
-| `ot` | v0.15.0 is the latest release on `OTInstaller/ot` (23 Oct, 19:49 UTC, tag `v0.15.0` on `7808e0d`), with archives, `.deb`/`.rpm`, signed checksums, six `.mcpb` bundles and `server.json`; `get.otinstaller.com/ot` and `/ot.ps1` serve its install scripts, and `/ot/latest` answers `v0.15.0`. Checked: the Windows amd64 archive matches `checksums.txt`, reports `ot version v0.15.0`, and has `ot publish --image/--sign/--oidc` and `ot namespace create/trust/trusted/untrust` |
-| API and site | Deployed from `main` (`2afda1c`) on 24 Oct with "Keeping tools up to date" (below): migrations 0028 and 0029 applied, the API at 11:49 UTC and the site with `PUBLIC_BETA=0` at 11:51; migrations up to 0029 are in production. Before that, deployed from `main` (`6787737` and later docs) on 23 Oct: the API at 19:16 UTC, the mirror (now bound to D1) at 19:18 and the site with `PUBLIC_BETA=0` (no beta strip) at 19:44; migrations up to 0027 applied in production ("Phase 1 and publishing" below). The API and site were deployed again at 20:42 and 20:43 UTC with the D1 outage handling ("D1 outages" below); the mirror wasn't, as nothing it runs changed |
-| Agents | `ot mcp` (since v0.13.0), the remote MCP server at `https://api.otinstaller.com/mcp`, the plugin `OTInstaller/agent-plugin` v0.1.1 (23 Oct; `claude plugin validate --strict` passes); MCP Registry entries `com.otinstaller/ot` 0.15.0 (the latest, listed 23 Oct, 19:55 UTC) and `com.otinstaller/registry` 1.0.0 |
-| otlite | 1.0.0, 1.1.0 and 1.2.0 released to PyPI on 22 Oct (09:23, 09:39 and 10:51 UTC) by `release-otlite.yml`, each with a GitHub release `otlite-vX.Y.Z` on `OTInstaller/otinstaller`. 1.2.1 ([PR #48](https://github.com/OTInstaller/otinstaller/pull/48)) followed on 22 Oct at 18:54 UTC and is the latest on PyPI |
+| `ot` | v0.16.0 is the latest release on `OTInstaller/ot` (24 Oct, 12:07 UTC), with the daily update note, holds and `GET /v1/latest`; `/ot/latest` answers `v0.16.0`, and the Windows amd64 archive matches `checksums.txt` and reports `ot version v0.16.0`. Before it, v0.15.0 (23 Oct, 19:49 UTC) |
+| API and site | Deployed from `main` (`f6b3ff4`) on 24 Oct at 12:57 and 12:59 UTC with following publishers and input types and the build watcher ("Follows and the build watcher" below): migrations up to 0031 are in production, and `UPSTREAM_WATCH` is `issues`. Earlier that day, deployed from `main` (`2afda1c`) with "Keeping tools up to date" (below): migrations 0028 and 0029 applied, the API at 11:49 UTC and the site with `PUBLIC_BETA=0` at 11:51; migrations up to 0029 are in production. Before that, deployed from `main` (`6787737` and later docs) on 23 Oct: the API at 19:16 UTC, the mirror (now bound to D1) at 19:18 and the site with `PUBLIC_BETA=0` (no beta strip) at 19:44; migrations up to 0027 applied in production ("Phase 1 and publishing" below). The API and site were deployed again at 20:42 and 20:43 UTC with the D1 outage handling ("D1 outages" below); the mirror wasn't, as nothing it runs changed |
+| Agents | `ot mcp` (since v0.13.0), the remote MCP server at `https://api.otinstaller.com/mcp`, the plugin `OTInstaller/agent-plugin` v0.1.2 (tag `v0.1.2`, 24 Oct); MCP Registry entries `com.otinstaller/ot` 0.15.0 (the latest there: listing 0.16.0 is left to the owner) and `com.otinstaller/registry` 1.0.0 |
+| otlite | 1.3.0 is the latest on PyPI (24 Oct, 12:18 UTC, `release-otlite.yml` with the `otinstaller` shim job passing), with the GitHub release `otlite-v1.3.0`. Before it: 1.0.0, 1.1.0 and 1.2.0 on 22 Oct, and 1.2.1 ([PR #48](https://github.com/OTInstaller/otinstaller/pull/48)) the same evening |
 | `otinstaller` shim | 0.2.0 is on PyPI (22 Oct, 11:23 UTC), and its files are on the `otlite-v1.2.0` GitHub release. The workflow publishes it from its own environment `pypi-otinstaller` ([PR #44](https://github.com/OTInstaller/otinstaller/pull/44)), but in the `otlite-v1.2.0` run that job failed with `invalid-publisher` (10:52 UTC), so the Actions history doesn't show how 0.2.0 was uploaded. **(you)** Check that PyPI's trusted publisher for `otinstaller` names the environment `pypi-otinstaller` before the next release |
 | otlite installer | `curl -fsSL https://get.otinstaller.com/otlite \| sh` answers 200 (`otlite/scripts/install.sh` from `main`, through `ops/get`) |
 | Site pages | `/agents`, the homepage for AI agents, with its Markdown twin `/agents.md`; `/otlite` and `/otlite/tools`, both listing every tool from `web/src/data/otlite-catalog.json`; tool pages show the sample output recorded by the scanner's smoke test |
+
+## Follows and the build watcher (deployed 24 October 2026)
+
+Following publishers and input types ([#107](https://github.com/OTInstaller/otinstaller/pull/107), migration 0030),
+and the build watcher: first-party tools' PyPI dependencies and every community-namespace build's base image, plus
+`UPSTREAM_WATCH=issues` ([#108](https://github.com/OTInstaller/otinstaller/pull/108), migration 0031). Merged into
+`main` (`f6b3ff4`); on that commit `npm test` in `api/` (478) and `web/` (206) passes. D1's Time Travel bookmark
+before the migrations is `00000340-00000000-0000510e-1dbf6eb6fcffe0d019c88dab506d128e`.
+
+- [x] Apply the migrations: 0030 and 0031 applied on 24 Oct, 12:56 UTC.
+- [x] Deploy the API. Now `61af0e12-a336-4838-8fcd-d14c0d13e387` (12:57 UTC); roll back to
+      `3ba5eb38-a472-41ec-8884-9e6e00f6a08b`. Checks: `/v1/health` 200; `PUT /v1/me/follows/input/domain` answers 401
+      signed out; `/v1/openapi.json` lists `/me/follows/{kind}/{target}` and the tool detail's `dependencies`;
+      `/v1/upstream/summary` says `issues` (6 wrappers behind, 1 error).
+- [x] Deploy the site with `PUBLIC_BETA=0`. Now `d7561412-d309-4933-83b1-c9c394630eda` (12:59 UTC); roll back to
+      `0196ad22-345c-4d36-a49c-b868d9bffcec`. Checks: `/osintverse-community` shows "Follow publisher" and
+      `/input/domain` "Follow new tools", each offering sign-in links when signed out.
+- [ ] Check after the nightly run (03:17 UTC on 25 Oct): `dependency_watch` has rows for dns-records, image-hash and
+      phone-parse, `base_watch` one per Docker build in `osintverse-community`, and any wrapper behind a release for
+      three days has an outdated issue.
+- [ ] **(you)** Decide on `REBUILD_WATCH=rebuild` once the community bot is set up and the base image records look
+      right: packages whose base image changed and whose scan found fixable critical or high vulnerabilities are then
+      rebuilt as a new patch version, at most every two weeks each and five a day.
 
 ## Keeping tools up to date (deployed 24 October 2026)
 
@@ -41,10 +64,13 @@ those exact commands in `.claude/settings.local.json`. D1's Time Travel bookmark
       `release_workflow_failed`; the sherlock page shows "Follow releases", which offers sign-in links when signed out;
       `/settings/notifications` asks to sign in; the privacy policy has the daily check; no beta strip and no CSP
       errors in the browser.
-- [ ] **(you)** Release `ot` 0.16.0 (push the tag `v0.16.0`), then list it in the MCP Registry and publish the agent
-      plugin 0.1.2 (`integrations/agent-plugin/`). The site's update docs say "from ot 0.16".
-- [ ] **(you)** Release otlite 1.3.0: add a `debian/changelog` entry if the `.deb` should say 1.3.0, then push the tag
-      `otlite-v1.3.0`.
+- [x] Release `ot` 0.16.0: tag `v0.16.0` pushed, released on `OTInstaller/ot` on 24 Oct at 12:07 UTC. The agent
+      plugin 0.1.2 is pushed to `OTInstaller/agent-plugin` with the tag `v0.1.2`.
+- [ ] **(you)** List `ot` 0.16.0 in the MCP Registry (publishing it was refused to the agent): in a folder holding the
+      release's `server.json`, `mcp-publisher login http --domain otinstaller.com --private-key "$(cat
+      ~/.mcp-registry/otinstaller.com.ed25519.hex)"`, then `mcp-publisher publish server.json`.
+- [x] Release otlite 1.3.0: `debian/changelog` has 1.3.0-1 ([#105](https://github.com/OTInstaller/otinstaller/pull/105)),
+      and the tag `otlite-v1.3.0` released it to PyPI on 24 Oct at 12:18 UTC.
 
 ## D1 outages answered with 503 (deployed 23 October 2026)
 
@@ -112,14 +138,14 @@ marked (you). In order:
       "Community submissions"): the "OTInstaller Community" GitHub App and its three secrets. The main App is already
       installed on all repositories of `osintverse-community` (checked 24 Oct). Until then submitting answers 503 and
       the rest works.
-- [ ] **(you)** After a week of upstream watcher reports (Admin console → Upstream), decide whether to set
-      `UPSTREAM_WATCH` to `issues`, and later `prs`. Apply migration 0028 before deploying an API that has it.
+- [x] Set `UPSTREAM_WATCH` to `issues`: done in `wrangler.jsonc` and deployed on 24 Oct. **(you)** Once the community
+      bot is set up, decide whether to move it to `prs`.
 - [ ] **(you)** Once bump pull requests have released cleanly for a while under `prs` (Admin console → Upstream,
       "Latest bump"), decide whether to set `UPSTREAM_WATCH` to `auto`: pin-only bumps of stable releases then go out
       on their own a week after upstream's release, at most ten a day, unless a package's maintainers turn it off.
       Setting `prs` again stops it.
-- [ ] **(you)** Apply migration 0029 (following packages' releases) before deploying an API that has it: without it
-      `/me/email-prefs` and the inbox email cron fail. Then deploy the site for the "Follow releases" button.
+- [x] Apply migration 0029 (following packages' releases) and deploy the site for the "Follow releases" button: done
+      24 Oct.
 - [x] Release `ot` v0.15.0 once the API above is live (its new commands need it): `ot publish` (with `--image`,
       `--sign` and `--oidc`), `ot namespace create|trust|trusted|untrust`, `ot issues`, `ot request`, `ot changelog`,
       `ot report --works|--broken`, the failure prompt and the first-week note in `ot outdated`. Push the tag `v0.15.0`
