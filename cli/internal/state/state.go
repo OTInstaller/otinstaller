@@ -42,6 +42,7 @@ type Installed struct {
 	Native      bool               `json:"native,omitempty"`
 	FromBackup  bool               `json:"from_backup,omitempty"` // installed from the registry's mirror or wheel copy
 	Signer      string             `json:"signer,omitempty"`      // the cosign identity the image was verified against
+	Held        bool               `json:"held,omitempty"`        // installed at an exact version: `ot update --all` leaves it
 	InstalledAt time.Time          `json:"installed_at"`
 	Manifest    *manifest.Manifest `json:"manifest"`
 	ManifestRaw json.RawMessage    `json:"manifest_raw"`

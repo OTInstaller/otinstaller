@@ -7844,6 +7844,32 @@
         "security": []
       }
     },
+    "/latest": {
+      "get": {
+        "operationId": "list_latest_versions",
+        "tags": [
+          "Registry"
+        ],
+        "summary": "Every package's latest version and lifecycle",
+        "description": "One answer for the whole registry, cached for an hour: each visible package's latest version, status, health, the replacement of a deprecated package and whether its source is gone, plus the old addresses of packages that moved. `ot` compares installed packages with it once a day, so the check sends nothing about what is installed.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatestVersions"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          }
+        },
+        "security": []
+      }
+    },
     "/removed": {
       "get": {
         "operationId": "list_removed",
@@ -10809,6 +10835,81 @@
           "first_week": {
             "$ref": "#/components/schemas/FirstWeek",
             "description": "Only while the version is under a week old (list only)"
+          }
+        }
+      },
+      "LatestVersions": {
+        "type": "object",
+        "required": [
+          "packages",
+          "moved"
+        ],
+        "properties": {
+          "packages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "ref",
+                "kind",
+                "latest",
+                "status",
+                "health"
+              ],
+              "properties": {
+                "ref": {
+                  "type": "string",
+                  "description": "namespace/name"
+                },
+                "kind": {
+                  "enum": [
+                    "tool",
+                    "guide"
+                  ]
+                },
+                "latest": {
+                  "type": "string",
+                  "description": "What `ot install <ref>` installs"
+                },
+                "status": {
+                  "enum": [
+                    "active",
+                    "deprecated"
+                  ]
+                },
+                "health": {
+                  "type": "string",
+                  "description": "healthy, broken (possibly broken), unknown or not_checked"
+                },
+                "replacement": {
+                  "type": "string",
+                  "description": "A deprecated package's suggested replacement"
+                },
+                "source_unavailable": {
+                  "type": "boolean",
+                  "description": "The source repository is gone; the package gets no new versions"
+                }
+              }
+            }
+          },
+          "moved": {
+            "type": "array",
+            "description": "Old addresses of packages that moved, and where they are now",
+            "items": {
+              "type": "object",
+              "required": [
+                "from",
+                "to"
+              ],
+              "properties": {
+                "from": {
+                  "type": "string"
+                },
+                "to": {
+                  "type": "string"
+                }
+              }
+            }
           }
         }
       },
