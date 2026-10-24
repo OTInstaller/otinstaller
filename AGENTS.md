@@ -763,7 +763,7 @@ cron deletes it two days after it expires.
 ### API tests (`api/test/`)
 
 `vitest.config.ts` uses `@cloudflare/vitest-plugin`, so tests run in workerd against the bindings from `wrangler.jsonc`
-with fake secrets and `EDGE_CACHE: "off"`. The config also builds `TEST_SEED` (from `scripts/seed-lib.mjs`),
+with fake secrets, `EDGE_CACHE: "off"` and `UPSTREAM_WATCH: "report"`. The config also builds `TEST_SEED` (from `scripts/seed-lib.mjs`),
 `TEST_FIXTURES` and `TEST_TEMPLATES` (from `spec/`), `TEST_KNOWN_REPOS` (what `known-repos.ts` should hold) and
 `TEST_DOCKERFILES` (every seed wrapper's Dockerfile and upstream); `test/setup.ts` applies the migrations and, when `tools` is empty,
 the seed. Helpers in `test/helpers.ts`: `fakeHosts(routes)` (keys like `"GET https://api.github.com/..."`,

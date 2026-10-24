@@ -33,7 +33,9 @@
     "API_URL": "https://api.otinstaller.com",
     "OPS_REPO": "OTInstaller/registry-ops",
     "EMAIL_FROM": "OTInstaller Registry <registry@otinstaller.com>",
-    "MIRROR_HOST": "mirror.otinstaller.com"
+    "MIRROR_HOST": "mirror.otinstaller.com",
+    // Outdated issues on community wrappers and first-party dependencies (24 Oct 2026); "prs" needs the community bot.
+    "UPSTREAM_WATCH": "issues"
     // "GITHUB_APP_SLUG": "otinstaller" is the App's URL name for install links (this is the default)
     // "UPSTREAM_WATCH": "report" is what the upstream watcher does (the default); "issues" also opens and closes
     // outdated issues on community wrappers; "prs" also opens bump pull requests; "auto" also merges and releases
