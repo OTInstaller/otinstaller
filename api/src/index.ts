@@ -413,6 +413,10 @@ app.get("/tools/:ns/:name/:version/manifest", async (c) => {
     verified_publisher: row.verified === 1,
     source_unavailable: row.source_status === "unavailable",
     moved_to: movedTo,
+    // ot warns on install when the package is deprecated, and names what replaces it.
+    deprecated: row.status === "deprecated" || undefined,
+    deprecated_message: row.status === "deprecated" ? row.deprecated_message ?? undefined : undefined,
+    deprecated_replacement: row.status === "deprecated" ? row.deprecated_replacement ?? undefined : undefined,
     ...(removed ? { manifest: null } : installManifest(JSON.parse(v.manifest_json))),
     // Where ot retries when the original registry refuses (403, 404, denied): the same digest on the mirror,
     // and the registry's copy of the wheel. Only for OSI-approved licenses.

@@ -11087,6 +11087,17 @@
           },
           "wheel_url": {
             "type": "string"
+          },
+          "deprecated": {
+            "type": "boolean",
+            "description": "The package's owner marked it superseded; ot warns on install"
+          },
+          "deprecated_message": {
+            "type": "string"
+          },
+          "deprecated_replacement": {
+            "type": "string",
+            "description": "The package that replaces it (namespace/name)"
           }
         }
       },

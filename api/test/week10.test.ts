@@ -114,8 +114,11 @@ describe("yank and deprecate", () => {
     expect((await post(`/tools/${old.ref}/deprecate`, owner.auth, { message: "Use the new one", replacement: "nobody/nothing" })).status).toBe(400);
     await post(`/tools/${old.ref}/deprecate`, owner.auth, { message: "Use the new one", replacement: next.ref });
     expect(await (await call(`/tools/${old.ref}`)).json()).toMatchObject({ status: "deprecated", deprecated_message: "Use the new one", deprecated_replacement: next.ref });
+    // ot install reads it from the manifest response, to warn.
+    expect(await (await call(`/tools/${old.ref}/latest/manifest`)).json()).toMatchObject({ deprecated: true, deprecated_message: "Use the new one", deprecated_replacement: next.ref });
     await call(`/tools/${old.ref}/deprecate`, { method: "DELETE", headers: owner.auth });
     expect(((await (await call(`/tools/${old.ref}`)).json()) as any).status).toBe("active");
+    expect(((await (await call(`/tools/${old.ref}/latest/manifest`)).json()) as any).deprecated).toBeUndefined();
   });
 });
 
