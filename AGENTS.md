@@ -803,13 +803,19 @@ Astro 7 with `output: "server"` on `@astrojs/cloudflare`, Preact islands, no CSS
   `dashboard`, `import`, `feedback`, `publish.astro`, `tour.astro`, `settings/accounts`, `transfers/[id]`,
   `admin/[...section]`, `docs/*.md` (including `agents`, `mcp-tools`, `automation`, `api`, `results`, `otlite`),
   `policy/*`, `removed.astro`, `404.astro`, `500.astro` (API trouble, shows the request ID), `new.astro` (what's new),
-  `learn.astro` (+ `learn.md.ts`), the community pages (`community/` with the board and moderation,
+  `changelog/` and `blog/` (see below), `learn.astro` (+ `learn.md.ts`), the community pages (`community/` with the board and moderation,
   `[ns]/[name]/issues/`, `requests/`, `people/[handle]`, `submissions/`, `settings/notifications`, `unsubscribe`),
   Atom and JSON feeds (`feed.atom.ts`/`feed.json.ts` at the root, per publisher, per tool, per input type), `robots.txt.ts`,
   `sitemap.xml.ts`, `llms.txt.ts` and `llms-full.txt.ts`, `schema/v1.json.ts` and `schema/[name].json.ts` (the
   envelope, run-all and error schemas). Only `schema/v1.json.ts` is prerendered.
 - Markdown twins for agents: `<ns>/<name>.md`, guide pages and docs and policy pages as `.md` (`docs/[page].md.ts`,
   `policy/[page].md.ts`, `lib/twins.ts`); `src/middleware.ts` serves them for `Accept: text/markdown` too.
+- `/changelog` and `/blog` (`changelog/index.astro`, `blog/index.astro`, `blog/[slug].astro`, their `feed.atom.ts` /
+  `feed.json.ts` and `.md` twins): hand-written Markdown in `src/content/changelog/` (one file per entry,
+  `YYYY-MM-DD-<words>.md`) and `src/content/blog/` (one per post, the file name is its URL), read by `lib/content.ts`
+  (metadata, feeds, twins; what `content.test.ts` loads) and rendered by `lib/content-html.ts` (Vitest can't load `.md`
+  components). Not an Astro content collection, so `lib/markdown.ts` and the middleware can answer the twins.
+  `src/content/README.md` says how to write an entry or a post.
 - `/agents` (`agents.astro`): the homepage for AI agents. Its Markdown twin (`agents.md.ts`, and
   `Accept: text/markdown` on `/agents`) is built from the same content in `lib/agents.ts`, which `agents.test.ts`
   keeps in step with `docs/agents.md` and `docs/mcp-tools.md`. `agents` must stay in `RESERVED` (`lib/twins.ts`),
@@ -1240,6 +1246,10 @@ and verify in the preview build.
   GitHub pull request (`Merge pull request #N from OTInstaller/claude/<topic>`); older work was merged locally with a
   no-ff `Merge claude/<topic> (short description)`. Fetch first: `origin/main` moves often, and bring it in with a
   merge (`Merge origin/main`), not a rebase of shared branches.
+- A change people will notice (an `ot` or otlite release, a new page or feature, the registry behaving differently)
+  adds a changelog entry, one file in `web/src/content/changelog/`, in the same pull request; how to write one is in
+  `web/src/content/README.md`. Date it the day it reaches people (release or deploy), and fix the date if the deploy
+  comes later. Internal changes (tests, refactors, ops, docs for contributors) get none.
 - Commit subjects: imperative, sentence case, no trailing period, no conventional-commit prefixes. An area prefix is
   common: `Seed:`, `Scanner:`, `Web:`, `Site:`, `Backups:`, `Edge cache:`, `Admin API:`, `Install scripts:`,
 `Release workflow:`, `ot run:`, `ot feedback:`, `Launch checklist:`, `AGENTS.md:`. British spelling is used
