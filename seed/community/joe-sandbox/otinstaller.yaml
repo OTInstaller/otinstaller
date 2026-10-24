@@ -1,0 +1,64 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: joe-sandbox
+namespace: osintverse-community
+version: 3.25.0
+summary: "Searches Joe Sandbox for earlier malware analyses of a file hash, URL or domain, with verdicts and scores"
+readme: README.md
+license: MIT
+homepage: https://github.com/joesecurity/jbxapi
+categories: [utilities, domain-dns]
+tags: [malware, sandbox, threat-intel, hash]
+inputs:
+  - name: hash
+    type: hash
+    required: false
+    description: "MD5, SHA-1 or SHA-256 of a file (give one of hash, url or domain)"
+    example: "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f"
+  - name: url
+    type: url
+    required: false
+    description: "URL that was analysed (give one of hash, url or domain)"
+    example: "https://example.com/"
+  - name: domain
+    type: domain
+    required: false
+    description: "Domain seen in analyses (give one of hash, url or domain)"
+    example: "example.com"
+outputs:
+  - type: document
+    description: "Analyses with their verdict, detection, score and date"
+secrets:
+  - name: JBX_API_KEY
+    required: true
+    description: "Your Joe Sandbox API key (Cloud Basic's free key has a limited API and needs JBX_API_URL)"
+    url: https://www.joesecurity.org/joe-sandbox-cloud
+    pricing: free_tier
+  - name: JBX_API_URL
+    required: false
+    description: "API address for Cloud Basic (https://www.joesandbox.com/api) or your own server; Cloud Pro is the default"
+    url: https://github.com/joesecurity/jbxapi
+runtime:
+  kind: pipx
+  package: jbxapi
+  package_version: "3.25.0"
+  index: pypi
+  python: "!=3.0,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,>=2.7"
+  entrypoint: jbxapi
+  wheel_sha256: "7fc82701cde1adbaad36179b66905ea8142463c2bb001ae18b3a174024fa7b83"
+  command: ["jbxapi", "analysis", "search", "{hash}", "{url}", "{domain}"]
+  output_format: json
+  timeout_seconds: 120
+  typical_seconds: 5
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: true
+  collects_personal_data: false
+  notifies_target: false
+test:
+  # Scans and health checks run without secrets: the API refuses the empty key (error 4), so the CLI exits 100 + 4.
+  expect_exit_code: 104
+  input: { hash: "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f" }

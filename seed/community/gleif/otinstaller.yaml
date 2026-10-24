@@ -1,0 +1,45 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: gleif
+namespace: osintverse-community
+version: 2026.7.3
+summary: "Searches GLEIF's register of Legal Entity Identifiers for a company: LEI, legal name, addresses and status"
+readme: README.md
+license: MIT
+homepage: https://github.com/ggravlingen/pygleif
+categories: [company]
+tags: [lei, gleif, company-register, ownership]
+inputs:
+  - name: company
+    type: company
+    required: true
+    description: "Company name, or part of one"
+    example: "Deutsche Bank"
+  - name: limit
+    type: integer
+    required: false
+    default: 20
+    description: "Most companies to return (up to 200)"
+outputs:
+  - type: organization
+  - type: location
+    description: "Legal and headquarters addresses"
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/gleif@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["pygleif", "search", "{company}", "--page-size", "{limit}"]
+  output_format: json
+  timeout_seconds: 120
+  typical_seconds: 5
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+test:
+  input: { company: "Deutsche Bank", limit: 5 }

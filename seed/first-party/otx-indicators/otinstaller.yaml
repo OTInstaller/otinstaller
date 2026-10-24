@@ -1,0 +1,68 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: otx-indicators
+namespace: osintverse-community
+version: 0.1.0
+summary: "Looks up an IP, domain, URL or file hash in AlienVault OTX: the threat reports that mention it, malware, tags"
+readme: README.md
+license: MIT
+homepage: https://github.com/osintverse-community/otx-indicators
+categories: [ip-network, domain-dns, utilities]
+tags: [alienvault, otx, threat-intel, indicators]
+inputs:
+  - name: ip
+    type: ip
+    required: false
+    description: "IP address (give exactly one of ip, domain, url or hash)"
+    example: "8.8.8.8"
+  - name: domain
+    type: domain
+    required: false
+    description: "Domain or host name (give exactly one of ip, domain, url or hash)"
+    example: "example.com"
+  - name: url
+    type: url
+    required: false
+    description: "URL (give exactly one of ip, domain, url or hash)"
+    example: "https://example.com/"
+  - name: hash
+    type: hash
+    required: false
+    description: "MD5, SHA-1 or SHA-256 of a file (give exactly one of ip, domain, url or hash)"
+    example: "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f"
+outputs:
+  - type: ip
+  - type: domain
+  - type: url
+  - type: document
+    description: "A file hash's OTX record"
+  - type: other
+    description: "Each OTX pulse (community threat report) that mentions the indicator"
+  - type: organization
+  - type: location
+secrets:
+  - name: OTX_API_KEY
+    required: false
+    description: "Your OTX API key; optional, it raises the rate limits"
+    url: https://otx.alienvault.com/settings
+    pricing: free
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/otx-indicators@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["otx-indicators", "--ip", "{ip}", "--domain", "{domain}", "--url", "{url}", "--hash", "{hash}"]
+  output_format: json
+  timeout_seconds: 120
+  typical_seconds: 5
+network:
+  egress: true
+  domains: ["otx.alienvault.com"]
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+test:
+  input: { ip: "8.8.8.8" }

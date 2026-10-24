@@ -1,0 +1,42 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: hashlookup
+namespace: osintverse-community
+version: 1.2.8
+summary: "Looks up a file hash in CIRCL hashlookup to see whether it belongs to known software, such as NSRL sets"
+readme: README.md
+license: GPL-3.0
+homepage: https://github.com/hashlookup/PyHashlookup
+categories: [utilities, documents-metadata]
+tags: [hash, nsrl, known-files, circl]
+inputs:
+  - name: hash
+    type: hash
+    required: true
+    description: "MD5, SHA-1 or SHA-256 of a file"
+    example: "8ED4B4ED952526D89899E723F3488DE4"
+outputs:
+  - type: document
+    description: "The known file: name, size, product, vendor and the set it comes from"
+runtime:
+  kind: pipx
+  package: pyhashlookup
+  package_version: "1.2.8"
+  index: pypi
+  python: ">=3.9"
+  entrypoint: hashlookup
+  wheel_sha256: "9bec992d56f99f2870cbd580053f3b6bcff36b26819515506571e0a7430506d2"
+  command: ["hashlookup", "--query", "{hash}"]
+  output_format: json
+  timeout_seconds: 60
+  typical_seconds: 2
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+test:
+  input: { hash: "8ED4B4ED952526D89899E723F3488DE4" }

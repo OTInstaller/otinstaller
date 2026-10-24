@@ -1,0 +1,63 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: companies-house
+namespace: osintverse-community
+version: 0.1.0
+summary: "Searches the UK Companies House register: companies, their status and office, officers and controlling owners"
+readme: README.md
+license: MIT
+homepage: https://github.com/osintverse-community/companies-house
+categories: [company, people]
+tags: [companies-house, uk, company-register, beneficial-ownership]
+inputs:
+  - name: company
+    type: company
+    required: false
+    description: "Company name to search for (give a name or a number)"
+    example: "Tesco"
+  - name: number
+    type: string
+    required: false
+    description: "Company number, to read its profile, officers and people with significant control (give a name or a number)"
+    example: "00445790"
+  - name: limit
+    type: integer
+    required: false
+    default: 20
+    description: "Most companies a name search returns (up to 100)"
+outputs:
+  - type: organization
+    description: "Companies, and corporate officers or owners"
+  - type: person
+    description: "Officers and people with significant control, as the public register lists them"
+  - type: location
+    description: "The registered office"
+secrets:
+  - name: COMPANIES_HOUSE_API_KEY
+    required: true
+    description: "A free REST API key from the Companies House developer hub (live environment)"
+    url: https://developer.company-information.service.gov.uk/
+    pricing: free
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/companies-house@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["companies-house", "--company", "{company}", "--number", "{number}", "--limit", "{limit}"]
+  output_format: json
+  timeout_seconds: 120
+  typical_seconds: 3
+network:
+  egress: true
+  domains: ["api.company-information.service.gov.uk"]
+ethics:
+  touches_target: false
+  auth_required: true
+  collects_personal_data: true
+  notifies_target: false
+  notes: "Returns officers and people with significant control, with the month and year of birth the public register shows."
+test:
+  # Scans and health checks run without secrets, so the tool reports the missing key with exit code 3.
+  expect_exit_code: 3
+  input: { company: "Tesco" }

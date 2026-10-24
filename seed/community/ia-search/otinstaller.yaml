@@ -1,0 +1,47 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: ia-search
+namespace: osintverse-community
+version: 5.12.1
+summary: "Searches the Internet Archive's items (uploads, books, films, audio, software) with its advanced search syntax"
+readme: README.md
+license: AGPL-3.0
+homepage: https://github.com/jjjake/internetarchive
+categories: [web-archive, documents-metadata]
+tags: [internet-archive, archive-org, search, metadata]
+inputs:
+  - name: query
+    type: string
+    required: true
+    description: "Search query: words, or fields such as creator:\"Bellingcat\" or subject:osint"
+    example: "subject:osint"
+  - name: limit
+    type: integer
+    required: false
+    default: 100
+    description: "Most items to return"
+outputs:
+  - type: document
+    description: "Items: identifier, title, date, media type and creator"
+runtime:
+  kind: pipx
+  package: internetarchive
+  package_version: "5.12.1"
+  index: pypi
+  python: ">=3.10"
+  entrypoint: ia
+  wheel_sha256: "d6d5e0e776374e956cb0028661193b74c03da6b9b3312b505fbbcd1a1927acb2"
+  command: ["ia", "search", "{query}", "--parameters", "rows:{limit}", "--field", "identifier", "--field", "title", "--field", "date", "--field", "mediatype", "--field", "creator"]
+  output_format: jsonl
+  timeout_seconds: 120
+  typical_seconds: 5
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+test:
+  input: { query: "subject:osint", limit: 20 }

@@ -1,0 +1,69 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: urlscan-search
+namespace: osintverse-community
+version: 0.1.0
+summary: "Searches urlscan.io's existing scans of a domain, IP or URL: each page's title, server, IP, network and country"
+readme: README.md
+license: MIT
+homepage: https://github.com/osintverse-community/urlscan-search
+categories: [domain-dns, ip-network, web-archive]
+tags: [urlscan, web-scans, screenshots, phishing]
+inputs:
+  - name: domain
+    type: domain
+    required: false
+    description: "Scans of pages on this host name (give exactly one of domain, ip, url or query)"
+    example: "example.com"
+  - name: ip
+    type: ip
+    required: false
+    description: "Scans of pages served from this IP address (give exactly one of domain, ip, url or query)"
+    example: "8.8.8.8"
+  - name: url
+    type: url
+    required: false
+    description: "Scans of this exact page (give exactly one of domain, ip, url or query)"
+    example: "https://example.com/"
+  - name: query
+    type: string
+    required: false
+    description: "Any urlscan.io search query, such as page.asn:AS15169 (give exactly one of domain, ip, url or query)"
+    example: "page.asn:AS15169"
+  - name: limit
+    type: integer
+    required: false
+    default: 50
+    description: "Most scans to return (up to 1000)"
+outputs:
+  - type: url
+    description: "Scanned pages, with title, server, IP, network, country and links to the scan and screenshot"
+  - type: ip
+  - type: domain
+  - type: subdomain
+secrets:
+  - name: URLSCAN_API_KEY
+    required: false
+    description: "Your urlscan.io API key; optional, it raises the search rate limits"
+    url: https://urlscan.io/user/profile/
+    pricing: free
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/urlscan-search@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["urlscan-search", "--domain", "{domain}", "--ip", "{ip}", "--url", "{url}", "--query", "{query}", "--limit", "{limit}"]
+  output_format: json
+  timeout_seconds: 120
+  typical_seconds: 5
+network:
+  egress: true
+  domains: ["urlscan.io"]
+ethics:
+  touches_target: false
+  auth_required: false
+  collects_personal_data: false
+  notifies_target: false
+test:
+  input: { domain: "example.com", limit: 10 }

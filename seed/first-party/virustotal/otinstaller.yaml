@@ -1,0 +1,69 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: virustotal
+namespace: osintverse-community
+version: 0.1.0
+summary: "Looks up an IP, domain, URL or file hash in VirusTotal: engine verdicts, reputation, tags, owner, DNS records"
+readme: README.md
+license: MIT
+homepage: https://github.com/osintverse-community/virustotal
+categories: [ip-network, domain-dns, utilities]
+tags: [virustotal, reputation, malware, threat-intel]
+inputs:
+  - name: ip
+    type: ip
+    required: false
+    description: "IP address (give exactly one of ip, domain, url or hash)"
+    example: "8.8.8.8"
+  - name: domain
+    type: domain
+    required: false
+    description: "Domain (give exactly one of ip, domain, url or hash)"
+    example: "example.com"
+  - name: url
+    type: url
+    required: false
+    description: "URL (give exactly one of ip, domain, url or hash)"
+    example: "https://example.com/"
+  - name: hash
+    type: hash
+    required: false
+    description: "MD5, SHA-1 or SHA-256 of a file (give exactly one of ip, domain, url or hash)"
+    example: "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f"
+outputs:
+  - type: ip
+  - type: domain
+  - type: url
+  - type: document
+    description: "A file's report: hashes, names, type, size and threat label"
+  - type: organization
+  - type: location
+  - type: dns_record
+secrets:
+  - name: VIRUSTOTAL_API_KEY
+    required: true
+    description: "Your VirusTotal API key; the free public API allows 4 lookups a minute and 500 a day, for non-commercial use"
+    url: https://www.virustotal.com/gui/my-apikey
+    pricing: free_tier
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/virustotal@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["virustotal", "--ip", "{ip}", "--domain", "{domain}", "--url", "{url}", "--hash", "{hash}"]
+  output_format: json
+  timeout_seconds: 60
+  typical_seconds: 3
+network:
+  egress: true
+  domains: ["www.virustotal.com"]
+ethics:
+  touches_target: false
+  auth_required: true
+  collects_personal_data: false
+  notifies_target: false
+test:
+  # Scans and health checks run without secrets, so the tool reports the missing key with exit code 3.
+  expect_exit_code: 3
+  input: { ip: "8.8.8.8" }

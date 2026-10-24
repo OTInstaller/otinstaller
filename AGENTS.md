@@ -80,7 +80,7 @@ web/         Website (Astro 7 SSR on Cloudflare, Preact islands, strict CSP)
 ops/         scanner/ (scan.py, backup.py, health.py, tests, Dockerfile), workflows/ (scan.yml, health.yml) copied
              into registry-ops, get/ (worker.js, wrangler.jsonc: the get.otinstaller.com Worker)
 otlite/      otlite, the no-Docker edition (Python; formerly otinstaller; has its own AGENTS.md)
-seed/        Launch seed: 11 first-party tools, 103 community wrappers, 10 guides, outreach texts
+seed/        Launch seed: 20 first-party tools, 119 community wrappers, 10 guides, outreach texts
 examples/    dns-lookup (scripts/e2e.sh), cosign and tldextract (the local/test seed in api/scripts/seed-lib.mjs
              and scripts/e2e-real.sh)
 scripts/     e2e.sh, e2e-real.sh, e2e-backups.sh, e2e-direct.sh, install/ (install.sh, install.ps1, make-test-release.sh),
@@ -1094,19 +1094,29 @@ section 10, "MCP bundles and the MCP Registry".
 Each folder becomes its own repository under `osintverse-community`; see [seed/README.md](seed/README.md) for the full
 table, publish order (namespace → tools → guides), what was not converted and why, and health risks.
 
-- `first-party/<tool>/` (11): a single stdlib-first Python script (`<snake_name>.py`, argparse, `main(argv=None)` returning
+- `first-party/<tool>/` (20): a single stdlib-first Python script (`<snake_name>.py`, argparse, `main(argv=None)` returning
   an exit code, prints `{"entities": [...]}`), `test_<snake_name>.py` (unittest, no network), a `python:3.12-slim`
   Dockerfile running as uid 10001, `otinstaller.yaml` with a zero-digest placeholder the release workflow fills in,
-  `README.md`, MIT `LICENSE`, and `.github/workflows/otinstaller-release.yml` (identical to
-  `spec/templates/github-docker.yml`).
-- `community/<tool>/` (103): wrappers of third-party tools. Docker wrappers pin the upstream version in a Dockerfile and
+  `README.md`, MIT `LICENSE`, and `.github/workflows/otinstaller-release.yml` (copied from
+  `spec/templates/github-docker.yml`; copies older than its OIDC publish step lack it). Nine (October 2026) are built
+  on a data provider's official PyPI client (VirusTotal, urlscan.io, Censys, OTX, IPinfo, Hunter, HIBP, Companies
+  House, SEC EDGAR), pinned in `requirements.txt` so the build watcher follows it; they exit 3 when their key is
+  missing, and a script named like its client library gets a `_lookup` suffix so it doesn't import itself.
+- `community/<tool>/` (119): wrappers of third-party tools. Docker wrappers pin the upstream version in a Dockerfile and
   build amd64+arm64; pipx wrappers are just a manifest pinning the wheel by `wheel_sha256` plus a README crediting
   upstream. The upstream license must be in the API's `REDISTRIBUTABLE` list (`api/src/imports.ts`), which includes the
   AGPL; GHunt (needs a Google login) and blackbird (no license) are outreach only. 11 wrappers were converted from the
   `otlite/` catalog by `scripts/pm-catalog-to-wrappers.py` (`--dry-run`, `--offline`; it never overwrites a folder);
   git-pinned ones use versions like `0.0.0-git.<commit>`. 65 more (October 2026) cover every open-source OSINT tool
   over 100 stars that could be wrapped; `seed/candidates.md` lists every candidate with why it was wrapped or dropped.
-  All 65 were published on 22 Oct 2026.
+  All 65 were published on 22 Oct 2026. 16 more (24 Oct 2026, not yet published) wrap PyPI clients of data providers
+  (ONYPHE, PolySwarm, Joe Sandbox, FOFA, CIRCL's services, the Internet Archive, Common Crawl, GLEIF, MalwareBazaar,
+  ipdata, Google Safe Browsing and others; `seed/README.md`, "PyPI clients of data providers"). A CLI that reads its
+  key only from a config file gets a Docker shim that writes it from the key's environment variable, as
+  `shodan-host` does, and a CLI whose command needs a pip extra is a Docker wrapper (`pip install "pkg[cli]==X"`).
+- The scanner's smoke test builds the command from `test.input` alone and leaves input defaults out, so an argument
+  that embeds a defaulted input (`rows:{limit}`), or a flag a tool can't run without, needs that input in
+  `test.input`.
 - Seven published seed packages gained `ethics.notifies_target`/`notes` or a key's `pricing` and were re-released on
   22 Oct 2026 with a patch bump (seed/README.md, "notifies_target and key pricing"). A wrapper that already pins the
   latest upstream gets a patch version upstream never shipped, because a prerelease never becomes `@latest`.

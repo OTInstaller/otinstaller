@@ -1,0 +1,48 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: hibp-breaches
+namespace: osintverse-community
+version: 0.1.0
+summary: "Lists the data breaches an email address appears in, from Have I Been Pwned: site, date, size, kinds of data"
+readme: README.md
+license: MIT
+homepage: https://github.com/osintverse-community/hibp-breaches
+categories: [breach-data, email]
+tags: [haveibeenpwned, breaches, email, exposure]
+inputs:
+  - name: email
+    type: email
+    required: true
+    example: "test@example.com"
+outputs:
+  - type: breach
+    description: "Each breach: name, site, date, number of accounts and the kinds of data exposed"
+secrets:
+  - name: HIBP_API_KEY
+    required: true
+    description: "Your Have I Been Pwned API key, sold as a monthly subscription"
+    url: https://haveibeenpwned.com/API/Key
+    pricing: paid
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/hibp-breaches@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["hibp-breaches", "{email}"]
+  output_format: json
+  timeout_seconds: 60
+  typical_seconds: 2
+network:
+  egress: true
+  domains: ["haveibeenpwned.com"]
+ethics:
+  touches_target: false
+  auth_required: true
+  collects_personal_data: true
+  notifies_target: false
+  notes: "Shows only which breaches the address is in and what kinds of data they exposed, never the breached data."
+test:
+  # Scans and health checks run without secrets, so the tool reports the missing key with exit code 3.
+  expect_exit_code: 3
+  input: { email: "test@example.com" }

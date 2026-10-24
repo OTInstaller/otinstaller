@@ -8,8 +8,8 @@ content checks → review → published). Never seed production from `api/script
 
 | Folder | What | Count |
 | --- | --- | --- |
-| [`first-party/`](first-party) | Tools written for the registry, on the result envelope, namespace `osintverse-community` | 11 |
-| [`community/`](community) | Wrapper repositories for third-party tools, namespace `osintverse-community` (27 for launch, 26 published and `instaloader-profile` dropped; 11 converted from `otinstaller`; 65 open-source tools with more than 100 stars added in October 2026) | 103 |
+| [`first-party/`](first-party) | Tools written for the registry, on the result envelope, namespace `osintverse-community` (11 for launch; 9 built on data providers' official PyPI clients in October 2026) | 20 |
+| [`community/`](community) | Wrapper repositories for third-party tools, namespace `osintverse-community` (27 for launch, 26 published and `instaloader-profile` dropped; 11 converted from `otinstaller`; 65 open-source tools with more than 100 stars added in October 2026; 16 PyPI clients of data providers added in October 2026) | 119 |
 | [`guides/`](guides) | Launch guides, namespace `osintverse-community` (10 published; `osint-fundamentals` is a draft primer for `/learn`, not published yet) | 11 |
 | [`outreach/`](outreach) | Issue and pull request texts for maintainer outreach | 2 |
 
@@ -248,6 +248,114 @@ Health risks for these, beyond the general ones below:
 | `cut-cdn`, `favirecon`, `dnsanity` | Print nothing for their test input when nothing matches; that is a pass (exit 0) |
 | `shuffledns`, `puredns` | Bundle a 5,000-word list and eight public resolvers; brute-forcing contacts the target's name servers |
 
+## PyPI clients of data providers (October 2026)
+
+25 more packages come from a second pass on 24 Oct 2026, over PyPI rather than GitHub stars. It looked for the client
+packages that data providers useful in OSINT, or their users, publish there, which the survey above had screened out
+as libraries. 147 packages were read at their latest release (wheel, entry points and command-line source), with their
+licence file and, where possible, a live call to the provider. Every one and its outcome is in
+[`candidates.md`](candidates.md).
+
+- A package with **its own command** became a community wrapper that runs it unmodified. That is a pipx wrapper when
+  the wheel and its console script are enough. It is a Docker wrapper when the command needs:
+  - an extra the wheel leaves out (`onyphe`);
+  - a newer Python than the pipx sandbox's 3.12 (`gleif`);
+  - or its key in a file (`malwarebazaar`, `ipdata`, `safebrowsing`): a shim writes it from the key's environment
+    variable into the container's temporary home folder, as `shodan-host` does.
+- A **library** from one of the big providers became a first-party tool built on its official client.
+  - The client is pinned in `requirements.txt`, so the build watcher follows its releases.
+  - The tool prints typed entities like the other first-party tools, and has unit tests with the client mocked.
+  - A missing key exits with code 3, as `shodan-host` does.
+- Scans and health checks run without secrets, so a tool that needs a key has a test that expects its exit code
+  without one.
+- Providers that need a paid plan are included, with the key marked `pricing: paid` (`fofa`, `handelsregister`,
+  `hibp-breaches`).
+
+Unlike the October batch, every tool was run before release, on Windows with Python 3.13 (the sandbox is Linux with
+3.12):
+- Each pinned wheel was installed from PyPI with its hash checked.
+- Each test command, built from `test.input` the way `ops/scanner/scan.py` builds it, ran with no keys, an empty home
+  folder and stdin closed.
+
+Every exit code matched `expect_exit_code`, and the keyless tools returned real results. The runs changed these before
+release:
+
+| Package | Found | Change |
+| --- | --- | --- |
+| `onyphe`, `malwarebazaar` | The commands import Typer and Rich, which only the packages' `cli` extra installs | Docker images that install `pyonyphe[cli]` and `malwarebazaar[cli]`; `onyphe` was planned as a pipx wrapper |
+| `cdx-toolkit` | `cdxt` crashes without `--cc`, `--crawl` or `--ia`, and Common Crawl's index answered 502 and 504 when asked about a year of crawls | Searches the latest crawl (`--crawl 1`) unless `crawls` says more |
+| `ia-search`, `cdx-toolkit`, `gleif` | The scanner's smoke command leaves out input defaults, so an argument such as `rows:{limit}` would lose its value | The test inputs give those inputs explicitly |
+| `joe-sandbox` | Without a key the API answers error 4, so the CLI exits 104 (100 plus the code) | `expect_exit_code: 104` |
+| `savepagenow` | Save Page Now answered HTTP 429 to a second anonymous capture within minutes | No `test`, so the smoke test is skipped and the health check leaves it out; every run would also leave a public capture |
+| `hashlookup` | On Windows the CLI builds its URLs with backslashes | None: containers run Linux. The README warns about `ot run --native` on Windows |
+| `ipinfo`, `companies-house` | A script named like its client library (`ipinfo.py`, `companies_house.py`) would import itself | Scripts named `ipinfo_lookup.py` and `companies_house_lookup.py` |
+
+None of the tools that need a key was run with one. `sec-edgar` was not run live either: it needs a personal EDGAR
+identity (a name and email address the SEC asks for).
+
+| Package | Version | License | Upstream | Runtime | Inputs | Categories |
+| --- | --- | --- | --- | --- | --- | --- |
+| `osintverse-community/onyphe` | 3.1.1 | MIT | onyphe/pyonyphe | Docker, PyPI release with its `cli` extra | `ip` (ip) | ip-network |
+| `osintverse-community/polyswarm` | 4.7.0 | MIT | polyswarm/polyswarm-cli | pipx (PyPI wheel) | `hash` (hash) | utilities |
+| `osintverse-community/joe-sandbox` | 3.25.0 | MIT | joesecurity/jbxapi | pipx (PyPI wheel) | `hash` (hash)?, `url` (url)?, `domain` (domain)? | utilities, domain-dns |
+| `osintverse-community/fofa` | 2.0.3 | MIT | fofapro/fofa-py | pipx (PyPI wheel) | `ip` (ip)?, `domain` (domain)? | ip-network, domain-dns |
+| `osintverse-community/handelsregister` | 0.9.0 | AGPL-3.0 | Handelsregister-AI/handelsregister | pipx (PyPI wheel) | `company` (company) | company, people |
+| `osintverse-community/hashlookup` | 1.2.8 | GPL-3.0 | hashlookup/PyHashlookup | pipx (PyPI wheel) | `hash` (hash) | utilities, documents-metadata |
+| `osintverse-community/phishtank-lookup` | 1.6.0 | BSD-3-Clause | Lookyloo/PyPhishtankLookup | pipx (PyPI wheel) | `url` (url) | domain-dns, utilities |
+| `osintverse-community/bgpranking` | 2.0.2 | BSD-3-Clause | D4-project/pybgpranking | pipx (PyPI wheel) | `asn` (string) | ip-network |
+| `osintverse-community/lookyloo` | 1.43.0 | BSD-3-Clause | Lookyloo/PyLookyloo | pipx (PyPI wheel) | `domain` (domain) | domain-dns, web-archive |
+| `osintverse-community/ia-search` | 5.12.1 | AGPL-3.0 | jjjake/internetarchive | pipx (PyPI wheel) | `query` (string), `limit` (integer)? | web-archive, documents-metadata |
+| `osintverse-community/cdx-toolkit` | 0.9.39 | Apache-2.0 | commoncrawl/cdx_toolkit | pipx (PyPI wheel) | `domain` (domain), `crawls` (integer)?, `limit` (integer)? | web-archive, domain-dns |
+| `osintverse-community/savepagenow` | 1.3.1 | MIT | palewire/savepagenow | pipx (PyPI wheel) | `url` (url) | web-archive |
+| `osintverse-community/gleif` | 2026.7.3 | MIT | ggravlingen/pygleif | Docker, PyPI release on Python 3.13 | `company` (company), `limit` (integer)? | company |
+| `osintverse-community/malwarebazaar` | 0.2.9 | MIT | 3c7/bazaar | Docker, shim around the PyPI release | `hash` (hash) | utilities |
+| `osintverse-community/ipdata` | 4.0.9 | MIT | ipdata/python | Docker, shim around the PyPI release | `ip` (ip) | ip-network |
+| `osintverse-community/safebrowsing` | 0.1.4 | MIT | Te-k/pysafebrowsing | Docker, shim around the PyPI release | `url` (url) | domain-dns, utilities |
+
+The first-party tools, all version 0.1.0:
+
+| Package | Built on | Key | Inputs | Categories |
+| --- | --- | --- | --- | --- |
+| `osintverse-community/virustotal` | vt-py 0.22.0 (VirusTotal) | `VIRUSTOTAL_API_KEY` (free tier) | one of `ip`, `domain`, `url`, `hash` | ip-network, domain-dns, utilities |
+| `osintverse-community/urlscan-search` | urlscan-python 2026.8.18 (urlscan.io) | `URLSCAN_API_KEY`, optional | one of `domain`, `ip`, `url`, `query`; `limit`? | domain-dns, ip-network, web-archive |
+| `osintverse-community/censys-host` | censys-platform 0.16.5 (Censys Platform) | `CENSYS_API_TOKEN` (free tier); `CENSYS_ORG_ID`, optional | `ip` | ip-network, domain-dns |
+| `osintverse-community/otx-indicators` | OTXv2 1.5.12 (AlienVault OTX) | `OTX_API_KEY`, optional | one of `ip`, `domain`, `url`, `hash` | ip-network, domain-dns, utilities |
+| `osintverse-community/ipinfo` | ipinfo 5.6.0 (IPinfo) | `IPINFO_TOKEN`, optional | `ip` | ip-network |
+| `osintverse-community/hunter-domain-search` | pyhunter 2.1.0 (Hunter) | `HUNTER_API_KEY` (free tier) | `domain`, `limit`? | email, company, people |
+| `osintverse-community/hibp-breaches` | pyhibp 4.2.0 (Have I Been Pwned) | `HIBP_API_KEY` (paid) | `email` | breach-data, email |
+| `osintverse-community/companies-house` | companies-house 0.2.1 (Companies House) | `COMPANIES_HOUSE_API_KEY` (free) | `company` or `number`; `limit`? | company, people |
+| `osintverse-community/sec-edgar` | edgartools 5.62.1 (SEC EDGAR) | `EDGAR_IDENTITY` (a name and email address) | `company`, `limit`?, `filings`? | company, documents-metadata |
+
+pyhibp is AGPL-3.0-or-later. `hibp-breaches`' own script is MIT, and its image installs pyhibp unmodified from PyPI, as
+the wrappers of AGPL tools do.
+
+Dropped after reading the package (each reason is in [`candidates.md`](candidates.md)):
+
+| Reason | Packages |
+| --- | --- |
+| The provider's API or service is gone | censys (Censys switched Legacy Search off on 30 Sep 2026; `censys-host` uses the Platform API), pybinaryedge, spyse-python, bgpview-client, proxycurl-py, clearbit, passivetotal, inquestlabs, google-api-python-client (Custom Search), etherscan-python (Etherscan V1), pwnedapi and hibp (HIBP v2), alephclient |
+| Licence | netlas (its LICENSE.md is CC-BY-NC-ND-4.0), python-abuseipdb (WTFPL), SilentPushCLI (proprietary), and no licence file: pyipasnhistory, dnsdumpster, fullhunt-api, numlookupapi, ch-api, etherscan-v2 |
+| Acceptable use: leaked data | intelx |
+| Prompts, needs a login, or is broken or unsafe | aionyphe, truecallerpy, Telethon, toot, wigle, pypssl, pypdns, threatfox, urlscanio and domaintools_api (TLS verification off), urlscan-py, emailrep, hibpcli, abuseipdb-wrapper, robtex-python, falcon-sandbox, brave-search-python-client, ddgs, zoomeye, zoomeyeai, hunter-how-cli, pysecuritytrails, cymruwhois, ripe.stat.cli, archiveis, archivenow, blockstream, pymempool |
+| Not a lookup | ripe.atlas.tools (network measurements), gglsbl (a local copy of the lists), pyalienvaultcli (adds to OTX pulses), sec-edgar-downloader, secedgar and bdfr (download into a folder) |
+| Needs Python 3.14 or later | otxcli, greynoisecli, viewdns, filescancli, hybridanalysis, netlascli |
+| A library with no command, not built into a tool this time | leakix, ip2location-io, whois-api, pulsedive, criminalip, maltiverse, peopledatalabs, rocketreach, twilio, praw, atproto, Mastodon.py, serpapi, blockcypher and more |
+
+Providers with no usable PyPI client at all (AbuseIPDB, Shodan InternetDB, HackerTarget, URLhaus, Pulsedive,
+OpenSanctions) could become first-party tools over plain HTTP.
+
+Health risks for these:
+
+| Package | Risk |
+| --- | --- |
+| `onyphe`, `polyswarm`, `joe-sandbox`, `fofa`, `handelsregister`, `malwarebazaar`, `ipdata`, `safebrowsing` | Need a key, so the test expects the exit code without one (2, 2, 104, 1, 1, 3, 3 and 3, seen in the local runs); the health check can't tell whether lookups still work |
+| `virustotal`, `censys-host`, `hunter-domain-search`, `hibp-breaches`, `companies-house`, `sec-edgar` | The same, with exit code 3 |
+| `lookyloo`, `phishtank-lookup`, `bgpranking`, `hashlookup` | CIRCL's public services; when Lookyloo's instance is down the CLI prints a message and still exits 0 |
+| `cdx-toolkit` | Common Crawl's index is often overloaded and can block an address for a day after heavy use |
+| `urlscan-search`, `otx-indicators`, `ipinfo`, `ia-search` | Anonymous rate limits, shared by everything on a CI runner's address |
+| `savepagenow` | No smoke test or health check |
+| `fofa`, `handelsregister`, `hibp-breaches` | Need a paid plan |
+
 ## How each part gets published
 
 Order matters: namespaces first, then tools, then guides (a guide's `related_tools` must already be published).
@@ -268,7 +376,9 @@ The step-by-step runbook with commands is in the session notes (`seeding.md`); i
 
 ## Checked so far
 
-- `ot validate` passes for all 48 launch manifests, and `TestSeedManifests` passes for all 124 in `seed/`.
+- `ot validate` passes for all 48 launch manifests, and `TestSeedManifests` passes for all 150 in `seed/`.
+- The 25 packages from the PyPI pass were run before release; "PyPI clients of data providers" above says how and
+  what the runs changed. The 9 first-party tools' unit tests pass.
 - Unit tests pass for all 11 first-party tools (`python -m unittest` in each folder). The network ones were also run
   against their live APIs with their test inputs.
 - These wrappers were run locally with their exact command and test input: sherlock, socialscan, checkdmarc,

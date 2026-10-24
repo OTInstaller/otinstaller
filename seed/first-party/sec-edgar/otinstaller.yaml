@@ -1,0 +1,62 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: sec-edgar
+namespace: osintverse-community
+version: 0.1.0
+summary: "Finds a company in the SEC's EDGAR filings by name or ticker: CIK, industry, addresses and its latest filings"
+readme: README.md
+license: MIT
+homepage: https://github.com/osintverse-community/sec-edgar
+categories: [company, documents-metadata]
+tags: [sec, edgar, filings, us-companies]
+inputs:
+  - name: company
+    type: company
+    required: true
+    description: "Company name or ticker"
+    example: "Apple"
+  - name: limit
+    type: integer
+    required: false
+    default: 5
+    description: "How many matching companies to list (up to 25)"
+  - name: filings
+    type: integer
+    required: false
+    default: 10
+    description: "How many of the best match's latest filings to list (up to 100)"
+outputs:
+  - type: organization
+    description: "The best match in full (CIK, tickers, exchanges, industry, state of incorporation), then other matches"
+  - type: location
+    description: "Business and mailing addresses"
+  - type: document
+    description: "Latest filings: form, date, accession number and link"
+secrets:
+  - name: EDGAR_IDENTITY
+    required: true
+    description: "Your name and email address, such as \"Jane Doe jane@example.com\"; the SEC asks every client to say who it is"
+    url: https://www.sec.gov/os/accessing-edgar-data
+    pricing: free
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/sec-edgar@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["sec-edgar", "{company}", "--limit", "{limit}", "--filings", "{filings}"]
+  output_format: json
+  timeout_seconds: 120
+  typical_seconds: 10
+network:
+  egress: true
+  domains: ["www.sec.gov", "data.sec.gov"]
+ethics:
+  touches_target: false
+  auth_required: true
+  collects_personal_data: false
+  notifies_target: false
+test:
+  # Scans and health checks run without secrets, so the tool reports the missing identity with exit code 3.
+  expect_exit_code: 3
+  input: { company: "Apple" }

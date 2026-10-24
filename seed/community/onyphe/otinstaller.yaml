@@ -1,0 +1,50 @@
+# OTInstaller manifest. Reference: https://otinstaller.com/docs/manifest
+# yaml-language-server: $schema=https://otinstaller.com/schema/v1.json
+schema: 1
+name: onyphe
+namespace: osintverse-community
+version: 3.1.1
+summary: "Summarises what ONYPHE's internet scans know about an IP address: open ports, services, domains, owner, location"
+readme: README.md
+license: MIT
+homepage: https://github.com/onyphe/pyonyphe
+categories: [ip-network]
+tags: [onyphe, ports, services, threat-intel]
+inputs:
+  - name: ip
+    type: ip
+    required: true
+    example: "8.8.8.8"
+outputs:
+  - type: ip
+  - type: domain
+  - type: organization
+  - type: location
+  - type: other
+    description: "Open ports, services and the threat lists the address is on"
+secrets:
+  - name: ONYPHE_API_KEY
+    required: true
+    description: "Your ONYPHE API key"
+    url: https://search.onyphe.io/signup
+    pricing: free_tier
+runtime:
+  kind: docker
+  # Filled in by the release workflow with the pushed image's digest.
+  image: ghcr.io/osintverse-community/onyphe@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  platforms: [linux/amd64, linux/arm64]
+  command: ["pyonyphe", "summary", "ip", "{ip}"]
+  output_format: json
+  timeout_seconds: 120
+  typical_seconds: 5
+network:
+  egress: true
+ethics:
+  touches_target: false
+  auth_required: true
+  collects_personal_data: false
+  notifies_target: false
+test:
+  # Scans and health checks run without secrets, so the CLI reports the missing key with exit code 2.
+  expect_exit_code: 2
+  input: { ip: "8.8.8.8" }
