@@ -34,9 +34,22 @@ export function inboxRoutes(app: App) {
 
   app.get("/me/email-prefs", async (c) => {
     const u = requireUser(c);
-    const p = await c.env.DB.prepare(`SELECT community, owner_issues FROM email_prefs WHERE user_id = ?`).bind(u.id).first<{ community: Pref; owner_issues: Pref }>();
+    const p = await c.env.DB.prepare(`SELECT community, owner_issues, releases FROM email_prefs WHERE user_id = ?`).bind(u.id).first<{ community: Pref; owner_issues: Pref; releases: Pref }>();
     c.header("Cache-Control", "private, no-store");
-    return c.json({ community: p?.community ?? "immediate", owner_issues: p?.owner_issues ?? "immediate" });
+    return c.json({ community: p?.community ?? "immediate", owner_issues: p?.owner_issues ?? "immediate", releases: p?.releases ?? "immediate" });
+  });
+
+  // The packages the person follows for releases, newest first, with each one's latest version.
+  app.get("/me/follows", async (c) => {
+    const u = requireUser(c);
+    const before = Number(c.req.query("before") ?? 0) || Number.MAX_SAFE_INTEGER;
+    const rows = (await c.env.DB.prepare(
+      `SELECT n.name || '/' || t.name AS ref, t.kind, t.status, v.version AS latest_version, f.created_at AS followed_at
+       FROM package_follows f JOIN tools t ON t.id = f.tool_id JOIN namespaces n ON n.id = t.namespace_id LEFT JOIN versions v ON v.id = t.latest_version_id
+       WHERE f.user_id = ? AND f.created_at < ? ORDER BY f.created_at DESC LIMIT 100`,
+    ).bind(u.id, before).all<{ ref: string; kind: string; status: string; latest_version: string | null; followed_at: number }>()).results;
+    c.header("Cache-Control", "private, no-store");
+    return c.json({ follows: rows, next_before: rows.length === 100 ? rows.at(-1)!.followed_at : null });
   });
 
   app.put("/me/email-prefs", async (c) => {
@@ -45,12 +58,16 @@ export function inboxRoutes(app: App) {
     for (const k of PREF_SCOPES) {
       if (b[k] !== undefined && !PREFS.includes(b[k] as Pref)) apiError(400, "invalid_body", `${k} must be one of: ${PREFS.join(", ")}`);
     }
-    const cur = await c.env.DB.prepare(`SELECT community, owner_issues FROM email_prefs WHERE user_id = ?`).bind(u.id).first<{ community: Pref; owner_issues: Pref }>();
-    const next = { community: (b.community as Pref) ?? cur?.community ?? "immediate", owner_issues: (b.owner_issues as Pref) ?? cur?.owner_issues ?? "immediate" };
+    const cur = await c.env.DB.prepare(`SELECT community, owner_issues, releases FROM email_prefs WHERE user_id = ?`).bind(u.id).first<{ community: Pref; owner_issues: Pref; releases: Pref }>();
+    const next = {
+      community: (b.community as Pref) ?? cur?.community ?? "immediate", owner_issues: (b.owner_issues as Pref) ?? cur?.owner_issues ?? "immediate",
+      releases: (b.releases as Pref) ?? cur?.releases ?? "immediate",
+    };
     await c.env.DB.prepare(
-      `INSERT INTO email_prefs (user_id, community, owner_issues, updated_at) VALUES (?, ?, ?, ?)
-       ON CONFLICT (user_id) DO UPDATE SET community = excluded.community, owner_issues = excluded.owner_issues, updated_at = excluded.updated_at`,
-    ).bind(u.id, next.community, next.owner_issues, Date.now()).run();
+      `INSERT INTO email_prefs (user_id, community, owner_issues, releases, updated_at) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (user_id) DO UPDATE SET community = excluded.community, owner_issues = excluded.owner_issues, releases = excluded.releases,
+         updated_at = excluded.updated_at`,
+    ).bind(u.id, next.community, next.owner_issues, next.releases, Date.now()).run();
     return c.json(next);
   });
 

@@ -342,7 +342,7 @@ describe("notifications", () => {
     const calls = fakeHosts({ "POST https://api.resend.com/emails": { id: "email" } });
     const maintainer = await withEmail({ member: "ns_dheeraj" });
     const quiet = await withEmail({ member: "ns_dheeraj" });
-    expect((await req(quiet, "PUT", "/me/email-prefs", { owner_issues: "off" })).body).toEqual({ community: "immediate", owner_issues: "off" });
+    expect((await req(quiet, "PUT", "/me/email-prefs", { owner_issues: "off" })).body).toEqual({ community: "immediate", owner_issues: "off", releases: "immediate" });
     expect((await req(quiet, "PUT", "/me/email-prefs", { owner_issues: "sometimes" })).res.status).toBe(400);
     const author = await person();
     await newIssue(author, { title: "First of two for the email" });
@@ -444,5 +444,104 @@ describe("community events in the activity feed", () => {
     expect((await req(null, "GET", "/activity?events=everything")).res.status).toBe(400);
     // Publisher filters still apply to community events.
     expect((await req(null, "GET", "/activity?events=all&namespace=osintverse&limit=100")).body.events.some((e: any) => e.number === body.number && e.ref === TOOL)).toBe(false);
+  });
+});
+
+describe("following a package's releases", () => {
+  // Its own package, so other tests' idea of holehe-lite's latest version doesn't move.
+  const WHOIS = "dheeraj/whois-lite";
+  const WHOIS_ID = "tool_dheeraj_whois-lite";
+
+  /** Publishes another version of whois-lite the way a passing scan would. */
+  async function release(version: string) {
+    const { publishVersion } = await import("../src/scans");
+    const { testEnv } = await import("./helpers");
+    const latest = await DB().prepare(`SELECT v.manifest_json FROM tools t JOIN versions v ON v.id = t.latest_version_id WHERE t.id = ?`).bind(WHOIS_ID).first<{ manifest_json: string }>();
+    const m = { ...JSON.parse(latest!.manifest_json), version };
+    const [core, pre] = version.split("-");
+    const [major, minor, patch] = core!.split(".").map(Number);
+    const id = ulid();
+    await DB().prepare(
+      `INSERT INTO versions (id, tool_id, version, semver_major, semver_minor, semver_patch, semver_pre, manifest_json, runtime_kind, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'docker', 'awaiting_review', ?)`,
+    ).bind(id, WHOIS_ID, version, major, minor, patch, pre ?? "", JSON.stringify(m), Date.now()).run();
+    await publishVersion(await testEnv(), id);
+    return id;
+  }
+  const items = async (who: Who) =>
+    (await DB().prepare(`SELECT kind, scope, summary, path FROM inbox WHERE user_id = ? AND tool_id = ? ORDER BY created_at`).bind(who.id, WHOIS_ID).all<any>()).results;
+
+  it("follows and unfollows, and lists what you follow", async () => {
+    expect((await req(null, "PUT", `/tools/${WHOIS}/follow`)).res.status).toBe(401);
+    const alice = await person();
+    expect((await req(alice, "GET", `/tools/${WHOIS}/follow`)).body).toEqual({ following: false, followed_at: null });
+    expect((await req(alice, "PUT", `/tools/${WHOIS}/follow`)).body).toEqual({ following: true });
+    expect((await req(alice, "PUT", `/tools/${WHOIS}/follow`)).body).toEqual({ following: true });
+    const state = await req(alice, "GET", `/tools/${WHOIS}/follow`);
+    expect(state.body.following).toBe(true);
+    expect(state.res.headers.get("cache-control")).toBe("private, no-store");
+    const mine = (await req(alice, "GET", "/me/follows")).body;
+    expect(mine.follows).toEqual([expect.objectContaining({ ref: WHOIS, kind: "tool", followed_at: state.body.followed_at })]);
+    expect((await req(alice, "DELETE", `/tools/${WHOIS}/follow`)).body).toEqual({ following: false });
+    expect((await req(alice, "GET", "/me/follows")).body.follows).toEqual([]);
+    expect((await req(alice, "PUT", "/tools/dheeraj/no-such-tool/follow")).res.status).toBe(404);
+  });
+
+  it("takes the feedback scope to follow and read to look", async () => {
+    expect(requiredScope("PUT", `/v1/tools/${WHOIS}/follow`)).toBe("feedback");
+    expect(requiredScope("DELETE", `/v1/tools/${WHOIS}/follow`)).toBe("feedback");
+    expect(requiredScope("GET", `/v1/tools/${WHOIS}/follow`)).toBe("read");
+    const reader = await person({ scopes: "read" });
+    expect((await req(reader, "PUT", `/tools/${WHOIS}/follow`)).body.error.code).toBe("insufficient_scope");
+    expect((await req(reader, "GET", `/tools/${WHOIS}/follow`)).res.status).toBe(200);
+  });
+
+  it("tells followers once when a version becomes the latest, and the people following its issues on the issue", async () => {
+    const follower = await person();
+    await req(follower, "PUT", `/tools/${WHOIS}/follow`);
+    // An issue's author follows it; another person follows the issue and the package; one muted the issue.
+    const author = await person();
+    const issue = (await req(author, "POST", `/tools/${WHOIS}/issues`, { kind: "broken", title: "Times out on every domain", body: "Every lookup times out after five minutes.", version: "2.0.0" })).body;
+    const both = await person();
+    await req(both, "PUT", `/tools/${WHOIS}/follow`);
+    await req(both, "PUT", `/tools/${WHOIS}/issues/${issue.number}/subscription`);
+    const muted = await person();
+    await req(muted, "PUT", `/tools/${WHOIS}/follow`);
+    await req(muted, "PUT", `/tools/${WHOIS}/issues/${issue.number}/subscription`);
+    await req(muted, "DELETE", `/tools/${WHOIS}/issues/${issue.number}/subscription`);
+
+    const id = await release("2.1.0");
+    const out = { kind: "release", scope: "releases", summary: `${WHOIS} 2.1.0 is out`, path: `/${WHOIS}/versions#v2.1.0` };
+    expect(await items(follower)).toEqual([out]);
+    expect(await items(muted)).toEqual([out]);
+    const onIssue = { kind: "comment", scope: "community", summary: `${WHOIS} 2.1.0 is out: does it fix #${issue.number}? Times out on every domain`, path: `/${WHOIS}/issues/${issue.number}` };
+    expect(await items(both)).toEqual([onIssue]);
+    expect((await items(author)).filter((i) => i.kind !== "issue_opened")).toEqual([onIssue]);
+    const thread = await req(null, "GET", `/tools/${WHOIS}/issues/${issue.number}`);
+    expect(thread.body.comments.filter((c: any) => c.body_html.includes("Version 2.1.0 is out"))).toHaveLength(1);
+
+    // Published again (a retried message): nothing new.
+    const { publishVersion } = await import("../src/scans");
+    const { testEnv } = await import("./helpers");
+    await publishVersion(await testEnv(), id);
+    expect(await items(follower)).toHaveLength(1);
+
+    // An older patch, and a prerelease behind the stable latest, aren't announced.
+    await release("2.0.1");
+    await release("3.0.0-rc1");
+    expect(await items(follower)).toHaveLength(1);
+    const again = await req(null, "GET", `/tools/${WHOIS}/issues/${issue.number}`);
+    expect(again.body.comments.filter((c: any) => c.body_html.includes("is out"))).toHaveLength(1);
+  });
+
+  it("has its own email preference and unsubscribe link", async () => {
+    const { unsubscribeUrl } = await import("../src/inbox");
+    const who = await person();
+    expect((await req(who, "GET", "/me/email-prefs")).body).toEqual({ community: "immediate", owner_issues: "immediate", releases: "immediate" });
+    expect((await req(who, "PUT", "/me/email-prefs", { releases: "daily" })).body).toEqual({ community: "immediate", owner_issues: "immediate", releases: "daily" });
+    expect((await req(who, "PUT", "/me/email-prefs", { releases: "weekly" })).res.status).toBe(400);
+    const url = new URL(await unsubscribeUrl(env as any, who.id, "releases"));
+    expect((await call(`/unsubscribe${url.search}`, { method: "POST", body: "List-Unsubscribe=One-Click", headers: { "content-type": "application/x-www-form-urlencoded" } })).status).toBe(200);
+    expect((await req(who, "GET", "/me/email-prefs")).body.releases).toBe("off");
   });
 });

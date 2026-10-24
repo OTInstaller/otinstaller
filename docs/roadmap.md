@@ -70,7 +70,8 @@ Stars are no longer shown or offered as a sort until starring exists (phase 2).
 
 ## Phase 2
 
-- Star and follow tools, publishers and input types, with a weekly digest.
+- Star and follow tools, publishers and input types, with a weekly digest. Following a package's releases is built
+  (migration 0029); stars, publishers, input types and the weekly digest are not.
 - Deleting your account and your contributions.
 - Packaging the tools that only the no-Docker edition (otlite) has today, through community submissions.
 - Guides for names, companies, hashes and breach data; the first advanced guides; playbook pages on the site.

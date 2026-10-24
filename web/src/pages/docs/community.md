@@ -170,10 +170,18 @@ users should know.
 ## Notifications
 
 Your inbox at [Settings → Notifications](/settings/notifications) collects replies and status changes on issues you
-follow (yours, and ones you replied to, confirmed or chose to follow), new issues on packages you maintain, and
-moderators' decisions about your posts. Each kind can come by email within 15 minutes, once a day, or not at all;
+follow (yours, and ones you replied to, confirmed or chose to follow), new issues on packages you maintain, new
+versions of packages whose releases you follow, and moderators' decisions about your posts. Each kind can come by email within 15 minutes, once a day, or not at all;
 every email has a one-click unsubscribe link. People get at most a dozen community emails a day; the rest wait for
 the next day's digest.
+
+### Following a package's releases
+
+**Follow releases** on a tool's page tells you each time a new version becomes its latest: an inbox item, and an
+email as your settings say. An older patch or a release candidate behind the latest stable version doesn't count.
+When you also follow one of its open broken or outdated issues, you hear about the new version on that issue instead,
+once. [Settings → Notifications](/settings/notifications) lists the packages you follow. Nobody else sees what you
+follow. Without an account, each tool has an Atom feed of its releases (`/<namespace>/<tool>/feed.atom`).
 
 ## Profiles
 
