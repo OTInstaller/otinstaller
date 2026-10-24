@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os/exec"
 	"sort"
 	"strings"
 	"sync"
@@ -236,7 +235,7 @@ func effectful(title string, destructive, idempotent bool) *mcp.ToolAnnotations 
 
 func (s *mcpServer) addRunTools() {
 	mcp.AddTool(s.srv, &mcp.Tool{Name: "install_tool", Title: "Install a tool", Annotations: effectful("Install a tool", false, true),
-		Description: "Install a published tool: pull its Docker image by digest and verify its cosign signature, or fetch its Python wheel by SHA-256 and build it into a sandbox image. Agents can't install yanked, failed, broken or local packages, or a Docker image whose signature can't be verified. Asks the person first unless the policy allows installs."},
+		Description: "Install a published tool: pull its Docker image by digest and verify its cosign signature, or fetch its Python wheel by SHA-256 and build it into a sandbox image. Agents can't install yanked, failed, broken or local packages, or a Docker image whose signature can't be verified. On an installed tool it updates to the latest version (or the one named), saying so when it asks, but never moves a version the person held. Asks the person first unless the policy allows installs."},
 		s.installTool)
 	mcp.AddTool(s.srv, &mcp.Tool{Name: "uninstall_tool", Title: "Uninstall a tool", Annotations: effectful("Uninstall a tool", true, true),
 		Description: "Remove an installed tool. Always asks the person."},
@@ -638,32 +637,59 @@ func (s *mcpServer) auditDeclined(req *mcp.CallToolRequest, action string, inst 
 
 // ---------- installs ----------
 
-func (s *mcpServer) installTool(ctx context.Context, req *mcp.CallToolRequest, in installIn) (*mcp.CallToolResult, *installRecord, error) {
+// installOut is what install_tool answers: the install record, and whether it installed, updated (from Previous) or
+// found the version already installed.
+type installOut struct {
+	installRecord
+	Status   string `json:"status" jsonschema:"installed, updated or already_installed"`
+	Previous string `json:"previous,omitempty" jsonschema:"the version an update replaced"`
+}
+
+func (s *mcpServer) installTool(ctx context.Context, req *mcp.CallToolRequest, in installIn) (*mcp.CallToolResult, *installOut, error) {
 	ref, err := parseRef(strings.TrimSpace(in.Tool))
 	if err != nil || ref.LocalPath != "" {
 		return nil, nil, &toolError{Code: "usage", Message: fmt.Sprintf("give a published package as namespace/name, not %q; agents can't install local manifests", in.Tool)}
 	}
-	d := s.sess.DecideInstall(ref.Ref())
-	if d.Verdict == agent.Refuse {
+	if d := s.sess.DecideInstall(ref.Ref(), ""); d.Verdict == agent.Refuse {
 		return nil, nil, refusal(d)
 	}
-	info, err := s.toolInfo(ctx, ref.Ref())
-	if err != nil {
-		return nil, nil, asToolError(err)
-	}
-	version := orDefault(ref.Version, info.Version)
-	known := &state.Installed{Ref: ref.Ref(), Version: version}
-	// What `ot install` would only warn about, the person is told; what agents may not install is refused before
-	// asking, so nothing is pulled for nothing.
+	// The version that would be installed decides everything below: what the person is asked about, what it does when
+	// it runs, and which signature is checked.
 	resp, err := s.a.API.Manifest(ctx, ref.NS, ref.Name, orDefault(ref.Version, "latest"))
 	if err != nil {
 		return nil, nil, asToolError(s.a.requestError(err))
 	}
+	version := orDefault(resp.Version, ref.Version)
+	var prev *state.Installed
+	if st, err := state.Load(); err == nil {
+		prev = st.Installed[ref.Ref()]
+	}
+	switch {
+	case prev != nil && prev.Version == version:
+		return nil, &installOut{installRecord: recordOf(prev), Status: "already_installed"}, nil
+	case prev != nil && prev.Held:
+		return nil, nil, &toolError{Code: "version_held", Message: fmt.Sprintf("%s is held at %s, the version the person chose; agents don't move it", ref.Ref(), prev.Version),
+			Hint: fmt.Sprintf("the person can move it with `ot update %s` (or `ot install %s@%s`)", ref.Ref(), ref.Ref(), version)}
+	case prev != nil && prev.Native:
+		return nil, nil, &toolError{Code: "trust_refused", Message: ref.Ref() + " is installed natively (outside the sandbox); agents only install sandboxed tools, so they don't replace it",
+			Hint: fmt.Sprintf("the person can update it with `ot update %s`", ref.Ref())}
+	}
+	d := s.sess.DecideInstall(ref.Ref(), version)
+	if d.Verdict == agent.Refuse {
+		return nil, nil, refusal(d)
+	}
+	info, err := s.toolInfo(ctx, ref.Ref()+"@"+version)
+	if err != nil {
+		return nil, nil, asToolError(err)
+	}
+	known := &state.Installed{Ref: ref.Ref(), Version: version}
+	// What `ot install` would only warn about, the person is told; what agents may not install is refused before
+	// asking, so nothing is pulled for nothing.
 	if info.Raw != nil && info.Raw.Runtime != nil && info.Raw.Runtime.Kind == "docker" {
 		if resp.SignerIdentity == "" {
 			return nil, nil, &toolError{Code: "trust_refused", Message: ref.Ref() + " is not signed, and agents may only install signed images", Hint: "the person can install it themselves with `ot install` if they trust it"}
 		}
-		if _, err := exec.LookPath("cosign"); err != nil {
+		if _, err := s.a.Runner.Exec.LookPath("cosign"); err != nil {
 			return nil, nil, &toolError{Code: "trust_refused", Message: "cosign is not installed, so the signature of " + ref.Ref() + " can't be verified; agents may only install verified images",
 				Hint: "ask the person to install cosign: https://docs.sigstore.dev/cosign/system_config/installation/"}
 		}
@@ -684,8 +710,17 @@ func (s *mcpServer) installTool(ctx context.Context, req *mcp.CallToolRequest, i
 			details = append(details, "Warning: "+w+".")
 		}
 		details = append(details, "When it runs, it "+strings.Join(info.Effects, ", and ")+".")
+		question := fmt.Sprintf("Install %s %s? %s", info.Ref, version, info.Summary)
+		if prev != nil {
+			change := "Update"
+			if semverLess(version, prev.Version) {
+				change = "Change"
+				details = append(details, fmt.Sprintf("%s is older than the installed %s.", version, prev.Version))
+			}
+			question = fmt.Sprintf("%s %s from %s to %s? %s", change, info.Ref, prev.Version, version, info.Summary)
+		}
 		ans, err := s.ask(ctx, consentRequest{req: req, kind: "install", artifact: ref.Ref() + "@" + version, keys: []string{d.Key}, token: in.ConsentToken,
-			question: fmt.Sprintf("Install %s %s? %s", info.Ref, version, info.Summary), details: details})
+			question: question, details: details})
 		if err != nil {
 			s.auditDeclined(req, "install", known, nil, "", err)
 			return nil, nil, err
@@ -695,14 +730,18 @@ func (s *mcpServer) installTool(ctx context.Context, req *mcp.CallToolRequest, i
 		}
 		consent = ans.method
 	}
-	inst, err := s.a.install(ctx, ref, false)
+	// Install exactly the version the person was asked about, even if a newer one came out meanwhile.
+	inst, err := s.a.install(ctx, pkgRef{NS: ref.NS, Name: ref.Name, Version: version}, false)
 	if err != nil {
 		s.audit(req, "install", known, nil, "", consent, "error", nil, "", err.Error(), 0)
 		return nil, nil, asToolError(err)
 	}
 	s.audit(req, "install", inst, nil, "", consent, "installed", nil, "", "", 0)
-	r := recordOf(inst)
-	return nil, &r, nil
+	out := &installOut{installRecord: recordOf(inst), Status: "installed"}
+	if prev != nil {
+		out.Status, out.Previous = "updated", prev.Version
+	}
+	return nil, out, nil
 }
 
 func (s *mcpServer) uninstallTool(ctx context.Context, req *mcp.CallToolRequest, in uninstallIn) (*mcp.CallToolResult, *idOut, error) {

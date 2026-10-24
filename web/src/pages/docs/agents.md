@@ -98,7 +98,7 @@ You can answer **Allow once**, **Allow for this session** (the same tool and tar
 
 Clients that can't ask questions get a `consent_required` error instead. It carries a summary to show you and a `consent_token` that works once, for that exact call, for 10 minutes, and only while that `ot mcp` keeps running. The agent is told to use it only after you say yes. Clients' own approval prompts are a second check, because run tools are marked as having side effects.
 
-Installs ask too, unless the policy allows them. An agent can only install published, signed, current, healthy versions, and only with a verified signature: cosign has to be installed. It can't install from a local manifest. Uninstalling always asks.
+Installs ask too, unless the policy allows them. An agent can only install published, signed, current, healthy versions, and only with a verified signature: cosign has to be installed. It can't install from a local manifest. On an installed tool, `install_tool` updates it, asking "Update x from 1.2.0 to 1.3.0?", but it never moves a version you held (`ot install x@1.2.0`); `list_installed` says which tools have updates. Uninstalling always asks.
 
 ## API keys
 

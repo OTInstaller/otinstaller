@@ -26,13 +26,16 @@ installed (https://otinstaller.com/docs/getting-started) and the server added (`
 
 1. **Understand the target.** `detect_type` tells you what kind it is.
 2. **Plan with read-only tools.**
-   - `list_installed` and `search_tools` (with `input_type`) find tools that take the target.
+   - `list_installed` and `search_tools` (with `input_type`) find tools that take the target. `list_installed` also
+     says which installed tools have an update.
    - `get_tool` shows each one's inputs, required keys, `ethics` flags, `effects` and `consent_class`.
    - `list_playbooks` lists ready-made sets and the input types each is for: `domain-recon`, `username-investigation`,
      `email-investigation`, `phone-investigation` and `ip-investigation` are bundled, and none needs an API key.
 3. **Show the plan.** Call `run_all` with `dry_run: true` (or `get_consent_status` for single runs). Tell the user
    which tools would run and which need their consent.
 4. **Install only what's needed**, with `install_tool`. Installs ask the user; only signed, current tools install.
+   On an installed tool, `install_tool` updates it, asking the user first; it refuses a version the user held
+   (`version_held`), so tell them the `ot update` command instead.
    `run_all` and `run_playbook` never install anything: when nothing installed takes the target, `run_all` answers
    `not_installed` with the bundled playbook's tools in `suggested_tools`. Show them to the user and install the ones
    they want.
