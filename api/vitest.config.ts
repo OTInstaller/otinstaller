@@ -51,6 +51,8 @@ export default defineConfig(async () => {
           OPS_REPO: "osintverse/registry-ops",
           OPS_INSTALLATION_ID: "999",
           RESEND_API_KEY: "re_test",
+          // Production runs a stricter mode; tests start from the default and set the mode they test.
+          UPSTREAM_WATCH: "report",
           EDGE_CACHE: "off",
         } },
       }),

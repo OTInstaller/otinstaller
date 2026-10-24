@@ -1,7 +1,8 @@
 // Upstream watcher routes: the public summary of community wrappers behind their upstream, the staff view with pin
 // overrides, a check-now button and every wrapper's latest bump, merging and releasing a bump pull request (or
 // releasing a failed one again), and the maintainers' switch for releasing bumps on their own (UPSTREAM_WATCH=auto).
-// Logic lives in ../upstream.ts and ../bumps.ts.
+// The same bump routes serve first-party tools' dependency updates and rebuilds (#0). Logic lives in ../upstream.ts,
+// ../bumps.ts and ../build-watch.ts.
 import type { Context } from "hono";
 import type { App, AppEnv } from "../env";
 import { apiError } from "../lib/errors";
@@ -10,12 +11,13 @@ import { audit, requireUser } from "./auth";
 import { requireAdmin, requireReviewer } from "./review";
 import { checkUpstream, publicWatch, watchMode, type WatchRow, type WatchState } from "../upstream";
 import { autoReleaseAt, canRelease, currentBump, releaseBumpAs, type BumpRow } from "../bumps";
+import { dependencyAutoAt, type DependencyRow } from "../build-watch";
 
 type Joined = WatchRow & { ns: string; name: string };
 
 /** What a package page shows of a bump; the error text only to the people who can release it. */
 const bumpView = (b: BumpRow, withError: boolean) => ({
-  version: b.version, number: b.pr_number, url: b.url, status: b.status, released_version: b.released_version, auto: b.auto === 1,
+  kind: b.kind, version: b.version, number: b.pr_number, url: b.url, status: b.status, released_version: b.released_version, auto: b.auto === 1,
   merged_at: b.merged_at, released_at: b.released_at, attempts: b.attempts,
   ...(withError ? { error_code: b.error_code, error: b.error, run_url: b.run_url } : {}),
 });
@@ -28,14 +30,14 @@ async function wrapper(c: Context<AppEnv>): Promise<{ id: string }> {
   return t;
 }
 
-/** A community wrapper with what releasing a bump needs. */
+/** A package the community bot can bump (a wrapper, or a first-party tool with a repository), with what releasing it needs. */
 async function bumpTool(c: Context<AppEnv>) {
   const t = await c.env.DB.prepare(
     `SELECT t.id, t.name, n.name AS ns, t.namespace_id, t.upstream_url, s.path AS wrapper, v.manifest_json
      FROM tools t JOIN namespaces n ON n.id = t.namespace_id JOIN versions v ON v.id = t.latest_version_id LEFT JOIN sources s ON s.tool_id = t.id
-     WHERE n.name = ? AND t.name = ? AND t.upstream_url IS NOT NULL AND t.status != 'removed'`,
-  ).bind(c.req.param("ns"), c.req.param("name")).first<{ id: string; name: string; ns: string; namespace_id: string; upstream_url: string; wrapper: string | null; manifest_json: string }>();
-  if (!t) apiError(404, "tool_not_found", "no community wrapper by that name");
+     WHERE n.name = ? AND t.name = ? AND (t.upstream_url IS NOT NULL OR s.path IS NOT NULL) AND t.status != 'removed'`,
+  ).bind(c.req.param("ns"), c.req.param("name")).first<{ id: string; name: string; ns: string; namespace_id: string; upstream_url: string | null; wrapper: string | null; manifest_json: string }>();
+  if (!t) apiError(404, "tool_not_found", "no package by that name with a repository");
   return t;
 }
 
@@ -61,31 +63,31 @@ export function upstreamRoutes(app: App) {
   app.get("/packages/:ns/:name/bump", async (c) => {
     const u = requireUser(c);
     const t = await bumpTool(c);
-    const [bump, who, watch, auto] = await Promise.all([
+    const [bump, who, watch, auto, depRows] = await Promise.all([
       currentBump(c.env, t.id), canRelease(c.env, u, t),
       c.env.DB.prepare(`SELECT latest_at FROM upstream_watch WHERE tool_id = ?`).bind(t.id).first<{ latest_at: number | null }>(),
       c.env.DB.prepare(`SELECT auto_release FROM tools WHERE id = ?`).bind(t.id).first<{ auto_release: number }>(),
+      c.env.DB.prepare(`SELECT package, latest_at FROM dependency_watch WHERE tool_id = ?`).bind(t.id).all<Pick<DependencyRow, "package" | "latest_at">>().then((r) => r.results),
     ]);
     const mode = watchMode(c.env);
     const canRel = who.maintainer || who.reviewer;
+    const autoAt = !bump || bump.status !== "open" || mode !== "auto" || !auto?.auto_release ? null
+      : bump.kind === "dependency" ? dependencyAutoAt(depRows, bump) : autoReleaseAt({ latest_at: watch?.latest_at ?? null }, bump);
     c.header("Cache-Control", "private, no-store");
     return c.json({
-      bump: bump ? {
-        ...bumpView(bump, canRel),
-        auto_release_at: bump.status === "open" && mode === "auto" && auto?.auto_release ? autoReleaseAt({ latest_at: watch?.latest_at ?? null }, bump) : null,
-      } : null,
+      bump: bump ? { ...bumpView(bump, canRel), auto_release_at: autoAt } : null,
       can_release: canRel,
       auto_release: !!auto?.auto_release,
       mode,
     });
   });
 
-  // Merges and releases an open bump, or releases a failed one again (without merging again).
+  // Merges and releases an open bump, or releases a failed one again (without merging again); #0 is a failed rebuild.
   app.post("/packages/:ns/:name/pulls/:number/release", async (c) => {
     const u = requireUser(c);
     const t = await bumpTool(c);
     const n = Number(c.req.param("number"));
-    if (!Number.isInteger(n) || n <= 0) apiError(400, "invalid_parameter", "the pull request number is a positive integer");
+    if (!Number.isInteger(n) || n < 0) apiError(400, "invalid_parameter", "the pull request number is a whole number");
     const out = await releaseBumpAs(c.env, u, t, n);
     c.header("Cache-Control", "private, no-store");
     return c.json({ merged: true, upstream_version: out.version, version: out.released, attempt: out.attempt });
