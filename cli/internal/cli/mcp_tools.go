@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/otinstaller/otinstaller/cli/internal/agent"
 	"github.com/otinstaller/otinstaller/cli/internal/api"
@@ -77,7 +78,17 @@ type toolInfo struct {
 }
 
 type installedOut struct {
-	Installed []installRecord `json:"installed"`
+	Installed []installedRow `json:"installed"`
+	// LatestCheckedAt is when the registry's latest versions were fetched; absent when ot has never reached it.
+	LatestCheckedAt *time.Time `json:"latest_checked_at,omitempty"`
+}
+
+// installedRow is an installed tool and, when ot knows the registry's latest versions, whether it has an update.
+type installedRow struct {
+	installRecord
+	Latest          string `json:"latest,omitempty" jsonschema:"the registry's latest version"`
+	UpdateAvailable *bool  `json:"update_available,omitempty" jsonschema:"a newer version, or a new address, is available; install_tool installs it unless the tool is held"`
+	MovedTo         string `json:"moved_to,omitempty" jsonschema:"the package's new address"`
 }
 
 type typesOut struct {
@@ -262,15 +273,28 @@ func (s *mcpServer) addReadTools() {
 	readTool(s, "get_tool", "Get a tool",
 		"Everything needed to run a tool: its inputs (names, types, defaults), what it finds, the API keys it needs and whether they are set, its ethics flags and network access, and whether a run will need the person's consent. Works for installed and registry tools.",
 		func(ctx context.Context, in toolIn) (*toolInfo, error) { return s.toolInfo(ctx, in.Tool) })
-	readTool(s, "list_installed", "List installed tools", "The tools installed on this machine, with their versions and the exact image digest or wheel hash.",
+	readTool(s, "list_installed", "List installed tools", "The tools installed on this machine, with their versions, the exact image digest or wheel hash, whether the person held a version, and the registry's latest version (checked at most daily) with whether an update is available.",
 		func(ctx context.Context, _ struct{}) (*installedOut, error) {
 			st, err := state.Load()
 			if err != nil {
 				return nil, err
 			}
-			out := &installedOut{Installed: []installRecord{}}
+			out := &installedOut{Installed: []installedRow{}}
+			list := a.latestList(ctx, 24*time.Hour)
+			known := !list.FetchedAt.IsZero()
+			if known {
+				out.LatestCheckedAt = &list.FetchedAt
+			}
 			for _, i := range st.Sorted() {
-				out.Installed = append(out.Installed, recordOf(i))
+				row := installedRow{installRecord: recordOf(i)}
+				if known {
+					update := list.hasUpdate(i)
+					row.UpdateAvailable, row.MovedTo = &update, list.movedTo(i.Ref)
+					if p := list.find(i.Ref); p != nil {
+						row.Latest = p.Latest
+					}
+				}
+				out.Installed = append(out.Installed, row)
 			}
 			return out, nil
 		})

@@ -4,7 +4,7 @@ import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { findPin } from "../src/upstream-pin";
 import { checkUpstream, compareVersions, queueUpstreamChecks } from "../src/upstream";
-import { pinOnly } from "../src/bumps";
+import { pinOnly, sweepBumps, upstreamSemver, wrapperVersion } from "../src/bumps";
 import { sha256Hex, ulid } from "../src/lib/crypto";
 import { call, fakeHosts, sent, testEnv } from "./helpers";
 
@@ -228,6 +228,10 @@ describe("bump pull requests", () => {
       [`GET ${GH}/repos/${upstream}/releases/latest`]: { tag_name: "v1.3.0", published_at: new Date(Date.now() - 10 * DAY).toISOString() },
       [`GET ${GH}/repos/${repo}/contents/`]: (req: Request) => {
         const path = decodeURIComponent(new URL(req.url).pathname.split("/contents/")[1]!);
+        // A bump branch holds what the bot committed to it.
+        const ref = new URL(req.url).searchParams.get("ref") ?? "";
+        const onBranch = commits.filter((c) => c.branch === ref && c.path === path).at(-1);
+        if (onBranch) return (req.headers.get("accept") ?? "").includes("raw") ? new Response(onBranch.content) : { sha: "new", type: "file" };
         if (files[path] === undefined) return null;
         return (req.headers.get("accept") ?? "").includes("raw") ? new Response(files[path]) : { sha: "old", type: "file" };
       },
@@ -249,7 +253,7 @@ describe("bump pull requests", () => {
       "GET https://pypi.org/pypi/": { info: { version: "1.3.0" }, urls: [{ packagetype: "bdist_wheel", filename: "x-1.3.0-py3-none-any.whl", digests: { sha256: "d".repeat(64) } }] },
       ...extra,
     });
-    return { commits, did, calls };
+    return { commits, did, calls, files };
   }
 
   async function botEnv() {
@@ -283,7 +287,7 @@ describe("bump pull requests", () => {
     // Checking again opens no second pull request.
     await checkUpstream(e, w.toolId);
     expect(b.did.pulls).toHaveLength(1);
-    expect(((await (await call(`/tools/${w.ref}`, {}, e)).json()) as any).upstream.bump).toEqual({ version: "v1.3.0", number: 9, url: `https://github.com/osintverse-community/${w.name}/pull/9` });
+    expect(((await (await call(`/tools/${w.ref}`, {}, e)).json()) as any).upstream.bump).toEqual({ version: "v1.3.0", number: 9, url: `https://github.com/osintverse-community/${w.name}/pull/9`, status: "open" });
 
     // Someone unrelated can't release it; a maintainer of the package can.
     const stranger = await person();
@@ -293,10 +297,10 @@ describe("bump pull requests", () => {
     await DB().prepare(`INSERT INTO tool_maintainers (tool_id, user_id, reason, created_at) VALUES (?, ?, 'submitter', 1)`).bind(w.toolId, maintainer.id).run();
     expect(((await (await call(`/packages/${w.ref}/bump`, { headers: maintainer.headers }, e)).json()) as any)).toMatchObject({ can_release: true, bump: { number: 9 } });
     const res = await call(`/packages/${w.ref}/pulls/9/release`, { method: "POST", headers: maintainer.headers, body: "{}" }, e);
-    expect(await res.json()).toEqual({ merged: true, upstream_version: "v1.3.0", version: "1.3.0" });
+    expect(await res.json()).toEqual({ merged: true, upstream_version: "v1.3.0", version: "1.3.0", attempt: 1 });
     expect(b.did.merged).toHaveLength(1);
     expect(b.did.dispatched).toEqual([{ ref: "main", inputs: { version: "1.3.0" } }]);
-    expect(await DB().prepare(`SELECT status, released_version FROM bump_prs WHERE tool_id = ?`).bind(w.toolId).first()).toEqual({ status: "merged", released_version: "1.3.0" });
+    expect(await DB().prepare(`SELECT status, released_version, merge_sha, attempts FROM bump_prs WHERE tool_id = ?`).bind(w.toolId).first()).toEqual({ status: "merged", released_version: "1.3.0", merge_sha: "merged456", attempts: 1 });
     // The package's maintainers triage its issues too.
     const viewer = await call(`/tools/${w.ref}/issues/1/viewer`, { headers: maintainer.headers }, e);
     expect(viewer.status).toBe(200);
@@ -331,6 +335,8 @@ describe("bump pull requests", () => {
     expect(await checkUpstream(e, w.toolId)).toMatchObject({ state: "behind", pin_kind: "pipx", latest: "1.3.0" });
     expect(b.commits[0]!.content).toBe(yaml.replace("version: 1.2.0", "version: 1.3.0").replace('package_version: "1.2.0"', 'package_version: "1.3.0"').replace("c".repeat(64), "d".repeat(64)));
     const reviewer = await person({ reviewer: true });
+    // Merging puts the bumped manifest on main.
+    b.files["otinstaller.yaml"] = b.commits[0]!.content;
     expect(await (await call(`/packages/${w.ref}/pulls/9/release`, { method: "POST", headers: reviewer.headers, body: "{}" }, e)).json()).toMatchObject({ version: "1.3.0" });
     expect(b.did.tagged).toEqual([{ ref: "refs/tags/v1.3.0", sha: "merged456" }]);
   });
@@ -341,5 +347,194 @@ describe("bump pull requests", () => {
     expect(pinOnly([{ filename: "README.md", patch: "-a\n+b" }])).toBe(false);
     expect(pinOnly([{ filename: "otinstaller.yaml", patch: "-version: 1\n+version: 2\n-  wheel_sha256: a\n+  wheel_sha256: b" }])).toBe(true);
     expect(pinOnly([{ filename: "otinstaller.yaml", patch: "-  command: [a]\n+  command: [b]" }])).toBe(false);
+  });
+  it("turns upstream's release into a version above every one the package had", async () => {
+    expect(upstreamSemver("v1.62")).toBe("1.62.0");
+    expect(upstreamSemver("2.2")).toBe("2.2.0");
+    expect(upstreamSemver("20250130")).toBe("20250130.0.0");
+    expect(upstreamSemver("2026.08.19")).toBe("2026.8.19");
+    expect(upstreamSemver("1.2.3.4")).toBe("1.2.3");
+    expect(upstreamSemver("0.45.post1")).toBe("0.45.0");
+    for (const pre of ["2.0.0-rc1", "1.3.0b2", "v2.0.0-beta", "latest", "main (3 commits on)"]) expect(upstreamSemver(pre)).toBeNull();
+    const w = await wrapper(`up${uniq()}/tool`);
+    const e = await testEnv();
+    expect(await wrapperVersion(e, w.toolId, "v1.62")).toBe("1.62.0");
+    // Not above 1.2.0, the package's own version: a patch on top.
+    expect(await wrapperVersion(e, w.toolId, "1.2")).toBe("1.2.1");
+    expect(await wrapperVersion(e, w.toolId, "1.2.0.1")).toBe("1.2.1");
+    expect(await wrapperVersion(e, w.toolId, "3.0.0-rc1")).toBeNull();
+  });
+
+  it("follows a release to the end: published closes the issue, a failure tells the maintainers and can be released again", async () => {
+    await installation();
+    const upstream = `up${uniq()}/tool`;
+    const w = await wrapper(upstream);
+    const repo = `osintverse-community/${w.name}`;
+    let dispatchFails = false;
+    let runs: object[] = [];
+    const b = bot(upstream, w, { Dockerfile: go(upstream, "v1.2.0") }, {
+      [`POST ${GH}/repos/${repo}/actions/workflows/`]: async (req: Request) => {
+        if (dispatchFails) return new Response("boom", { status: 500 });
+        return (b.did.dispatched.push(await req.json()), new Response(null, { status: 204 }));
+      },
+      [`GET ${GH}/repos/${repo}/actions/workflows/`]: () => ({ workflow_runs: runs }),
+    });
+    const e = await botEnv();
+    await checkUpstream(e, w.toolId);
+    const maintainer = await person();
+    await DB().prepare(`INSERT INTO tool_maintainers (tool_id, user_id, reason, created_at) VALUES (?, ?, 'submitter', 1)`).bind(w.toolId, maintainer.id).run();
+    const release = () => call(`/packages/${w.ref}/pulls/9/release`, { method: "POST", headers: maintainer.headers, body: "{}" }, e);
+    const row = () => DB().prepare(`SELECT status, released_version, error_code, run_url, attempts FROM bump_prs WHERE tool_id = ?`).bind(w.toolId).first<any>();
+    const inbox = async () => (await DB().prepare(`SELECT summary FROM inbox WHERE user_id = ? AND tool_id = ?`).bind(maintainer.id, w.toolId).all<{ summary: string }>()).results;
+
+    // The dispatch fails after the merge: the bump is failed, not stuck, and says so.
+    dispatchFails = true;
+    const broken = await release();
+    expect(broken.status).toBe(503);
+    expect(((await broken.json()) as any).error.code).toBe("github_failed");
+    expect(await row()).toMatchObject({ status: "failed", error_code: "release_start_failed", attempts: 1 });
+    expect(b.did.merged).toHaveLength(1);
+
+    // Released again: no second merge.
+    dispatchFails = false;
+    expect(await (await release()).json()).toEqual({ merged: true, upstream_version: "v1.3.0", version: "1.3.0", attempt: 2 });
+    expect(b.did.merged).toHaveLength(1);
+    expect(b.did.dispatched).toEqual([{ ref: "main", inputs: { version: "1.3.0" } }]);
+    // A second click while it is being released.
+    expect(((await (await release()).json()) as any).error.code).toBe("bump_in_progress");
+
+    // The scan rejects it: failed, and the maintainers hear about it.
+    await DB().prepare(`INSERT INTO versions (id, tool_id, version, semver_major, semver_minor, semver_patch, manifest_json, status, rejected_reason, created_at) VALUES (?, ?, '1.3.0', 1, 3, 0, '{}', 'rejected', 'smoke_test_failed', 1)`)
+      .bind(ulid(), w.toolId).run();
+    await sweepBumps(e);
+    expect(await row()).toMatchObject({ status: "failed", error_code: "smoke_test_failed" });
+    expect((await inbox()).some((i) => i.summary.includes("failed (smoke_test_failed)"))).toBe(true);
+    const detail = ((await (await call(`/packages/${w.ref}/bump`, { headers: maintainer.headers }, e)).json()) as any);
+    expect(detail.bump).toMatchObject({ status: "failed", error_code: "smoke_test_failed", attempts: 2 });
+
+    // Released again under a new version, since 1.3.0 exists; the build fails on GitHub.
+    expect(await (await release()).json()).toMatchObject({ version: "1.3.1", attempt: 3 });
+    const started = Date.now();
+    runs = [{ status: "completed", conclusion: "failure", html_url: `https://github.com/${repo}/actions/runs/1`, created_at: new Date(started).toISOString() }];
+    await sweepBumps(e, started + 31 * 60_000);
+    expect(await row()).toMatchObject({ status: "failed", error_code: "release_workflow_failed", run_url: `https://github.com/${repo}/actions/runs/1` });
+
+    // Nothing arrives at all within 12 hours.
+    runs = [];
+    expect(await (await release()).json()).toMatchObject({ version: "1.3.2", attempt: 4 });
+    await sweepBumps(e, Date.now() + 60_000);
+    expect((await row()).status).toBe("merged");
+    await sweepBumps(e, Date.now() + 13 * 3_600_000);
+    expect(await row()).toMatchObject({ status: "failed", error_code: "release_not_received" });
+
+    // The next attempt is published: released, and the outdated issue closes.
+    expect(await (await release()).json()).toMatchObject({ version: "1.3.3" });
+    await DB().prepare(`INSERT INTO versions (id, tool_id, version, semver_major, semver_minor, semver_patch, manifest_json, status, published_at, created_at) VALUES (?, ?, '1.3.3', 1, 3, 3, '{}', 'published', 1, 1)`)
+      .bind(ulid(), w.toolId).run();
+    await sweepBumps(e);
+    expect(await row()).toMatchObject({ status: "released", released_version: "1.3.3" });
+    expect(await DB().prepare(`SELECT status FROM issues WHERE tool_id = ? AND dedupe_key = 'outdated:v1.3.0'`).bind(w.toolId).first()).toEqual({ status: "fixed" });
+    expect(((await (await call(`/tools/${w.ref}`, {}, e)).json()) as any).upstream.bump).toMatchObject({ status: "released", released_version: "1.3.3" });
+  });
+
+  it("closes a superseded bump on GitHub when upstream releases again", async () => {
+    await installation();
+    const upstream = `up${uniq()}/tool`;
+    const w = await wrapper(upstream);
+    const repo = `osintverse-community/${w.name}`;
+    let latest = "v1.3.0";
+    let number = 9;
+    const closed: unknown[] = [];
+    const b = bot(upstream, w, { Dockerfile: go(upstream, "v1.2.0") }, {
+      [`GET ${GH}/repos/${upstream}/releases/latest`]: () => ({ tag_name: latest, published_at: new Date(Date.now() - 10 * DAY).toISOString() }),
+      [`POST ${GH}/repos/${repo}/pulls`]: async (req: Request) => (b.did.pulls.push(await req.json()), { html_url: `https://github.com/${repo}/pull/${number}`, number }),
+      [`PATCH ${GH}/repos/${repo}/pulls/`]: async (req: Request) => (closed.push({ url: req.url, ...((await req.json()) as object) }), {}),
+    });
+    const e = await botEnv();
+    await checkUpstream(e, w.toolId);
+    latest = "v1.4.0";
+    number = 10;
+    await checkUpstream(e, w.toolId);
+    expect(closed).toEqual([{ url: `${GH}/repos/${repo}/pulls/9`, state: "closed" }]);
+    const rows = (await DB().prepare(`SELECT version, status FROM bump_prs WHERE tool_id = ? ORDER BY version`).bind(w.toolId).all()).results;
+    expect(rows).toEqual([{ version: "v1.3.0", status: "closed" }, { version: "v1.4.0", status: "open" }]);
+    expect(b.commits.at(-1)!.content).toContain("@v1.4.0");
+  });
+
+  it("never bumps to a prerelease", async () => {
+    await installation();
+    const upstream = `up${uniq()}/tool`;
+    const w = await wrapper(upstream);
+    const b = bot(upstream, w, { Dockerfile: go(upstream, "v1.2.0") }, {
+      [`GET ${GH}/repos/${upstream}/releases/latest`]: { tag_name: "v1.3.0-rc1", published_at: new Date(Date.now() - 10 * DAY).toISOString() },
+    });
+    await checkUpstream(await botEnv(), w.toolId);
+    expect(b.did.pulls).toHaveLength(0);
+  });
+
+  it("in auto mode releases a pin-only bump on its own a week after upstream's release, unless turned off", async () => {
+    await installation();
+    const upstream = `up${uniq()}/tool`;
+    const w = await wrapper(upstream);
+    const repo = `osintverse-community/${w.name}`;
+    let prState = "open";
+    const b = bot(upstream, w, { Dockerfile: go(upstream, "v1.2.0") }, {
+      [`GET ${GH}/repos/${repo}/pulls/9`]: () => ({ state: prState, merged: false, head: { ref: "otinstaller/bump-1.3.0" } }),
+    });
+    const e = { ...(await botEnv()), UPSTREAM_WATCH: "auto" };
+    const t0 = Date.now();
+    await checkUpstream(e, w.toolId, t0, { nightly: true });
+    expect(b.did.pulls).toHaveLength(1);
+    // Too early: the pull request opened today, and gets four days.
+    expect(b.did.merged).toHaveLength(0);
+    const issue = await DB().prepare(`SELECT body_md FROM issues WHERE tool_id = ? AND dedupe_key = 'outdated:v1.3.0'`).bind(w.toolId).first<{ body_md: string }>();
+    expect(issue!.body_md).toContain(`goes out automatically on ${new Date(t0 + 4 * DAY).toISOString().slice(0, 10)}`);
+    expect(((await (await call(`/tools/${w.ref}`, {}, e)).json()) as any).upstream.bump.auto_release_at).toBe(t0 + 4 * DAY);
+
+    // A staff member's "Check now" never releases.
+    await checkUpstream(e, w.toolId, t0 + 5 * DAY);
+    expect(b.did.merged).toHaveLength(0);
+
+    // Its maintainers turned it off; a stranger can't turn it back on.
+    const maintainer = await person();
+    await DB().prepare(`INSERT INTO tool_maintainers (tool_id, user_id, reason, created_at) VALUES (?, ?, 'added', 1)`).bind(w.toolId, maintainer.id).run();
+    const set = (h: Record<string, string>, enabled: boolean) => call(`/packages/${w.ref}/auto-release`, { method: "PUT", headers: h, body: JSON.stringify({ enabled }) }, e);
+    expect(await (await set(maintainer.headers, false)).json()).toEqual({ auto_release: false });
+    expect((await set((await person()).headers, true)).status).toBe(403);
+    await checkUpstream(e, w.toolId, t0 + 5 * DAY, { nightly: true });
+    expect(b.did.merged).toHaveLength(0);
+    expect(((await (await call(`/packages/${w.ref}/bump`, { headers: maintainer.headers }, e)).json()) as any)).toMatchObject({ auto_release: false, mode: "auto", bump: { auto_release_at: null } });
+
+    // Back on: it goes out.
+    await set(maintainer.headers, true);
+    await checkUpstream(e, w.toolId, t0 + 5 * DAY, { nightly: true });
+    expect(b.did.merged).toHaveLength(1);
+    expect(b.did.dispatched).toEqual([{ ref: "main", inputs: { version: "1.3.0" } }]);
+    expect(await DB().prepare(`SELECT status, auto, merged_by FROM bump_prs WHERE tool_id = ?`).bind(w.toolId).first()).toEqual({ status: "merged", auto: 1, merged_by: null });
+    expect(await DB().prepare(`SELECT actor_kind FROM audit_log WHERE target_id = ? AND action = 'bump.auto_release'`).bind(w.toolId).first()).toEqual({ actor_kind: "system" });
+    prState = "closed";
+  });
+
+  it("in auto mode leaves a bump a person closed on GitHub, or one that changes more than the pin", async () => {
+    await installation();
+    const upstream = `up${uniq()}/tool`;
+    const w = await wrapper(upstream);
+    const repo = `osintverse-community/${w.name}`;
+    let prState = "open";
+    let files: object[] = [{ filename: "Dockerfile", status: "modified", changes: 4, patch: "-USER 65534\n+USER root\n-RUN go install x@v1.2.0\n+RUN go install x@v1.3.0" }];
+    const b = bot(upstream, w, { Dockerfile: go(upstream, "v1.2.0") }, {
+      [`GET ${GH}/repos/${repo}/pulls/9`]: () => ({ state: prState, merged: false, head: { ref: "otinstaller/bump-1.3.0" } }),
+      [`GET ${GH}/repos/${repo}/pulls/9/files`]: () => files,
+    });
+    const e = { ...(await botEnv()), UPSTREAM_WATCH: "auto" };
+    const t0 = Date.now();
+    await checkUpstream(e, w.toolId, t0, { nightly: true });
+    await checkUpstream(e, w.toolId, t0 + 5 * DAY, { nightly: true });
+    expect(b.did.merged).toHaveLength(0);
+    prState = "closed";
+    files = [];
+    await checkUpstream(e, w.toolId, t0 + 6 * DAY, { nightly: true });
+    expect(b.did.merged).toHaveLength(0);
+    expect(await DB().prepare(`SELECT status FROM bump_prs WHERE tool_id = ?`).bind(w.toolId).first()).toEqual({ status: "closed" });
   });
 });

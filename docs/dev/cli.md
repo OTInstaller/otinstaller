@@ -15,10 +15,20 @@ Conventions used here:
   (server answers 401/403, which `requestError` turns into exit 2 where it is used).
 - "Exit codes" lists what the command can return. Every command can also return **1** for an unclassified error
   (network failure, file I/O error, cobra argument/flag errors; see [Exit codes](#3-exit-codes)).
-- Before every command except `help` and `uninstall`, the root `PersistentPreRun` calls `warnRemoved`: if anything is
-  installed, it reads `cache/removed.json` and, when that is older than 24 h, refreshes it with `GET /removed` (4 s
-  timeout; failures fall back to the cached list), then prints a `warning:` line per installed version that was
-  removed. This applies to every command row below and is not repeated.
+- Before every command except `help`, `uninstall` and shell completion (`__complete`), the root `PersistentPreRun`
+  calls `warnRemoved`: if anything is installed, it reads `cache/removed.json` and, when that is older than 24 h,
+  refreshes it with `GET /removed` (4 s timeout; failures fall back to the cached list), then prints a `warning:` line
+  per installed version that was removed. This applies to every command row below and is not repeated.
+- The daily update note (`cli/updatecheck.go`): the root `PersistentPreRun` calls `startDailyNote` and the root
+  `PersistentPostRun` (after the command's output; skipped when the command fails) calls `finishDailyNote`. It runs only
+  when `App.CheckUpdates` is on, `interactive()` holds, output isn't JSON (`--json`, `OT_OUTPUT=json`, or `ot run`'s own
+  `--json`/`-f json` through `jsonRequested`), `CI` is unset, not under `AgentMode` or `OT_NO_UPDATE_CHECK=1`, the
+  top-level command isn't `help`, `completion`, `__complete`, `uninstall`, `outdated`, `update`, `self-update` or `mcp`,
+  and `cache/latest.json`'s `noted_at` is over 24 h old. It then refreshes `cache/latest.json` (`latestList`: `GET
+  /latest`, 3 s, at most every 24 h by `checked_at`, which every attempt sets) and `cache/ot-latest.json` (`latestOT`)
+  concurrently, and prints at most two `note:` lines: how many installed packages have a newer version or a new
+  address (`updateCounts`, held ones counted apart), and a newer `ot`. `noted_at` is set only when something was
+  printed. This applies to every command row below and is not repeated.
 
 ---
 
@@ -92,6 +102,10 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   manifest path. Every reference is parsed first, so a bad one exits 2 before anything installs; repeated arguments
   install once.
 - Flags: `--native` (bool, false): install pipx tools on the host instead of in a container.
+- Holds: a registry package installed at an exact `@version` gets `held: true` in `state.json` (`ot update --all` leaves
+  it), with a `note: holding <ref> at <version>` line; installing it without a version clears the hold (`note: <ref> is
+  no longer held`). `ot run <ref>@<version>` installing it holds it the same way. Under `AgentMode` (MCP `install_tool`)
+  the previous hold is kept as it was. Install records (`--json`, `ot list --json`) carry `held`.
 - Several packages: `installMany` installs them one after another and goes on after a failure (printing
   `error: <ref>: <message>` on stderr in text mode), except a missing container engine (`RuntimeMissingError`), which
   stops it: the rest are `not_tried`. `guide tools` and `playbook -y` use it too.
@@ -117,8 +131,8 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 
 #### `ot list`
 - File: `cli/packages.go` (`listCmd`). Args: `NoArgs`. No flags. No API call (other than the pre-run removal check).
-- Output: table `PACKAGE VERSION RUNTIME INSTALLED` (`(native)` suffix for native pipx), or "Nothing installed yet.
-  Try `ot search`." on stdout.
+- Output: table `PACKAGE VERSION RUNTIME INSTALLED` (`(held)` after a held version, `(native)` after a native pipx
+  runtime), or "Nothing installed yet. Try `ot search`." on stdout. JSON: the install records, each with `held`.
 - Exit: 0; 1 if `state.json` cannot be read.
 
 #### `ot uninstall <namespace/name>`
@@ -136,9 +150,10 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 - Output: table `PACKAGE INSTALLED LATEST STATUS`; statuses `up to date`, `update available`, `removed` (410 for the
   package, or the installed version listed as `removed`), `not in registry` (404), `error`, with notes (`moved to
   …`) and flags in brackets. JSON rows: `{ref, installed, latest, status, note, flags, replacement}`. `flags` is always
-  an array of `deprecated`, `possibly_broken` (health `broken`), `yanked` (the installed version), `source_unavailable`
-  and `moved`, whatever the status; `replacement` is the deprecation's replacement, else `moved_to`. Each flag also
-  prints one `warning:` line on stderr, in JSON mode too. When the update is under a week old (the versions list's
+  an array of `deprecated`, `possibly_broken` (health `broken`), `yanked` (the installed version), `source_unavailable`,
+  `moved` and `held` (`state.Installed.Held`, always last), whatever the status; `replacement` is the deprecation's replacement, else `moved_to`. Each flag also
+  prints one `warning:` line on stderr, in JSON mode too, except `held`, which instead adds `note: <ref> is held at
+  <version>; \`ot update <ref>\` moves it to <latest>` when an update is waiting. When the update is under a week old (the versions list's
   `first_week`), the row has `latest_first_week` (`{works, broken, ends_at}`) and a `note: <ref> <version> is under a
   week old: works for N people, broken for M so far` line follows the warnings (`firstWeekNote`). "Nothing installed
   yet." goes to **stderr**.
@@ -158,7 +173,9 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   or `update available` with a `moved_to`): those are installed under the new name, the old `state.json` entry is
   dropped and its image removed unless the new install uses the same one (`forgetOldName`; native pipx installs share
   their package, so nothing is uninstalled). Such a row is reported under the new name with the note `from <old ref>
-  <version>`. An updated row loses its `yanked` and `moved` flags.
+  <version>`. An updated row loses its `yanked`, `moved` and `held` flags. With `--all`, held packages are skipped
+  (their rows keep `update available` and `held`). A named held package is updated and released; one already up to
+  date is only released in `state.json` (`releaseHold`), with a `note:` either way.
 - Exit: 0; **2** when neither names nor `--all` are given, or both are, or a named package is not installed; **1** when
   any update failed, or (with named packages) any named package ends in a status other than `updated` / `up to date`
   (for example `removed` or `not in registry`).
@@ -844,7 +861,7 @@ Read by the CLI (`os.Getenv` calls in `cli/`, plus the keychain lookup):
 | `OT_CONSENT` | `consent.go` `cliConsent` | `off`: unattended runs need no `--yes` (still audited) | consent checked |
 | `OT_MAX_RAW` | `run_cmd.go` | default for `--max-raw` (bytes) | no limit |
 | `CI` | `run_cmd.go` `clientKind`, `selfupdate.go` `latestOT` | any value: the envelope's and audit log's `client` is `ci`, and the install ping says so; no newer-ot check | `cli` |
-| `OT_NO_UPDATE_CHECK` | `selfupdate.go` `latestOT` | `1`: `ot outdated` never looks up the latest ot release | checked daily |
+| `OT_NO_UPDATE_CHECK` | `selfupdate.go` `latestOT`, `updatecheck.go` | `1`: no daily note, `cache/latest.json` is never refreshed, and `ot outdated` never looks up the latest ot release | checked daily |
 | `<SECRET_NAME>` (any manifest `secrets[].name`) | `keys.Get` in `loadSecrets` | a tool's key; env wins over the keychain | keychain entry |
 
 Other environment handling:
@@ -882,7 +899,8 @@ Data directory (`state.Home()`): `$OT_HOME` if set; else on Windows `%APPDATA%\o
 | `<home>/config.json` | never written by ot (read only) | `api_url`, `site_url`, `telemetry` (bool), `format` (default `ot run` format); env vars override the first three |
 | `<home>/keys.json` | `keys set`, `keys rm`, `login`, `logout`, `doctor` | sorted JSON array of key names (never values), mode 0600 |
 | `<home>/cache/removed.json` | pre-run check (24 h), `ot run` (1 h) | `{"fetched_at", "removed": [...]}` from `GET /removed`, mode 0644 |
-| `<home>/cache/ot-latest.json` | `ot outdated` (24 h) | `{"checked_at", "version"}`: the latest ot release, or the last one known when the lookup failed, mode 0644 |
+| `<home>/cache/latest.json` | the daily note and MCP `list_installed` (24 h) | `{"checked_at", "fetched_at", "noted_at", "packages", "moved"}` from `GET /latest`; written atomically, mode 0644 |
+| `<home>/cache/ot-latest.json` | `ot outdated` and the daily note (24 h) | `{"checked_at", "version"}`: the latest ot release, or the last one known when the lookup failed, mode 0644 |
 | `<home>/cache/report-prompts.json` | `ot run` (the failure prompt) | `{"ns/name@version": "<time asked>"}`; entries older than 7 days are dropped on each write, mode 0644 |
 | `<home>/guides/<ns>/<name>/<version>/` | `guide get` | every page as Markdown at its nav path, plus `guide.json` (the guide detail); read by `guide read` offline |
 | `<home>/pipx/`, `<home>/bin/` | native pipx installs | ot's own `PIPX_HOME` and `PIPX_BIN_DIR`; native runs execute `<home>/bin/<command>[.exe]` |
@@ -969,6 +987,7 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 | `cli/playbook_test.go` | `ot playbook`: `--list` with a user playbook and the TAKES column, prefixed and guessed targets, and errors (missing tools, no matching inputs, no typed input, unknown playbook, `--all`) |
 | `cli/saved_test.go` | `ot extract` and `ot diff` against saved runs |
 | `cli/update_test.go` | `ot outdated --json` and `ot update` (named, `--all`) against a fake registry (update available, removed, not in registry), plus usage errors; lifecycle flags, their warnings and the table, an update's first-week note and `latest_first_week`, `yanked` cleared by an update, and moved packages installed under their new name (old image removed only when not shared) |
+| `cli/updatecheck_test.go` | holds (exact installs, `update --all` skipping them, `list`, naming a package releasing it, with and without a reinstall), the daily note (every gate, once a day, a stale list fetched again, the registry unreachable), the note's wording, and moves counted as updates |
 | `cli/guide_test.go` | Guide search and read, terminal rewriting (`forTerminal`), Glamour rendering, `guide get` then offline read, `guide tools`, `guide open` and `docs`, request IDs on server errors, guide content validation |
 | `cli/import_test.go` | Import wizard completing a draft and opening a PR, `--registry` with `--yes`, community wrapper, bulk import and `--list` |
 | `cli/login_test.go` | Device-flow login (GitHub) and `--osintverse` |

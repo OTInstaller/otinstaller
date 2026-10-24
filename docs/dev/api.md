@@ -47,7 +47,7 @@ anonymous GET.
 
 ## 1. Routes
 
-Total: **191 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
+Total: **193 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
 call; the `for` loops in `routes/trust.ts` (`yank`, `unyank`), `routes/community.ts` (a thread's subscription) and
 `routes/requests.ts` (a vote, a request's subscription) register two each. The mirror Worker's OCI routes are in
 section 6 and are not in this count. There is no route for stars, although the rate-limit comment in `index.ts`
@@ -78,6 +78,7 @@ in code; a Cloudflare rate-limiting rule on the zone covers `/mcp`, `/v1/tools*`
 | GET | `/namespaces` | none | `cached(c, 600)` | routes/profiles.ts | Publishers with a visible package (at most 500), most installed first, for the sitemap and llms.txt |
 | GET | `/namespaces/:ns` | none | `cached(c, 300)` | routes/profiles.ts | The profile (`effectiveProfile()`: host values with the owner's overrides), `stats` and visible tools (with `published_at`). `pending_review` namespaces answer 200 with only the handle and host links and no tools; `rejected`/`suspended` 404 |
 | GET | `/namespaces/:ns/activity` | none | `cached(c, 300)` | routes/profiles.ts | `?limit` (1–100, 30). Public audit events of visible packages: `version.published`, `version.yank`/`unyank`, `tool.deprecate`/`undeprecate`, `transfer.complete` |
+| GET | `/latest` | none | `cached(c, 3600)` | index.ts | Every visible package (`VISIBLE`, not `LISTED`): `{packages: [{ref, kind, latest, status, health, replacement?, source_unavailable?}], moved: [{from, to}]}` (`catalog.ts:latestVersions`). `ot`'s daily update note and MCP `list_installed` read it; the same answer for everyone |
 | GET | `/facets` | none | `cached(c, 600)` | index.ts | How many visible packages match each facet value: `inputs`, `outputs`, `categories`, `runtimes`, `no_keys`. `kind` is tool (default) or guide; counts ignore other filters |
 | GET | `/pivots` | none | `cached(c, 600)` | index.ts | `from=` comma list of entity types; follows `spec/pivots.json` to the input types each can feed (`inputs`, plus `unmapped` for types with none); top 10 non-broken tools per usable type |
 | GET | `/activity` | none | `cached(c, 300)` | index.ts → activity.ts | Public events from `audit_log` (published with `new_package`/`has_notes`, yanked, unyanked, deprecated with `replacement`, undeprecated, transferred) of visible, listed packages; `limit` 1–100 (30), `before` (ms), `kind`, `input`, `namespace`, `events` (`registry` default; `community` adds `issue_confirmed`/`issue_fixed` with `number` and `issue_kind`, and `request_accepted`/`request_published` with `number` and `tool`, worded from fields; `all`); `next_before` for paging; `published` events of versions under a week old carry `first_week`. Never carries reasons, actors or anything people wrote |
@@ -362,16 +363,22 @@ App's installation on `osintverse-community` (anonymous without one). With `UPST
 closed as fixed when the pin catches up) and one per upstream change (`upstream:<state>`), and tells admins about a
 license that no longer allows redistribution. `GET /tools/:ns/:name` gains `upstream` (`publicWatch`, plus `bump`).
 
-Bump pull requests (`bumps.ts`, 2 routes in `routes/upstream.ts`): with `UPSTREAM_WATCH=prs` (issues mode plus this)
+Bump pull requests (`bumps.ts`, 3 routes in `routes/upstream.ts`): with `UPSTREAM_WATCH=prs` (issues mode plus this)
 and the community bot set up, `maybeOpenBump` opens `otinstaller/bump-<release>` in the wrapper repository three days
-after a release, once per release (`bump_prs`; an older open one is closed), changing only the pin: the Dockerfile
-line `findPin` points at, or the pipx manifest's `version`, `package_version` and `wheel_sha256` (from PyPI). Commit
-pins and wrappers of upstream's own image get none.
+after a stable release (`upstreamSemver` not null), once per release (`bump_prs`; older open ones are closed, on
+GitHub too), changing only the pin: the Dockerfile line `findPin` points at, or the pipx manifest's `version` (as
+`wrapperVersion` gives it), `package_version` (upstream's, as it is) and `wheel_sha256` (from PyPI). Commit pins and
+wrappers of upstream's own image get none. A started release is followed (`settleBump` from `publishVersion` and a
+failed scan, and `sweepBumps` on the 15-minute cron: rejected version or publish job, a failed release workflow run via
+`workflowRuns`, nothing within 12 hours), ending `released` or `failed` (maintainers get an inbox item). With
+`UPSTREAM_WATCH=auto` the nightly check (`checkUpstream(..., {nightly: true})`, never "Check now") also runs
+`maybeAutoRelease`.
 
 | Method | Path | Auth | Caching | Defined in | Notes |
 | --- | --- | --- | --- | --- | --- |
-| GET | `/packages/:ns/:name/bump` | user | no-store | routes/upstream.ts | The open bump (`version`, `number`, `url`) and `can_release` |
-| POST | `/packages/:ns/:name/pulls/:number/release` | maintainer or reviewer, publish | no-store | routes/upstream.ts | `releaseBump`: 403 `not_package_maintainer`; a pull request whose files aren't `pinOnly` needs a reviewer (403 `not_pin_only`); squash-merges (409 `bump_not_mergeable`), then dispatches the release workflow with upstream's version (a patch on top when it exists) or tags `v<version>` for wheels |
+| GET | `/packages/:ns/:name/bump` | user | no-store | routes/upstream.ts | The current bump (`currentBump`: open, merged, failed, or released in the last 14 days) with `status`, `released_version`, `auto`, `merged_at`, `released_at`, `attempts`, and for people who can release it `error_code`, `error`, `run_url`; `auto_release_at` in auto mode; `can_release`, `auto_release`, `mode` |
+| POST | `/packages/:ns/:name/pulls/:number/release` | maintainer or reviewer, publish | no-store | routes/upstream.ts | `releaseBumpAs`: 403 `not_package_maintainer`; 404 `bump_not_found` (released, closed or unknown); 409 `bump_in_progress` while merged; an open pull request whose files aren't `pinOnly` needs a reviewer (403 `not_pin_only`); squash-merges an open one (409 `bump_not_mergeable`, and the bump stays open), a failed one is released again without merging; then dispatches the release workflow or commits the version and tags `v<version>` for wheels (`wrapperVersion`); a failure to start answers 503 `github_failed` and leaves the bump `failed`. Answers `{merged, upstream_version, version, attempt}` |
+| PUT | `/packages/:ns/:name/auto-release` | maintainer or reviewer, manage | no-store | routes/upstream.ts | `{enabled}`: whether auto mode may release this package's bumps (`tools.auto_release`), audited `bump.auto_on`/`bump.auto_off` |
 
 Change proposals (`proposals.ts`, 9 routes in `routes/proposals.ts`, table `change_proposals`): a community wrapper's
 maintainers and reviewers (`canPropose`, the same people as `canRelease`) change more than the pin. `wrapperByRef`

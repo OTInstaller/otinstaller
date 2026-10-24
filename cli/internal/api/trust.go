@@ -23,6 +23,36 @@ func (c *Client) Removed(ctx context.Context) (*Removed, error) {
 	return &out, c.anon().do(ctx, http.MethodGet, "/removed", nil, &out)
 }
 
+// LatestPackage is one package's latest version and lifecycle, from the registry-wide list.
+type LatestPackage struct {
+	Ref               string `json:"ref"`
+	Kind              string `json:"kind"`
+	Latest            string `json:"latest"`
+	Status            string `json:"status"`
+	Health            string `json:"health"`
+	Replacement       string `json:"replacement,omitempty"`
+	SourceUnavailable bool   `json:"source_unavailable,omitempty"`
+}
+
+// Move is a package's old address and where it lives now.
+type Move struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+// LatestList is every package's latest version: the same answer for everyone, so fetching it says nothing about
+// what is installed.
+type LatestList struct {
+	Packages []LatestPackage `json:"packages"`
+	Moved    []Move          `json:"moved"`
+}
+
+// Latest fetches the registry-wide list of latest versions (GET /latest).
+func (c *Client) Latest(ctx context.Context) (*LatestList, error) {
+	var out LatestList
+	return &out, c.anon().do(ctx, http.MethodGet, "/latest", nil, &out)
+}
+
 type ReportResult struct {
 	ID   string `json:"id"`
 	Note string `json:"note"`

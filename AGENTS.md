@@ -285,7 +285,7 @@ stderr and returns `ExitCodeFor(err)`. `cli/README.md` ships in the release arch
 
 | Package | Responsibility |
 | --- | --- |
-| `cli` | Every command. `root.go` has the `App` struct (`Out`, `Err`, `In`, `Config`, `API`, `Runner`, `OpenURL`, `CheckRemovals`, `Updater`, `SelfPath`, `JSON`, `AgentMode`), exit codes, `ExitError`/`exitErr` (with `Reason`, the JSON error code) and command registration; `machine.go` has JSON errors and the no-prompt rule; `mcp_*.go` the MCP server |
+| `cli` | Every command. `root.go` has the `App` struct (`Out`, `Err`, `In`, `Config`, `API`, `Runner`, `OpenURL`, `CheckRemovals`, `CheckUpdates`, `Updater`, `SelfPath`, `JSON`, `AgentMode`), exit codes, `ExitError`/`exitErr` (with `Reason`, the JSON error code) and command registration; `machine.go` has JSON errors and the no-prompt rule; `mcp_*.go` the MCP server |
 | `agent` | What an agent (or any run without a terminal) may do: consent classes (`Classify`: passive, networked, target, personal), the policy file, session approvals and limits, signed single-use consent tokens, the audit log. Shared by `ot mcp` and unattended `ot run` |
 | `specfiles` | Embedded copies of `spec/`'s envelope, run-all and error schemas, `pivots.json` and `types.json` (`go generate`) |
 | `api` | Registry HTTP client. Decodes `{"error":{...}}` into `*api.Error` (`Status`, `Code`, `Message`, `Hint`, `Docs`, `Problems`, `RequestID`) |
@@ -311,7 +311,8 @@ Trust: `report` (`--works`/`--broken` too), `claim`, `transfer`, `yank`, `deprec
 Other: `feedback`, `self-update`. Cobra adds `help`,
 `completion` and `--version`. The root's one persistent flag is `--json` (JSON output, and errors as one JSON line on
 stderr; `OT_OUTPUT=json` turns it on for a session). Its `PersistentPreRun` refreshes `cache/removed.json` (daily) and
-warns about installed versions that were removed. Every flag of every command, with its exit codes, is in
+warns about installed versions that were removed; it and the root `PersistentPostRun` also run the daily update note
+(`updatecheck.go`, below). Every flag of every command, with its exit codes, is in
 [docs/dev/cli.md](docs/dev/cli.md).
 
 Each is an `(a *App) xxxCmd() *cobra.Command` method. Files: `packages.go` (search/info/install/list/uninstall),
@@ -357,9 +358,20 @@ install when nothing takes a target), `runs.go` (runs), `saved.go` (extract/diff
   two latest runs compared).
 - `ot outdated` / `ot update` compare installed packages with the registry (`GET /tools/:ns/:name` and `/versions`,
   four at a time); rows carry lifecycle `flags` (`deprecated`, `possibly_broken`, `yanked`, `source_unavailable`,
-  `moved`) and `replacement`, each with a `warning:` line. `update` installs newer versions and moves a renamed package
-  to its new name (`forgetOldName`), and exits 1 when an update fails. `ot outdated` also notes a newer `ot` (looked up
-  at most daily into `cache/ot-latest.json`; never for dev builds, `ot mcp`, CI or `OT_NO_UPDATE_CHECK=1`).
+  `moved`, `held`) and `replacement`, each with a `warning:` line (`held` gets a `note:`). `update` installs newer
+  versions and moves a renamed package to its new name (`forgetOldName`), and exits 1 when an update fails. `ot outdated`
+  also notes a newer `ot` (looked up at most daily into `cache/ot-latest.json`; never for dev builds, `ot mcp`, CI or
+  `OT_NO_UPDATE_CHECK=1`).
+- Holds: installing an exact version (`ot install x@1.2.0`, or `ot run x@1.2.0` installing it) sets `held` in
+  `state.json`; `ot update --all` skips held packages, and naming one (`ot update x`, `ot install x`) moves it and
+  releases the hold. Under `AgentMode` an install keeps the hold as it was, and MCP `install_tool` refuses to change a
+  held version (`version_held`). User docs: `web/src/pages/docs/updates.md`.
+- The daily update note (`updatecheck.go`): at a terminal, at most once a day, never in CI, under `ot mcp`, with JSON
+  output, for quiet commands (`help`, completion, `uninstall`, `outdated`, `update`, `self-update`, `mcp`) or with
+  `OT_NO_UPDATE_CHECK=1`. The root `PersistentPreRun` starts `GET /v1/latest` (every package's latest version, the same
+  for everyone, into `cache/latest.json`) and the newer-`ot` lookup; the `PersistentPostRun` prints, after the command's
+  output, how many installed packages have newer versions (held ones counted apart) and a newer `ot`. Tests turn it on
+  with `App.CheckUpdates`. MCP `list_installed` reads the same list.
 - After a single `ot run` that timed out, or exited non-zero with no entities, `report_prompt.go` asks at a terminal
   whether to report it as broken; a yes sends `POST /tools/:ns/:name/run-reports` with the version, exit code, OS,
   engine and ot version only. Never under `ot mcp`, in CI, without a terminal, with `--json`/`-f json`, for local
@@ -367,7 +379,7 @@ install when nothing takes a target), `runs.go` (runs), `saved.go` (extract/diff
   exit code doesn't change.
 - `ot issues <tool>` lists a package's issues; `ot request <repo-url> [--note] [--vote]` asks for a tool to be packaged
   (or votes for the existing request); `ot changelog <tool>` prints release notes newer than the installed version
-  (through `stripControl`), and `ot info` shows the installed version's "What's new". `ot import --community` finishes
+  (through `stripControl`), and `ot info` shows the latest version's "What's new". `ot import --community` finishes
   as a reviewed submission (`--dockerfile`, `--request`); `--wrapper` keeps the admins' pull-request flow.
 - `ot feedback [message]` posts to `/v1/feedback` (`--kind bug|idea|question|other`, `--email`, `--about`); with no
   message it reads piped stdin, or opens `<site>/feedback`.
@@ -439,8 +451,8 @@ carries the token), `OT_RESULTS_DIR` (legacy
 keychain token; like every key, an env var of the same name wins), `OTINSTALLER_ID_TOKEN` (a GitLab CI job's ID token
 for `ot publish --oidc`; GitHub's comes from `ACTIONS_ID_TOKEN_REQUEST_URL`/`_TOKEN`), `OT_OUTPUT=json` (as `--json`),
 `OT_NONINTERACTIVE=1` (never prompt), `OT_CONSENT=off` (no `--yes` needed unattended; still audited), `OT_MAX_RAW`
-(leave `raw` out of large envelopes), `OT_NO_UPDATE_CHECK=1` (`ot outdated` doesn't look up the latest `ot`), `CI`
-(the envelope's `client` becomes `ci`, and there is no newer-`ot` check). `config.json` (`api_url`,
+(leave `raw` out of large envelopes), `OT_NO_UPDATE_CHECK=1` (no daily update note, and `ot outdated` doesn't look up the latest `ot`), `CI`
+(the envelope's `client` becomes `ci`, and there is no daily note or newer-`ot` check). `config.json` (`api_url`,
 `site_url`, `telemetry`, `format`) is read, never written. Install scripts:
 `OT_VERSION`, `OT_RELEASE_REPO`, `OT_INSTALL_DIR`, `OT_DOWNLOAD_BASE` (serve a release from another URL; checks still
 apply), `OT_NO_MODIFY_PATH=1` (Windows). Build-time only: `OT_RELEASE_PUBLIC_KEY`, `OT_RELEASE_KEY_FILE`,
@@ -526,7 +538,7 @@ and beta work, so `R2_*`, `ISSUES_REPO`/`ISSUES_TOKEN` and `EDGE_CACHE` are only
 | `requests.ts` | Tool requests: checks (`readUpstream`, `packagedFrom`, `knownRepo`), votes, triagers' decisions, `linkPublished` |
 | `people.ts` | Contributor profiles and the nightly `contributor_stats` recount |
 | `submissions.ts` | Community wrapper submissions: checks, `dockerfileChecks`, the community bot (`COMMUNITY_*`), the first-release review gate |
-| `upstream-pin.ts` / `upstream.ts` / `bumps.ts` | Reading a wrapper's upstream pin from its Dockerfile; the nightly upstream watcher (`UPSTREAM_WATCH`); bump pull requests and "merge and release" |
+| `upstream-pin.ts` / `upstream.ts` / `bumps.ts` | Reading a wrapper's upstream pin from its Dockerfile; the nightly upstream watcher (`UPSTREAM_WATCH`); bump pull requests, "merge and release", following each release to released or failed (`settleBump`, `sweepBumps`) and releasing on its own in auto mode |
 | `proposals.ts` | Change proposals: a wrapper's maintainers change its manifest, Dockerfile or README beyond the pin (`checkProposal`), the community bot opens the pull request, a reviewer who isn't the proposer approves it and the bot merges and releases it |
 | `first-week.ts` | A new version's first week: its works/broken counts (`firstWeekCounts`) for the status line, the versions list and the activity feed |
 | `known-repos.ts` | **Generated** from otlite's catalog and `seed/candidates.md`; don't edit |
@@ -591,7 +603,7 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
   `POST /internal/drills/:id`, `/internal/health[/targets]`. Scans, backup runs and drills each use their own
   single-use token (scan 1 h, run 3 h or 12 h weekly, drill 6 h); the health endpoints use the static shared
   `HEALTH_TOKEN`.
-- The full route table (191 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
+- The full route table (193 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
   `spec/openapi/v1.json` describes the public and owner routes, each with its token scope as `x-scope`; a test in
   `api.test.ts` fails when a route and the document disagree, so add new routes to both.
 - 429s carry `Retry-After`, `RateLimit-Policy` and `retry_after_s` (`rateLimited` in `lib/errors.ts`).
@@ -680,7 +692,7 @@ migrations add publish intake (0002), scans/review and `notifications` (0003), s
 `email_prefs.releases`, `versions.announced_at`, 0029), tool requests (`tool_requests`,
 `request_votes`, 0018), `contributor_stats` (0019), community submissions (`tools.needs_first_review`,
 `tool_maintainers`, `wrapper_submissions`, 0020), the upstream watcher (`upstream_watch`, 0021), bump pull requests
-(`bump_prs`, 0022), direct publishing (`publish_jobs` `namespace_id`/`bundle_key`/`submitted_by`,
+(`bump_prs`, 0022; outcomes and `tools.auto_release`, 0028), direct publishing (`publish_jobs` `namespace_id`/`bundle_key`/`submitted_by`,
 `namespaces.created_by`, 0023), images hosted on the mirror (`mirror_pushes`, `backups.hosted`, 0024), trusted
 publishing (`trusted_publishers`, the CI token columns `api_tokens.namespace_id`/`package`/`trusted_publisher_id`/
 `oidc_json`/`jti`, and `publish_jobs.trusted_publisher_id`/`ci_json`, 0025), request discussions
@@ -932,7 +944,15 @@ The plan is [docs/roadmap.md](docs/roadmap.md) (phase 1 built). User docs: `web/
   for a reviewer who isn't the submitter (`needs_first_review`); the submitter becomes a maintainer.
 - **Upstream watcher** (`upstream.ts`, 0021; pins from `upstream-pin.ts`): nightly, at most three requests per
   wrapper. `UPSTREAM_WATCH=report` (default) records; `issues` opens and closes outdated issues; `prs` also has the
-  bot open pin-only bump pull requests (`bumps.ts`, 0022), which maintainers merge and release from the package page.
+  bot open pin-only bump pull requests for stable releases (`bumps.ts`, 0022, 0028), which maintainers merge and
+  release from the package page; `auto` also has the nightly check merge and release a pin-only bump itself a week
+  after upstream's release (`maybeAutoRelease`: stable version, redistributable license, still open on GitHub, exactly
+  the planned file, the package's `tools.auto_release` on, at most ten a day). Each release is followed: published
+  settles the bump `released` and closes its outdated issue; a rejected version or publish job, a failed release
+  workflow run or nothing within 12 hours settles it `failed` and tells the maintainers (`settleBump`, `sweepBumps` on
+  the 15-minute cron), and a failed bump can be released again under a new version. The wrapper's version is
+  upstream's as X.Y.Z (`upstreamSemver`: 2.2 is 2.2.0), or a patch on top when that isn't above every version it had
+  (`wrapperVersion`).
 - **Change proposals** (`proposals.ts`, 0027): a wrapper's maintainers and reviewers edit its `otinstaller.yaml`,
   Dockerfile or README on the package's Changes tab. `checkProposal` keeps only what differs from main, validates the
   manifest, refuses identity changes (`protected_field`) and secrets, moves the version past every version the package
@@ -1295,8 +1315,9 @@ change. Keep this list current when you fix one or find another.
 - Stars are still never written (no route records one), though ranking and `stars` columns read them.
 - Community: `contributor_stats` is only as fresh as the last nightly run.
 - Change proposals cover `otinstaller.yaml`, the Dockerfile and the README only (not docs pages or other files). A
-  proposal or bump pull request merged or closed on GitHub directly stays open in the registry (nothing reads
-  `pull_request` webhooks), and a merged proposal whose release fails its scan still shows as merged.
+  proposal merged or closed on GitHub directly stays open in the registry (nothing reads `pull_request` webhooks; a
+  bump closed there is only noticed by auto mode), and a merged proposal whose release fails its scan still shows as
+  merged (bumps report their outcome; proposals don't yet).
 - A new version's first-week counts are signed-in confirmations only; anonymous failed-run reports (`run_signals`)
   only reach it once they open an issue.
 - Bump pull requests skip wrappers that pin upstream's own image (they get an outdated issue only), and commit pins.
@@ -1348,7 +1369,7 @@ change. Keep this list current when you fix one or find another.
 | Submission | A community wrapper someone packaged through the wizard (`wrapper_submissions`); its first release waits for a reviewer |
 | Community bot | The second GitHub App (`COMMUNITY_APP_*`), installed only on `osintverse-community`, that creates wrapper repositories and opens bump pull requests and change proposals' pull requests |
 | Upstream watcher | The nightly check of each wrapper's pin against its upstream's latest release (`upstream_watch`, `UPSTREAM_WATCH`) |
-| Bump pull request | The community bot's pull request changing only a wrapper's pin; maintainers merge and release it (`bump_prs`) |
+| Bump pull request | The community bot's pull request changing only a wrapper's pin; maintainers merge and release it, or the registry does in auto mode, and its release ends `released` or `failed` (`bump_prs`) |
 | Change proposal | A wrapper maintainer's change to its manifest, Dockerfile or README, opened as a pull request by the community bot; a reviewer who isn't the proposer approves it (`change_proposals`) |
 | First week | The seven days after a version is published, when its works/broken counts are shown beside the previous version's |
 | Failure prompt | `ot run`'s "Report it as broken?" after a run that failed; sends no inputs or output |
@@ -1362,6 +1383,7 @@ change. Keep this list current when you fix one or find another.
 | Edge cache | `caches.default` in front of anonymous API reads (`edge-cache.ts`) |
 | Envelope | The normalised result `ot run` prints (`envelope.Version = 1`) |
 | Typed input | A positional like `d:example.com` that maps to an input by type |
+| Held | An installed package the person installed at an exact version (`held` in `state.json`): `ot update --all` leaves it, and agents never move it |
 | Case | A folder under `results/` grouping saved runs (`--case`; playbooks use `playbook-<name>`) |
 | Playbook | A named list of tools run against the same inputs |
 | Data dir | `OT_HOME`, else `%APPDATA%\ot`, else `~/.ot`: `state.json`, `keys.json`, `cache/`, `playbooks/`, `guides/`, `agent-policy.json`, `agent-audit.jsonl` |

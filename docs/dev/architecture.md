@@ -708,6 +708,7 @@ and daily for the warning (`cli/internal/cli/trust.go:removedList`).
    | `/tools/:ns/:name/:version/scans` | 300 |
    | `/namespaces/:ns` | 300 |
    | `/pivots`, `/removed` | 600 |
+   | `/latest` | 3600 |
    | `/tools/:ns/:name/docs`, `/guides`, `/readme` | 600 |
    | `/guides/:ns/:name[/:version]` | 60 (`latest`) / 3600 |
    | `/tools/:ns/:name/:version/wheel/:file` | 86400 (header set in `wheelResponse`) |
@@ -770,7 +771,9 @@ The design is [docs/agent-friendly-plan.md](../agent-friendly-plan.md); the rule
          client supports elicitation    -> form with the tool's ethics, egress and notifies_target
          neither (or the form failed)   -> error consent_required + summary + consent_token
                                            (HMAC over tool, artifact and arguments; single use; 10 min; this process)
-     install: RequireSignature (signer recorded and cosign present); no local manifests, yanked, failed or broken
+     install: RequireSignature (signer recorded and cosign present); no local manifests, yanked, failed or broken;
+              on an installed tool the question names both versions, a held one is refused (version_held), a native
+              one too (trust_refused), and the same version answers already_installed
      run: the same runner and sandbox as `ot run`; output saved under <ot home>/results (or --results-dir)
      agent.Record -> <ot home>/agent-audit.jsonl (rotated at 10 MiB)
 ```
@@ -821,7 +824,12 @@ The remote server is separate and runs nothing:
    repoState (gone, renamed, archived, license_changed) --> currentPin (override, pipx, Dockerfile at git_sha via
    findPin, upstream's own image) --> latestRelease (releases/latest with If-None-Match | PyPI | compare for commits)
    --> upstream_watch row; UPSTREAM_WATCH=issues: outdated issue 3 days after a release, closed when caught up;
-   =prs: maybeOpenBump (pin-only PR) --> POST /packages/:ns/:name/pulls/:n/release (maintainer) --> merge + release
+   =prs: maybeOpenBump (pin-only PR for a stable release, superseded ones closed) --> POST
+   /packages/:ns/:name/pulls/:n/release (maintainer) --> merge + release (wrapperVersion; status merged);
+   =auto: also maybeAutoRelease (nightly only, a week after the release, tools.auto_release) --> the same release
+   --> publishVersion / applyScanResults --> settleBump: released (outdated issue closed) | failed (maintainers told)
+   --> every 15 min sweepBumps: rejected version or job, failed release workflow run, nothing in 12 h --> failed;
+       a failed bump is released again (no merge, new version)
 
  GET /packages/:ns/:name/files (maintainer: main's otinstaller.yaml, Dockerfile, README.md via the community bot)
    --> POST /packages/:ns/:name/proposals {title, note, files}: createProposal --> checkProposal (only what changed;

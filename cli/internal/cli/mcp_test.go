@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -15,6 +17,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/otinstaller/otinstaller/cli/internal/agent"
+	"github.com/otinstaller/otinstaller/cli/internal/api"
+	"github.com/otinstaller/otinstaller/cli/internal/state"
 )
 
 // toolVariant writes a copy of the docker-tool fixture with other inputs, network and ethics.
@@ -563,5 +567,84 @@ func TestMCPBatchShowsFinishedRows(t *testing.T) {
 	b, _ := h.call("get_batch", map[string]any{"batch_id": out["batch_id"]})
 	if b["status"] != "interrupted" {
 		t.Fatalf("after shutdown: %v", b)
+	}
+}
+
+// mcpUpdateRegistry is fakeUpdateRegistry with signed manifests, as agents only install signed images.
+func mcpUpdateRegistry(t *testing.T) *httptest.Server {
+	t.Helper()
+	inner := fakeUpdateHandler(t)
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec := httptest.NewRecorder()
+		inner.ServeHTTP(rec, r)
+		if !strings.HasSuffix(r.URL.Path, "/manifest") || rec.Code != 200 {
+			w.WriteHeader(rec.Code)
+			w.Write(rec.Body.Bytes())
+			return
+		}
+		var body map[string]any
+		json.Unmarshal(rec.Body.Bytes(), &body)
+		body["signer_identity"] = "https://github.com/dheeraj/holehe-lite/.github/workflows/release.yml@refs/heads/main"
+		body["signer_issuer"] = "https://token.actions.githubusercontent.com"
+		json.NewEncoder(w).Encode(body)
+	}))
+}
+
+// list_installed says which tools have updates; install_tool updates one, saying from which version, and never moves
+// a version the person held.
+func TestMCPInstallToolUpdates(t *testing.T) {
+	srv := mcpUpdateRegistry(t)
+	defer srv.Close()
+	var question string
+	h := newMCP(t, "", "", func(req *mcp.ElicitRequest) *mcp.ElicitResult {
+		question = req.Params.Message
+		return decide("allow_once")(req)
+	})
+	h.app.API = api.New(srv.URL+"/v1", "test")
+	// The person installed and held 1.2.0 themselves.
+	h.app.AgentMode = false
+	if code := run(h.app, "install", "dheeraj/holehe-lite@1.2.0"); code != 0 {
+		t.Fatalf("install: exit %d: %s", code, h.app.Err)
+	}
+	h.app.AgentMode = true
+
+	out, e := h.call("list_installed", nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	row := out["installed"].([]any)[0].(map[string]any)
+	if row["latest"] != "1.3.0" || row["update_available"] != true || row["held"] != true || out["latest_checked_at"] == nil {
+		t.Errorf("list_installed: %v", out)
+	}
+
+	if _, e := h.call("install_tool", map[string]any{"tool": "dheeraj/holehe-lite"}); e == nil || e["code"] != "version_held" ||
+		!strings.Contains(e["hint"].(string), "ot update dheeraj/holehe-lite") {
+		t.Fatalf("held: %v", e)
+	}
+	if h.asked.Load() != 0 {
+		t.Error("a held version must be refused before asking")
+	}
+
+	st, _ := state.Load()
+	st.Installed["dheeraj/holehe-lite"].Held = false
+	st.Save()
+	out, e = h.call("install_tool", map[string]any{"tool": "dheeraj/holehe-lite"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if out["status"] != "updated" || out["previous"] != "1.2.0" || out["version"] != "1.3.0" {
+		t.Errorf("update: %v", out)
+	}
+	if !strings.HasPrefix(question, "Update dheeraj/holehe-lite from 1.2.0 to 1.3.0?") {
+		t.Errorf("question: %q", question)
+	}
+	if st, _ := state.Load(); st.Installed["dheeraj/holehe-lite"].Held {
+		t.Error("an agent's install must not hold a version")
+	}
+
+	asked := h.asked.Load()
+	out, e = h.call("install_tool", map[string]any{"tool": "dheeraj/holehe-lite"})
+	if e != nil || out["status"] != "already_installed" || h.asked.Load() != asked {
+		t.Errorf("already installed: %v %v", out, e)
 	}
 }

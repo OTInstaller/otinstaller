@@ -6,7 +6,7 @@ import pivotMap from "../../spec/pivots.json";
 import typeDescriptions from "../../spec/types.json";
 import openapi from "../../spec/openapi/v1.json";
 import { rank } from "./ranking";
-import { cached, findTool, findVersion, notFound, LISTED, publishedVia, rankInput, summary, SUMMARY_COLUMNS, VISIBLE, type SummaryRow } from "./catalog";
+import { cached, findTool, findVersion, latestVersions, notFound, LISTED, publishedVia, rankInput, summary, SUMMARY_COLUMNS, VISIBLE, type SummaryRow } from "./catalog";
 import type { AppEnv, Env, PublishMessage } from "./env";
 import { apiError, d1RetryAfter, errorDocs, rateLimited, windowRetry } from "./lib/errors";
 import { authRoutes } from "./routes/auth";
@@ -27,8 +27,8 @@ import { requestRoutes } from "./routes/requests";
 import { peopleRoutes } from "./routes/people";
 import { submissionRoutes } from "./routes/submissions";
 import { refreshContributorStats } from "./people";
-import { publicWatch, queueUpstreamChecks, type WatchRow } from "./upstream";
-import { openBumpFor } from "./bumps";
+import { publicWatch, queueUpstreamChecks, watchMode, type WatchRow } from "./upstream";
+import { autoReleaseAt, currentBump, sweepBumps } from "./bumps";
 import { upstreamRoutes } from "./routes/upstream";
 import { proposalRoutes } from "./routes/proposals";
 import { deliverInbox, purgeInbox } from "./inbox";
@@ -309,11 +309,21 @@ app.get("/tools/:ns/:name", async (c) => {
   ).bind(row.id).all<{ handle: string; reason: string }>()).results;
   // What the upstream watcher last found, for community wrappers.
   const watch = await c.env.DB.prepare(`SELECT * FROM upstream_watch WHERE tool_id = ?`).bind(row.id).first<WatchRow>();
-  const bump = watch ? await openBumpFor(c.env, row.id) : null;
+  const bump = watch ? await currentBump(c.env, row.id) : null;
+  // In auto mode an open bump goes out on its own on a set date, unless the maintainers turned that off.
+  const autoAt = bump?.status === "open" && watch && watchMode(c.env) === "auto" &&
+    (await c.env.DB.prepare(`SELECT auto_release FROM tools WHERE id = ?`).bind(row.id).first<{ auto_release: number }>())?.auto_release
+    ? autoReleaseAt(watch, bump) : undefined;
   cached(c, 60);
   return c.json({
     ...summary(row),
-    upstream: watch ? { ...publicWatch(watch), bump: bump ? { version: bump.version, number: bump.pr_number, url: bump.url } : undefined } : undefined,
+    upstream: watch ? {
+      ...publicWatch(watch),
+      bump: bump ? {
+        version: bump.version, number: bump.pr_number, url: bump.url, status: bump.status, released_version: bump.released_version ?? undefined,
+        auto_release_at: autoAt,
+      } : undefined,
+    } : undefined,
     packaged_by: maintainers.find((m) => m.reason === "submitter")?.handle ?? undefined,
     maintainers: maintainers.length ? maintainers.map((m) => m.handle) : undefined,
     sample: sampleJson ? { ...sampleJson, version: row.latest_version, recorded_at: smoke!.ran_at } : undefined,
@@ -463,6 +473,14 @@ app.get("/facets", async (c) => {
   return c.json({ kind, inputs: counts(0), outputs: counts(1), categories: counts(2), runtimes: counts(3), no_keys: ((res[4]?.results ?? [])[0] as { n: number } | undefined)?.n ?? 0 });
 });
 
+// Every package's latest version in one small answer, the same for everyone: `ot` compares installed packages with it
+// once a day, so the check says nothing about what a person has installed.
+app.get("/latest", async (c) => {
+  const result = await latestVersions(c.env.DB);
+  cached(c, 3600);
+  return c.json(result);
+});
+
 // What changed across the registry, newest first: releases, yanks, deprecations and transfers. The site's feeds and
 // "What's new" page read it with fixed parameters, so a few cache entries serve everyone.
 app.get("/activity", async (c) => {
@@ -574,6 +592,8 @@ export default {
   async scheduled(event: ScheduledController, env: Env) {
     // Every 15 minutes: close scans that never reported back, and poll sources that are due.
     await expireStaleScans(env);
+    // Bumps whose release started: published, failed, or never arrived.
+    await sweepBumps(env).catch((e) => console.error("following bump releases failed", e));
     await pollDueSources(env);
     // Publisher profiles from GitHub and GitLab: never synced, or older than 6 hours.
     await refreshDueProfiles(env);

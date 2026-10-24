@@ -16,8 +16,13 @@ import (
 
 // fakeUpdateRegistry serves dheeraj/holehe-lite at 1.3.0 (1.2.0 yanked) and says dheeraj/gone was removed;
 // dheeraj/flagged is at 1.2.0, deprecated, possibly broken, without its source, and moved to dheeraj/fresh.
-// Anything else is not in the registry.
+// Anything else is not in the registry. GET /latest lists both, with dheeraj/flagged's move.
 func fakeUpdateRegistry(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(fakeUpdateHandler(t))
+}
+
+func fakeUpdateHandler(t *testing.T) http.Handler {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(fixtures, "valid", "docker-tool.yaml"))
 	if err != nil {
@@ -27,8 +32,24 @@ func fakeUpdateRegistry(t *testing.T) *httptest.Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	old, _, err := manifest.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/v1/latest":
+			json.NewEncoder(w).Encode(map[string]any{
+				"packages": []map[string]any{
+					{"ref": "dheeraj/holehe-lite", "kind": "tool", "latest": "1.3.0", "status": "active", "health": "healthy"},
+					{"ref": "dheeraj/fresh", "kind": "tool", "latest": "1.2.0", "status": "deprecated", "health": "broken", "replacement": "dheeraj/better"},
+				},
+				"moved": []map[string]any{{"from": "dheeraj/flagged", "to": "dheeraj/fresh"}},
+			})
+		case "/v1/tools/dheeraj/holehe-lite/1.2.0/manifest":
+			json.NewEncoder(w).Encode(map[string]any{"ref": "dheeraj/holehe-lite", "version": "1.2.0", "status": "yanked", "manifest": old})
+		case "/v1/tools/dheeraj/holehe-lite/1.3.0/manifest":
+			json.NewEncoder(w).Encode(map[string]any{"ref": "dheeraj/holehe-lite", "version": "1.3.0", "status": "published", "manifest": doc})
 		case "/v1/tools/dheeraj/holehe-lite":
 			json.NewEncoder(w).Encode(map[string]any{"namespace": "dheeraj", "name": "holehe-lite", "latest_version": "1.3.0", "status": "active", "health": "healthy", "manifest": doc})
 		case "/v1/tools/dheeraj/holehe-lite/versions":
@@ -50,7 +71,7 @@ func fakeUpdateRegistry(t *testing.T) *httptest.Server {
 			w.WriteHeader(404)
 			w.Write([]byte(`{"error":{"code":"not_found","message":"not found"}}`))
 		}
-	}))
+	})
 }
 
 // Lifecycle flags come with the status, whatever it is, plus a warning each.
