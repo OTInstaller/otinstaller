@@ -389,12 +389,13 @@ export async function publishVersion(env: Env, versionId: string, opts: { backup
   // An image a publisher pushed to the mirror goes public now, recorded as its own backup.
   if (m.runtime?.kind === "docker") await recordHostedImage(env, versionId, v.tool_id, m.runtime.image ?? "");
   if (announce) {
-    // People following open broken or outdated issues are asked whether the new version fixes them; the package's
-    // other followers hear that it is out.
+    // People following open broken or outdated issues are asked whether the new version fixes them...
     await announceVersion(env, v.tool_id, v.version).catch((e) => console.error("announcing the version on issues failed", e));
-    await notifyFollowers(env, v.tool_id, {
-      kind: "release", summary: `${refOf(v)} ${v.version} is out`,
-      path: v.kind === "guide" ? `/guides/${refOf(v)}` : `/${refOf(v)}/versions#v${v.version}`,
+    // ...and so do the people who follow the package, its publisher, or (for a new package) an input type it takes.
+    await notifyFollowers(env, {
+      toolId: v.tool_id, ref: refOf(v), namespace: v.namespace, version: v.version, kind: v.kind === "guide" ? "guide" : "tool",
+      first: published.length === 1,
+      path: v.kind === "guide" ? `/guides/${refOf(v)}` : published.length === 1 ? `/${refOf(v)}` : `/${refOf(v)}/versions#v${v.version}`,
     });
   }
   // A reviewed community submission is out: its submitter becomes a maintainer.

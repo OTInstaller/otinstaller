@@ -603,7 +603,7 @@ long as their own `Cache-Control` says; there is no purge. On a hit the original
   `POST /internal/drills/:id`, `/internal/health[/targets]`. Scans, backup runs and drills each use their own
   single-use token (scan 1 h, run 3 h or 12 h weekly, drill 6 h); the health endpoints use the static shared
   `HEALTH_TOKEN`.
-- The full route table (193 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
+- The full route table (196 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
   `spec/openapi/v1.json` describes the public and owner routes, each with its token scope as `x-scope`; a test in
   `api.test.ts` fails when a route and the document disagree, so add new routes to both.
 - 429s carry `Retry-After`, `RateLimit-Policy` and `retry_after_s` (`rateLimited` in `lib/errors.ts`).
@@ -689,7 +689,7 @@ migrations add publish intake (0002), scans/review and `notifications` (0003), s
 (0013), publisher profiles (`namespace_profiles`, `namespace_hosts`, 0014), release-note sources (0015), the community
 (handles, `community_roles`, `issues`, `issue_comments`, `confirmations`, `run_signals`, `content_flags`,
 `issue_subscriptions`, 0016), notifications (`email_prefs`, `inbox`, 0017; following packages' releases, `package_follows`,
-`email_prefs.releases`, `versions.announced_at`, 0029), tool requests (`tool_requests`,
+`email_prefs.releases`, `versions.announced_at`, 0029; following publishers and input types, `follows`, 0030), tool requests (`tool_requests`,
 `request_votes`, 0018), `contributor_stats` (0019), community submissions (`tools.needs_first_review`,
 `tool_maintainers`, `wrapper_submissions`, 0020), the upstream watcher (`upstream_watch`, 0021), bump pull requests
 (`bump_prs`, 0022; outcomes and `tools.auto_release`, 0028), direct publishing (`publish_jobs` `namespace_id`/`bundle_key`/`submitted_by`,
@@ -697,7 +697,7 @@ migrations add publish intake (0002), scans/review and `notifications` (0003), s
 publishing (`trusted_publishers`, the CI token columns `api_tokens.namespace_id`/`package`/`trusted_publisher_id`/
 `oidc_json`/`jti`, and `publish_jobs.trusted_publisher_id`/`ci_json`, 0025), request discussions
 (`request_comments`, `request_subscriptions`, flags on requests, 0026) and change proposals (`change_proposals`,
-0027). That is 58 tables plus `tools_fts`; every
+0027). That is 59 tables plus `tools_fts`; every
 table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
 
@@ -928,7 +928,10 @@ The plan is [docs/roadmap.md](docs/roadmap.md) (phase 1 built). User docs: `web/
 - **Following releases** (0029): anyone signed in follows a package (`PUT /tools/:ns/:name/follow`, the "Follow
   releases" island on tool pages) and gets a `release` item (scope `releases`, its own email preference) when a
   version becomes the latest. People following one of its open broken or outdated issues get the issue's item
-  instead. Follows are private: no counts, nothing on profiles.
+  instead. Follows are private: no counts, nothing on profiles. Publishers and input types can be followed too
+  (0030, `PUT /me/follows/publisher|input/:target`, the same island on publisher and input pages): a publisher's
+  followers hear of each of its releases, an input type's of new packages taking it, each person once per release
+  (`notifyFollowers`).
 - **Requests** (`requests.ts`, 0018): one per repository, checked when made (public, not packaged or requested,
   no upstream manifest; a license the registry can't redistribute or an archived repository is declined at once);
   votes; triagers decide; a published package from that repository answers it (`linkPublished`). Each has a

@@ -54,20 +54,47 @@ export async function maintainers(env: Env, namespaceId: string, toolId?: string
     .bind(namespaceId, toolId ?? "").all<{ user_id: string }>()).results.map((r) => r.user_id);
 }
 
+/** A version that just became its package's latest, as notifyFollowers words it. */
+export interface Release {
+  toolId: string;
+  /** namespace/name */
+  ref: string;
+  namespace: string;
+  version: string;
+  kind: "tool" | "guide";
+  /** The package's first published version: input-type followers hear about new packages only. */
+  first: boolean;
+  path: string;
+}
+
 /**
- * A new version of a package: one inbox item for each of its followers, written by a single statement however many
- * there are. People who follow one of the package's open broken or outdated issues are left out: they hear about the
- * version on that issue (announceVersion), so nobody gets two items for one release.
+ * A version became its package's latest: one inbox item for each person who follows the package, its publisher, or
+ * (for a new package) one of the input types it takes, written by a single statement however many there are. Each
+ * person gets one item, worded for the closest thing they follow. People who follow one of the package's open broken
+ * or outdated issues are left out: they hear about the version on that issue (announceVersion).
  */
-export async function notifyFollowers(env: Env, toolId: string, item: Omit<Item, "scope" | "tool_id">, now = Date.now()) {
+export async function notifyFollowers(env: Env, r: Release, now = Date.now()) {
+  const what = r.kind === "guide" ? "guide" : "tool";
   await env.DB.prepare(
     `INSERT INTO inbox (id, user_id, kind, scope, tool_id, issue_id, actor_id, summary, path, created_at)
-     SELECT ? || upper(hex(randomblob(8))), f.user_id, ?, 'releases', f.tool_id, NULL, NULL, ?, ?, ?
-     FROM package_follows f JOIN users u ON u.id = f.user_id
-     WHERE f.tool_id = ? AND u.banned_at IS NULL AND f.user_id NOT IN (
-       SELECT s.user_id FROM issue_subscriptions s JOIN issues i ON i.id = s.issue_id WHERE i.tool_id = ? AND s.muted = 0 AND ${ANNOUNCED_ISSUES})`,
-  ).bind(ulid(now).slice(0, 10), item.kind, item.summary.slice(0, 300), item.path, now, toolId, toolId).run()
-    .catch((e) => console.error("writing release notifications failed", e));
+     SELECT ?1 || upper(hex(randomblob(8))), c.user_id, 'release', 'releases', ?2, NULL, NULL,
+       substr(CASE c.why WHEN 0 THEN ?3 WHEN 1 THEN ?4 ELSE 'New ' || ?5 || ' for ' || replace(c.input, '_', ' ') || ': ' || ?6 END, 1, 300), ?7, ?10
+     FROM (
+       SELECT user_id, MIN(why) AS why, MIN(input) AS input FROM (
+         SELECT user_id, 0 AS why, NULL AS input FROM package_follows WHERE tool_id = ?2
+         UNION ALL SELECT user_id, 1, NULL FROM follows WHERE kind = 'publisher' AND target = ?8
+         UNION ALL SELECT user_id, 2, target FROM follows
+           WHERE kind = 'input' AND ?9 = 1 AND target IN (SELECT type FROM tool_io WHERE tool_id = ?2 AND direction = 'in')
+       ) GROUP BY user_id
+     ) c JOIN users u ON u.id = c.user_id
+     WHERE u.banned_at IS NULL AND c.user_id NOT IN (
+       SELECT s.user_id FROM issue_subscriptions s JOIN issues i ON i.id = s.issue_id WHERE i.tool_id = ?2 AND s.muted = 0 AND ${ANNOUNCED_ISSUES})`,
+  ).bind(
+    ulid(now).slice(0, 10), r.toolId,
+    `${r.ref} ${r.version} is out`,
+    r.first ? `${r.namespace} published a new ${what}: ${r.ref}` : `${r.ref} ${r.version} is out`,
+    what, r.ref, r.path, r.namespace, r.first ? 1 : 0, now,
+  ).run().catch((e) => console.error("writing release notifications failed", e));
 }
 
 /** Writes items now; failures are logged, never thrown, so taking part never fails over a notification. */
