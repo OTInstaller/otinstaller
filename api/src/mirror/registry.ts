@@ -243,6 +243,46 @@ async function pending(env: MirrorEnv, name: string, digest: string): Promise<bo
   return !!(await env.MIRROR.head(keys.pending(name, digest)));
 }
 
+/** What a caller may not read in a repository: manifests withheld, and the blobs only they use. */
+type Withheld = { manifests: Set<string>; blobs: Set<string> };
+
+/**
+ * The manifests of a repository a caller may not read: taken-down images (hidden/<name>@<digest>) and, unless the
+ * caller publishes there, unreleased ones (pending/<name>@<digest>); with the platform manifests of those indexes
+ * (unless a readable index uses them too) and their signatures and attestations (sha256-<hex> tags). Blobs are withheld
+ * when no readable manifest uses them, so knowing a layer's digest isn't enough to read it. Null when the repository
+ * has no such marker, which costs two list calls.
+ */
+async function withheldIn(env: MirrorEnv, name: string, who: Caller): Promise<Withheld | null> {
+  const markers = [
+    ...(await env.MIRROR.list({ prefix: `hidden/${name}@`, limit: 1000 })).objects,
+    ...(who.push.has(name) ? [] : (await env.MIRROR.list({ prefix: `pending/${name}@`, limit: 1000 })).objects),
+  ];
+  if (!markers.length) return null;
+  const marked = new Set(markers.map((o) => o.key.slice(o.key.indexOf("@") + 1)));
+  const prefix = keys.manifest(name, "");
+  const digests = (await listAll(env.MIRROR, prefix)).map((o) => o.key.slice(prefix.length)).filter((d) => DIGEST.test(d));
+  const docs = new Map<string, ManifestDoc>();
+  for (const d of digests) docs.set(d, (await readManifest(env.MIRROR, name, d)) ?? {});
+  const withheld = new Set<string>(marked);
+  const usedByReadable = new Set<string>();
+  for (const [d, doc] of docs) for (const child of references(doc).manifests) (marked.has(d) ? withheld : usedByReadable).add(child);
+  for (const d of usedByReadable) if (!marked.has(d)) withheld.delete(d);
+  // Signatures, attestations and SBOMs of a withheld image are withheld with it.
+  const tagPrefix = keys.tag(name, "");
+  for (const o of await listAll(env.MIRROR, tagPrefix)) {
+    const subject = ATTACHED_TAG.exec(o.key.slice(tagPrefix.length))?.[1];
+    if (!subject || !withheld.has(`sha256:${subject}`)) continue;
+    const target = (await (await env.MIRROR.get(o.key))?.text())?.trim();
+    if (target && DIGEST.test(target)) withheld.add(target);
+  }
+  const readableBlobs = new Set<string>();
+  for (const [d, doc] of docs) if (!withheld.has(d)) for (const b of references(doc).blobs) readableBlobs.add(b);
+  const blobs = new Set<string>();
+  for (const [d, doc] of docs) if (withheld.has(d)) for (const b of references(doc).blobs) if (!readableBlobs.has(b)) blobs.add(b);
+  return { manifests: withheld, blobs };
+}
+
 export async function mirrorFetch(req: Request, env: MirrorEnv): Promise<Response> {
   const url = new URL(req.url);
   const path = url.pathname;
@@ -275,11 +315,16 @@ export async function mirrorFetch(req: Request, env: MirrorEnv): Promise<Respons
       // Not supported: clients fall back to the referrers tag schema.
       return ociError(404, "UNSUPPORTED", "the referrers API is not supported; use the tag schema");
     case "tags":
-      return listTags(env, r.name, url);
-    case "blob":
+      if (!who.admin && (await hidden(env, r.name))) return ociError(404, "NAME_UNKNOWN", "no such repository");
+      return listTags(env, r.name, url, who.admin ? null : await withheldIn(env, r.name, who));
+    case "blob": {
       if (req.method === "DELETE") return ociError(405, "UNSUPPORTED", "blobs are deleted with their manifests");
-      if (!who.admin && (await hidden(env, r.name))) return ociError(404, "BLOB_UNKNOWN", "blob unknown");
+      if (!who.admin) {
+        if (await hidden(env, r.name)) return ociError(404, "BLOB_UNKNOWN", "blob unknown");
+        if ((await withheldIn(env, r.name, who))?.blobs.has(r.digest)) return ociError(404, "BLOB_UNKNOWN", "blob unknown");
+      }
       return getBlob(env, r.name, r.digest, req.method === "HEAD");
+    }
     case "manifest":
       if (req.method === "PUT") return putManifest(req, env, r.name, r.ref, who);
       if (req.method === "DELETE") {
@@ -312,6 +357,8 @@ async function getManifest(env: MirrorEnv, name: string, ref: string, head: bool
     if (await hidden(env, name, digest)) return unknown();
     // Before it is published, only its publishers see an image (cosign has to read it to sign it).
     if (!who.push.has(name) && (await pending(env, name, digest))) return unknown();
+    // A platform manifest of a hidden or unreleased index, or its signature, is withheld with it.
+    if ((await withheldIn(env, name, who))?.manifests.has(digest)) return unknown();
   }
   const obj = await env.MIRROR.get(keys.manifest(name, digest));
   if (!obj) return ociError(404, "MANIFEST_UNKNOWN", "manifest unknown");
@@ -389,9 +436,22 @@ async function listAll(bucket: R2Bucket, prefix: string): Promise<R2Object[]> {
   return out;
 }
 
-async function listTags(env: MirrorEnv, name: string, url: URL) {
+async function listTags(env: MirrorEnv, name: string, url: URL, withheld: Withheld | null) {
   const prefix = keys.tag(name, "");
-  let tags = (await listAll(env.MIRROR, prefix)).map((o) => o.key.slice(prefix.length)).sort();
+  const objects = await listAll(env.MIRROR, prefix);
+  let tags: string[] = [];
+  for (const o of objects) {
+    const tag = o.key.slice(prefix.length);
+    if (withheld) {
+      // Tags of withheld images (and their signatures) aren't listed.
+      const subject = ATTACHED_TAG.exec(tag)?.[1];
+      if (subject && withheld.manifests.has(`sha256:${subject}`)) continue;
+      const target = (await (await env.MIRROR.get(o.key))?.text())?.trim();
+      if (target && withheld.manifests.has(target)) continue;
+    }
+    tags.push(tag);
+  }
+  tags.sort();
   const last = url.searchParams.get("last");
   if (last) tags = tags.filter((t) => t > last);
   const n = Number(url.searchParams.get("n") ?? 0);

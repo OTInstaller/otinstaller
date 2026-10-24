@@ -149,7 +149,11 @@ describe("removal", () => {
     const reviewer = await person({ reviewer: true });
     const ns = await namespace(owner);
     const p = await pkg(ns, ["1.0.0"]);
+    const epoch = async () => (await DB().prepare(`SELECT value FROM settings WHERE key = 'cache_epoch'`).first<{ value: string }>())!.value;
+    const before = await epoch();
     await post(`/admin/tools/${p.ref}/remove`, reviewer.auth, { category: "policy", reason: "Stalkerware", suspend_namespace: true });
+    // Nothing cached at the edge before the takedown is served again.
+    expect(await epoch()).not.toBe(before);
     const res = await call(`/tools/${p.ref}`);
     expect(res.status).toBe(410);
     expect(((await res.json()) as any).error.code).toBe("tool_removed");

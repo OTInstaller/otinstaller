@@ -226,11 +226,27 @@ describe("image mirror", () => {
     expect((await mirror(`/v2/private/${ns}/tool/manifests/${priv.digest}`, { headers: { authorization: basic } })).status).toBe(200);
 
     const pub = await pushImage(`${ns}/tool`);
+    // Another image in the same repository, sharing nothing with the first, and tags for both (one a signature).
+    const other = await pushImage(`${ns}/tool`);
+    const tag = async (t: string, digest: string) => {
+      const doc = await (await mirror(`/v2/${ns}/tool/manifests/${digest}`)).text();
+      expect((await mirror(`/v2/${ns}/tool/manifests/${t}`, { method: "PUT", headers: { authorization: basic, "content-type": "application/vnd.oci.image.manifest.v1+json" }, body: doc })).status).toBe(201);
+    };
+    await tag("1.0.0", pub.digest);
+    await tag(`sha256-${pub.digest.slice(7)}.sig`, pub.digest);
+    await tag("2.0.0", other.digest);
     await hideImage(env.MIRROR, `${ns}/tool`, pub.digest);
     expect((await mirror(`/v2/${ns}/tool/manifests/${pub.digest}`)).status).toBe(404);
     expect((await mirror(`/v2/${ns}/tool/manifests/${pub.digest}`, { headers: { authorization: basic } })).status).toBe(200);
-    await hideImage(env.MIRROR, `${ns}/tool`, null);
+    // A single hidden image's layers and tags aren't served either; the rest of the repository is.
     expect((await mirror(`/v2/${ns}/tool/blobs/${pub.layer}`)).status).toBe(404);
+    expect((await mirror(`/v2/${ns}/tool/blobs/${pub.layer}`, { headers: { authorization: basic } })).status).toBe(200);
+    expect((await mirror(`/v2/${ns}/tool/blobs/${other.layer}`)).status).toBe(200);
+    expect(((await (await mirror(`/v2/${ns}/tool/tags/list`)).json()) as any).tags).toEqual(["2.0.0"]);
+    expect(((await (await mirror(`/v2/${ns}/tool/tags/list`, { headers: { authorization: basic } })).json()) as any).tags).toHaveLength(3);
+    await hideImage(env.MIRROR, `${ns}/tool`, null);
+    expect((await mirror(`/v2/${ns}/tool/blobs/${other.layer}`)).status).toBe(404);
+    expect((await mirror(`/v2/${ns}/tool/tags/list`)).status).toBe(404);
   });
 
   it("deletes an image with its signatures and the blobs nothing else uses", async () => {
@@ -361,8 +377,19 @@ describe("images publishers push to the mirror", () => {
     const mine = await publisherPush(auth, repo);
     const sig = await pmirror(`/v2/${repo}/manifests/sha256-${mine.digest.slice(7)}.sig`, { method: "PUT", headers: { authorization: auth, "content-type": "application/vnd.oci.image.manifest.v1+json" }, body: signatureDoc(mine.doc) });
     expect(sig.status).toBe(201);
-    // A signature is readable before the image is published.
-    expect((await pmirror(`/v2/${repo}/manifests/sha256-${mine.digest.slice(7)}.sig`)).status).toBe(200);
+    // Before the image is published its signature is as private as the image: its publishers and the scanner read it,
+    // anyone else learns nothing (not even the digest from the tag list), and neither layer nor config can be fetched.
+    const sigPath = `/v2/${repo}/manifests/sha256-${mine.digest.slice(7)}.sig`;
+    expect((await pmirror(sigPath)).status).toBe(404);
+    expect((await pmirror(sigPath, { headers: { authorization: auth } })).status).toBe(200);
+    expect((await pmirror(sigPath, { headers: { authorization: basic } })).status).toBe(200);
+    expect(((await (await pmirror(`/v2/${repo}/tags/list`)).json()) as any).tags).toEqual([]);
+    const layer = JSON.parse(mine.doc).layers[0].digest;
+    expect((await pmirror(`/v2/${repo}/blobs/${layer}`)).status).toBe(404);
+    expect((await pmirror(`/v2/${repo}/blobs/${layer}`, { headers: { authorization: auth } })).status).toBe(200);
+    await releaseImage(env.MIRROR, repo, mine.digest);
+    expect((await pmirror(sigPath)).status).toBe(200);
+    expect((await pmirror(`/v2/${repo}/blobs/${layer}`)).status).toBe(200);
 
     const backup = await pushImage(repo);
     const forged = await pmirror(`/v2/${repo}/manifests/sha256-${backup.digest.slice(7)}.sig`, { method: "PUT", headers: { authorization: auth, "content-type": "application/vnd.oci.image.manifest.v1+json" }, body: signatureDoc(mine.doc) });
