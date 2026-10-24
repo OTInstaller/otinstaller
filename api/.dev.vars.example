@@ -19,3 +19,27 @@ CF_URLSCAN_TOKEN=
 HEALTH_TOKEN=
 # Optional: report server errors to Sentry.
 SENTRY_DSN=
+SENTRY_ENVIRONMENT=
+# Scans, backups and drills run in registry-ops: a fine-grained token with Contents: write on that repository, or the
+# GitHub App's installation ID there (OPS_REPO is a var in wrangler.jsonc).
+OPS_DISPATCH_TOKEN=
+OPS_INSTALLATION_ID=
+# Optional: send email through Resend (without it, emails are recorded as skipped).
+RESEND_API_KEY=
+EMAIL_FROM=
+# Optional: an R2 API token for the backups bucket, so uploads and downloads go straight to R2 (else through the Worker).
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+# Optional: the community bot (a second GitHub App) for submissions, bump pull requests and change proposals.
+COMMUNITY_APP_ID=
+COMMUNITY_APP_PRIVATE_KEY=
+COMMUNITY_INSTALLATION_ID=
+# Optional: where beta bug reports are counted from, and a token with Issues: read while that repository is private.
+ISSUES_REPO=
+ISSUES_TOKEN=
+# "off" sends every anonymous read to D1 instead of the edge cache.
+EDGE_CACHE=
+# What the upstream watcher and build watcher do: report (default), issues, prs or auto; rebuild or report.
+UPSTREAM_WATCH=
+REBUILD_WATCH=

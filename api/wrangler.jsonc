@@ -54,5 +54,7 @@
   //   TOKEN_ENC_KEY (32 random bytes, base64), OPS_DISPATCH_TOKEN or OPS_INSTALLATION_ID, RESEND_API_KEY,
   //   CF_URLSCAN_ACCOUNT_ID and CF_URLSCAN_TOKEN (optional: URL Scanner checks of guide links; skipped when unset),
   //   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY (an R2 API token for otinstaller-backups: backup uploads
-  //   and restore downloads then go straight to R2; without them they go through this Worker, 100 MB at most)
+  //   and restore downloads then go straight to R2; without them they go through this Worker, 100 MB at most),
+  //   HEALTH_TOKEN (shared with the nightly health workflow in registry-ops), SENTRY_DSN (optional: server errors go to
+  //   Sentry), ISSUES_TOKEN (optional: Issues: read on ISSUES_REPO while it is private)
 }

@@ -1,3 +1,5 @@
+// The Worker's environment: its bindings, vars and secrets (Env), the queue's messages (PublishMessage), the signed-in
+// user, deps.fetch (every outbound request goes through it, so tests can fake hosts) and helpers for secrets and origins.
 import type { Hono } from "hono";
 import { apiError } from "./lib/errors";
 

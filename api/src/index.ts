@@ -1,3 +1,6 @@
+// The registry API Worker (api.otinstaller.com/v1): app setup, CORS, auth and the write limit, the public read routes,
+// error handling, and the fetch, queue and scheduled handlers. Each area's routes live in routes/, their logic in the
+// top-level modules; the remote MCP server is mcp.ts and the edge cache edge-cache.ts.
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";

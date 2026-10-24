@@ -13,7 +13,7 @@
 //
 // Rules: only public repositories of published packages; 500 MB per bundle and 2 GB per image (bigger ones are
 // skipped and the owner is told; the other artifacts are still kept); mirrors are public only for OSI-approved
-// licenses (others are kept privately, for restores); takedowns delete backups within 30 days unless a legal hold
+// licenses (others are kept privately, for restores); takedowns delete backups after 14 days unless a legal hold
 // applies; owners can opt out of git backups.
 import { requireSecret, type Env } from "./env";
 import { randomToken, sha256Hex, ulid } from "./lib/crypto";
@@ -31,7 +31,7 @@ export const RELEASE_TTL = 3 * 3600_000;
 export const WEEKLY_TTL = 12 * 3600_000;
 export const DOWNLOAD_TTL = 3600;
 export const KEEP_WEEKLY = 4;
-/** Taken-down backups are deleted this long after the removal (the rule is "within 30 days"). */
+/** Taken-down backups are deleted this long after the removal: 14 days, well inside the policy's "within 30 days". */
 export const TAKEDOWN_GRACE = 14 * 86_400_000;
 export const DRILL_TTL = 6 * 3600_000;
 const WEEKLY_PER_DISPATCH = 20;
