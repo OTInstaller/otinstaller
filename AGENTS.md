@@ -1035,8 +1035,9 @@ It is published by copying the folder to the public repo `OTInstaller/agent-plug
 **MCP Registry.** `com.otinstaller/ot` is listed from each `ot` release's `server.json` (written by `cli/cmd/mcpb`;
 descriptions must stay within the registry's 100 characters), `com.otinstaller/registry` from
 `integrations/mcp-registry/server.json` (bump its `version` when the remote tools change). Both are published by hand
-with `mcp-publisher`, signed in with `mcp-publisher login http --domain otinstaller.com` and the owner's private key
-(kept outside the repository in `~/.mcp-registry/`); the registry checks it against
+with the registry's publisher (installed by `go install` as `publisher`), signed in with
+`publisher login http --domain otinstaller.com` and the owner's private key (kept outside the repository in
+`~/.mcp-registry/`); the registry checks it against
 `web/public/.well-known/mcp-registry-auth`. The steps are in [publishing-setup.md](docs/publishing-setup.md),
 section 10, "MCP bundles and the MCP Registry".
 
@@ -1249,7 +1250,7 @@ and verify in the preview build.
 These affect production or other people, so do them only when asked: `npm run deploy` / `wrangler deploy` (api, mirror,
 web or `ops/get`), `wrangler d1 ... --remote`, `wrangler secret put`, pushing `v*` tags on this repo (releases `ot`),
 pushing tags or running workflows on seed repositories (publishes packages), publishing `otlite/` to PyPI (pushing
-`otlite-v*` tags or running `release-otlite.yml`), pushing to `OTInstaller/agent-plugin`, `mcp-publisher publish` to
+`otlite-v*` tags or running `release-otlite.yml`), pushing to `OTInstaller/agent-plugin`, `publisher publish` to
 the MCP Registry, submitting to directories or marketplaces (Anthropic, Cursor), posting outreach issues or PRs or
 launch posts, running `scripts/beta/labels.sh`, triggering backups or drills on production, changing the Cloudflare
 rate-limiting rule, changing GitHub App, OAuth, R2 or registry-ops settings (including creating the community bot's
