@@ -7,7 +7,7 @@ import * as github from "./hosts/github";
 import { githubRepo, gitlabRepo, type CommitState } from "./hosts/repo";
 import { audit } from "./routes/auth";
 import { ownerEmails, sendEmail, templates } from "./notify";
-import { notifyFollowers } from "./inbox";
+import { notifyFollowers, notifyPackageFollowers, SECURITY_LEVELS } from "./inbox";
 import { updateLinkHealth } from "./guides";
 import { announceVersion } from "./community";
 import { linkPublished } from "./requests";
@@ -406,6 +406,14 @@ export async function publishVersion(env: Env, versionId: string, opts: { backup
   await settleBump(env, v.tool_id, v.version, "released").catch((e) => console.error("settling the bump failed", e));
   if (v.kind === "guide" && isLatest) await updateLinkHealth(env, v.tool_id);
   const scan = await db.prepare(`SELECT scan_status FROM versions WHERE id = ?`).bind(versionId).first<{ scan_status: string }>();
+  // A new latest version whose scan found fixable critical or high vulnerabilities: everyone following the package who
+  // hasn't muted it hears about it as a security warning, beside the release itself.
+  if (announce && scan?.scan_status === "warn") {
+    await notifyPackageFollowers(env, v.tool_id, {
+      kind: "security", scope: "security", path: `/${refOf(v)}/security`,
+      summary: `${refOf(v)} ${v.version} was published with security warnings: its scan found fixable critical or high vulnerabilities`,
+    }, SECURITY_LEVELS);
+  }
   await commitStatus(env, v, "success", `Published ${refOf(v)}@${v.version}`);
   // Backups never hold up publishing: a version the scanner did not just back up gets its own backup job (releasePlan
   // leaves a hosted image out; a repository's bundle may still be due).

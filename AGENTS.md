@@ -621,7 +621,7 @@ nothing cached before a takedown is served again. On a hit the original `Cache-C
   `POST /internal/drills/:id`, `/internal/health[/targets]`. Scans, backup runs and drills each use their own
   single-use token (scan 1 h, run 3 h or 12 h weekly, drill 6 h); the health endpoints use the static shared
   `HEALTH_TOKEN`.
-- The full route table (198 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
+- The full route table (204 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
   `spec/openapi/v1.json` describes the public and owner routes, each with its token scope as `x-scope`; a test in
   `api.test.ts` fails when a route and the document disagree, so add new routes to both.
 - 429s carry `Retry-After`, `RateLimit-Policy` and `retry_after_s` (`rateLimited` in `lib/errors.ts`).
@@ -717,8 +717,10 @@ publishing (`trusted_publishers`, the CI token columns `api_tokens.namespace_id`
 `oidc_json`/`jti`, and `publish_jobs.trusted_publisher_id`/`ci_json`, 0025), request discussions
 (`request_comments`, `request_subscriptions`, flags on requests, 0026) and change proposals (`change_proposals`,
 0027), the build watcher (`dependency_watch`, `base_images`, `base_watch`, `bump_prs.kind`, 0031), email retries
-(`notifications.body`/`attempts`/`sent_at`, 0033), search following a namespace rename (a trigger, 0034) and the edge
-cache's epoch (`settings`, 0035). That is 64 tables plus `tools_fts`; every
+(`notifications.body`/`attempts`/`sent_at`, 0033), search following a namespace rename (a trigger, 0034), the edge
+cache's epoch (`settings`, 0035) and people's profiles and notification settings (`users` profile fields and
+`handle_changed_at`, `handle_aliases`, `package_follows.level`, `email_prefs` `lifecycle`/`security`/`inbox_muted_json`/
+`email_provider`, 0036). That is 65 tables plus `tools_fts`; every
 table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
 
@@ -822,7 +824,9 @@ Astro 7 with `output: "server"` on `@astrojs/cloudflare`, Preact islands, no CSS
   `admin/[...section]`, `docs/*.md` (including `agents`, `mcp-tools`, `automation`, `api`, `results`, `otlite`),
   `policy/*`, `removed.astro`, `404.astro`, `500.astro` (API trouble, shows the request ID), `new.astro` (what's new),
   `changelog/` and `blog/` (see below), `learn.astro` (+ `learn.md.ts`), the community pages (`community/` with the board and moderation,
-  `[ns]/[name]/issues/`, `requests/`, `people/[handle]`, `submissions/`, `settings/notifications`, `unsubscribe`),
+  `[ns]/[name]/issues/`, `requests/`, `people/[handle]`, `submissions/`, `unsubscribe`), a person's own pages
+  (`notifications.astro`, the inbox; `settings/` with `profile`, `notifications` and `accounts` under one
+  `SettingsNav`, and `settings/index.astro` redirecting to the profile),
   Atom and JSON feeds (`feed.atom.ts`/`feed.json.ts` at the root, per publisher, per tool, per input type), `robots.txt.ts`,
   `sitemap.xml.ts`, `llms.txt.ts` and `llms-full.txt.ts`, `schema/v1.json.ts` and `schema/[name].json.ts` (the
   envelope, run-all and error schemas). Only `schema/v1.json.ts` is prerendered.
@@ -854,19 +858,24 @@ Astro 7 with `output: "server"` on `@astrojs/cloudflare`, Preact islands, no CSS
   which.
 - `public/.well-known/mcp-registry-auth`: the public key that proves `otinstaller.com` to the MCP Registry. Don't
   remove or change it without a new key pair (see [Agents](#agents-ot-mcp-the-remote-mcp-server-and-the-plugin)).
-- `src/layouts/`: `Base.astro` (HTML shell, beta strip, header with the account menu, lean footer, the one inline
-  script, global client JS for copy buttons and the `/me` account check), `Docs.astro` (with prev/next links),
-  `Policy.astro`.
+- `src/layouts/`: `Base.astro` (HTML shell, beta strip, header with the account menu and the notifications bell, lean
+  footer, the one inline script, global client JS for copy buttons and the `/me` account check through
+  `lib/account.ts`), `Docs.astro` (with prev/next links), `Policy.astro`.
+- `lib/account.ts`: what the header knows about the person (login, staff, handle, unread count), cached in
+  `sessionStorage` for 10 minutes; `useMe`, the inbox and the settings pages keep it current, and its `ot-account`
+  event tells `FollowReleases` when the header learns someone is signed in.
 - `src/components/*.astro`: server components (PasteBox, InstallBlock, ToolRow, ToolCard, ToolHeader, Evidence,
-  Results, PageReader, Terminal, BetaNotice, CopyCode, CopyCommand, Logo, PageHead, SideNav, OnThisPage, ThemeToggle).
+  Results, PageReader, Terminal, BetaNotice, CopyCode, CopyCommand, Logo, PageHead, SideNav, OnThisPage, SettingsNav,
+  ThemeToggle).
   The design follows osintverse.com (`docs/web-redesign-plan.md` section 4.9): Geist Mono, dark by default, no radius.
 - `src/islands/*.tsx`: Preact islands for anything signed-in or interactive (AdminConsole with review, reports,
   transfers, community, upstream, audit, feedback and beta tabs; Dashboard; PackageDetail and JobView (the `/dashboard/{ns}/{name}` and
   `/dashboard/publish/{jobId}` pages); Backups (used by Dashboard and PackageDetail); ImportWizard (four steps; its
   forms write YAML blocks through `lib/yaml-blocks.ts`), Accounts, ClaimFlow, TransferView, ReportProblem (the
   report page: a public issue through `IssueForm`, a count without an account, or the private ReportForm), FeedbackForm,
-  VersionActions, SearchDialog; for the community IssueComposer, IssueThread, WorksForMe, FollowReleases, CommunityModeration,
-  NotificationSettings, RequestForm, RequestVote, RequestDecision, SubmissionActions, UpstreamWatch, BumpRelease,
+  VersionActions, SearchDialog; for the community IssueComposer, IssueThread, WorksForMe, FollowReleases (on tool and
+  guide pages; a followed package gets a level choice), CommunityModeration, Inbox (`/notifications`),
+  NotificationSettings, PersonProfileForm (`/settings/profile`; ProfileEditor is a publisher's), RequestForm, RequestVote, RequestDecision, SubmissionActions, UpstreamWatch, BumpRelease,
   ProposeChange and ProposalActions (a community package's Changes tab, `[ns]/[name]/changes/`)).
   The import wizard also packages someone else's tool ("Someone else's tool", with `lib/dockerfile-templates.ts`).
   `shared.tsx` has `useMe`, `SignIn`, `ErrorNote`, `Status`, `Loading`, `Confirm`.
@@ -961,15 +970,24 @@ The plan is [docs/roadmap.md](docs/roadmap.md) (phase 1 built). User docs: `web/
   (`problem-reports`, `problem_signals`, 0032). Broken counts share `ot`'s once-a-day key and unconfirmed issue;
   outdated ones (latest version only) open `outdated_signals:<v>` unless another outdated issue is open, closed by
   `announceVersion`. Malware, abuse and legal problems stay the private `ReportForm`.
-- **Notifications** (`inbox.ts`, 0017): inbox rows written with each event, emailed within 15 minutes or as a daily
-  digest per person's preference, at most 12 a day, with a signed one-click unsubscribe (`TOKEN_ENC_KEY`).
-- **Following releases** (0029): anyone signed in follows a package (`PUT /tools/:ns/:name/follow`, the "Follow
-  releases" island on tool pages) and gets a `release` item (scope `releases`, its own email preference) when a
-  version becomes the latest. People following one of its open broken or outdated issues get the issue's item
-  instead. Follows are private: no counts, nothing on profiles. Publishers and input types can be followed too
-  (0030, `PUT /me/follows/publisher|input/:target`, the same island on publisher and input pages): a publisher's
-  followers hear of each of its releases, an input type's of new packages taking it, each person once per release
-  (`notifyFollowers`).
+- **Notifications** (`inbox.ts`, 0017, 0036): inbox rows written with each event, shown on `/notifications` with a
+  count by the header's bell, and emailed within 15 minutes or as a daily digest, at most 12 a day, with a signed
+  one-click unsubscribe (`TOKEN_ENC_KEY`). Per kind (`community`, `owner_issues`, `releases`, `lifecycle`,
+  `security`; `account` items always go) the person chooses whether it shows in the inbox (`inbox_muted_json`: the
+  rows are still written and emailed, only left out of the list and the count) and how often it is emailed, and which
+  sign-in account's address gets the emails (`email_provider`): `GET/PUT /me/notification-settings`, on
+  `/settings/notifications`. `/me/email-prefs` is the older form and stays.
+- **Following packages** (0029, 0036): anyone signed in follows a tool or guide (`PUT /tools/:ns/:name/follow`, the
+  "Follow" island on tool and guide pages) at a level (`package_follows.level`): `all` (new versions, lifecycle changes
+  and security warnings), `releases` (new versions and security warnings) or `muted` (nothing, even through a followed
+  publisher or input type). A version that becomes the latest is a `release` item (scope `releases`); people following
+  one of its open broken or outdated issues get the issue's item instead. `notifyPackageFollowers` sends `lifecycle`
+  items (yank, unyank, deprecate, undeprecate, an archived repository, a takedown, a move) to level `all`, and
+  `security` items (a new latest version whose scan warned, a takedown as malware) to `all` and `releases`; takedown
+  items name the category, never the reviewer's reason. Follows are private: no counts, nothing on profiles.
+  Publishers and input types can be followed too (0030, `PUT /me/follows/publisher|input/:target`, the same island on
+  publisher and input pages): a publisher's followers hear of each of its releases, an input type's of new packages
+  taking it, each person once per release (`notifyFollowers`).
 - **Requests** (`requests.ts`, 0018): one per repository, checked when made (public, not packaged or requested,
   no upstream manifest; a license the registry can't redistribute or an archived repository is declined at once);
   votes; triagers decide; a published package from that repository answers it (`linkPublished`). Each has a
@@ -977,8 +995,14 @@ The plan is [docs/roadmap.md](docs/roadmap.md) (phase 1 built). User docs: `web/
   (kind `request_comment`), followers (the requester, repliers, anyone who follows it) told of replies and decisions,
   locks by triagers or 30 days after a decision. Requests and their replies can be flagged; they are moderated by
   triagers and staff only.
-- **Profiles** (`people.ts`, 0019): `/people/<handle>` with roles and counts recomputed nightly; never email or
-  accounts; hidden profiles 404.
+- **Profiles** (`people.ts`, 0019, 0036): every person has `/people/<handle>`: what they wrote about themselves
+  (display name, bio, location, website, up to 3 links; `PUT /me/profile` on `/settings/profile`, refused with
+  `profile_screened` when `screen()` finds personal data or a secret), roles, the packages whose page lists them as a
+  maintainer, and counts recomputed nightly; never email, accounts, namespaces or follows; hidden profiles 404. What
+  people write never goes into a page's title. A handle changes at most once every 30 days (`PUT /me/handle`): it has
+  the namespace slug shape, isn't reserved, someone else's (now or before) or a namespace the person doesn't belong to;
+  the old one stays theirs in `handle_aliases`, and `/people/<old>` answers with `moved_to` (the site redirects).
+  Staff clear a profile's text from the moderation panel (`POST /admin/people/:handle/clear-profile`).
 - **Submissions** (`submissions.ts`, 0020): anyone signed in finishes a community import with mode `submit`. Checks
   first, then the community bot (a second GitHub App, `COMMUNITY_APP_*`; without it 503 `community_bot_missing`)
   creates `osintverse-community/<name>`, commits the files and tags or dispatches the release. The first release waits
@@ -1363,6 +1387,8 @@ change. Keep this list current when you fix one or find another.
   did in production as of 23 Oct 2026.
 - Stars are still never written (no route records one), though ranking and `stars` columns read them.
 - Community: `contributor_stats` is only as fresh as the last nightly run.
+- Profiles can't be flagged or reported yet: staff clear one by handle from the moderation panel. Health status
+  ("possibly broken") and new issues don't reach a package's followers, only its maintainers.
 - Change proposals cover `otinstaller.yaml`, the Dockerfile and the README only (not docs pages or other files). A
   proposal merged or closed on GitHub directly stays open in the registry (nothing reads `pull_request` webhooks; a
   bump closed there is only noticed by auto mode), and a merged proposal whose release fails its scan still shows as

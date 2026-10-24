@@ -1,20 +1,28 @@
 // Notifications for people who take part in the community: inbox items written with each event (new issues on a
-// package you maintain, replies and status changes on threads you follow, new versions of packages you follow,
-// moderation of your posts, roles), and their delivery by email, at once (grouped every 15 minutes) or as a daily
-// digest, with one-click unsubscribe.
+// package you maintain, replies and status changes on threads you follow, new versions of packages you follow, their
+// lifecycle changes and security warnings, moderation of your posts, roles), and their delivery by email, at once
+// (grouped every 15 minutes) or as a daily digest, with one-click unsubscribe. Each person chooses, per kind, whether
+// items show in their inbox and how often they are emailed, and which of their sign-in accounts' addresses gets them.
 // Routes live in routes/inbox.ts; publisher and staff emails stay in notify.ts.
 import type { Env } from "./env";
+import { apiError } from "./lib/errors";
 import { hmacSha256Hex, safeEqual, ulid } from "./lib/crypto";
 import { sendEmail } from "./notify";
 
-export type Scope = "community" | "owner_issues" | "releases" | "account";
+export type Scope = "community" | "owner_issues" | "releases" | "lifecycle" | "security" | "account";
 export type Pref = "immediate" | "daily" | "off";
 
 /** The issues a new version is announced on (columns of `issues i`): open, visible broken and outdated issues people filed. */
 export const ANNOUNCED_ISSUES = `i.kind IN ('broken', 'outdated') AND i.status IN ('open', 'confirmed') AND i.moderation = 'visible' AND i.deleted_at IS NULL AND i.author_kind = 'user'`;
 
 export const PREFS: Pref[] = ["immediate", "daily", "off"];
-export const PREF_SCOPES = ["community", "owner_issues", "releases"] as const;
+/** The kinds a person chooses settings for; account items (moderation, roles) always show and are always emailed. */
+export const PREF_SCOPES = ["community", "owner_issues", "releases", "lifecycle", "security"] as const;
+export type PrefScope = (typeof PREF_SCOPES)[number];
+
+/** How much of a followed package reaches the person (package_follows.level). */
+export const FOLLOW_LEVELS = ["all", "releases", "muted"] as const;
+export type FollowLevel = (typeof FOLLOW_LEVELS)[number];
 
 /** Most emails one person gets in a day; more items wait for the next day's digest. */
 const PER_USER_DAILY = 12;
@@ -22,7 +30,7 @@ const PER_USER_DAILY = 12;
 const SETTLE = 2 * 60_000;
 
 export interface Item {
-  kind: "issue_opened" | "comment" | "status" | "moderation" | "role" | "proposal" | "release";
+  kind: "issue_opened" | "comment" | "status" | "moderation" | "role" | "proposal" | "release" | "lifecycle" | "security";
   scope: Scope;
   summary: string;
   path: string;
@@ -71,7 +79,8 @@ export interface Release {
  * A version became its package's latest: one inbox item for each person who follows the package, its publisher, or
  * (for a new package) one of the input types it takes, written by a single statement however many there are. Each
  * person gets one item, worded for the closest thing they follow. People who follow one of the package's open broken
- * or outdated issues are left out: they hear about the version on that issue (announceVersion).
+ * or outdated issues are left out: they hear about the version on that issue (announceVersion). So are people who
+ * muted the package, whatever else they follow.
  */
 export async function notifyFollowers(env: Env, r: Release, now = Date.now()) {
   const what = r.kind === "guide" ? "guide" : "tool";
@@ -81,20 +90,42 @@ export async function notifyFollowers(env: Env, r: Release, now = Date.now()) {
        substr(CASE c.why WHEN 0 THEN ?3 WHEN 1 THEN ?4 ELSE 'New ' || ?5 || ' for ' || replace(c.input, '_', ' ') || ': ' || ?6 END, 1, 300), ?7, ?10
      FROM (
        SELECT user_id, MIN(why) AS why, MIN(input) AS input FROM (
-         SELECT user_id, 0 AS why, NULL AS input FROM package_follows WHERE tool_id = ?2
+         SELECT user_id, 0 AS why, NULL AS input FROM package_follows WHERE tool_id = ?2 AND level != 'muted'
          UNION ALL SELECT user_id, 1, NULL FROM follows WHERE kind = 'publisher' AND target = ?8
          UNION ALL SELECT user_id, 2, target FROM follows
            WHERE kind = 'input' AND ?9 = 1 AND target IN (SELECT type FROM tool_io WHERE tool_id = ?2 AND direction = 'in')
        ) GROUP BY user_id
      ) c JOIN users u ON u.id = c.user_id
-     WHERE u.banned_at IS NULL AND c.user_id NOT IN (
-       SELECT s.user_id FROM issue_subscriptions s JOIN issues i ON i.id = s.issue_id WHERE i.tool_id = ?2 AND s.muted = 0 AND ${ANNOUNCED_ISSUES})`,
+     WHERE u.banned_at IS NULL
+       AND c.user_id NOT IN (SELECT user_id FROM package_follows WHERE tool_id = ?2 AND level = 'muted')
+       AND c.user_id NOT IN (
+         SELECT s.user_id FROM issue_subscriptions s JOIN issues i ON i.id = s.issue_id WHERE i.tool_id = ?2 AND s.muted = 0 AND ${ANNOUNCED_ISSUES})`,
   ).bind(
     ulid(now).slice(0, 10), r.toolId,
     `${r.ref} ${r.version} is out`,
     r.first ? `${r.namespace} published a new ${what}: ${r.ref}` : `${r.ref} ${r.version} is out`,
     what, r.ref, r.path, r.namespace, r.first ? 1 : 0, now,
   ).run().catch((e) => console.error("writing release notifications failed", e));
+}
+
+/** Which follow levels hear about lifecycle changes, and which about security warnings (malware takedowns included). */
+export const LIFECYCLE_LEVELS: FollowLevel[] = ["all"];
+export const SECURITY_LEVELS: FollowLevel[] = ["all", "releases"];
+
+/**
+ * Something happened to a followed package (yanked, deprecated, taken down, moved, a security warning): one inbox item
+ * for each person following it at one of `levels`, written by a single statement, never for the person who acted.
+ * Failures are logged, never thrown, so the action itself never fails over a notification.
+ */
+export async function notifyPackageFollowers(env: Env, toolId: string, item: Item & { kind: "lifecycle" | "security" }, levels: FollowLevel[], now = Date.now()) {
+  if (!levels.length) return;
+  await env.DB.prepare(
+    `INSERT INTO inbox (id, user_id, kind, scope, tool_id, issue_id, actor_id, summary, path, created_at)
+     SELECT ?1 || upper(hex(randomblob(8))), f.user_id, ?2, ?3, ?4, NULL, ?5, ?6, ?7, ?8
+     FROM package_follows f JOIN users u ON u.id = f.user_id
+     WHERE f.tool_id = ?4 AND f.level IN (${levels.map((_, i) => `?${i + 9}`).join(", ")}) AND u.banned_at IS NULL AND f.user_id IS NOT ?5`,
+  ).bind(ulid(now).slice(0, 10), item.kind, item.scope, toolId, item.actor_id ?? null, item.summary.slice(0, 300), item.path, now, ...levels)
+    .run().catch((e) => console.error(`writing ${item.kind} notifications failed`, e));
 }
 
 /** Writes items now; failures are logged, never thrown, so taking part never fails over a notification. */
@@ -126,6 +157,124 @@ export async function unsubscribe(env: Env, userId: string, scope: string, token
   return true;
 }
 
+// ---------- settings ----------
+
+type PrefsRow = Record<PrefScope, Pref> & { inbox_muted_json: string; email_provider: string | null };
+
+/** What a person chose: per kind, whether items show in the inbox and how often they are emailed, and where emails go. */
+export interface NotificationSettings {
+  scopes: Record<PrefScope, { inbox: boolean; email: Pref }>;
+  email: { to: string | null; address: string | null; options: { provider: string; address: string }[] };
+}
+
+async function prefsRow(env: Env, userId: string): Promise<PrefsRow | null> {
+  return env.DB.prepare(`SELECT community, owner_issues, releases, lifecycle, security, inbox_muted_json, email_provider FROM email_prefs WHERE user_id = ?`)
+    .bind(userId).first<PrefsRow>();
+}
+
+function mutedOf(row: PrefsRow | null): PrefScope[] {
+  try {
+    const list = JSON.parse(row?.inbox_muted_json ?? "[]") as unknown;
+    return Array.isArray(list) ? list.filter((s): s is PrefScope => (PREF_SCOPES as readonly string[]).includes(s)) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Each kind's email preference (immediate when never set). */
+export async function emailPrefs(env: Env, userId: string): Promise<Record<PrefScope, Pref>> {
+  const row = await prefsRow(env, userId);
+  return Object.fromEntries(PREF_SCOPES.map((s) => [s, row?.[s] ?? "immediate"])) as Record<PrefScope, Pref>;
+}
+
+/** The kinds whose items stay out of the person's inbox list (and its unread count). */
+export async function hiddenScopes(env: Env, userId: string): Promise<PrefScope[]> {
+  return mutedOf(await prefsRow(env, userId));
+}
+
+/** A condition on inbox.scope that leaves the hidden kinds out, with its bindings. */
+export function visibleScopeSql(hidden: string[]): { sql: string; binds: string[] } {
+  return hidden.length ? { sql: `scope NOT IN (${hidden.map(() => "?").join(", ")})`, binds: hidden } : { sql: "1 = 1", binds: [] };
+}
+
+export async function notificationSettings(env: Env, userId: string): Promise<NotificationSettings> {
+  const [row, accounts, user] = await Promise.all([
+    prefsRow(env, userId),
+    env.DB.prepare(`SELECT provider, email FROM accounts WHERE user_id = ? AND email IS NOT NULL ORDER BY provider`).bind(userId).all<{ provider: string; email: string }>(),
+    env.DB.prepare(`SELECT email FROM users WHERE id = ?`).bind(userId).first<{ email: string | null }>(),
+  ]);
+  const muted = mutedOf(row);
+  const options = accounts.results.map((a) => ({ provider: a.provider, address: a.email }));
+  const chosen = options.find((o) => o.provider === row?.email_provider);
+  return {
+    scopes: Object.fromEntries(PREF_SCOPES.map((s) => [s, { inbox: !muted.includes(s), email: row?.[s] ?? "immediate" }])) as NotificationSettings["scopes"],
+    // The same address deliverInbox picks.
+    email: { to: chosen?.provider ?? null, address: chosen?.address ?? user?.email ?? options[0]?.address ?? null, options },
+  };
+}
+
+/**
+ * Saves part of a person's settings: `{scopes: {releases: {inbox, email}, ...}, email_to}`. Anything left out keeps
+ * its value; `email_to: null` goes back to the first address known.
+ */
+export async function saveNotificationSettings(env: Env, userId: string, body: Record<string, unknown>): Promise<NotificationSettings> {
+  const bad = (message: string): never => apiError(400, "invalid_body", message);
+  const row = await prefsRow(env, userId);
+  const email = Object.fromEntries(PREF_SCOPES.map((s) => [s, row?.[s] ?? "immediate"])) as Record<PrefScope, Pref>;
+  const muted = new Set(mutedOf(row));
+  if (body.scopes !== undefined) {
+    if (!body.scopes || typeof body.scopes !== "object" || Array.isArray(body.scopes)) bad("scopes is an object such as {\"releases\": {\"inbox\": true, \"email\": \"daily\"}}");
+    for (const [k, v] of Object.entries(body.scopes as Record<string, unknown>)) {
+      if (!(PREF_SCOPES as readonly string[]).includes(k)) bad(`unknown kind ${k}; kinds are ${PREF_SCOPES.join(", ")}`);
+      const s = k as PrefScope;
+      const set = (v ?? {}) as { inbox?: unknown; email?: unknown };
+      if (typeof set !== "object") bad(`${k} is an object with inbox and email`);
+      if (set.inbox !== undefined) {
+        if (typeof set.inbox !== "boolean") bad(`${k}.inbox is true or false`);
+        if (set.inbox) muted.delete(s);
+        else muted.add(s);
+      }
+      if (set.email !== undefined) {
+        if (!PREFS.includes(set.email as Pref)) bad(`${k}.email must be one of: ${PREFS.join(", ")}`);
+        email[s] = set.email as Pref;
+      }
+    }
+  }
+  let provider = row?.email_provider ?? null;
+  if (body.email_to !== undefined) {
+    if (body.email_to === null) provider = null;
+    else {
+      const has = typeof body.email_to === "string" && await env.DB.prepare(`SELECT 1 FROM accounts WHERE user_id = ? AND provider = ? AND email IS NOT NULL`).bind(userId, body.email_to).first();
+      if (!has) bad(`email_to names one of your sign-in accounts that has an email address (github, gitlab or osintverse)`);
+      provider = body.email_to as string;
+    }
+  }
+  await savePrefs(env, userId, email, [...muted], provider);
+  return notificationSettings(env, userId);
+}
+
+/** Writes the whole preferences row. */
+export async function savePrefs(env: Env, userId: string, email: Record<PrefScope, Pref>, muted: PrefScope[], provider: string | null) {
+  await env.DB.prepare(
+    `INSERT INTO email_prefs (user_id, community, owner_issues, releases, lifecycle, security, inbox_muted_json, email_provider, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (user_id) DO UPDATE SET community = excluded.community, owner_issues = excluded.owner_issues, releases = excluded.releases,
+       lifecycle = excluded.lifecycle, security = excluded.security, inbox_muted_json = excluded.inbox_muted_json,
+       email_provider = excluded.email_provider, updated_at = excluded.updated_at`,
+  ).bind(userId, email.community, email.owner_issues, email.releases, email.lifecycle, email.security, JSON.stringify(PREF_SCOPES.filter((s) => muted.includes(s))), provider, Date.now()).run();
+}
+
+/** Changes some email preferences and keeps the rest (PUT /me/email-prefs, the older form of the settings). */
+export async function saveEmailPrefs(env: Env, userId: string, b: Record<string, unknown>): Promise<Record<PrefScope, Pref>> {
+  for (const k of PREF_SCOPES) {
+    if (b[k] !== undefined && !PREFS.includes(b[k] as Pref)) apiError(400, "invalid_body", `${k} must be one of: ${PREFS.join(", ")}`);
+  }
+  const row = await prefsRow(env, userId);
+  const next = Object.fromEntries(PREF_SCOPES.map((s) => [s, (b[s] as Pref | undefined) ?? row?.[s] ?? "immediate"])) as Record<PrefScope, Pref>;
+  await savePrefs(env, userId, next, mutedOf(row), row?.email_provider ?? null);
+  return next;
+}
+
 // ---------- delivery ----------
 
 type Pending = { id: string; user_id: string; kind: string; scope: Scope; summary: string; path: string; created_at: number; pref: Pref; email: string | null };
@@ -140,8 +289,11 @@ export async function deliverInbox(env: Env, mode: "immediate" | "daily", now = 
   const rows = (await db.prepare(
     `SELECT i.id, i.user_id, i.kind, i.scope, i.summary, i.path, i.created_at,
        CASE i.scope WHEN 'account' THEN 'immediate' WHEN 'community' THEN COALESCE(p.community, 'immediate')
-         WHEN 'releases' THEN COALESCE(p.releases, 'immediate') ELSE COALESCE(p.owner_issues, 'immediate') END AS pref,
-       COALESCE(u.email, (SELECT a.email FROM accounts a WHERE a.user_id = u.id AND a.email IS NOT NULL LIMIT 1)) AS email
+         WHEN 'releases' THEN COALESCE(p.releases, 'immediate') WHEN 'lifecycle' THEN COALESCE(p.lifecycle, 'immediate')
+         WHEN 'security' THEN COALESCE(p.security, 'immediate') ELSE COALESCE(p.owner_issues, 'immediate') END AS pref,
+       -- The address the person chose from their sign-in accounts, else the first one known.
+       COALESCE((SELECT a.email FROM accounts a WHERE a.user_id = u.id AND a.provider = p.email_provider AND a.email IS NOT NULL), u.email,
+         (SELECT a.email FROM accounts a WHERE a.user_id = u.id AND a.email IS NOT NULL ORDER BY a.provider LIMIT 1)) AS email
      FROM inbox i JOIN users u ON u.id = i.user_id LEFT JOIN email_prefs p ON p.user_id = i.user_id
      WHERE i.emailed_at IS NULL AND i.created_at <= ? AND i.created_at > ? AND u.banned_at IS NULL
      ORDER BY i.user_id, i.created_at LIMIT 2000`,
@@ -158,7 +310,7 @@ export async function deliverInbox(env: Env, mode: "immediate" | "daily", now = 
       .bind(items[0]!.email, now - 86_400_000).first<{ n: number }>())?.n ?? 0;
     if (today >= PER_USER_DAILY && mode === "immediate") continue;
     // The unsubscribe link turns off the first of these the email carries.
-    const scope = (["community", "releases", "owner_issues"] as const).find((s) => items.some((i) => i.scope === s)) ?? "community";
+    const scope = (["community", "releases", "lifecycle", "security", "owner_issues"] as const).find((s) => items.some((i) => i.scope === s)) ?? "community";
     const result = await sendEmail(env, await composeEmail(env, userId, items, scope, mode));
     if (result === "failed") continue;
     await db.batch(items.map((i) => db.prepare(`UPDATE inbox SET emailed_at = ? WHERE id = ?`).bind(now, i.id)));
@@ -170,7 +322,7 @@ export async function deliverInbox(env: Env, mode: "immediate" | "daily", now = 
 async function composeEmail(env: Env, userId: string, items: Pending[], scope: string, mode: string) {
   const unsub = await unsubscribeUrl(env, userId, scope);
   const lines = items.slice(0, 25).map((i) => `- ${i.summary}\n  ${env.SITE_URL}${i.path}`);
-  const more = items.length > 25 ? `\n…and ${items.length - 25} more at ${env.SITE_URL}/settings/notifications` : "";
+  const more = items.length > 25 ? `\n…and ${items.length - 25} more at ${env.SITE_URL}/notifications` : "";
   const subject = items.length === 1 ? items[0]!.summary : `${items.length} updates on OTInstaller${mode === "daily" ? " today" : ""}`;
   return {
     to: [items[0]!.email!],

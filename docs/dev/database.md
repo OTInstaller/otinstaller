@@ -4,8 +4,8 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 `api/migrations/*.sql` and the code in `api/src/`, `api/test/` and `api/scripts/`.
 
 - Binding: `DB`, database name `otinstaller`, `migrations_dir: "migrations"` (`api/wrangler.jsonc`).
-- 32 migrations, `0001` to `0032`.
-- Final schema: **63 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 64. FTS5 also creates its own shadow
+- 36 migrations, `0001` to `0036`.
+- Final schema: **65 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 66. FTS5 also creates its own shadow
   tables, which aren't listed here.
 
 ---
@@ -49,6 +49,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0033 | `0033_email_retries.sql` | `notifications` + `body`, `headers_json`, `attempts` (NN default 0), `sent_at`; partial index `notifications_retry`. Apply before an API that writes them is deployed. |
 | 0034 | `0034_namespace_rename_search.sql` | Trigger `tools_fts_namespace_rename` (AFTER UPDATE OF name ON namespaces): rewrites the namespace's tools' `tools_fts` rows with the new name. |
 | 0035 | `0035_cache_epoch.sql` | New table `settings` (`key` PK, `value`, `updated_at`) with the row `cache_epoch`, which edge-cache keys carry and removals and yanks move on. Apply before an API that reads it is deployed. |
+| 0036 | `0036_people_and_notification_settings.sql` | `users` + `display_name`, `bio`, `location`, `website` (TEXT), `links_json` (TEXT NN default `'[]'`), `handle_changed_at`; new table `handle_aliases` (old handles, kept by their owner and redirecting) and index `handle_aliases_user`; `package_follows` + `level` (CHECK all/releases/muted, default all); `email_prefs` + `lifecycle` and `security` (CHECK immediate/daily/off, default immediate, then set to each row's `releases`), `inbox_muted_json` (TEXT NN default `'[]'`), `email_provider`; `inbox` rebuilt so `scope` also takes `lifecycle` and `security`, indexes `inbox_user` and `inbox_pending` again. Apply before an API that reads them is deployed. |
 
 ---
 
@@ -62,11 +63,22 @@ NOT NULL. Defaults are listed where they exist.
 #### `users`
 Purpose: one person on the registry. Rows are created at first sign-in (`routes/auth.ts`).
 - PK `id` TEXT (ULID)
-- `login` TEXT NN · `name`, `email`, `avatar_url` TEXT
+- `login` TEXT NN · `name`, `email`, `avatar_url` TEXT (`name` is the sign-in provider's and never shown)
 - `is_admin` INTEGER NN default 0 · `is_reviewer` INTEGER NN default 0 (staff flags, 0/1)
 - `banned_at` INTEGER (ms; set by the ban route in `routes/trust.ts`)
 - `created_at` INTEGER NN (ms)
-- No CHECKs, no extra indexes.
+- 0016: `handle` TEXT (unique index `users_handle`), `profile_hidden` INTEGER NN default 0, `posting_blocked_until`
+- 0036, what the person writes on their profile (`PUT /me/profile`): `display_name`, `bio`, `location`, `website`
+  TEXT, `links_json` TEXT NN default `'[]'` (up to 3 `{provider, url}`); `handle_changed_at` INTEGER (the last
+  `PUT /me/handle`; the next change waits 30 days)
+- No CHECKs.
+
+#### `handle_aliases` (0036)
+Purpose: handles people had before. Each stays its owner's: `/people/<old>` answers their profile with `moved_to`, nobody
+else can take it, and new users whose login matches one get a suffix, as for a taken handle.
+- PK `handle` TEXT · `user_id` TEXT NN → `users(id)` ON DELETE CASCADE · `created_at` INTEGER NN
+- Index `handle_aliases_user (user_id)`. Written by `people.ts:changeHandle` (a row for the old handle; taking an old
+  handle back deletes its row).
 
 #### `accounts` (rebuilt in 0010)
 Purpose: a linked sign-in provider identity, with its encrypted provider tokens.
@@ -439,17 +451,23 @@ Purpose: a ledger of outgoing emails. Its unique key makes `sendEmail` idempoten
 - 0033: `body` TEXT and `headers_json` TEXT (the email, kept until it is sent or given up on) · `attempts` INTEGER NN DEFAULT 0 · `sent_at` INTEGER; partial index `notifications_retry (status, created_at) WHERE body IS NOT NULL`.
 - Flow (`notify.ts:sendEmail`): inserted as `failed` ("not sent yet", with its text), or as `skipped` when `RESEND_API_KEY` is unset; `sent` once Resend accepts it. `retryEmails` (15-minute cron) tries failed rows again, five attempts over two days; a refused message (4xx other than 429) gets `attempts = 5` at once.
 
-### 2.11a Inbox, email preferences and follows (0017, 0029, 0030)
+### 2.11a Inbox, notification settings and follows (0017, 0029, 0030, 0036)
 
-- `email_prefs`: PK `user_id` → `users` (cascade); `community`, `owner_issues`, `releases` (0029), each CHECK
-  `('immediate', 'daily', 'off')` default `immediate`; `updated_at`. Written by `PUT /me/email-prefs` and one-click
-  unsubscribe.
+- `email_prefs`: PK `user_id` → `users` (cascade); `community`, `owner_issues`, `releases` (0029), `lifecycle` and
+  `security` (0036), each CHECK `('immediate', 'daily', 'off')` default `immediate`; `inbox_muted_json` (0036: the
+  kinds kept out of the inbox list and its unread count, still written and emailed); `email_provider` (0036: the
+  sign-in account whose address gets the emails, null for `users.email` or else the first account's); `updated_at`.
+  Written by `PUT /me/notification-settings`, `PUT /me/email-prefs` and one-click unsubscribe.
 - `inbox`: PK `id` (ULID), `user_id` → `users` (cascade), `kind` (free text: issue_opened, comment, status, moderation,
-  role, proposal, release), `scope` CHECK `('community', 'owner_issues', 'releases', 'account')` (which preference
-  decides the email; 0029 rebuilt the table for `releases`), `tool_id`, `issue_id`, `actor_id`, `summary`, `path`,
-  `created_at`, `read_at`, `emailed_at`. Indexes `inbox_user (user_id, created_at DESC)`, `inbox_pending (created_at)
-  WHERE emailed_at IS NULL`. Written by `inbox.ts:notify` and `notifyFollowers`; delivered by `deliverInbox`.
-- `package_follows` (0029): PK `(tool_id, user_id)`, both cascade, `created_at`; index `package_follows_user`.
+  role, proposal, release, lifecycle, security), `scope` CHECK `('community', 'owner_issues', 'releases', 'lifecycle',
+  'security', 'account')` (which preference decides the email; 0029 rebuilt the table for `releases`, 0036 for
+  `lifecycle` and `security`), `tool_id`, `issue_id`, `actor_id`, `summary`, `path`, `created_at`, `read_at`,
+  `emailed_at`. Indexes `inbox_user (user_id, created_at DESC)`, `inbox_pending (created_at) WHERE emailed_at IS NULL`.
+  Written by `inbox.ts:notify`, `notifyFollowers` and `notifyPackageFollowers`; delivered by `deliverInbox`.
+- `package_follows` (0029): PK `(tool_id, user_id)`, both cascade, `created_at`; index `package_follows_user`. `level`
+  (0036) CHECK `('all', 'releases', 'muted')` default `all`: `all` hears about new versions, lifecycle changes and
+  security warnings, `releases` about new versions and security warnings, `muted` about nothing, even through a
+  followed publisher or input type.
 - `follows` (0030): PK `(user_id, kind, target)`, `user_id` cascade, `kind` CHECK `('publisher', 'input')`, `target`
   (a namespace's name, or an input type; no foreign key, so a follow outlives a renamed namespace), `created_at`; index
   `follows_target (kind, target)`. At most 200 a person (`PUT /me/follows/:kind/:target`).
