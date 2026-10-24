@@ -42,7 +42,7 @@ setting for an agent or a CI job. `ot run` prints the JSON [result envelope](/do
 | `ot runs` | `[{run_id, tool, version, target, case, status, exit_code, entities, started_at, output_path}]`, newest first, the same rows as MCP's `list_runs` |
 | `ot runs <run-id>` | the run's `.meta.json` sidecar (see [Results](/docs/results)) |
 | `ot extract`, `ot diff` | indicators by type; new and gone entities |
-| `ot outdated`, `ot update` | `[{ref, installed, latest, status, note, flags, replacement}]`; `flags` lists any of `deprecated`, `possibly_broken`, `yanked`, `source_unavailable` and `moved` |
+| `ot outdated`, `ot update` | `[{ref, installed, latest, status, note, flags, replacement}]`; `flags` lists any of `deprecated`, `possibly_broken`, `yanked`, `source_unavailable`, `moved` and `held` |
 | `ot keys list` | `[{name, set, source, required_by, optional_for}]`, never values |
 | `ot doctor` | `{ok, checks: [{name, status, detail}], data_dir, version}` |
 | `ot validate` | `{valid, problems}` |
@@ -104,8 +104,10 @@ for a script that doesn't need it. The rules are the same as the [MCP server's](
 Links are printed instead of opened in a browser. `ot keys set NAME` still reads a piped value from stdin, or use
 `--from-env VAR`.
 
-`ot outdated` looks up the latest `ot` release at most once a day and notes a newer one on stderr. It never does in CI
-(when `CI` is set) or under `ot mcp`; `OT_NO_UPDATE_CHECK=1` turns it off anywhere else.
+At most once a day, at a terminal, `ot` notes on stderr when installed packages or `ot` itself have newer versions
+(`ot outdated` always notes a newer `ot`). It never does without a terminal, with JSON output, in CI (when `CI` is set)
+or under `ot mcp`; `OT_NO_UPDATE_CHECK=1` turns it off anywhere else. Scheduled updates are in
+[Keeping tools up to date](/docs/updates#updating-on-a-schedule).
 
 ## Signing in and keys without a keychain
 
@@ -146,7 +148,7 @@ without an account. Each feed is cached for 10 minutes.
 
 Every one also comes as `.json`. Under the feeds is the API's [`GET /v1/activity`](/docs/api), which takes `limit`,
 `before` (Unix milliseconds, for paging), `kind`, `input` and `namespace`. For the tools you have installed,
-`ot outdated --json` says which have a newer version.
+`ot outdated --json` says which have a newer version; see [Keeping tools up to date](/docs/updates).
 
 ## For AI agents
 

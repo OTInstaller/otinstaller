@@ -23,14 +23,14 @@ type updateRow struct {
 	Status string `json:"status"`
 	Note   string `json:"note,omitempty"`
 	// Flags are what else to know, whatever the status: deprecated, possibly_broken, yanked (the installed version),
-	// source_unavailable and moved.
+	// source_unavailable, moved and held (installed at an exact version, so `ot update --all` leaves it).
 	Flags []string `json:"flags"`
 	// Replacement is the package to move to: the deprecation's replacement, or where the package moved.
 	Replacement string `json:"replacement,omitempty"`
 	// LatestFirstWeek is what people said about the latest version while it is under a week old, when it is an update.
 	LatestFirstWeek *api.FirstWeek `json:"latest_first_week,omitempty"`
-	// warnings are the flags as sentences, printed on stderr.
-	warnings []string
+	// warnings explain the flags that need it, as sentences printed on stderr in Flags order.
+	warnings map[string]string
 	// notes are worth knowing but not warnings (an update's first week), printed on stderr after them.
 	notes []string
 	// movedTo is the package's new name when it moved; `ot update` installs it there.
@@ -47,14 +47,20 @@ func (a *App) checkUpdates(ctx context.Context, insts []*state.Installed) []*upd
 	sem := make(chan struct{}, checkConcurrency)
 	var wg sync.WaitGroup
 	for i, inst := range insts {
-		rows[i] = &updateRow{Ref: inst.Ref, Installed: inst.Version, Flags: []string{}}
+		rows[i] = &updateRow{Ref: inst.Ref, Installed: inst.Version, Flags: []string{}, warnings: map[string]string{}}
 		wg.Add(1)
-		go func(row *updateRow) {
+		go func(row *updateRow, held bool) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			a.checkUpdate(ctx, row)
-		}(rows[i])
+			if held {
+				row.Flags = append(row.Flags, "held")
+				if row.Status == "update available" {
+					row.notes = append(row.notes, fmt.Sprintf("%s is held at %s; `ot update %s` moves it to %s", row.Ref, row.Installed, row.Ref, row.Latest))
+				}
+			}
+		}(rows[i], inst.Held)
 	}
 	wg.Wait()
 	return rows
@@ -154,7 +160,7 @@ func firstWeekNote(ref, version string, fw api.FirstWeek) string {
 // flag adds a lifecycle flag and the warning that explains it.
 func (r *updateRow) flag(name, warning string) {
 	r.Flags = append(r.Flags, name)
-	r.warnings = append(r.warnings, warning)
+	r.warnings[name] = warning
 }
 
 // forgetOldName drops a moved package's entry under its old name once it is installed under the new one. Its image is
@@ -179,12 +185,29 @@ func (a *App) forgetOldName(ctx context.Context, old, cur *state.Installed) erro
 	return nil
 }
 
+// releaseHold drops a package's hold without reinstalling it: `ot update <name>` on a held package already current.
+func (a *App) releaseHold(inst *state.Installed) error {
+	st, err := state.Load()
+	if err != nil {
+		return err
+	}
+	if cur := st.Installed[inst.Ref]; cur != nil {
+		cur.Held = false
+		if err := st.Save(); err != nil {
+			return err
+		}
+	}
+	inst.Held = false
+	fmt.Fprintf(a.Err, "note: %s is no longer held; `ot update --all` keeps it current\n", inst.Ref)
+	return nil
+}
+
 // unflag drops a flag that no longer holds, such as yanked once a newer version is installed.
 func (r *updateRow) unflag(name string) {
 	for i, f := range r.Flags {
 		if f == name {
 			r.Flags = append(r.Flags[:i:i], r.Flags[i+1:]...)
-			r.warnings = append(r.warnings[:i:i], r.warnings[i+1:]...)
+			delete(r.warnings, name)
 			return
 		}
 	}
@@ -194,8 +217,10 @@ func (a *App) printUpdateRows(rows []*updateRow) error {
 	// One warning per flag, then the notes, on stderr in both modes, so a person sees them under JSON too.
 	defer func() {
 		for _, r := range rows {
-			for _, w := range r.warnings {
-				fmt.Fprintln(a.Err, "warning:", w)
+			for _, f := range r.Flags {
+				if w := r.warnings[f]; w != "" {
+					fmt.Fprintln(a.Err, "warning:", w)
+				}
 			}
 		}
 		for _, r := range rows {
@@ -250,7 +275,8 @@ func (a *App) updateCmd() *cobra.Command {
 		Use:   "update [namespace/name ...]",
 		Short: "Install the latest version of installed packages",
 		Long: "Install the latest published version of the named packages, or of every installed package with --all.\n" +
-			"Each update goes through the same signature and trust checks as `ot install`.",
+			"Each update goes through the same signature and trust checks as `ot install`. --all leaves held packages\n" +
+			"(installed at an exact version) where they are; naming a package updates it and releases its hold.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if all == (len(args) > 0) {
 				return exitErr(ExitUsage, "name the packages to update, or use --all")
@@ -273,9 +299,20 @@ func (a *App) updateCmd() *cobra.Command {
 			rows := a.checkUpdates(cmd.Context(), insts)
 			failed := false
 			for i, row := range rows {
+				// --all leaves a held package where the person put it; naming it moves it on.
+				if insts[i].Held && all {
+					continue
+				}
 				// A package that moved is installed under its new name even when its version hasn't changed.
 				moved := row.movedTo != "" && (row.Status == "up to date" || row.Status == "update available")
 				if row.Status != "update available" && !moved {
+					if insts[i].Held && row.Status == "up to date" {
+						if err := a.releaseHold(insts[i]); err != nil {
+							row.Status, row.Note, failed = "error", err.Error(), true
+							continue
+						}
+						row.unflag("held")
+					}
 					continue
 				}
 				target := row.Ref
@@ -300,6 +337,7 @@ func (a *App) updateCmd() *cobra.Command {
 				}
 				row.Installed = inst.Version
 				row.unflag("yanked")
+				row.unflag("held")
 			}
 			if err := a.printUpdateRows(rows); err != nil {
 				return err

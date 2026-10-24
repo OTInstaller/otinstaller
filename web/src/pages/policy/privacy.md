@@ -2,12 +2,12 @@
 layout: ../../layouts/Policy.astro
 title: Privacy
 description: What the OTInstaller Registry stores about you, and what it doesn't.
-updated: 2026-10-23
+updated: 2026-10-24
 ---
 
 ## Using tools
 
-Tools run on your own machine; their inputs and results never reach the registry. When you install a tool, `ot` sends an anonymous count of the package and version, once per version per machine. We store a daily total per version, never an IP address, user or token. Turn it off with `OT_NO_TELEMETRY=1`.
+Tools run on your own machine; their inputs and results never reach the registry. When you install a tool, `ot` sends an anonymous count of the package and version, once per version per machine. We store a daily total per version, never an IP address, user or token. Turn it off with `OT_NO_TELEMETRY=1`. Once a day, at a terminal, `ot` also downloads the list of every package's latest version and asks which `ot` release is newest. Those requests are the same for everyone and carry no token, so they say nothing about what you have installed; turn them off with `OT_NO_UPDATE_CHECK=1`.
 
 ## Accounts
 

@@ -815,6 +815,11 @@ The person turned agents off (`enabled: false` in the agent policy). Only they c
 ### policy_invalid
 The agent policy file (`<ot home>/agent-policy.json`) is not valid JSON or has a bad value, so agents may do nothing until it is fixed. `ot mcp policy` shows the problem; `ot mcp policy reset` writes the defaults.
 
+### version_held
+`install_tool` was asked to change a tool the person holds at a version they chose (they installed it with
+`ot install <tool>@<version>`). Agents never move a held version. The `hint` names the command the person can run
+themselves: `ot update <tool>`. See [holding a version](/docs/updates#holding-a-version-and-going-back).
+
 ### tool_not_allowed
 The package is in the policy's `deny_tools`, or not in its `allow_tools`. Exit code 4 from `ot run`.
 
