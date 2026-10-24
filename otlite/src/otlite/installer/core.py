@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import shutil
 import subprocess
-import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -97,7 +97,7 @@ def _get_version_git(commit: str) -> str:
     return "unknown"
 
 
-def get_latest_pip_version(package: str) -> str | None:
+def get_latest_pip_version(package: str, timeout: float = 10) -> str | None:
     """Query PyPI for the latest version of a package.
 
     Returns None on any network error or if package not found.
@@ -105,10 +105,11 @@ def get_latest_pip_version(package: str) -> str | None:
     url = f"https://pypi.org/pypi/{package}/json"
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "otlite"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read().decode())
             return data["info"]["version"]
-    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, KeyError):
+    # Timeouts and dropped connections are OSError or http.client errors, not URLError.
+    except (OSError, http.client.HTTPException, ValueError, KeyError, TypeError):
         return None
 
 
@@ -141,31 +142,58 @@ def versions_differ(current: str, latest: str) -> bool:
     return current != latest
 
 
+def _previous_dir(name: str) -> Path:
+    return get_tools_dir() / f".{name}.previous"
+
+
+def _old_dir(name: str) -> Path:
+    return get_tools_dir() / f".{name}.old"
+
+
+def _restore_previous(name: str) -> None:
+    """Put back the copy an update moved aside, if a killed update left it there."""
+    previous = _previous_dir(name)
+    if previous.exists():
+        root = tool_dir(name)
+        if root.exists():
+            safe_rmtree(root)
+        previous.rename(root)
+
+
 def install_tool(
     tool: Tool,
     *,
     force: bool = False,
     stream: bool = False,
 ) -> InstalledTool:
-    """Install a tool into its own virtualenv."""
+    """Install a tool into its own virtualenv.
+
+    Reinstalling (force) keeps the installed copy until the new one works: it is moved aside in the
+    same folder (virtualenvs hold absolute paths, so a copy built elsewhere could not be moved in)
+    and put back if anything fails.
+    """
     # Refuse before touching the filesystem or running pip when this Python cannot run the tool.
     problem = incompatibility(tool)
     if problem:
         raise PythonVersionError(problem)
 
-    # Check if already installed
     existing = get_installed(tool.name)
     if existing and not force:
         raise AlreadyInstalled(f"{tool.name} is already installed (use --force to reinstall)")
 
     root = tool_dir(tool.name)
-
-    # Clean up any leftover directory
-    if root.exists():
+    previous = _previous_dir(tool.name)
+    if existing:
+        _restore_previous(tool.name)
+        if root.exists():
+            root.rename(previous)
+        else:
+            # Its files are gone already: there is nothing to keep.
+            remove_installed(tool.name)
+            existing = None
+    elif root.exists():
+        # A leftover folder with no state row belongs to nothing.
         safe_rmtree(root)
-
-    if force and existing:
-        remove_installed(tool.name)
 
     # Create root and log directory
     ensure_dir(root)
@@ -221,6 +249,10 @@ def install_tool(
         from datetime import datetime, timezone
 
         now = datetime.now(timezone.utc).isoformat()
+        # The old copy moves out of the way before the state row changes, so a crash never puts it
+        # back under the new row.
+        if previous.exists():
+            previous.rename(_old_dir(tool.name))
         installed = InstalledTool(
             name=tool.name,
             version=version,
@@ -230,18 +262,24 @@ def install_tool(
             commit=commit,
             entry_command=entry_command,
             entry_script=entry_script,
-            installed_at=now,
+            installed_at=existing.installed_at if existing else now,
             updated_at=now,
         )
 
         add_installed(installed)
+        safe_rmtree(_old_dir(tool.name))
         job_end(marker.job_id)
         return installed
 
     except BaseException:
-        # Clean up on any failure
+        # Remove the partial install and put back whichever old copy there is; the state row was
+        # never changed.
         if root.exists():
             safe_rmtree(root)
+        for old in (previous, _old_dir(tool.name)):
+            if old.exists():
+                old.rename(root)
+                break
         job_end(marker.job_id)
         raise
 
@@ -252,9 +290,9 @@ def remove_tool(name: str) -> bool:
     if not installed:
         return False
 
-    root = tool_dir(name)
-    if root.exists():
-        safe_rmtree(root)
+    for path in (tool_dir(name), _previous_dir(name), _old_dir(name)):
+        if path.exists():
+            safe_rmtree(path)
 
     remove_installed(name)
     return True
