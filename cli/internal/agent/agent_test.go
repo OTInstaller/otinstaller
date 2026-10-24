@@ -107,7 +107,7 @@ func TestPolicyLimitsAndLists(t *testing.T) {
 		t.Fatalf("same target spelled differently: %+v", d)
 	}
 	p.Enabled = false
-	if d := s.DecideInstall("bob/x"); d.Code != "agent_disabled" {
+	if d := s.DecideInstall("bob/x", ""); d.Code != "agent_disabled" {
 		t.Fatalf("kill switch: %+v", d)
 	}
 }
@@ -144,7 +144,7 @@ func TestPolicyChangesApplyToARunningSession(t *testing.T) {
 	}
 	// A broken file refuses rather than falling back to the defaults.
 	os.WriteFile(PolicyPath(), []byte(`{"enabled": tru`), 0o600)
-	if d := s.DecideInstall("a/b"); d.Code != "policy_invalid" {
+	if d := s.DecideInstall("a/b", ""); d.Code != "policy_invalid" {
 		t.Fatalf("broken file: %+v", d)
 	}
 	os.Remove(PolicyPath())

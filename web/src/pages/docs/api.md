@@ -17,6 +17,7 @@ Search, package pages, manifests, scans, guides, docs, `/types` and `/pivots` ar
 | Call | What it gives |
 | --- | --- |
 | `GET /tools?q=whois&input=domain&passive_only=1` | Search. Filters: `input`, `output`, `category`, `runtime`, `kind`, `no_keys`, `passive_only` (tools that run offline, touch no target and collect no personal data), `sort` (`relevance`, `installs`, `stars`, `updated`, `health`; no stars are recorded yet, so `stars` has no effect), `limit`, `cursor` |
+| `GET /latest` | Every visible package's latest version, status, health, a deprecated package's replacement, and where moved packages went, in one answer cached for an hour. `ot` compares installed packages with it once a day |
 | `GET /facets?kind=tool` | How many visible packages match each input, output, category and runtime, and how many need no key |
 | `GET /tools/{ns}/{name}` | A package, its trust status and its manifest |
 | `GET /tools/{ns}/{name}/{version}/manifest` | What `ot install` uses: the manifest, signer, scan status and backup locations. `manifest` leaves out optional fields added after `ot` v0.12; when it does, `manifest_full` has them |

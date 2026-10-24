@@ -14,8 +14,8 @@ errors as one line of JSON on stderr; see [Scripts, CI and agents](/docs/automat
 | --- | --- |
 | `ot search [query] [--input email] [--output domain] [--category x] [--runtime docker\|pipx] [--no-keys] [--kind tool\|guide] [--limit 25]` | Search the registry by words, by the input type a tool takes or the entity type it produces |
 | `ot info <ns/name \| otinstaller.yaml>` | Summary, inputs, outputs, keys (with the `ot keys set` command), ethics flags, trust status, and a copy-ready run command using the registry's test input |
-| `ot changelog <ns/name> [--all] [--limit 10]` | Release notes, newest first: for an installed tool the versions newer than yours (what `ot update` would bring), otherwise the latest. `ot info` shows the current version's "What's new" |
-| `ot install <ns/name[@version] \| otinstaller.yaml> ... [--native]` | Install one or more tools: pull each image by digest and verify its signature, or build its Python package into a container (`--native` installs it with pipx on the host instead). Every name is checked before anything installs; then it says how to try each tool and which keys to set first |
+| `ot changelog <ns/name> [--all] [--limit 10]` | Release notes, newest first: for an installed tool the versions newer than yours (what `ot update` would bring), otherwise the latest. `ot info` shows the latest version's "What's new" |
+| `ot install <ns/name[@version] \| otinstaller.yaml> ... [--native]` | Install one or more tools: pull each image by digest and verify its signature, or build its Python package into a container (`--native` installs it with pipx on the host instead). Every name is checked before anything installs; then it says how to try each tool and which keys to set first. An exact `@version` is held there: `ot update --all` leaves it ([holding a version](/docs/updates#holding-a-version-and-going-back)) |
 | `ot run <ns/name> --<input> <value> …` | Run a tool; installs it first if needed (`-y`/`--yes` without asking) |
 | `ot run <ns/name> u:johndoe` | Typed inputs fill the tool's input of that type: `u:` username, `d:` domain, `e:` email, `p:` phone, `ip:` IP, `url:` URL |
 | `ot run … [-f\|--format json\|table\|csv\|raw] [-o\|--output file]` | Output format (the JSON [result envelope](/docs/results) by default, or `format` in `config.json`) and where to write it; `--max-raw BYTES` leaves `raw` out of large envelopes |
@@ -23,8 +23,8 @@ errors as one line of JSON on stderr; see [Scripts, CI and agents](/docs/automat
 | `ot run --all u:johndoe [--parallel 4] [--dry-run] [-f table\|json\|jsonl] [-y]` | Run every installed tool that takes those inputs; `jsonl` streams one line per tool as it finishes. When none does, as on a fresh machine, it offers to install a bundled playbook's tools for that type first (at a terminal; otherwise the error names the `ot playbook … --yes` command) |
 | `ot auto <target> [--type username\|email\|domain\|phone\|ip\|url] [--dry-run] [-f table\|json] [--parallel 4] [--results-dir DIR] [--case NAME]` | Guess the target's type (URL, IP, email, phone, domain, else username) and run every installed tool that takes it, offering a bundled playbook's tools first when none does |
 | `ot playbook -l\|--list` · `ot playbook <name> <type>:<value> [-y] [--native] [--dry-run] [-f table\|json] [--parallel 4] [--results-dir DIR] [--case NAME]` | Run a named set of tools against the same inputs (bundled, none needing a key: `domain-recon`, `username-investigation`, `email-investigation`, `phone-investigation`, `ip-investigation`; `--list` shows what each takes; your own go in `./playbooks` or `<ot home>/playbooks`); it asks before installing the tools it needs, and `-y` installs them without asking; runs are saved under the case `playbook-<name>` unless `--case` says otherwise |
-| `ot list` | Installed tools |
-| `ot outdated` · `ot update <ns/name …> \| --all` | Check for and install newer versions, with the same signature and trust checks as `ot install`. `ot outdated` also warns about installed tools that are deprecated (and what replaces them), possibly broken, yanked, moved, or whose source repository is gone, and says what people reported about an update in its first week; `ot update` installs a moved package under its new name |
+| `ot list` | Installed tools; held versions are marked `(held)` |
+| `ot outdated` · `ot update <ns/name …> \| --all` | Check for and install newer versions, with the same signature and trust checks as `ot install`. `ot outdated` also warns about installed tools that are deprecated (and what replaces them), possibly broken, yanked, moved, or whose source repository is gone, and says what people reported about an update in its first week; `ot update` installs a moved package under its new name. `--all` leaves held packages where they are; naming one updates it and releases the hold. See [Keeping tools up to date](/docs/updates) |
 | `ot uninstall <ns/name>` | Remove a tool |
 | `ot keys set\|list\|rm <NAME>` | API keys in the OS keychain (`set --from-env VAR`); an environment variable of the same name always wins |
 | `ot keys setup [tool...]` | Walks through the keys the named tools (or every installed tool) need: what each is, where to get it, what it costs; opens the sign-up page if you want, and asks for each value with typing hidden. Needs a terminal. `--all` also replaces keys already set |
@@ -37,7 +37,7 @@ errors as one line of JSON on stderr; see [Scripts, CI and agents](/docs/automat
 | `ot report <ns/name> --works\|--broken [--version X.Y.Z]` | Say the installed version (or `--version`) works or is broken for you; `--works` needs `ot login`, and `--broken` joins or opens the version's broken issue when signed in |
 | `ot report <ns/name> [--reason malware\|policy\|impersonation\|license\|broken\|other --details …] [--version X.Y.Z]` | Report a package privately to the reviewers (opens the form without `--reason`); `--details` is required except for `broken` |
 | `ot feedback [--kind bug\|idea\|question\|other] [--about …] [--email …] "message"` | Send feedback to the team with your `ot` version and OS; reads piped text, or opens the form with no message |
-| `ot self-update [--check]` | Update ot itself; the release signature is checked first, and an older release is never installed over a newer one. `ot outdated` says when a newer ot is out |
+| `ot self-update [--check]` | Update ot itself; the release signature is checked first, and an older release is never installed over a newer one. `ot` notes a newer release once a day at a terminal, and `ot outdated` always does |
 
 When a tool times out, or exits non-zero without finding anything, `ot run` asks at a terminal whether to report it
 as broken. A yes sends the package, version, exit code, OS and `ot` version, never your inputs or output. It asks at
@@ -121,7 +121,7 @@ registry's copy and checks the same SHA-256. You see a note when this happens; n
 | `OT_NO_TELEMETRY` | Any value stops the install ping (one anonymous request per install) and the question after a failed run |
 | `OT_OUTPUT=json` | JSON output and JSON errors from every command, as if `--json` were given |
 | `OT_NONINTERACTIVE=1` | Never prompt, even at a terminal (`ot` never prompts without one) |
-| `OT_NO_UPDATE_CHECK=1` | `ot outdated` doesn't look up the latest `ot` release (it does at most once a day otherwise, and never in CI or under `ot mcp`) |
+| `OT_NO_UPDATE_CHECK=1` | No daily check for newer versions of installed packages and of `ot` (otherwise at most once a day, never in CI or under `ot mcp`) |
 | `OT_MAX_RAW` | Default for `ot run --max-raw` |
 | `OT_CONSENT=off` | Don't stop unattended runs that need consent (see [AI agents](/docs/agents#agents-that-use-a-shell)) |
 | `OT_RESULTS_DIR` | Where runs are saved (default `./results`; the older `OTINSTALLER_RESULTS_DIR` still works) |

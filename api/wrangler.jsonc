@@ -36,8 +36,9 @@
     "MIRROR_HOST": "mirror.otinstaller.com"
     // "GITHUB_APP_SLUG": "otinstaller" is the App's URL name for install links (this is the default)
     // "UPSTREAM_WATCH": "report" is what the upstream watcher does (the default); "issues" also opens and closes
-    // outdated issues on community wrappers; "prs" also opens bump pull requests (owner's decision, after reading a
-    // week of reports)
+    // outdated issues on community wrappers; "prs" also opens bump pull requests; "auto" also merges and releases
+    // pin-only bumps a week after upstream's release (each the owner's decision, one step at a time; set "prs" again
+    // to stop releasing on its own)
   }
   // Secrets (set with `wrangler secret put`, or in .dev.vars locally):
   //   GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY (PKCS#8 PEM), GITHUB_WEBHOOK_SECRET,

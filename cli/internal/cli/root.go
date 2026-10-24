@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -69,6 +70,10 @@ type App struct {
 	OpenURL func(string) error
 	// CheckRemovals warns, once a day, about installed versions the registry has removed.
 	CheckRemovals bool
+	// CheckUpdates says, at most once a day at a terminal, when installed packages or ot itself have newer versions.
+	CheckUpdates bool
+	// note is the daily note in progress, between a command's start and its end.
+	note *dailyNote
 	// Updater and SelfPath let tests stand in for GitHub releases and the running binary.
 	Updater  *selfupdate.Updater
 	SelfPath string
@@ -93,6 +98,7 @@ func NewApp() *App {
 		Runner:        runner.New(os.Stderr),
 		OpenURL:       openInBrowser,
 		CheckRemovals: true,
+		CheckUpdates:  true,
 	}
 }
 
@@ -105,9 +111,13 @@ func (a *App) Root() *cobra.Command {
 		SilenceErrors: true,
 		Version:       Version,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			if a.CheckRemovals && cmd.Name() != "help" && cmd.Name() != "uninstall" {
+			if a.CheckRemovals && cmd.Name() != "help" && cmd.Name() != "uninstall" && !strings.HasPrefix(cmd.Name(), "__complete") {
 				a.warnRemoved(cmd.Context())
 			}
+			a.startDailyNote(cmd, args)
+		},
+		PersistentPostRun: func(cmd *cobra.Command, args []string) {
+			a.finishDailyNote()
 		},
 	}
 	root.PersistentFlags().BoolVar(&a.JSON, "json", false, "print JSON (errors too, as one line on stderr); OT_OUTPUT=json sets it for every command")

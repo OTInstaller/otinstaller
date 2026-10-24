@@ -221,6 +221,15 @@ person can wait for an update others found broken. The statuses, and exit 0, are
 updates the packages with a newer version, and also moves a package that has a new name: it installs it under that
 name and forgets the old one. The registry is asked about four packages at a time.
 
+Installing an exact version (`ot install x@1.2.0`, or `ot run x@1.2.0` installing it) holds it: state records `held`,
+`ot outdated` adds a `held` flag (with a `note:` naming the update it is held from), and `ot update --all` leaves it.
+Naming the package (`ot update x`, `ot install x`) moves it to the latest version and releases the hold; an agent's
+install never sets or releases one. Going back after an update is installing the earlier version, which holds it.
+
+Without being asked, `ot` checks once a day, at a terminal: it downloads `GET /v1/latest` (every package's latest
+version, the same for everyone) into `cache/latest.json` and, after the command's output, notes how many installed
+packages have newer versions and whether a newer `ot` is out. `ot mcp`'s `list_installed` reads the same list.
+
 ## `ot pivot`
 
 `ot pivot <run-id | saved file>` reads a saved run's entities and suggests what to run next, without running anything.

@@ -1,6 +1,7 @@
 // Upstream watcher routes: the public summary of community wrappers behind their upstream, the staff view with pin
-// overrides and a check-now button, and merging and releasing a bump pull request. Logic lives in ../upstream.ts and
-// ../bumps.ts.
+// overrides, a check-now button and every wrapper's latest bump, merging and releasing a bump pull request (or
+// releasing a failed one again), and the maintainers' switch for releasing bumps on their own (UPSTREAM_WATCH=auto).
+// Logic lives in ../upstream.ts and ../bumps.ts.
 import type { Context } from "hono";
 import type { App, AppEnv } from "../env";
 import { apiError } from "../lib/errors";
@@ -8,9 +9,16 @@ import { cached } from "../catalog";
 import { audit, requireUser } from "./auth";
 import { requireAdmin, requireReviewer } from "./review";
 import { checkUpstream, publicWatch, watchMode, type WatchRow, type WatchState } from "../upstream";
-import { canRelease, openBumpFor, releaseBump } from "../bumps";
+import { autoReleaseAt, canRelease, currentBump, releaseBumpAs, type BumpRow } from "../bumps";
 
 type Joined = WatchRow & { ns: string; name: string };
+
+/** What a package page shows of a bump; the error text only to the people who can release it. */
+const bumpView = (b: BumpRow, withError: boolean) => ({
+  version: b.version, number: b.pr_number, url: b.url, status: b.status, released_version: b.released_version, auto: b.auto === 1,
+  merged_at: b.merged_at, released_at: b.released_at, attempts: b.attempts,
+  ...(withError ? { error_code: b.error_code, error: b.error, run_url: b.run_url } : {}),
+});
 const FROM = `FROM upstream_watch w JOIN tools t ON t.id = w.tool_id JOIN namespaces n ON n.id = t.namespace_id WHERE t.status != 'removed'`;
 
 async function wrapper(c: Context<AppEnv>): Promise<{ id: string }> {
@@ -48,23 +56,55 @@ export function upstreamRoutes(app: App) {
 
   // ---------- bump pull requests (the package's maintainers and reviewers) ----------
 
-  // The open bump pull request, and whether the signed-in person may merge and release it.
+  // The package's current bump (open, being released, failed, or released in the last two weeks), whether the
+  // signed-in person may release it, and in auto mode when it goes out on its own.
   app.get("/packages/:ns/:name/bump", async (c) => {
     const u = requireUser(c);
     const t = await bumpTool(c);
-    const [bump, who] = await Promise.all([openBumpFor(c.env, t.id), canRelease(c.env, u, t)]);
+    const [bump, who, watch, auto] = await Promise.all([
+      currentBump(c.env, t.id), canRelease(c.env, u, t),
+      c.env.DB.prepare(`SELECT latest_at FROM upstream_watch WHERE tool_id = ?`).bind(t.id).first<{ latest_at: number | null }>(),
+      c.env.DB.prepare(`SELECT auto_release FROM tools WHERE id = ?`).bind(t.id).first<{ auto_release: number }>(),
+    ]);
+    const mode = watchMode(c.env);
+    const canRel = who.maintainer || who.reviewer;
     c.header("Cache-Control", "private, no-store");
-    return c.json({ bump: bump ? { version: bump.version, number: bump.pr_number, url: bump.url } : null, can_release: who.maintainer || who.reviewer });
+    return c.json({
+      bump: bump ? {
+        ...bumpView(bump, canRel),
+        auto_release_at: bump.status === "open" && mode === "auto" && auto?.auto_release ? autoReleaseAt({ latest_at: watch?.latest_at ?? null }, bump) : null,
+      } : null,
+      can_release: canRel,
+      auto_release: !!auto?.auto_release,
+      mode,
+    });
   });
 
+  // Merges and releases an open bump, or releases a failed one again (without merging again).
   app.post("/packages/:ns/:name/pulls/:number/release", async (c) => {
     const u = requireUser(c);
     const t = await bumpTool(c);
     const n = Number(c.req.param("number"));
     if (!Number.isInteger(n) || n <= 0) apiError(400, "invalid_parameter", "the pull request number is a positive integer");
-    const out = await releaseBump(c.env, u, t, n);
+    const out = await releaseBumpAs(c.env, u, t, n);
     c.header("Cache-Control", "private, no-store");
-    return c.json({ merged: true, upstream_version: out.version, version: out.released });
+    return c.json({ merged: true, upstream_version: out.version, version: out.released, attempt: out.attempt });
+  });
+
+  // Whether the registry may release this package's pin-only bumps on its own (UPSTREAM_WATCH=auto).
+  app.put("/packages/:ns/:name/auto-release", async (c) => {
+    const u = requireUser(c);
+    const t = await bumpTool(c);
+    const who = await canRelease(c.env, u, t);
+    if (!who.maintainer && !who.reviewer) apiError(403, "not_package_maintainer", "only the package's maintainers and reviewers can change this");
+    const b = await c.req.json<{ enabled?: unknown }>().catch(() => ({}) as { enabled?: unknown });
+    if (typeof b.enabled !== "boolean") apiError(400, "invalid_body", "send {enabled: true} or {enabled: false}");
+    await c.env.DB.batch([
+      c.env.DB.prepare(`UPDATE tools SET auto_release = ? WHERE id = ?`).bind(b.enabled ? 1 : 0, t.id),
+      audit(c.env.DB, u.id, "user", b.enabled ? "bump.auto_on" : "bump.auto_off", "tool", t.id),
+    ]);
+    c.header("Cache-Control", "private, no-store");
+    return c.json({ auto_release: b.enabled });
   });
 
   // ---------- staff ----------
@@ -72,14 +112,25 @@ export function upstreamRoutes(app: App) {
   app.get("/admin/upstream", async (c) => {
     requireReviewer(c);
     const state = c.req.query("state");
-    const rows = (await c.env.DB.prepare(`SELECT w.*, n.name AS ns, t.name ${FROM}${state ? " AND w.state = ?" : ""} ORDER BY w.state, n.name, t.name`)
-      .bind(...(state ? [state] : [])).all<Joined>()).results;
+    const bumpStatus = c.req.query("bump");
+    if (bumpStatus && !["open", "merged", "released", "failed", "closed"].includes(bumpStatus)) apiError(400, "invalid_parameter", "bump is open, merged, released, failed or closed");
+    // Each wrapper's latest bump comes along; ?bump=failed lists only the wrappers whose latest bump failed.
+    const latestBump = `(SELECT b.version FROM bump_prs b WHERE b.tool_id = w.tool_id ORDER BY b.created_at DESC LIMIT 1)`;
+    const where = `${state ? " AND w.state = ?" : ""}${bumpStatus ? ` AND (SELECT b.status FROM bump_prs b WHERE b.tool_id = w.tool_id ORDER BY b.created_at DESC LIMIT 1) = ?` : ""}`;
+    const rows = (await c.env.DB.prepare(`SELECT w.*, n.name AS ns, t.name, t.auto_release, ${latestBump} AS bump_version ${FROM}${where} ORDER BY w.state, n.name, t.name`)
+      .bind(...(state ? [state] : []), ...(bumpStatus ? [bumpStatus] : [])).all<Joined & { auto_release: number; bump_version: string | null }>()).results;
+    const bumps = new Map<string, BumpRow>();
+    for (const r of rows.filter((r) => r.bump_version)) {
+      const b = await c.env.DB.prepare(`SELECT * FROM bump_prs WHERE tool_id = ? AND version = ?`).bind(r.tool_id, r.bump_version).first<BumpRow>();
+      if (b) bumps.set(r.tool_id, b);
+    }
     c.header("Cache-Control", "private, no-store");
     return c.json({
       mode: watchMode(c.env),
       watches: rows.map((r) => ({
-        ref: `${r.ns}/${r.name}`, upstream: r.upstream_path, ...publicWatch(r), pin_kind: r.pin_kind, upstream_license: r.upstream_license, error: r.error,
-        override: r.override_json ? JSON.parse(r.override_json) : null, changed_at: r.changed_at,
+        ref: `${r.ns}/${r.name}`, upstream: r.upstream_path, provider: r.provider, ...publicWatch(r), pin_kind: r.pin_kind, upstream_license: r.upstream_license, error: r.error,
+        override: r.override_json ? JSON.parse(r.override_json) : null, changed_at: r.changed_at, auto_release: r.auto_release === 1,
+        bump: bumps.has(r.tool_id) ? bumpView(bumps.get(r.tool_id)!, true) : null,
       })),
     });
   });

@@ -6,7 +6,7 @@ import { api, type Facets, type SearchResult, type Types } from "../lib/api";
 import { GENERIC_INPUTS } from "../lib/landing";
 import { OTLITE_TOOLS, toolPath } from "../lib/otlite";
 
-const DOCS = ["", "/quick-start", "/getting-started", "/otlite", "/cli", "/agents", "/mcp-tools", "/automation", "/results", "/api", "/manifest", "/publishing", "/community", "/guides", "/errors", "/security", "/faq"];
+const DOCS = ["", "/quick-start", "/getting-started", "/otlite", "/cli", "/updates", "/agents", "/mcp-tools", "/automation", "/results", "/api", "/manifest", "/publishing", "/community", "/guides", "/errors", "/security", "/faq"];
 const POLICIES = ["/acceptable-use", "/terms", "/privacy", "/takedown", "/community", "/transparency"];
 
 async function all(path: string) {

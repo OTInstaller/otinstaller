@@ -84,7 +84,11 @@ marked (you). In order:
       installed on all repositories of `osintverse-community` (checked 24 Oct). Until then submitting answers 503 and
       the rest works.
 - [ ] **(you)** After a week of upstream watcher reports (Admin console → Upstream), decide whether to set
-      `UPSTREAM_WATCH` to `issues`, and later `prs`.
+      `UPSTREAM_WATCH` to `issues`, and later `prs`. Apply migration 0028 before deploying an API that has it.
+- [ ] **(you)** Once bump pull requests have released cleanly for a while under `prs` (Admin console → Upstream,
+      "Latest bump"), decide whether to set `UPSTREAM_WATCH` to `auto`: pin-only bumps of stable releases then go out
+      on their own a week after upstream's release, at most ten a day, unless a package's maintainers turn it off.
+      Setting `prs` again stops it.
 - [ ] **(you)** Apply migration 0029 (following packages' releases) before deploying an API that has it: without it
       `/me/email-prefs` and the inbox email cron fail. Then deploy the site for the "Follow releases" button.
 - [x] Release `ot` v0.15.0 once the API above is live (its new commands need it): `ot publish` (with `--image`,

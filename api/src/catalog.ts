@@ -145,6 +145,43 @@ export async function findTool(db: D1Database, ns: string, name: string): Promis
   return { row: null };
 }
 
+/**
+ * Every visible package's latest version and lifecycle, plus the old addresses of packages that moved: what `ot`
+ * compares installed packages with once a day, without telling the registry which ones it has. Packages whose source
+ * is gone are included (they leave search but stay installed).
+ */
+export async function latestVersions(db: D1Database) {
+  const [packages, moved] = await db.batch([
+    db.prepare(
+      `SELECT n.name AS ns, t.name, t.kind, v.version AS latest, t.status, t.health_status, t.deprecated_replacement,
+         EXISTS (SELECT 1 FROM sources s WHERE s.tool_id = t.id AND s.sync_status = 'unavailable') AS source_unavailable
+       FROM tools t JOIN namespaces n ON n.id = t.namespace_id JOIN versions v ON v.id = t.latest_version_id
+       WHERE ${VISIBLE} ORDER BY n.name, t.name`,
+    ),
+    db.prepare(
+      `SELECT a.old_namespace || '/' || a.old_name AS "from", n.name || '/' || t.name AS "to"
+       FROM aliases a JOIN tools t ON t.id = a.tool_id JOIN namespaces n ON n.id = t.namespace_id
+       WHERE ${VISIBLE} ORDER BY 1`,
+    ),
+  ]);
+  type Row = { ns: string; name: string; kind: string; latest: string; status: string; health_status: string; deprecated_replacement: string | null; source_unavailable: number };
+  const rows = (packages?.results ?? []) as Row[];
+  const refs = new Set(rows.map((r) => `${r.ns}/${r.name}`));
+  return {
+    packages: rows.map((r) => ({
+      ref: `${r.ns}/${r.name}`,
+      kind: r.kind,
+      latest: r.latest,
+      status: r.status,
+      health: r.health_status,
+      ...(r.status === "deprecated" && r.deprecated_replacement ? { replacement: r.deprecated_replacement } : {}),
+      ...(r.source_unavailable ? { source_unavailable: true } : {}),
+    })),
+    // A package published at an address wins over an alias of the same name, as in findTool.
+    moved: ((moved?.results ?? []) as { from: string; to: string }[]).filter((m) => !refs.has(m.from)),
+  };
+}
+
 /** Not found: removed packages answer 410 with why, so the CLI and site can say so instead of "not found". */
 export async function notFound(db: D1Database, ns: string, name: string): Promise<never> {
   // The package itself was removed, or every version it had published was.

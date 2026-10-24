@@ -381,3 +381,21 @@ export async function closePull(f: Fetch, token: string, repo: string, number: n
     "closing the pull request",
   );
 }
+
+/** A pull request's state: open, or closed (merged or not). */
+export async function getPull(f: Fetch, token: string, repo: string, number: number): Promise<{ state: "open" | "closed"; merged: boolean; head: string }> {
+  const res = await check(await f(`${GITHUB_API}/repos/${repo}/pulls/${number}`, { headers: apiHeaders(token) }), "reading the pull request");
+  const p = (await res.json()) as { state: "open" | "closed"; merged?: boolean; head?: { ref?: string } };
+  return { state: p.state, merged: !!p.merged, head: p.head?.ref ?? "" };
+}
+
+/** A workflow's runs started by workflow_dispatch since `since` (ms), newest first. */
+export async function workflowRuns(f: Fetch, token: string, repo: string, workflow: string, since: number): Promise<{ status: string; conclusion: string | null; url: string; created_at: number }[]> {
+  const created = new Date(since).toISOString().slice(0, 19) + "Z";
+  const res = await check(
+    await f(`${GITHUB_API}/repos/${repo}/actions/workflows/${encodeURIComponent(workflow)}/runs?event=workflow_dispatch&per_page=5&created=${encodeURIComponent(`>=${created}`)}`, { headers: apiHeaders(token) }),
+    "reading the release workflow's runs",
+  );
+  const runs = ((await res.json()) as { workflow_runs?: { status: string; conclusion: string | null; html_url: string; created_at: string }[] }).workflow_runs ?? [];
+  return runs.map((r) => ({ status: r.status, conclusion: r.conclusion, url: r.html_url, created_at: Date.parse(r.created_at) }));
+}

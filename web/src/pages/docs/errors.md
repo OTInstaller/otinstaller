@@ -402,7 +402,12 @@ Only a community package's maintainers (whoever submitted it, others staff added
 reviewers can merge and release its bump pull requests, or propose changes to it.
 
 ### bump_not_found
-The package has no open bump pull request with that number. It may have been merged, or replaced by a newer one.
+The package has no open or failed bump pull request with that number. It may have been released, or replaced by a
+newer one.
+
+### bump_in_progress
+The bump's release has started (someone merged it, or the registry released it on its own) and hasn't ended yet.
+The package page says when it is published, or why it failed; a failed one can be released again.
 
 ### not_pin_only
 The bump pull request changes more than the pinned upstream release, so a reviewer merges it instead of a
@@ -411,6 +416,19 @@ maintainer.
 ### bump_not_mergeable
 GitHub won't merge the bump pull request, usually because the branch conflicts with newer commits. Resolve it on
 GitHub, or ask a reviewer.
+
+### release_start_failed
+The bump pull request was merged, but starting its release (the release workflow, or the tag for a wheel) failed on
+GitHub. Nothing was published. Release it again from the package page.
+
+### release_workflow_failed
+The wrapper's release workflow, started by a bump, failed before it tagged a release, usually because the new upstream
+release no longer builds the same way. The package page links the workflow run. Fix the Dockerfile on GitHub (or
+propose the change), then release the bump again.
+
+### release_not_received
+A bump's release started, but no release reached the registry within 12 hours. Check the wrapper repository's release
+workflow runs, then release the bump again.
 
 ### self_review
 Someone other than the submitter has to review a submission's first release, and someone other than the proposer a
@@ -796,6 +814,11 @@ The person turned agents off (`enabled: false` in the agent policy). Only they c
 
 ### policy_invalid
 The agent policy file (`<ot home>/agent-policy.json`) is not valid JSON or has a bad value, so agents may do nothing until it is fixed. `ot mcp policy` shows the problem; `ot mcp policy reset` writes the defaults.
+
+### version_held
+`install_tool` was asked to change a tool the person holds at a version they chose (they installed it with
+`ot install <tool>@<version>`). Agents never move a held version. The `hint` names the command the person can run
+themselves: `ot update <tool>`. See [holding a version](/docs/updates#holding-a-version-and-going-back).
 
 ### tool_not_allowed
 The package is in the policy's `deny_tools`, or not in its `allow_tools`. Exit code 4 from `ot run`.
