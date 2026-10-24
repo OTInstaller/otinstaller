@@ -6,6 +6,7 @@ import Base from "../../layouts/Base.astro";
 import Results from "../../components/Results.astro";
 import CompareTable from "../../components/CompareTable.astro";
 import ToolRow from "../../components/ToolRow.astro";
+import FollowReleases from "../../islands/FollowReleases";
 import { api, type SearchResult, type Types } from "../../lib/api";
 import { entityLabel, inputLabel } from "../../lib/format";
 import { cacheFor, searchFrom } from "../../lib/page";
@@ -55,6 +56,7 @@ cacheFor(Astro, 600);
       {compared.length > 1 && <> <a href="#compare-h">Compare them side by side ↓</a></>}
     </p>
     {copy && <p class="lead-copy">{copy.lead}</p>}
+    {!["string", "integer", "boolean", "enum"].includes(type) && <FollowReleases client:idle kind="input" refName={type} back={`/input/${type}`} />}
   </header>
   <Results result={result} types={types} fixed={["input"]} />
   {compared.length > 1 && (

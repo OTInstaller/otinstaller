@@ -8,6 +8,7 @@ import { ErrorNote, Loading, SignIn, useMe, when } from "./shared";
 type Pref = "immediate" | "daily" | "off";
 interface Prefs { community: Pref; owner_issues: Pref; releases: Pref }
 interface Follow { ref: string; kind: string; status: string; latest_version: string | null; followed_at: number }
+interface Follows { follows: Follow[]; publishers: { name: string; followed_at: number }[]; inputs: { type: string; followed_at: number }[] }
 interface Item { id: string; kind: string; summary: string; path: string; created_at: number; read_at: number | null }
 
 const LABEL: Record<Pref, string> = { immediate: "Within 15 minutes", daily: "Once a day", off: "Never (inbox only)" };
@@ -17,6 +18,7 @@ export default function NotificationSettings({ back }: { back: string }) {
   const [prefs, setPrefs] = useState<Prefs | null>(null);
   const [items, setItems] = useState<Item[] | null>(null);
   const [follows, setFollows] = useState<Follow[] | null>(null);
+  const [others, setOthers] = useState<Pick<Follows, "publishers" | "inputs">>({ publishers: [], inputs: [] });
   const [saved, setSaved] = useState(false);
   const [hidden, setHidden] = useState<boolean | null>(null);
   const [error, setError] = useState<unknown>(null);
@@ -24,8 +26,8 @@ export default function NotificationSettings({ back }: { back: string }) {
   useEffect(() => {
     if (!me) return;
     setHidden(!!me.profile_hidden);
-    Promise.all([api<Prefs>("/me/email-prefs"), api<{ items: Item[] }>("/me/inbox"), api<{ follows: Follow[] }>("/me/follows")])
-      .then(([p, i, f]) => { setPrefs(p); setItems(i.items); setFollows(f.follows); }, setError);
+    Promise.all([api<Prefs>("/me/email-prefs"), api<{ items: Item[] }>("/me/inbox"), api<Follows>("/me/follows")])
+      .then(([p, i, f]) => { setPrefs(p); setItems(i.items); setFollows(f.follows); setOthers({ publishers: f.publishers ?? [], inputs: f.inputs ?? [] }); }, setError);
   }, [me]);
 
   if (me === null) return <Loading what="your account" />;
@@ -64,6 +66,14 @@ export default function NotificationSettings({ back }: { back: string }) {
       setError(e);
     }
   };
+  const unfollowOther = async (kind: "publisher" | "input", target: string) => {
+    try {
+      await api(`/me/follows/${kind}/${encodeURIComponent(target)}`, { method: "DELETE" });
+      setOthers(kind === "publisher" ? { ...others, publishers: others.publishers.filter((p) => p.name !== target) } : { ...others, inputs: others.inputs.filter((i) => i.type !== target) });
+    } catch (e) {
+      setError(e);
+    }
+  };
   const unread = items.filter((i) => !i.read_at).length;
 
   return (
@@ -75,7 +85,7 @@ export default function NotificationSettings({ back }: { back: string }) {
             {(Object.keys(LABEL) as Pref[]).map((p) => <option value={p}>{LABEL[p]}</option>)}
           </select>
         </label>
-        <label class="row">New versions of packages you follow
+        <label class="row">New versions and new packages you follow (packages, publishers, input types)
           <select value={prefs.releases} onChange={(e) => change("releases", (e.target as HTMLSelectElement).value as Pref)}>
             {(Object.keys(LABEL) as Pref[]).map((p) => <option value={p}>{LABEL[p]}</option>)}
           </select>
@@ -91,7 +101,9 @@ export default function NotificationSettings({ back }: { back: string }) {
       </section>
 
       <section class="card stack" aria-labelledby="follows-h">
-        <h2 id="follows-h">Packages you follow</h2>
+        <h2 id="follows-h">What you follow</h2>
+        <p class="small muted">New versions of these reach you as the email setting for packages you follow says.</p>
+        <h3 class="small">Packages</h3>
         {follows.length === 0 ? <p class="small muted">None yet. "Follow releases" on a tool's page tells you about each new version.</p> : (
           <ul class="list-plain stack">
             {follows.map((f) => (
@@ -100,6 +112,28 @@ export default function NotificationSettings({ back }: { back: string }) {
                 {f.latest_version && <span class="small muted">{f.latest_version}</span>}
                 {f.status !== "active" && <span class="small muted">{f.status}</span>}
                 <button class="btn btn-sm btn-ghost" type="button" onClick={() => unfollow(f.ref)}>Stop following</button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <h3 class="small">Publishers</h3>
+        {others.publishers.length === 0 ? <p class="small muted">None yet. "Follow publisher" on a publisher's page tells you about their new versions and new packages.</p> : (
+          <ul class="list-plain stack">
+            {others.publishers.map((p) => (
+              <li class="row">
+                <a href={`/${p.name}`}>{p.name}</a>
+                <button class="btn btn-sm btn-ghost" type="button" onClick={() => unfollowOther("publisher", p.name)}>Stop following</button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <h3 class="small">Input types</h3>
+        {others.inputs.length === 0 ? <p class="small muted">None yet. "Follow new tools" on an input type's page, such as <a href="/input/email">email</a>, tells you about new tools and guides for it.</p> : (
+          <ul class="list-plain stack">
+            {others.inputs.map((i) => (
+              <li class="row">
+                <a href={`/input/${i.type}`}>{i.type.replace(/_/g, " ")}</a>
+                <button class="btn btn-sm btn-ghost" type="button" onClick={() => unfollowOther("input", i.type)}>Stop following</button>
               </li>
             ))}
           </ul>

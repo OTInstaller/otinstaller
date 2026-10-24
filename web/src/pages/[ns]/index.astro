@@ -4,6 +4,7 @@
 import Base from "../../layouts/Base.astro";
 import ToolCard from "../../components/ToolCard.astro";
 import ToolRow from "../../components/ToolRow.astro";
+import FollowReleases from "../../islands/FollowReleases";
 import { api, apiOrNull, type ActivityEvent, type Namespace, type NamespaceStats, type Profile } from "../../lib/api";
 import { ago, formatCount, formatDate, inputLabel } from "../../lib/format";
 import { cacheFor } from "../../lib/page";
@@ -92,6 +93,7 @@ cacheFor(Astro, 300);
           <span class="badge plain">{kindLabel(n.kind, n.provider)}</span>
           {pending && <span class="badge warn">Waiting for review</span>}
         </p>
+        {!pending && <FollowReleases client:idle kind="publisher" refName={n.name} back={`/${n.name}`} />}
       </div>
       {p.bio && <p class="bio">{p.bio}</p>}
       <ul class="facts list-plain small">

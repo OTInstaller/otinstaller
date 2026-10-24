@@ -40,8 +40,10 @@ To look yourself:
 | `ot changelog <tool>` | The release notes of the versions newer than yours (`--all` for every version) |
 | `ot info <tool>` | The latest version's release notes, under "What's new" |
 
-To follow a tool without `ot`, subscribe to its feed, `/<namespace>/<tool>/feed.atom`
-([feeds](/docs/automation#feeds-staying-up-to-date)).
+Signed in on the website, **Follow releases** on a tool's page, **Follow publisher** on a publisher's page and
+**Follow new tools** on an input type's page send you an inbox item and an email for each new version
+([following](/docs/community#following-packages-publishers-and-input-types)). Without an account, subscribe to a
+feed: `/<namespace>/<tool>/feed.atom` ([feeds](/docs/automation#feeds-staying-up-to-date)).
 
 ## Updating
 
