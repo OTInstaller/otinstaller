@@ -3,7 +3,7 @@
 schema: 1
 name: dnstwist
 namespace: osintverse-community
-version: 20250130.0.0
+version: 20250130.0.1
 summary: "Finds registered look-alike domains for phishing, typosquatting and brand impersonation"
 readme: README.md
 license: Apache-2.0

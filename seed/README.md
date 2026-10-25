@@ -539,3 +539,33 @@ fields too but have never been published (see "Converted from the otinstaller ca
 
 A manifest change alone can't be published under the same version: the release must bump it (Docker wrappers' release
 workflow does; pipx wrappers need a `version` bump by hand).
+
+## Longer READMEs (25 Oct 2026)
+
+Ten of the most-searched wrappers have READMEs that say what the tool does and when to use it, how to run it with a
+typed input (and with otlite where its catalog has the tool), what it returns, which keys and network it needs, and
+which registry packages take the same input. The opening credit and report/claim paragraphs are unchanged. Every fact
+comes from the manifest, the upstream README at the pinned release, or the public API.
+
+- The output samples are from each version's smoke scan (`output_excerpt` in
+  `GET /v1/tools/osintverse-community/<name>/<version>/scans`), because production's tool response had no `sample`
+  field on 25 Oct.
+- A README reaches the tool page only with a new release, so each package takes a patch version upstream never
+  shipped, as in the section above.
+- The pipx wrappers' `version` is bumped here (same `package_version` and `wheel_sha256`); push and tag `v<version>`.
+- The Docker wrappers' manifests here keep their old `version`, because the release workflow writes the version it is
+  given along with the image digest: copy only the README to their repositories and run the workflow with the new
+  version. holehe's manifest here still says 1.61.0; its repository is at 1.61.1 since the re-release above.
+
+| Package | Runtime | New version |
+| --- | --- | --- |
+| `sherlock` | pipx | 0.16.3 |
+| `maigret` | pipx | 0.6.7 |
+| `dnstwist` | pipx | 20250130.0.1 |
+| `social-analyzer` | pipx | 0.45.1 |
+| `socialscan` | pipx | 2.0.2 |
+| `mailcat` | pipx | 0.1.2 |
+| `holehe` | Docker | 1.61.2 |
+| `phoneinfoga` | Docker | 2.11.1 |
+| `theharvester` | Docker | 4.11.2 |
+| `subfinder` | Docker | 2.17.1 |
