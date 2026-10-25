@@ -68,10 +68,10 @@ async function reviewerToken(opts: { admin?: boolean } = {}) {
 }
 
 /** Tags a release, runs validation, and returns the scan token the dispatch carried. */
-async function tagAndValidate(p: Awaited<ReturnType<typeof publisher>>, version = "1.0.0") {
+async function tagAndValidate(p: Awaited<ReturnType<typeof publisher>>, version = "1.0.0", manifest = manifestFor(p.login, version)) {
   const res = await webhook("create", tagEvent(p.instId, p.repo, p.repoId, `v${version}`));
   const jobId = ((await res.json()) as any).jobId as string;
-  const calls = fakeRelease(p.repo, { "otinstaller.yaml": manifestFor(p.login, version), "README.md": README });
+  const calls = fakeRelease(p.repo, { "otinstaller.yaml": manifest, "README.md": README });
   const out = await processJob(await testEnv(), jobId);
   expect(out?.status).toBe("scanning");
   const dispatch = calls.find((c) => c.url.endsWith("/registry-ops/dispatches"))!;
@@ -186,9 +186,13 @@ describe("scan callback", () => {
     expect(emailsTo(first.calls).at(-1)!.subject).toBe(`${p.login}/whois-plus 1.0.0 was not published`);
     expect((await call(`/tools/${p.login}/whois-plus`)).status).toBe(404);
 
-    // Same version, fixed and re-tagged: validated again and reuses the version row.
-    const second = await tagAndValidate(p);
+    // Same version, fixed and re-tagged: validated again and reuses the version row, with the runtime and artifact of
+    // the new manifest (the rejected attempt was, say, a pipx package rebuilt as a Docker image).
+    await DB().prepare(`UPDATE versions SET runtime_kind = 'pipx', artifact_ref = ? WHERE id = ?`).bind(`sha256:${"a".repeat(64)}`, first.versionId).run();
+    const image = `ghcr.io/${p.login}/whois-plus@sha256:${"f".repeat(64)}`;
+    const second = await tagAndValidate(p, "1.0.0", manifestFor(p.login).replace(/ghcr\.io\S+/, image));
     expect(second.versionId).toBe(first.versionId);
+    expect(await DB().prepare(`SELECT runtime_kind, artifact_ref FROM versions WHERE id = ?`).bind(first.versionId).first()).toEqual({ runtime_kind: "docker", artifact_ref: image });
   });
 
   it("publishes with a warning when vulnerabilities have fixes available", async () => {

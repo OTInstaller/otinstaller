@@ -4,7 +4,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 `api/migrations/*.sql` and the code in `api/src/`, `api/test/` and `api/scripts/`.
 
 - Binding: `DB`, database name `otinstaller`, `migrations_dir: "migrations"` (`api/wrangler.jsonc`).
-- 37 migrations, `0001` to `0037`.
+- 38 migrations, `0001` to `0038`.
 - Final schema: **66 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 67. FTS5 also creates its own shadow
   tables, which aren't listed here.
 
@@ -51,6 +51,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0035 | `0035_cache_epoch.sql` | New table `settings` (`key` PK, `value`, `updated_at`) with the row `cache_epoch`, which edge-cache keys carry and removals and yanks move on. Apply before an API that reads it is deployed. |
 | 0036 | `0036_people_and_notification_settings.sql` | `users` + `display_name`, `bio`, `location`, `website` (TEXT), `links_json` (TEXT NN default `'[]'`), `handle_changed_at`; new table `handle_aliases` (old handles, kept by their owner and redirecting) and index `handle_aliases_user`; `package_follows` + `level` (CHECK all/releases/muted, default all); `email_prefs` + `lifecycle` and `security` (CHECK immediate/daily/off, default immediate, then set to each row's `releases`), `inbox_muted_json` (TEXT NN default `'[]'`), `email_provider`; `inbox` rebuilt so `scope` also takes `lifecycle` and `security`, indexes `inbox_user` and `inbox_pending` again. Apply before an API that reads them is deployed. |
 | 0037 | `0037_indexnow.sql` | New table `indexnow_queue` (`path` PK, `queued_at`) and index `idx_indexnow_queue_queued`: site pages waiting to be sent to IndexNow. Apply before an API that writes it is deployed. |
+| 0038 | `0038_version_runtime_from_manifest.sql` | Data only: sets `versions.runtime_kind` and `artifact_ref` from each row's `manifest_json` where they differ (a version re-tagged after a rejection kept the rejected attempt's values until `publish.ts` refreshed them). Safe to apply before or after the API. |
 
 ---
 

@@ -699,7 +699,8 @@ publishing (`trusted_publishers`, the CI token columns `api_tokens.namespace_id`
 (`notifications.body`/`attempts`/`sent_at`, 0033), search following a namespace rename (a trigger, 0034), the edge
 cache's epoch (`settings`, 0035), people's profiles and notification settings (`users` profile fields and
 `handle_changed_at`, `handle_aliases`, `package_follows.level`, `email_prefs` `lifecycle`/`security`/`inbox_muted_json`/
-`email_provider`, 0036) and the IndexNow queue (`indexnow_queue`, 0037). That is 66 tables plus `tools_fts`; every
+`email_provider`, 0036), the IndexNow queue (`indexnow_queue`, 0037) and a data fix for versions re-tagged after a
+rejection (0038). That is 66 tables plus `tools_fts`; every
 table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
 

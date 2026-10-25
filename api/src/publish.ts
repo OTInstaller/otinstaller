@@ -309,14 +309,17 @@ async function record(env: Env, job: Job, sha: string, ns: Namespace, m: Manifes
     }
     const sv = semverParts(m.version);
     // Re-tagging a version that was rejected reuses its row. Only a rejected row is ever reused: a release of the
-    // same version still being checked (two uploads at once) is left alone, and this one stops below.
+    // same version still being checked (two uploads at once) is left alone, and this one stops below. Everything read
+    // from the manifest is taken from the new one: the fix may have changed the runtime (a pipx package rebuilt as a
+    // Docker image) or the artifact.
     const prior = tool ? await db.prepare(`SELECT id FROM versions WHERE tool_id = ? AND version = ?`).bind(toolId, m.version).first<{ id: string }>() : null;
     versionId = prior?.id ?? ulid(now);
     versionStmt = stmts.length;
     stmts.push(db.prepare(
       `INSERT INTO versions (id, tool_id, version, semver_major, semver_minor, semver_patch, semver_pre, manifest_json, runtime_kind, artifact_ref, git_sha, status, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (tool_id, version) DO UPDATE SET manifest_json = excluded.manifest_json, git_sha = excluded.git_sha, status = excluded.status,
+       ON CONFLICT (tool_id, version) DO UPDATE SET manifest_json = excluded.manifest_json, runtime_kind = excluded.runtime_kind,
+         artifact_ref = excluded.artifact_ref, git_sha = excluded.git_sha, status = excluded.status,
          scan_status = 'pending', rejected_reason = NULL, search_text = NULL, created_at = excluded.created_at
        WHERE versions.status = 'rejected'`,
     ).bind(versionId, toolId, m.version, sv.major, sv.minor, sv.patch, sv.pre, JSON.stringify(m), m.runtime?.kind ?? null,
