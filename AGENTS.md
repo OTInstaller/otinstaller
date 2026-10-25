@@ -867,7 +867,10 @@ Astro 7 with `output: "server"` on `@astrojs/cloudflare`, Preact islands, no CSS
 - `src/components/*.astro`: server components (PasteBox, InstallBlock, ToolRow, ToolCard, ToolHeader, Evidence,
   Results, PageReader, Terminal, BetaNotice, CopyCode, CopyCommand, Logo, PageHead, SideNav, OnThisPage, SettingsNav,
   ThemeToggle).
-  The design follows osintverse.com (`docs/web-redesign-plan.md` section 4.9): Geist Mono, dark by default, no radius.
+  The design is dark first (decided 25 Oct 2026, `.claude/skills/design/SKILL.md`): Geist for what people wrote, Geist
+  Mono for what a machine reads, layered surfaces and hairlines instead of shadows, concentric radii, a `.frame`
+  around terminals and code, and accents from a code theme with blue leading. Markdown code blocks are highlighted at
+  build time by Prism, whose token classes the CSP allows.
 - `src/islands/*.tsx`: Preact islands for anything signed-in or interactive (AdminConsole with review, reports,
   transfers, community, upstream, audit, feedback and beta tabs; Dashboard; PackageDetail and JobView (the `/dashboard/{ns}/{name}` and
   `/dashboard/publish/{jobId}` pages); Backups (used by Dashboard and PackageDetail); ImportWizard (four steps; its
