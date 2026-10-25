@@ -12,8 +12,19 @@ target, goes online or involves a person's identifiers, and every run is logged 
 
 ## Install
 
-1. Install `ot` v0.14.0 or later, v0.16.0 for updates through `install_tool` (`ot self-update` updates an older one): https://otinstaller.com/docs/getting-started.
-   Docker (or Podman) must be running, and cosign must be installed for agents to install tools.
+1. Install `ot` 0.14.0 or later (0.16.0 or later for updates through `install_tool`; `ot self-update` updates an
+   older one):
+
+   ```bash
+   curl -fsSL https://get.otinstaller.com/ot | sh     # macOS and Linux
+   ```
+
+   ```powershell
+   irm https://get.otinstaller.com/ot.ps1 | iex       # Windows
+   ```
+
+   Docker (or Podman) must be running, and `cosign` must be installed: agents only install tools whose signature they
+   can check. `ot doctor` checks both. More in [getting started](https://otinstaller.com/docs/getting-started).
 2. Add the plugin:
 
    - **Claude Code**
