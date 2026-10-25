@@ -11652,6 +11652,13 @@
           "latest_version": {
             "type": "string"
           },
+          "published_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "When the latest version was published, in Unix milliseconds"
+          },
           "categories": {
             "type": "array",
             "items": {

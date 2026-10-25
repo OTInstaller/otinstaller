@@ -16,7 +16,7 @@ export const LISTED = `NOT EXISTS (SELECT 1 FROM sources s WHERE s.tool_id = t.i
 export const SUMMARY_COLUMNS = `
   t.id, t.rowid AS rowid, n.name AS namespace, t.name, t.kind, t.summary, t.categories, t.status,
   t.stars_count, t.installs_30d, t.health_status, t.health_checked_at, t.community_packaged, t.needs_update, n.verified,
-  v.version AS latest_version, v.runtime_kind, v.signer_identity,
+  v.version AS latest_version, v.runtime_kind, v.signer_identity, v.published_at AS published_at,
   json_extract(v.manifest_json, '$.title') AS title, json_extract(v.manifest_json, '$.level') AS level,
   json_extract(v.manifest_json, '$.format') AS format, json_extract(v.manifest_json, '$.language') AS language,
   (SELECT s.manifest_mode FROM sources s WHERE s.tool_id = t.id) AS manifest_mode,
@@ -47,6 +47,7 @@ export type SummaryRow = {
   needs_update: number;
   verified: number;
   latest_version: string;
+  published_at: number | null;
   runtime_kind: string | null;
   signer_identity: string | null;
   title: string | null;
@@ -73,6 +74,8 @@ export function summary(r: SummaryRow) {
     kind: r.kind,
     summary: r.summary,
     latest_version: r.latest_version,
+    // When the latest version was published (ms).
+    published_at: r.published_at ?? null,
     categories: JSON.parse(r.categories) as string[],
     inputs: r.inputs ? r.inputs.split(",").sort() : [],
     outputs: r.outputs ? r.outputs.split(",").sort() : [],
