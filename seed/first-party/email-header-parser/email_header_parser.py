@@ -12,8 +12,9 @@ from email.parser import HeaderParser
 from email.utils import getaddresses, parsedate_to_datetime
 
 IP_RE = re.compile(r"\[?((?:\d{1,3}\.){3}\d{1,3}|[0-9a-fA-F:]*:[0-9a-fA-F:]+)\]?")
-FROM_RE = re.compile(r"\bfrom\s+(\S+)", re.I)
-BY_RE = re.compile(r"\bby\s+(\S+)", re.I)
+# A host name ends at a space, or at the ";" before the date, which some servers write without a space.
+FROM_RE = re.compile(r"\bfrom\s+([^\s;]+)", re.I)
+BY_RE = re.compile(r"\bby\s+([^\s;]+)", re.I)
 AUTH_RE = re.compile(r"\b(spf|dkim|dmarc|arc)=(\w+)", re.I)
 
 
