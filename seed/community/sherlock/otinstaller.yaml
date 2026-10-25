@@ -3,7 +3,7 @@
 schema: 1
 name: sherlock
 namespace: osintverse-community
-version: 0.16.2
+version: 0.16.3
 summary: "Finds accounts by username across 400+ social networks and websites"
 readme: README.md
 license: MIT

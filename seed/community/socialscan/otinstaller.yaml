@@ -3,7 +3,7 @@
 schema: 1
 name: socialscan
 namespace: osintverse-community
-version: 2.0.1
+version: 2.0.2
 summary: "Checks whether a username or email address is in use on major platforms, accurately and quickly"
 readme: README.md
 license: MPL-2.0
