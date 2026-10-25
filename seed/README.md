@@ -569,3 +569,22 @@ comes from the manifest, the upstream README at the pinned release, or the publi
 | `phoneinfoga` | Docker | 2.11.1 |
 | `theharvester` | Docker | 4.11.2 |
 | `subfinder` | Docker | 2.17.1 |
+
+All ten were published on 25 Oct 2026.
+
+## Fixable vulnerabilities (25 Oct 2026)
+
+The scans of phoneinfoga, theharvester and subfinder warned about critical or high vulnerabilities with fixed releases
+(the counts were all their scans keep, so Trivy 0.76.0, the scanner's version, was run on the published images to name
+them). The upstream pins are unchanged; each Dockerfile now raises the vulnerable dependencies instead:
+
+- **phoneinfoga** is built from source at v2.11.0 with Go 1.26 instead of using upstream's release binary, which was
+  built with Go 1.20, and with current golang.org/x/crypto, x/net, x/text, x/oauth2, grpc, logrus and gin. The web
+  interface upstream embeds is built with Node and isn't in the repository, so a placeholder page stands in;
+  `phoneinfoga scan` doesn't use it.
+- **theharvester** installs aiohttp 3.14.5 and certifi 2026.10.23 after theHarvester 4.11.1, which pins 3.14.0 and
+  2026.5.20.
+- **subfinder** is cloned at v2.17.0 and built with klauspost/compress 1.18.7 and golang.org/x/net 0.61.0, because
+  `go install …@v2.17.0` can't change dependencies.
+
+Released as phoneinfoga 2.11.2, theharvester 4.11.3 and subfinder 2.17.2.
