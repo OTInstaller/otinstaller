@@ -51,4 +51,4 @@ Other packages that take a phone number:
 - [numint](https://otinstaller.com/osintverse-community/numint): looks up validity, line type, country, carrier and time zones, with optional risk scores from providers.
 - [ignorant](https://otinstaller.com/osintverse-community/ignorant): checks whether a number is registered on Amazon, Instagram and Snapchat.
 
-Packaged version: 2.11.1.
+Packaged version: 2.11.2.

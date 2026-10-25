@@ -44,4 +44,4 @@ Other packages that take a domain:
 - [crtsh-subdomains](https://otinstaller.com/osintverse-community/crtsh-subdomains): finds subdomains in certificate transparency logs through crt.sh or Cert Spotter.
 - [theharvester](https://otinstaller.com/osintverse-community/theharvester): gathers emails, IP addresses and hosts for a domain as well as subdomains.
 
-Packaged version: 2.17.1.
+Packaged version: 2.17.2.
