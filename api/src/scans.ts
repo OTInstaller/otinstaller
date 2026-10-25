@@ -14,6 +14,7 @@ import { linkPublished } from "./requests";
 import { firstReleasePublished, firstReleaseScanned } from "./submissions";
 import { recordHostedImage } from "./backups";
 import { settleBump } from "./bumps";
+import { queueIndexNow, releasePaths } from "./indexnow";
 
 export const SCAN_TOKEN_TTL = 60 * 60 * 1000;
 const PARAMETER_TYPES = new Set(["string", "integer", "boolean", "enum"]);
@@ -397,6 +398,11 @@ export async function publishVersion(env: Env, versionId: string, opts: { backup
       first: published.length === 1,
       path: v.kind === "guide" ? `/guides/${refOf(v)}` : published.length === 1 ? `/${refOf(v)}` : `/${refOf(v)}/versions#v${v.version}`,
     });
+    // Search engines that take IndexNow hear about the changed pages within 15 minutes.
+    await queueIndexNow(env, releasePaths({
+      kind: v.kind, namespace: v.namespace, name: v.name, first: published.length === 1,
+      inputs: v.kind === "guide" ? m.topics : m.inputs?.map((i) => i.type), categories: m.categories,
+    }));
   }
   // A reviewed community submission is out: its submitter becomes a maintainer.
   await firstReleasePublished(env, v.tool_id).catch((e) => console.error("finishing the submission failed", e));

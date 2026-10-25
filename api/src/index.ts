@@ -45,6 +45,7 @@ import { purgeCiTokens } from "./trusted";
 import { refreshDueProfiles } from "./profiles";
 import { backfillBackups, expireDrills, expireRuns, installFallbacks, purgeBackups, queueMirrorSweeps, RESTORE_DRILL_CRON, startDrill, WEEKLY_BACKUP_CRON, weeklyBackups } from "./backups";
 import { alertStuckJobs, dailyDigest, purgeRateLimits, reportError } from "./ops";
+import { flushIndexNow } from "./indexnow";
 import { queueNightlyLinkChecks } from "./guides";
 import { ulid } from "./lib/crypto";
 import { overLimit } from "./trust";
@@ -626,6 +627,8 @@ export default {
     await backfillBackups(env);
     // Community emails people asked to get at once (grouped per person since the last run).
     await deliverInbox(env, "immediate");
+    // Site pages releases, yanks, takedowns and moves changed, sent to IndexNow's search engines in one request.
+    await flushIndexNow(env).catch((e) => console.error("sending IndexNow URLs failed", e));
     // Weekly (Mondays): a git backup of every active source, for code pushed between releases.
     if (event.cron === WEEKLY_BACKUP_CRON) await weeklyBackups(env);
     // Monthly: restore a random bundle into an empty repository and pull a mirrored image by digest.

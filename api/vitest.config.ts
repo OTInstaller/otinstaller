@@ -54,6 +54,8 @@ export default defineConfig(async () => {
           // Production runs a stricter mode; tests start from the default and set the mode they test.
           UPSTREAM_WATCH: "report",
           EDGE_CACHE: "off",
+          // Nothing is queued for IndexNow unless a test turns it on (indexnow.test.ts).
+          INDEXNOW_KEY: "",
         } },
       }),
     ],

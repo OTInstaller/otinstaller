@@ -81,7 +81,7 @@ What each cron does (`api/src/index.ts` `scheduled`), in order:
 
 | When | Calls |
 | --- | --- |
-| Every 15 min (all four crons run this part) | `scans.ts:expireStaleScans`, `sync.ts:pollDueSources` (50 sources not polled for 6 h), `ops.ts:alertStuckJobs`, `backups.ts:expireRuns`, `backups.ts:expireDrills`, `backups.ts:backfillBackups` (5 versions) |
+| Every 15 min (all four crons run this part) | `scans.ts:expireStaleScans`, `sync.ts:pollDueSources` (50 sources not polled for 6 h), `ops.ts:alertStuckJobs`, `backups.ts:expireRuns`, `backups.ts:expireDrills`, `backups.ts:backfillBackups` (5 versions), `indexnow.ts:flushIndexNow` |
 | Mondays 04:41 UTC | + `backups.ts:weeklyBackups` |
 | 1st of month 05:23 UTC | + `backups.ts:startDrill` |
 | Nightly 03:17 UTC | + `guides.ts:queueNightlyLinkChecks`, `ops.ts:dailyDigest`, `ops.ts:purgeRateLimits`, `backups.ts:purgeBackups`, `installs_30d` recompute (SQL inline) |
