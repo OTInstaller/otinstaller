@@ -716,8 +716,8 @@ and daily for the warning (`cli/internal/cli/trust.go:removedList`).
    | `/assets/:sha256.ext` | 31536000, immutable (`lib/images.ts`) |
    | `/health`, error responses, anything `private, no-store` | not stored |
 
-3. Site (`web/src/lib/api.ts:api`): server-side calls send no cookie; browser calls (islands) send
-   `credentials: "include"`. `web/src/lib/page.ts:cacheFor` caps browser `max-age` at 60 s and sets `s-maxage`
+3. Site (its own repository; `lib/api.ts:api`): server-side calls send no cookie; browser calls (islands) send
+   `credentials: "include"`. `lib/page.ts:cacheFor` caps browser `max-age` at 60 s and sets `s-maxage`
    (tool pages 60, search 60, home 300, category/input 600, docs layout `max-age=300, s-maxage=3600`). The code
    does not put site pages in `caches.default`; `s-maxage` only matters to a CDN cache rule. Pages with a query
    string get `noindex` (`Base.astro`), filter links are `rel="nofollow"`, `robots.txt` disallows `/*?`.

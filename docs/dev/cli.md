@@ -440,7 +440,8 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 - `ot mcp policy`: prints the policy file's path and the effective policy (defaults merged in); `ot mcp policy reset`
   writes the defaults to the file, replacing it.
 - `ot mcp tools`: lists the server's tools, resources and prompts as a client sees them (full definitions with
-  `--json`). The descriptions must match `web/src/pages/docs/mcp-tools.md` (`TestMCPToolsDocsMatch`).
+  `--json`). The descriptions must match the site's `docs/mcp-tools.md` (`TestMCPToolsDocsMatch`, which the site's checks
+  run with `OT_MCP_TOOLS_DOC`).
 - No API for the command itself; the tools call the registry as the matching commands do. Sign-in: no.
 
 #### `ot doctor`
@@ -1028,10 +1029,10 @@ Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-
 
 ---
 
-## 7. Docs drift: `web/src/pages/docs/cli.md` and `cli/README.md`
+## 7. Docs drift: the site's `docs/cli.md` and `cli/README.md`
 
 `cli/README.md` is a short intro (doctor, search, a `holehe` example, links, self-update). It documents no flags, so
-nothing in it is wrong. `web/src/pages/docs/cli.md` was brought level with `ot <command> --help` on 22 October 2026:
+nothing in it is wrong. The site's `docs/cli.md` was brought level with `ot <command> --help` on 22 October 2026:
 every command and flag above appears there, with exit code 130, the cobra exit-1 caveat, the wider meanings of exit
 codes 4 and 5, `OTINSTALLER_RESULTS_DIR`, keys from environment variables and `config.json`. When a flag is added or
-renamed, update that page in the same commit; there is no test that compares them.
+renamed, update that page too (it is in the site's repository); there is no test that compares them.

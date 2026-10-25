@@ -1,0 +1,3693 @@
+{
+  "otlite": "1.3.0",
+  "notice": "You are solely responsible for how you use these tools and for complying with all applicable laws. Use them only on targets you are authorized to investigate.",
+  "tools": [
+    {
+      "name": "aliens-eye",
+      "display_name": "Aliens Eye",
+      "description": "Hunt down 840+ social media accounts using AI.",
+      "repo": "arxhr007/Aliens_eye",
+      "license": "MIT",
+      "accepts": [
+        "username"
+      ],
+      "input_types": [
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run aliens-eye -- u:johndoe",
+      "stars": 4122,
+      "capabilities": [
+        "username-search",
+        "social-media",
+        "ai"
+      ],
+      "topics": [
+        "username",
+        "social-media",
+        "ai"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "aliens_eye",
+        "version": "2.7.0",
+        "url": null,
+        "ref": null,
+        "extra_packages": [
+          "selectolax<0.4"
+        ],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "aliens_eye",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [
+        "--level",
+        "basic",
+        "--json-stdout",
+        "--only-found"
+      ],
+      "verified": {
+        "date": "2026-10-12",
+        "version": "2.7.0",
+        "os": "Ubuntu 24.04 LTS",
+        "python": "3.12.3"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "u",
+              "flag": "",
+              "sample": "johndoe"
+            }
+          ],
+          "command": "otlite run aliens-eye -- u:johndoe",
+          "tool_args": [
+            "--level",
+            "basic",
+            "--json-stdout",
+            "--only-found",
+            "johndoe"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": "osintverse-community/aliens-eye"
+    },
+    {
+      "name": "auto-archiver",
+      "display_name": "Auto Archiver",
+      "description": "Automatically archive web content from various sources.",
+      "repo": "bellingcat/auto-archiver",
+      "license": "MIT",
+      "accepts": [
+        "url"
+      ],
+      "input_types": [
+        "url"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": [
+          "GOOGLE_API_KEY",
+          "GOOGLE_CREDENTIALS",
+          "AWS_ACCESS_KEY_ID",
+          "AWS_SECRET_ACCESS_KEY"
+        ]
+      },
+      "dual_use": true,
+      "interactive": false,
+      "example": "otlite run auto-archiver -- url:https://example.com",
+      "stars": 1122,
+      "capabilities": [
+        "archiving",
+        "web-archiving",
+        "dual-use"
+      ],
+      "topics": [
+        "archiving",
+        "web"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "auto-archiver",
+        "version": "1.2.9",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "auto-archiver",
+        "script": null
+      },
+      "requires_python": "<3.13",
+      "needs_config": true,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "1.2.9",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [
+        "Needs Python older than 3.13, because its dependency pdqhash has no wheel for 3.13 or newer and needs a C++ compiler."
+      ],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "url",
+              "flag": "--url",
+              "sample": "https://example.com"
+            }
+          ],
+          "command": "otlite run auto-archiver -- url:https://example.com",
+          "tool_args": [
+            "--url",
+            "https://example.com"
+          ]
+        }
+      ],
+      "batch_skip": "needs API keys or setup; pass --include-credentialed",
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "bbot",
+      "display_name": "Bbot",
+      "description": "The recursive internet scanner for hackers.",
+      "repo": "blacklanternsecurity/bbot",
+      "license": "AGPL-3.0",
+      "accepts": [
+        "domain",
+        "ip"
+      ],
+      "input_types": [
+        "d",
+        "ip"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run bbot -- d:example.com",
+      "stars": 10616,
+      "capabilities": [
+        "domain-recon",
+        "subdomain-enum",
+        "ip-recon",
+        "google-recon",
+        "metadata-extraction",
+        "username-search"
+      ],
+      "topics": [
+        "domain",
+        "subdomain",
+        "ip",
+        "google",
+        "username"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "bbot",
+        "version": "3.0.2",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "bbot",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [
+        "-y",
+        "-p",
+        "subdomain-enum"
+      ],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "3.0.2",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "d",
+              "flag": "-t",
+              "sample": "example.com"
+            }
+          ],
+          "command": "otlite run bbot -- d:example.com",
+          "tool_args": [
+            "-y",
+            "-p",
+            "subdomain-enum",
+            "-t",
+            "example.com"
+          ]
+        },
+        {
+          "parts": [
+            {
+              "prefix": "ip",
+              "flag": "-t",
+              "sample": "192.0.2.1"
+            }
+          ],
+          "command": "otlite run bbot -- ip:192.0.2.1",
+          "tool_args": [
+            "-y",
+            "-p",
+            "subdomain-enum",
+            "-t",
+            "192.0.2.1"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "blackbird",
+      "display_name": "Blackbird",
+      "description": "OSINT tool to search for accounts by username and email across social networks.",
+      "repo": "antoniaci/blackbird",
+      "license": "NOASSERTION",
+      "accepts": [
+        "username",
+        "email"
+      ],
+      "input_types": [
+        "e",
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run blackbird -- u:johndoe",
+      "stars": 8628,
+      "capabilities": [
+        "username-search",
+        "email-search",
+        "social-media"
+      ],
+      "topics": [
+        "username",
+        "email",
+        "social-media"
+      ],
+      "install": {
+        "method": "git",
+        "package": null,
+        "version": null,
+        "url": "https://github.com/antoniaci/blackbird.git",
+        "ref": "b45505080ef51bb3ef52dc29879ee6bef31e5b94",
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": null,
+        "script": "blackbird.py"
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": true,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "main",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "u",
+              "flag": "--username",
+              "sample": "johndoe"
+            }
+          ],
+          "command": "otlite run blackbird -- u:johndoe",
+          "tool_args": [
+            "--username",
+            "johndoe"
+          ]
+        },
+        {
+          "parts": [
+            {
+              "prefix": "e",
+              "flag": "--email",
+              "sample": "ada@example.com"
+            }
+          ],
+          "command": "otlite run blackbird -- e:ada@example.com",
+          "tool_args": [
+            "--email",
+            "ada@example.com"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "crosslinked",
+      "display_name": "Crosslinked",
+      "description": "LinkedIn enumeration tool to extract valid employee names from an organization through search engine scraping.",
+      "repo": "m8sec/CrossLinked",
+      "license": "GPL-3.0",
+      "accepts": [
+        "username",
+        "email",
+        "name"
+      ],
+      "input_types": [],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run crosslinked -- --help",
+      "stars": 1593,
+      "capabilities": [
+        "social-media",
+        "metadata-extraction",
+        "google-recon",
+        "username-search",
+        "email-search"
+      ],
+      "topics": [
+        "linkedin",
+        "social-media",
+        "metadata",
+        "google",
+        "username",
+        "email"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "crosslinked",
+        "version": "0.3.0",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "crosslinked",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "0.3.0",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "ctfr",
+      "display_name": "Ctfr",
+      "description": "Abusing Certificate Transparency logs for getting HTTPS websites subdomains.",
+      "repo": "UnaPibaGeek/ctfr",
+      "license": "GPL-3.0",
+      "accepts": [
+        "domain"
+      ],
+      "input_types": [
+        "d"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run ctfr -- d:example.com",
+      "stars": 2123,
+      "capabilities": [
+        "domain-recon",
+        "subdomain-enum"
+      ],
+      "topics": [
+        "domain",
+        "subdomain",
+        "certificate"
+      ],
+      "install": {
+        "method": "git",
+        "package": null,
+        "version": null,
+        "url": "https://github.com/UnaPibaGeek/ctfr.git",
+        "ref": "6c7fecdc6346c4f5322049e38f415d5bddaa420d",
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": null,
+        "script": "ctfr.py"
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "6c7fecd",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "d",
+              "flag": "--domain",
+              "sample": "example.com"
+            }
+          ],
+          "command": "otlite run ctfr -- d:example.com",
+          "tool_args": [
+            "--domain",
+            "example.com"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [
+        "domain-recon"
+      ],
+      "registry": "osintverse-community/ctfr"
+    },
+    {
+      "name": "dnsgen",
+      "display_name": "Dnsgen",
+      "description": "DNSGen is a powerful and flexible DNS name permutation tool designed for security researchers and penetration testers.",
+      "repo": "AlephNullSK/dnsgen",
+      "license": "MIT",
+      "accepts": [
+        "domain"
+      ],
+      "input_types": [],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run dnsgen -- --help",
+      "stars": 1081,
+      "capabilities": [
+        "domain-recon",
+        "subdomain-enum"
+      ],
+      "topics": [
+        "domain",
+        "subdomain"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "dnsgen",
+        "version": "1.0.4",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "dnsgen",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "1.0.4",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "dnstwist",
+      "display_name": "Dnstwist",
+      "description": "Domain name permutation engine for detecting homograph phishing attacks, typo squatting, and brand impersonation.",
+      "repo": "elceef/dnstwist",
+      "license": "Apache-2.0",
+      "accepts": [
+        "domain",
+        "ip"
+      ],
+      "input_types": [
+        "d"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run dnstwist -- d:example.com",
+      "stars": 5741,
+      "capabilities": [
+        "domain-recon",
+        "ip-recon"
+      ],
+      "topics": [
+        "domain",
+        "ip"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "dnstwist",
+        "version": "20250130",
+        "url": null,
+        "ref": null,
+        "extra_packages": [
+          "dnstwist[full]==20250130"
+        ],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "dnstwist",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "20250130",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "d",
+              "flag": "",
+              "sample": "example.com"
+            }
+          ],
+          "command": "otlite run dnstwist -- d:example.com",
+          "tool_args": [
+            "example.com"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [
+        "domain-recon"
+      ],
+      "registry": "osintverse-community/dnstwist"
+    },
+    {
+      "name": "edgar-tool",
+      "display_name": "EDGAR Tool",
+      "description": "Command line interface to search and retrieve corporate and financial data from the SEC EDGAR database.",
+      "repo": "bellingcat/edgar",
+      "license": "MIT",
+      "accepts": [
+        "name"
+      ],
+      "input_types": [
+        "q"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run edgar-tool -- q:example",
+      "stars": 216,
+      "capabilities": [
+        "financial-data",
+        "corporate-research"
+      ],
+      "topics": [
+        "sec",
+        "edgar",
+        "financial"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "edgar-tool",
+        "version": "2.1.2",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "edgar",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "2.1.2",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "q",
+              "flag": "text-search",
+              "sample": "example"
+            }
+          ],
+          "command": "otlite run edgar-tool -- q:example",
+          "tool_args": [
+            "text-search",
+            "example"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "fierce",
+      "display_name": "Fierce",
+      "description": "A DNS reconnaissance tool for locating non-contiguous IP space.",
+      "repo": "mschwager/fierce",
+      "license": "GPL-3.0",
+      "accepts": [
+        "domain",
+        "ip"
+      ],
+      "input_types": [
+        "d"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run fierce -- d:example.com",
+      "stars": 1812,
+      "capabilities": [
+        "domain-recon",
+        "ip-recon",
+        "subdomain-enum"
+      ],
+      "topics": [
+        "domain",
+        "ip",
+        "subdomain"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "fierce",
+        "version": "1.6.0",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "fierce",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "1.6.0",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "d",
+              "flag": "--domain",
+              "sample": "example.com"
+            }
+          ],
+          "command": "otlite run fierce -- d:example.com",
+          "tool_args": [
+            "--domain",
+            "example.com"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": "osintverse-community/fierce"
+    },
+    {
+      "name": "finalrecon",
+      "display_name": "Finalrecon",
+      "description": "All In One Web Recon.",
+      "repo": "thewhiteh4t/FinalRecon",
+      "license": "MIT",
+      "accepts": [
+        "domain",
+        "ip",
+        "url"
+      ],
+      "input_types": [
+        "url"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run finalrecon -- url:https://example.com",
+      "stars": 2997,
+      "capabilities": [
+        "domain-recon",
+        "subdomain-enum",
+        "ip-recon",
+        "google-recon",
+        "metadata-extraction"
+      ],
+      "topics": [
+        "domain",
+        "subdomain",
+        "ip",
+        "google",
+        "metadata"
+      ],
+      "install": {
+        "method": "git",
+        "package": null,
+        "version": null,
+        "url": "https://github.com/thewhiteh4t/FinalRecon.git",
+        "ref": "b5db3a46921195bec643065c560e19741852957c",
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": null,
+        "script": "finalrecon.py"
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "b5db3a4",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "url",
+              "flag": "--url",
+              "sample": "https://example.com"
+            }
+          ],
+          "command": "otlite run finalrecon -- url:https://example.com",
+          "tool_args": [
+            "--url",
+            "https://example.com"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": "osintverse-community/finalrecon"
+    },
+    {
+      "name": "fsociety",
+      "display_name": "Fsociety",
+      "description": "A Modular Penetration Testing Framework.",
+      "repo": "fsociety-team/fsociety",
+      "license": "MIT",
+      "accepts": [
+        "domain",
+        "username",
+        "email"
+      ],
+      "input_types": [],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": true,
+      "interactive": true,
+      "example": "otlite run fsociety -- --help",
+      "stars": 1834,
+      "capabilities": [
+        "domain-recon",
+        "subdomain-enum",
+        "username-search",
+        "email-search",
+        "breach-search",
+        "dual-use"
+      ],
+      "topics": [
+        "domain",
+        "subdomain",
+        "username",
+        "email",
+        "breach"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "fsociety",
+        "version": "3.2.9",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "fsociety",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "3.2.9",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [],
+      "batch_skip": "asks questions while it runs; run it on its own",
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "ghunt",
+      "display_name": "Ghunt",
+      "description": "Offensive Google framework.",
+      "repo": "mxrch/GHunt",
+      "license": "NOASSERTION",
+      "accepts": [
+        "email"
+      ],
+      "input_types": [
+        "e"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": true,
+      "example": "otlite run ghunt -- e:ada@example.com",
+      "stars": 19596,
+      "capabilities": [
+        "google-recon",
+        "email-search",
+        "username-search"
+      ],
+      "topics": [
+        "google",
+        "email",
+        "username"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "ghunt",
+        "version": "2.3.4",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "ghunt",
+        "script": null
+      },
+      "requires_python": "<3.14",
+      "needs_config": true,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "2.3.4",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [
+        "Needs Python older than 3.14, because its dependency Pillow 10 has no wheels for 3.14 and needs the libjpeg headers to compile.",
+        "Sign in to a Google account once with `otlite run ghunt -- login` on a terminal before looking anything up."
+      ],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "e",
+              "flag": "email",
+              "sample": "ada@example.com"
+            }
+          ],
+          "command": "otlite run ghunt -- e:ada@example.com",
+          "tool_args": [
+            "email",
+            "ada@example.com"
+          ]
+        }
+      ],
+      "batch_skip": "asks questions while it runs; run it on its own",
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "h8mail",
+      "display_name": "H8Mail",
+      "description": "Email OSINT & Password breach hunting tool, locally or using premium services.",
+      "repo": "khast3x/h8mail",
+      "license": "NOASSERTION",
+      "accepts": [
+        "email"
+      ],
+      "input_types": [
+        "e"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": true,
+      "interactive": false,
+      "example": "otlite run h8mail -- e:ada@example.com",
+      "stars": 5309,
+      "capabilities": [
+        "email-search",
+        "breach-search",
+        "dual-use"
+      ],
+      "topics": [
+        "email",
+        "breach"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "h8mail",
+        "version": "2.5.6",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "h8mail",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "2.5.6",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "e",
+              "flag": "-t",
+              "sample": "ada@example.com"
+            }
+          ],
+          "command": "otlite run h8mail -- e:ada@example.com",
+          "tool_args": [
+            "-t",
+            "ada@example.com"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "holehe",
+      "display_name": "Holehe",
+      "description": "holehe allows you to check if the mail is used on different sites like twitter, instagram and will retrieve information on sites with the forgotten password function.",
+      "repo": "megadose/holehe",
+      "license": "GPL-3.0",
+      "accepts": [
+        "email"
+      ],
+      "input_types": [
+        "e"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run holehe -- e:ada@example.com",
+      "stars": 14986,
+      "capabilities": [
+        "email-search",
+        "social-media",
+        "username-search"
+      ],
+      "topics": [
+        "email",
+        "social-media",
+        "username"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "holehe",
+        "version": "1.61",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "holehe",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "1.61",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "e",
+              "flag": "",
+              "sample": "ada@example.com"
+            }
+          ],
+          "command": "otlite run holehe -- e:ada@example.com",
+          "tool_args": [
+            "ada@example.com"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": "osintverse-community/holehe"
+    },
+    {
+      "name": "ignorant",
+      "display_name": "Ignorant",
+      "description": "ignorant allows you to check if a phone number is used on different sites like snapchat, instagram.",
+      "repo": "megadose/ignorant",
+      "license": "GPL-3.0",
+      "accepts": [
+        "phone"
+      ],
+      "input_types": [],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": true,
+      "interactive": false,
+      "example": "otlite run ignorant -- --help",
+      "stars": 2075,
+      "capabilities": [
+        "phone-search",
+        "social-media",
+        "dual-use"
+      ],
+      "topics": [
+        "phone",
+        "social-media"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "ignorant",
+        "version": "1.2",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "ignorant",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "1.2",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": "osintverse-community/ignorant"
+    },
+    {
+      "name": "instagram-location-search",
+      "display_name": "Instagram Location Search",
+      "description": "Find Instagram location IDs near specified coordinates.",
+      "repo": "bellingcat/instagram-location-search",
+      "license": "MIT",
+      "accepts": [
+        "url"
+      ],
+      "input_types": [
+        "lat",
+        "lng"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": [
+          "INSTAGRAM_SESSION_ID"
+        ]
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run instagram-location-search -- lat:51.5074 lng:-0.1278",
+      "stars": 717,
+      "capabilities": [
+        "instagram",
+        "location-search",
+        "social-media"
+      ],
+      "topics": [
+        "instagram",
+        "location",
+        "social-media"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "instagram-location-search",
+        "version": "1.5.2",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "instagram-location-search",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "1.5.2",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "lat",
+              "flag": "--lat",
+              "sample": "51.5074"
+            },
+            {
+              "prefix": "lng",
+              "flag": "--lng",
+              "sample": "-0.1278"
+            }
+          ],
+          "command": "otlite run instagram-location-search -- lat:51.5074 lng:-0.1278",
+          "tool_args": [
+            "--lat",
+            "51.5074",
+            "--lng",
+            "-0.1278"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "instagram-monitor",
+      "display_name": "Instagram Monitor",
+      "description": "Track Instagram users' activities, profile changes and capture content with beautiful dashboards and instant notifications.",
+      "repo": "misiektoja/instagram_monitor",
+      "license": "GPL-3.0",
+      "accepts": [
+        "username"
+      ],
+      "input_types": [
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": true,
+      "interactive": true,
+      "example": "otlite run instagram-monitor -- u:johndoe",
+      "stars": 1512,
+      "capabilities": [
+        "social-media",
+        "username-search",
+        "dual-use"
+      ],
+      "topics": [
+        "instagram",
+        "social-media",
+        "username"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "instagram_monitor",
+        "version": "4.0.2",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "instagram_monitor",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": true,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "4.0.2",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "u",
+              "flag": "",
+              "sample": "johndoe"
+            }
+          ],
+          "command": "otlite run instagram-monitor -- u:johndoe",
+          "tool_args": [
+            "johndoe"
+          ]
+        }
+      ],
+      "batch_skip": "asks questions while it runs; run it on its own",
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "instaloader",
+      "display_name": "Instaloader",
+      "description": "Download pictures (or videos) along with their captions and other metadata from Instagram.",
+      "repo": "instaloader/instaloader",
+      "license": "MIT",
+      "accepts": [
+        "username",
+        "url"
+      ],
+      "input_types": [
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run instaloader -- u:johndoe",
+      "stars": 13427,
+      "capabilities": [
+        "social-media",
+        "metadata-extraction",
+        "username-search"
+      ],
+      "topics": [
+        "instagram",
+        "social-media",
+        "metadata",
+        "username"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "instaloader",
+        "version": "4.15.4",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "instaloader",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-10-13",
+        "version": "4.15.4",
+        "os": "Ubuntu 24.04.5 LTS",
+        "python": "3.12.3"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "u",
+              "flag": "",
+              "sample": "johndoe"
+            }
+          ],
+          "command": "otlite run instaloader -- u:johndoe",
+          "tool_args": [
+            "johndoe"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "ivre",
+      "display_name": "Ivre",
+      "description": "Network recon framework.",
+      "repo": "ivre/ivre",
+      "license": "GPL-3.0",
+      "accepts": [
+        "domain",
+        "ip"
+      ],
+      "input_types": [],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run ivre -- --help",
+      "stars": 4152,
+      "capabilities": [
+        "domain-recon",
+        "ip-recon",
+        "subdomain-enum",
+        "network"
+      ],
+      "topics": [
+        "network",
+        "domain",
+        "ip",
+        "subdomain"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "ivre",
+        "version": "0.9.20",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "ivre",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "0.9.20",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "linkook",
+      "display_name": "Linkook",
+      "description": "An OSINT tool for discovering linked social accounts and associated emails across multiple platforms using a single username.",
+      "repo": "JackJuly/linkook",
+      "license": "MIT",
+      "accepts": [
+        "username",
+        "email"
+      ],
+      "input_types": [
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run linkook -- u:johndoe",
+      "stars": 1016,
+      "capabilities": [
+        "username-search",
+        "email-search",
+        "social-media"
+      ],
+      "topics": [
+        "username",
+        "email",
+        "social-media"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "linkook",
+        "version": "1.1.3",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "linkook",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-10-12",
+        "version": "1.1.3",
+        "os": "Ubuntu 24.04 LTS",
+        "python": "3.12.3"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "u",
+              "flag": "",
+              "sample": "johndoe"
+            }
+          ],
+          "command": "otlite run linkook -- u:johndoe",
+          "tool_args": [
+            "johndoe"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": "osintverse-community/linkook"
+    },
+    {
+      "name": "maigret",
+      "display_name": "Maigret",
+      "description": "Collect a dossier on a person by username from 6K websites.",
+      "repo": "soxoj/maigret",
+      "license": "MIT",
+      "accepts": [
+        "username"
+      ],
+      "input_types": [
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run maigret -- u:johndoe",
+      "stars": 37921,
+      "capabilities": [
+        "username-search"
+      ],
+      "topics": [
+        "username"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "maigret",
+        "version": "0.6.6",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "maigret",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "0.6.6",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "u",
+              "flag": "",
+              "sample": "johndoe"
+            }
+          ],
+          "command": "otlite run maigret -- u:johndoe",
+          "tool_args": [
+            "johndoe"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [
+        "username-investigation"
+      ],
+      "registry": "osintverse-community/maigret"
+    },
+    {
+      "name": "mailaccess",
+      "display_name": "Mailaccess",
+      "description": "Investigates an email address across 5,300+ platforms and breach sources, and harvests the email addresses of a domain",
+      "repo": "KatrielMoses/MailAccess",
+      "license": "MIT",
+      "accepts": [
+        "email",
+        "domain"
+      ],
+      "input_types": [
+        "d",
+        "e"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": true,
+      "interactive": false,
+      "example": "otlite run mailaccess -- e:ada@example.com",
+      "stars": 1449,
+      "capabilities": [
+        "email-search",
+        "breach-search",
+        "dual-use"
+      ],
+      "topics": [
+        "email",
+        "breach"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "mailaccess",
+        "version": "0.18.7",
+        "url": null,
+        "ref": null,
+        "extra_packages": [
+          "mailaccess[browser]==0.18.7",
+          "playwright>=1.49"
+        ],
+        "playwright_browsers": [
+          "chromium"
+        ]
+      },
+      "entrypoint": {
+        "command": "mailaccess",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [
+        "--no-banner"
+      ],
+      "verified": {
+        "date": "2026-10-16",
+        "version": "0.18.7",
+        "os": "Ubuntu 24.04.5 LTS",
+        "python": "3.12.13"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "e",
+              "flag": "investigate",
+              "sample": "ada@example.com"
+            }
+          ],
+          "command": "otlite run mailaccess -- e:ada@example.com",
+          "tool_args": [
+            "--no-banner",
+            "investigate",
+            "ada@example.com"
+          ]
+        },
+        {
+          "parts": [
+            {
+              "prefix": "d",
+              "flag": "harvest-emails --domain",
+              "sample": "example.com"
+            }
+          ],
+          "command": "otlite run mailaccess -- d:example.com",
+          "tool_args": [
+            "--no-banner",
+            "harvest-emails",
+            "--domain",
+            "example.com"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "neutrosint",
+      "display_name": "NeutrOSINT",
+      "description": "Check if an email address or username exists on ProtonMail.",
+      "repo": "Kr0wZ/NeutrOSINT",
+      "license": "MIT",
+      "accepts": [
+        "email",
+        "username"
+      ],
+      "input_types": [
+        "e"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run neutrosint -- e:ada@example.com",
+      "stars": null,
+      "capabilities": [
+        "email-search",
+        "username-search"
+      ],
+      "topics": [
+        "email",
+        "protonmail"
+      ],
+      "install": {
+        "method": "git",
+        "package": null,
+        "version": null,
+        "url": "https://github.com/Kr0wZ/NeutrOSINT.git",
+        "ref": "a51a133444c366ea3a60a8c400a3624625d79e6d",
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "neutrosint",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-29",
+        "version": "main",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.14.4"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "e",
+              "flag": "--email",
+              "sample": "ada@example.com"
+            }
+          ],
+          "command": "otlite run neutrosint -- e:ada@example.com",
+          "tool_args": [
+            "--email",
+            "ada@example.com"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "nexfil",
+      "display_name": "Nexfil",
+      "description": "OSINT tool for finding profiles by username.",
+      "repo": "thewhiteh4t/nexfil",
+      "license": "MIT",
+      "accepts": [
+        "username"
+      ],
+      "input_types": [
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run nexfil -- u:johndoe",
+      "stars": 2623,
+      "capabilities": [
+        "username-search",
+        "social-media"
+      ],
+      "topics": [
+        "username",
+        "social-media"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "nexfil",
+        "version": "1.0.6",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "nexfil",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "1.0.6",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "u",
+              "flag": "-u",
+              "sample": "johndoe"
+            }
+          ],
+          "command": "otlite run nexfil -- u:johndoe",
+          "tool_args": [
+            "-u",
+            "johndoe"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": "osintverse-community/nexfil"
+    },
+    {
+      "name": "onionsearch",
+      "display_name": "Onionsearch",
+      "description": "OnionSearch is a script that scrapes urls on different.",
+      "repo": "megadose/OnionSearch",
+      "license": "GPL-3.0",
+      "accepts": [
+        "url"
+      ],
+      "input_types": [
+        "q"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run onionsearch -- q:example",
+      "stars": 1792,
+      "capabilities": [
+        "darkweb",
+        "google-recon"
+      ],
+      "topics": [
+        "darkweb",
+        "tor",
+        "onion"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "onionsearch",
+        "version": "1.3",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "onionsearch",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "1.3",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "q",
+              "flag": "",
+              "sample": "example"
+            }
+          ],
+          "command": "otlite run onionsearch -- q:example",
+          "tool_args": [
+            "example"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": "osintverse-community/onionsearch"
+    },
+    {
+      "name": "openosint",
+      "display_name": "Openosint",
+      "description": "AI-powered OSINT agent with interactive REPL, MCP server, and direct CLI modes.",
+      "repo": "OpenOSINT/OpenOSINT",
+      "license": "MIT",
+      "accepts": [
+        "username",
+        "email",
+        "domain"
+      ],
+      "input_types": [
+        "d",
+        "e",
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": [
+          "ANTHROPIC_API_KEY",
+          "SHODAN_API_KEY",
+          "VIRUSTOTAL_API_KEY",
+          "CENSYS_API_ID",
+          "CENSYS_SECRET",
+          "ABUSEIPDB_API_KEY",
+          "IP2LOCATION_API_KEY",
+          "BRIGHTDATA_API_KEY",
+          "BRIGHTDATA_SERP_ZONE",
+          "BRIGHTDATA_UNLOCKER_ZONE",
+          "OPENAI_API_KEY",
+          "OPENOSINT_PROXY_URL"
+        ]
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run openosint -- u:johndoe",
+      "stars": 1630,
+      "capabilities": [
+        "username-search",
+        "email-search",
+        "domain-recon",
+        "social-media",
+        "google-recon",
+        "ai"
+      ],
+      "topics": [
+        "username",
+        "email",
+        "domain",
+        "social-media",
+        "google",
+        "ai"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "openosint",
+        "version": "2.30.0",
+        "url": null,
+        "ref": null,
+        "extra_packages": [
+          "holehe",
+          "sherlock-project"
+        ],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "openosint",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-30",
+        "version": "2.30.0",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [
+        "Direct email and username scans work without ANTHROPIC_API_KEY; the AI REPL and MCP modes need it, or --api-key.",
+        "Other features need their own keys: SHODAN_API_KEY (Shodan), VIRUSTOTAL_API_KEY (VirusTotal), CENSYS_API_ID and CENSYS_SECRET (Censys), ABUSEIPDB_API_KEY (AbuseIPDB) and IP2LOCATION_API_KEY (IP2Location).",
+        "Bright Data tools need BRIGHTDATA_API_KEY with BRIGHTDATA_SERP_ZONE or BRIGHTDATA_UNLOCKER_ZONE; OPENAI_API_KEY selects the OpenAI provider and OPENOSINT_PROXY_URL sets a proxy."
+      ],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "u",
+              "flag": "username",
+              "sample": "johndoe"
+            }
+          ],
+          "command": "otlite run openosint -- u:johndoe",
+          "tool_args": [
+            "username",
+            "johndoe"
+          ]
+        },
+        {
+          "parts": [
+            {
+              "prefix": "e",
+              "flag": "email",
+              "sample": "ada@example.com"
+            }
+          ],
+          "command": "otlite run openosint -- e:ada@example.com",
+          "tool_args": [
+            "email",
+            "ada@example.com"
+          ]
+        },
+        {
+          "parts": [
+            {
+              "prefix": "d",
+              "flag": "dns",
+              "sample": "example.com"
+            }
+          ],
+          "command": "otlite run openosint -- d:example.com",
+          "tool_args": [
+            "dns",
+            "example.com"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "osint-brazuca-regex",
+      "display_name": "Osint Brazuca Regex",
+      "description": "Repositrio criado com intuito de reunir expresses regulares dentro do contexto Brasil.",
+      "repo": "osintbrazuca/osint-brazuca-regex",
+      "license": "MIT",
+      "accepts": [
+        "domain",
+        "name"
+      ],
+      "input_types": [],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run osint-brazuca-regex -- --help",
+      "stars": 1012,
+      "capabilities": [
+        "google-recon",
+        "metadata-extraction"
+      ],
+      "topics": [
+        "brazil",
+        "regex",
+        "google",
+        "metadata"
+      ],
+      "install": {
+        "method": "git",
+        "package": null,
+        "version": null,
+        "url": "https://github.com/osintbrazuca/osint-brazuca-regex.git",
+        "ref": "5ec05893330bc90314796787bbf17a97301f9404",
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": null,
+        "script": "osint_regex_scan.py"
+      },
+      "requires_python": ">=3.12",
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "5ec0589",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "paramspider",
+      "display_name": "Paramspider",
+      "description": "Mining URLs from dark corners of Web Archives for bug hunting/fuzzing/further probing.",
+      "repo": "devanshbatham/ParamSpider",
+      "license": "MIT",
+      "accepts": [
+        "domain",
+        "url"
+      ],
+      "input_types": [
+        "d"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run paramspider -- d:example.com",
+      "stars": 3174,
+      "capabilities": [
+        "google-recon",
+        "metadata-extraction",
+        "domain-recon"
+      ],
+      "topics": [
+        "google",
+        "metadata",
+        "url",
+        "domain"
+      ],
+      "install": {
+        "method": "git",
+        "package": null,
+        "version": null,
+        "url": "https://github.com/devanshbatham/ParamSpider.git",
+        "ref": "c44bdaae54789b237028e309b603d1aa5ad52e5e",
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "paramspider",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "0.1.0",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "d",
+              "flag": "--domain",
+              "sample": "example.com"
+            }
+          ],
+          "command": "otlite run paramspider -- d:example.com",
+          "tool_args": [
+            "--domain",
+            "example.com"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": "osintverse-community/paramspider"
+    },
+    {
+      "name": "pywerview",
+      "display_name": "Pywerview",
+      "description": "A (partial) Python rewriting of PowerSploit's PowerView.",
+      "repo": "the-useless-one/pywerview",
+      "license": "GPL-3.0",
+      "accepts": [
+        "domain",
+        "username"
+      ],
+      "input_types": [],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run pywerview -- --help",
+      "stars": 1134,
+      "capabilities": [
+        "domain-recon",
+        "subdomain-enum",
+        "username-search",
+        "email-search"
+      ],
+      "topics": [
+        "active-directory",
+        "domain",
+        "username",
+        "email"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "pywerview",
+        "version": "0.7.6",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "pywerview",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "0.7.6",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "secator",
+      "display_name": "Secator",
+      "description": "secator - the pentester's swiss knife.",
+      "repo": "freelabz/secator",
+      "license": "NOASSERTION",
+      "accepts": [
+        "domain",
+        "ip",
+        "username",
+        "email"
+      ],
+      "input_types": [
+        "d",
+        "e",
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": true,
+      "interactive": false,
+      "example": "otlite run secator -- u:johndoe",
+      "stars": 1311,
+      "capabilities": [
+        "domain-recon",
+        "subdomain-enum",
+        "ip-recon",
+        "username-search",
+        "email-search",
+        "breach-search",
+        "google-recon",
+        "dual-use"
+      ],
+      "topics": [
+        "domain",
+        "subdomain",
+        "ip",
+        "username",
+        "email",
+        "breach",
+        "recon"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "secator",
+        "version": "0.45.0",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "secator",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "0.45.0",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "u",
+              "flag": "w user_hunt",
+              "sample": "johndoe"
+            }
+          ],
+          "command": "otlite run secator -- u:johndoe",
+          "tool_args": [
+            "w",
+            "user_hunt",
+            "johndoe"
+          ]
+        },
+        {
+          "parts": [
+            {
+              "prefix": "e",
+              "flag": "w user_hunt",
+              "sample": "ada@example.com"
+            }
+          ],
+          "command": "otlite run secator -- e:ada@example.com",
+          "tool_args": [
+            "w",
+            "user_hunt",
+            "ada@example.com"
+          ]
+        },
+        {
+          "parts": [
+            {
+              "prefix": "d",
+              "flag": "w domain_recon",
+              "sample": "example.com"
+            }
+          ],
+          "command": "otlite run secator -- d:example.com",
+          "tool_args": [
+            "w",
+            "domain_recon",
+            "example.com"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "sherlock",
+      "display_name": "Sherlock",
+      "description": "Hunt down social media accounts by username across social networks.",
+      "repo": "sherlock-project/sherlock",
+      "license": "MIT",
+      "accepts": [
+        "username"
+      ],
+      "input_types": [
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run sherlock -- u:johndoe",
+      "stars": 92545,
+      "capabilities": [
+        "username-search",
+        "social-media"
+      ],
+      "topics": [
+        "username",
+        "social-media"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "sherlock-project",
+        "version": "0.16.2",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "sherlock",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "0.16.2",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "u",
+              "flag": "",
+              "sample": "johndoe"
+            }
+          ],
+          "command": "otlite run sherlock -- u:johndoe",
+          "tool_args": [
+            "johndoe"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [
+        "username-investigation"
+      ],
+      "registry": "osintverse-community/sherlock"
+    },
+    {
+      "name": "sitedorks",
+      "display_name": "Sitedorks",
+      "description": "Search Google/Bing/Ecosia/DuckDuckGo/Yandex/Yahoo for a search term (dork) with a default set of websites, bug bounty programs or custom collection.",
+      "repo": "Zarcolio/sitedorks",
+      "license": "GPL-3.0",
+      "accepts": [
+        "domain",
+        "url"
+      ],
+      "input_types": [
+        "q"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": true,
+      "example": "otlite run sitedorks -- q:example",
+      "stars": 1056,
+      "capabilities": [
+        "google-recon",
+        "metadata-extraction"
+      ],
+      "topics": [
+        "google",
+        "dork",
+        "metadata"
+      ],
+      "install": {
+        "method": "git",
+        "package": null,
+        "version": null,
+        "url": "https://github.com/Zarcolio/sitedorks.git",
+        "ref": "ce6421a963d50c3b18128052703274552d284d94",
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": null,
+        "script": "sitedorks.py"
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "afa236d",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "q",
+              "flag": "-query",
+              "sample": "example"
+            }
+          ],
+          "command": "otlite run sitedorks -- q:example",
+          "tool_args": [
+            "-query",
+            "example"
+          ]
+        }
+      ],
+      "batch_skip": "asks questions while it runs; run it on its own",
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "socialscan",
+      "display_name": "Socialscan",
+      "description": "Python library for accurately querying username and email usage on online platforms.",
+      "repo": "iojw/socialscan",
+      "license": "MPL-2.0",
+      "accepts": [
+        "username",
+        "email"
+      ],
+      "input_types": [
+        "q"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run socialscan -- q:example",
+      "stars": 1845,
+      "capabilities": [
+        "username-search",
+        "email-search"
+      ],
+      "topics": [
+        "username",
+        "email"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "socialscan",
+        "version": "2.0.1",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "socialscan",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "2.0.1",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "q",
+              "flag": "",
+              "sample": "example"
+            }
+          ],
+          "command": "otlite run socialscan -- q:example",
+          "tool_args": [
+            "example"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": "osintverse-community/socialscan"
+    },
+    {
+      "name": "socid-extractor",
+      "display_name": "Socid Extractor",
+      "description": "The extraction engine behind Maigret: turn any profile URL into a structured OSINT record across 150+ sites.",
+      "repo": "soxoj/socid-extractor",
+      "license": "MIT",
+      "accepts": [
+        "url",
+        "username"
+      ],
+      "input_types": [
+        "url"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run socid-extractor -- url:https://example.com",
+      "stars": 1095,
+      "capabilities": [
+        "metadata-extraction",
+        "username-search",
+        "social-media"
+      ],
+      "topics": [
+        "metadata",
+        "username",
+        "social-media",
+        "profile"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "socid-extractor",
+        "version": "0.1.1",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "socid_extractor",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "0.1.1",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "url",
+              "flag": "--url",
+              "sample": "https://example.com"
+            }
+          ],
+          "command": "otlite run socid-extractor -- url:https://example.com",
+          "tool_args": [
+            "--url",
+            "https://example.com"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": "osintverse-community/socid-extractor"
+    },
+    {
+      "name": "spiderfoot",
+      "display_name": "Spiderfoot",
+      "description": "SpiderFoot automates OSINT for threat intelligence and mapping your attack surface.",
+      "repo": "smicallef/spiderfoot",
+      "license": "MIT",
+      "accepts": [
+        "domain",
+        "ip",
+        "username",
+        "email"
+      ],
+      "input_types": [
+        "d",
+        "ip"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run spiderfoot -- d:example.com",
+      "stars": 22469,
+      "capabilities": [
+        "domain-recon",
+        "ip-recon",
+        "subdomain-enum",
+        "email-search",
+        "google-recon",
+        "metadata-extraction",
+        "username-search"
+      ],
+      "topics": [
+        "domain",
+        "ip",
+        "subdomain",
+        "email",
+        "google",
+        "metadata",
+        "username"
+      ],
+      "install": {
+        "method": "git",
+        "package": null,
+        "version": null,
+        "url": "https://github.com/smicallef/spiderfoot.git",
+        "ref": "0f815a203afebf05c98b605dba5cf0475a0ee5fd",
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": null,
+        "script": "sf.py"
+      },
+      "requires_python": "<3.13",
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [
+        "-u",
+        "passive"
+      ],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "0f815a2",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [
+        "Needs Python older than 3.13, because its pinned lxml and cryptography have no wheels for 3.13 or newer."
+      ],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "d",
+              "flag": "-s",
+              "sample": "example.com"
+            }
+          ],
+          "command": "otlite run spiderfoot -- d:example.com",
+          "tool_args": [
+            "-u",
+            "passive",
+            "-s",
+            "example.com"
+          ]
+        },
+        {
+          "parts": [
+            {
+              "prefix": "ip",
+              "flag": "-s",
+              "sample": "192.0.2.1"
+            }
+          ],
+          "command": "otlite run spiderfoot -- ip:192.0.2.1",
+          "tool_args": [
+            "-u",
+            "passive",
+            "-s",
+            "192.0.2.1"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "sublist3r",
+      "display_name": "Sublist3r",
+      "description": "Fast subdomain enumeration tool using multiple search engines and certificate transparency logs.",
+      "repo": "aboul3la/Sublist3r",
+      "license": "GPL-2.0",
+      "accepts": [
+        "domain"
+      ],
+      "input_types": [
+        "d"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run sublist3r -- d:example.com",
+      "stars": 8500,
+      "capabilities": [
+        "subdomain-enum",
+        "domain-recon"
+      ],
+      "topics": [
+        "subdomain",
+        "domain"
+      ],
+      "install": {
+        "method": "git",
+        "package": null,
+        "version": null,
+        "url": "https://github.com/aboul3la/Sublist3r.git",
+        "ref": "729d649ec5370730172bf6f5314aafd68c874124",
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "sublist3r",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-30",
+        "version": "1.0",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "d",
+              "flag": "--domain",
+              "sample": "example.com"
+            }
+          ],
+          "command": "otlite run sublist3r -- d:example.com",
+          "tool_args": [
+            "--domain",
+            "example.com"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": "osintverse-community/sublist3r"
+    },
+    {
+      "name": "telegram-phone-number-checker",
+      "display_name": "Telegram Phone Number Checker",
+      "description": "Check if phone numbers are connected to Telegram accounts.",
+      "repo": "bellingcat/telegram-phone-number-checker",
+      "license": "MIT",
+      "accepts": [
+        "phone",
+        "username"
+      ],
+      "input_types": [
+        "p",
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": [
+          "API_ID",
+          "API_HASH",
+          "PHONE_NUMBER"
+        ]
+      },
+      "dual_use": true,
+      "interactive": true,
+      "example": "otlite run telegram-phone-number-checker -- u:johndoe",
+      "stars": 1790,
+      "capabilities": [
+        "phone-search",
+        "telegram",
+        "dual-use"
+      ],
+      "topics": [
+        "phone",
+        "telegram"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "telegram-phone-number-checker",
+        "version": "1.2.2",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "telegram-phone-number-checker",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": true,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "1.2.2",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [
+        "Reads API_ID, API_HASH and PHONE_NUMBER, set with `otlite keys set`, and asks for them when they are not set."
+      ],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "u",
+              "flag": "--usernames",
+              "sample": "johndoe"
+            }
+          ],
+          "command": "otlite run telegram-phone-number-checker -- u:johndoe",
+          "tool_args": [
+            "--usernames",
+            "johndoe"
+          ]
+        },
+        {
+          "parts": [
+            {
+              "prefix": "p",
+              "flag": "--phone-numbers",
+              "sample": "+14155550100"
+            }
+          ],
+          "command": "otlite run telegram-phone-number-checker -- p:+14155550100",
+          "tool_args": [
+            "--phone-numbers",
+            "+14155550100"
+          ]
+        }
+      ],
+      "batch_skip": "asks questions while it runs; run it on its own",
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "telepathy",
+      "display_name": "Telepathy",
+      "description": "OSINT toolkit for investigating Telegram chats and accounts.",
+      "repo": "prose-intelligence-ltd/Telepathy-Community",
+      "license": "MIT",
+      "accepts": [
+        "username"
+      ],
+      "input_types": [
+        "tg"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": true,
+      "interactive": true,
+      "example": "otlite run telepathy -- tg:durov",
+      "stars": 0,
+      "capabilities": [
+        "telegram",
+        "chat-analysis",
+        "dual-use"
+      ],
+      "topics": [
+        "telegram",
+        "chat",
+        "osint"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "telepathy",
+        "version": "2.3.4",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "telepathy",
+        "script": null
+      },
+      "requires_python": "<3.13",
+      "needs_config": true,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "2.3.4",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [
+        "Needs Python older than 3.13, because its googletrans and httpx dependencies use the cgi module, which Python 3.13 removed.",
+        "Asks for its Telegram credentials on the first run and stores them itself."
+      ],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "tg",
+              "flag": "-t",
+              "sample": "durov"
+            }
+          ],
+          "command": "otlite run telepathy -- tg:durov",
+          "tool_args": [
+            "-t",
+            "durov"
+          ]
+        }
+      ],
+      "batch_skip": "asks questions while it runs; run it on its own",
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "thebigbrother",
+      "display_name": "The Big Brother",
+      "description": "Find usernames across social networks.",
+      "repo": "chadi0x/TheBigBrother",
+      "license": "MIT",
+      "accepts": [
+        "username"
+      ],
+      "input_types": [
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run thebigbrother -- u:johndoe",
+      "stars": null,
+      "capabilities": [
+        "username-search"
+      ],
+      "topics": [
+        "username",
+        "social-media"
+      ],
+      "install": {
+        "method": "git",
+        "package": null,
+        "version": null,
+        "url": "https://github.com/chadi0x/TheBigBrother.git",
+        "ref": "96e03c34d415aaeaddd66d54bb2e2359d4b320fc",
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": null,
+        "script": "the_big_brother/__main__.py"
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-29",
+        "version": "7.0.0",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.14.4"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "u",
+              "flag": "",
+              "sample": "johndoe"
+            }
+          ],
+          "command": "otlite run thebigbrother -- u:johndoe",
+          "tool_args": [
+            "johndoe"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": "osintverse-community/thebigbrother"
+    },
+    {
+      "name": "theharvester",
+      "display_name": "theHarvester",
+      "description": "Find emails, subdomains and names for a domain",
+      "repo": "laramies/theHarvester",
+      "license": "GPL-2.0",
+      "accepts": [
+        "domain"
+      ],
+      "input_types": [
+        "d"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": [
+          "SHODAN_API_KEY",
+          "HUNTER_API_KEY"
+        ]
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run theharvester -- d:example.com",
+      "stars": null,
+      "capabilities": [
+        "domain-recon",
+        "email-search"
+      ],
+      "topics": [
+        "domain",
+        "email"
+      ],
+      "install": {
+        "method": "git",
+        "package": null,
+        "version": null,
+        "url": "https://github.com/laramies/theHarvester.git",
+        "ref": "fd832dee7936458a4f6e2029bf37ba6797228676",
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "theHarvester",
+        "script": null
+      },
+      "requires_python": ">=3.12",
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-22",
+        "version": "4.11.1",
+        "os": "Ubuntu 26.04 LTS via WSL2",
+        "python": "3.12.14"
+      },
+      "notes": [
+        "Needs Python 3.12 or newer, because its current release, 4.11.1, requires it."
+      ],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "d",
+              "flag": "--domain",
+              "sample": "example.com"
+            }
+          ],
+          "command": "otlite run theharvester -- d:example.com",
+          "tool_args": [
+            "--domain",
+            "example.com"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": "osintverse-community/theharvester"
+    },
+    {
+      "name": "torbot",
+      "display_name": "Torbot",
+      "description": "Dark Web OSINT Tool.",
+      "repo": "DedSecInside/TorBot",
+      "license": "NOASSERTION",
+      "accepts": [
+        "url",
+        "domain"
+      ],
+      "input_types": [
+        "url"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run torbot -- url:https://example.com",
+      "stars": 4935,
+      "capabilities": [
+        "darkweb",
+        "google-recon",
+        "domain-recon"
+      ],
+      "topics": [
+        "darkweb",
+        "tor",
+        "domain"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "torbot",
+        "version": "4.3.0",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "torbot",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "4.3.0",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "url",
+              "flag": "-u",
+              "sample": "https://example.com"
+            }
+          ],
+          "command": "otlite run torbot -- url:https://example.com",
+          "tool_args": [
+            "-u",
+            "https://example.com"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "toutatis",
+      "display_name": "Toutatis",
+      "description": "Toutatis is a tool that allows you to extract information from instagrams accounts such as e-mails, phone numbers and more.",
+      "repo": "megadose/toutatis",
+      "license": "GPL-3.0",
+      "accepts": [
+        "phone",
+        "username"
+      ],
+      "input_types": [
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": true,
+      "interactive": false,
+      "example": "otlite run toutatis -- u:johndoe",
+      "stars": 4300,
+      "capabilities": [
+        "phone-search",
+        "social-media",
+        "metadata-extraction",
+        "dual-use"
+      ],
+      "topics": [
+        "phone",
+        "social-media",
+        "metadata"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "toutatis",
+        "version": "1.31",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "toutatis",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": true,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "1.31",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "u",
+              "flag": "--username",
+              "sample": "johndoe"
+            }
+          ],
+          "command": "otlite run toutatis -- u:johndoe",
+          "tool_args": [
+            "--username",
+            "johndoe"
+          ]
+        }
+      ],
+      "batch_skip": "needs API keys or setup; pass --include-credentialed",
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "user-scanner",
+      "display_name": "User Scanner",
+      "description": "(2-in-1) Email & Username OSINT suite featuring native MCP support for deep data extraction just from a single Email/Username.",
+      "repo": "kaifcodec/user-scanner",
+      "license": "MIT",
+      "accepts": [
+        "username",
+        "email"
+      ],
+      "input_types": [
+        "e",
+        "u"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": true,
+      "interactive": false,
+      "example": "otlite run user-scanner -- u:johndoe",
+      "stars": 4985,
+      "capabilities": [
+        "username-search",
+        "email-search",
+        "metadata-extraction",
+        "dual-use"
+      ],
+      "topics": [
+        "username",
+        "email",
+        "metadata"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "user-scanner",
+        "version": "1.5.2.2",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "user-scanner",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-10-12",
+        "version": "1.5.2.2",
+        "os": "Ubuntu 24.04 LTS",
+        "python": "3.12.3"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "u",
+              "flag": "--username",
+              "sample": "johndoe"
+            }
+          ],
+          "command": "otlite run user-scanner -- u:johndoe",
+          "tool_args": [
+            "--username",
+            "johndoe"
+          ]
+        },
+        {
+          "parts": [
+            {
+              "prefix": "e",
+              "flag": "--email",
+              "sample": "ada@example.com"
+            }
+          ],
+          "command": "otlite run user-scanner -- e:ada@example.com",
+          "tool_args": [
+            "--email",
+            "ada@example.com"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": "osintverse-community/user-scanner"
+    },
+    {
+      "name": "whatsapp-osint",
+      "display_name": "Whatsapp Osint",
+      "description": "WhatsApp spy - logs online/offline events from ANYONE in the world.",
+      "repo": "jasperan/whatsapp-osint",
+      "license": "MIT",
+      "accepts": [
+        "phone",
+        "name"
+      ],
+      "input_types": [],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": true,
+      "interactive": true,
+      "example": "otlite run whatsapp-osint -- --help",
+      "stars": 1537,
+      "capabilities": [
+        "social-media",
+        "phone-search",
+        "dual-use"
+      ],
+      "topics": [
+        "whatsapp",
+        "social-media",
+        "phone"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "whatsapp-osint",
+        "version": "2.0.1",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "whatsapp-beacon",
+        "script": null
+      },
+      "requires_python": ">=3.11",
+      "needs_config": true,
+      "long_running": true,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "2.0.1",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [
+        "Needs Python 3.11 or newer, because it imports datetime.UTC."
+      ],
+      "inputs": [],
+      "batch_skip": "asks questions while it runs; run it on its own",
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "yark",
+      "display_name": "Yark",
+      "description": "OSINT for YouTube made simple.",
+      "repo": "Owez/yark",
+      "license": "MIT",
+      "accepts": [
+        "url",
+        "username",
+        "name"
+      ],
+      "input_types": [],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run yark -- --help",
+      "stars": 2189,
+      "capabilities": [
+        "social-media",
+        "google-recon",
+        "username-search"
+      ],
+      "topics": [
+        "youtube",
+        "social-media",
+        "google",
+        "username"
+      ],
+      "install": {
+        "method": "pip",
+        "package": "yark",
+        "version": "1.2.12",
+        "url": null,
+        "ref": null,
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": "yark",
+        "script": null
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-24",
+        "version": "1.2.12",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.12.14"
+      },
+      "notes": [],
+      "inputs": [],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": null
+    },
+    {
+      "name": "zen",
+      "display_name": "Zen",
+      "description": "Find email addresses of GitHub users, repositories and organizations.",
+      "repo": "s0md3v/Zen",
+      "license": "Apache-2.0",
+      "accepts": [
+        "username",
+        "url"
+      ],
+      "input_types": [
+        "u",
+        "url"
+      ],
+      "api_keys": {
+        "required": [],
+        "optional": []
+      },
+      "dual_use": false,
+      "interactive": false,
+      "example": "otlite run zen -- u:johndoe",
+      "stars": null,
+      "capabilities": [
+        "email-search"
+      ],
+      "topics": [
+        "github",
+        "email"
+      ],
+      "install": {
+        "method": "git",
+        "package": null,
+        "version": null,
+        "url": "https://github.com/s0md3v/Zen.git",
+        "ref": "b9018b4b74eb0cb64d5a61ff00cdd413cf5d7733",
+        "extra_packages": [],
+        "playwright_browsers": []
+      },
+      "entrypoint": {
+        "command": null,
+        "script": "zen.py"
+      },
+      "requires_python": null,
+      "needs_config": false,
+      "long_running": false,
+      "run_from_source": false,
+      "default_args": [],
+      "verified": {
+        "date": "2026-09-29",
+        "version": "master",
+        "os": "Ubuntu 26.04 LTS",
+        "python": "3.14.4"
+      },
+      "notes": [],
+      "inputs": [
+        {
+          "parts": [
+            {
+              "prefix": "u",
+              "flag": "",
+              "sample": "johndoe"
+            }
+          ],
+          "command": "otlite run zen -- u:johndoe",
+          "tool_args": [
+            "johndoe"
+          ]
+        },
+        {
+          "parts": [
+            {
+              "prefix": "url",
+              "flag": "",
+              "sample": "https://example.com"
+            }
+          ],
+          "command": "otlite run zen -- url:https://example.com",
+          "tool_args": [
+            "https://example.com"
+          ]
+        }
+      ],
+      "batch_skip": null,
+      "playbooks": [],
+      "registry": null
+    }
+  ]
+}

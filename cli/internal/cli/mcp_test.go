@@ -362,9 +362,14 @@ func TestMCPInstallClients(t *testing.T) {
 	}
 }
 
-// The MCP tools page lists everything the server offers; regenerate it from `ot mcp tools --json` when this fails.
+// The website's MCP tools page lists everything the server offers. The page lives in the site's repository, whose
+// checks run this test with OT_MCP_TOOLS_DOC naming it; regenerate the page from `ot mcp tools --json` when it fails.
 func TestMCPToolsDocsMatch(t *testing.T) {
-	doc, err := os.ReadFile("../../../web/src/pages/docs/mcp-tools.md")
+	path := os.Getenv("OT_MCP_TOOLS_DOC")
+	if path == "" {
+		t.Skip("set OT_MCP_TOOLS_DOC to the site's mcp-tools.md to check it")
+	}
+	doc, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,12 +380,12 @@ func TestMCPToolsDocsMatch(t *testing.T) {
 	}
 	for _, tool := range list.Tools {
 		if !strings.Contains(string(doc), "| `"+tool.Name+"` | "+tool.Description+" |") {
-			t.Errorf("web/src/pages/docs/mcp-tools.md is out of date for %s", tool.Name)
+			t.Errorf("%s is out of date for %s", path, tool.Name)
 		}
 	}
 	for _, p := range list.Prompts {
 		if !strings.Contains(string(doc), "`"+p.Name+"`") {
-			t.Errorf("web/src/pages/docs/mcp-tools.md lacks the prompt %s", p.Name)
+			t.Errorf("%s lacks the prompt %s", path, p.Name)
 		}
 	}
 }

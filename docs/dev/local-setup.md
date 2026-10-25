@@ -9,7 +9,7 @@ Windows path is the best tested. [AGENTS.md](../../AGENTS.md) has the short comm
 | --- | --- | --- |
 | Git (Git Bash on Windows) | any recent | everything; `bash scripts/*.sh` on Windows runs in Git Bash |
 | Go | 1.25+ (`cli/go.mod`) | `cli/`, `ot release` tests, `scripts/e2e*.sh` |
-| Node.js | 22+ (Astro 7 needs it; there is no `engines` field) | `api/`, `web/` |
+| Node.js | 22+ (there is no `engines` field) | `api/` |
 | Docker Desktop or Podman | recent | running tools, sandboxed pipx tools, the e2e scripts, the scanner image |
 | Python | 3.12 (3.12+ works for the scanner and seed tests); 3.10+ on Linux or macOS for `otlite/` | `ops/scanner`, seed tool tests, `scripts/pm-catalog-to-wrappers.py`, `otlite/` |
 | cosign | v2 | `scripts/e2e-real.sh`, `scripts/e2e-backups.sh`, signature checks in `ot` (missing cosign only warns) |
@@ -104,19 +104,11 @@ The mirror runs separately: `cd api && npx wrangler dev -c wrangler.mirror.jsonc
 8787 is taken). `scripts/e2e-backups.sh` shows the full set (API, mirror, a proxy container) on ports 8787 to 8789 and
 5001.
 
-## 4. Run the site locally
+## 4. The website
 
-| Goal | Command | Notes |
-| --- | --- | --- |
-| Fast dev server | `cd web && npm run dev` | port 4321, hot reload, **no CSP** |
-| Production build | `cd web && npm run build && npm run preview -- --port 4322` | CSP enforced; the `web-preview` launch config does the same |
-| Against the local API | build with `PUBLIC_API_URL=http://127.0.0.1:8787` in the shell, and start the API with `npx wrangler dev --var SITE_URL:http://127.0.0.1:<site port>` | the site origin must equal the API's `SITE_URL` for credentialed CORS |
-
-The site's default API is production. From a `localhost` origin, credentialed calls to production (`/me`, quick search)
-fail CORS; that is expected. `web/.env.example` points at staging, which only works while someone runs a tunnel, so it
-is usually down.
-
-`.claude/launch.json` (tracked) defines `web` (4321) and `web-preview` (4322) for the Claude desktop app's preview.
+The website is built from its own repository, which includes this one as a submodule. To run it against a local API,
+start the API here with `npx wrangler dev --var SITE_URL:http://127.0.0.1:<site port>` (seeded local D1): the site's
+origin must equal the API's `SITE_URL` for credentialed CORS.
 
 ## 5. Point `ot` at a local API
 

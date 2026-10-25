@@ -18,8 +18,6 @@ def _load():
 
 def test_web_catalog_is_up_to_date():
     catalog = _load()
-    if not catalog.OUTPUT.parent.parent.exists():
-        pytest.skip("not in a full checkout (no web/)")
     assert catalog.OUTPUT.exists(), "run: python scripts/web_catalog.py"
     current = catalog.OUTPUT.read_text(encoding="utf-8")
     assert current == catalog.build(), "stale; run: python scripts/web_catalog.py"

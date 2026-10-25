@@ -291,7 +291,7 @@ Listing a release in the registry is a manual step:
    (`go install github.com/modelcontextprotocol/registry/cmd/publisher@v1.8.1`; Go names the binary `publisher`, in
    `$(go env GOPATH)/bin`, and the commands below use that name). The registry checks that we own
    `otinstaller.com` (so the servers can be named `com.otinstaller/*`) by reading the public key the site serves at
-   `/.well-known/mcp-registry-auth` (`web/public/.well-known/`). The matching private key is in the owner's
+   `/.well-known/mcp-registry-auth` (`web/public/.well-known/` in the site's repository). The matching private key is in the owner's
    `~/.mcp-registry/otinstaller.com.ed25519.hex`, outside the repository. Sign in with
    `publisher login http --domain otinstaller.com --private-key "$(cat ~/.mcp-registry/otinstaller.com.ed25519.hex)"`,
    and again if a publish says the sign-in has expired. If the key is lost, make a new pair, replace the site file, and deploy the site.

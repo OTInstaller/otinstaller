@@ -15,7 +15,7 @@ This file is the entry point. The deep reference lives in [docs/dev/](docs/dev/R
 | [ops-payloads.md](docs/dev/ops-payloads.md) | Scan, backup, drill and health payloads and callbacks; verdict rules; registry-ops workflows; token lifetimes |
 | [config.md](docs/dev/config.md) | Bindings, vars and secrets per Worker, registry-ops and the CLI release; values that must match across them |
 | [local-setup.md](docs/dev/local-setup.md) | From a clean Windows, macOS or Linux machine to running every part locally |
-| [troubleshooting.md](docs/dev/troubleshooting.md) | Recipes: stuck jobs, scans, backups, edge-cache staleness, D1 limits, CSP, CORS, email, GitLab, `ot` failures |
+| [troubleshooting.md](docs/dev/troubleshooting.md) | Recipes: stuck jobs, scans, backups, edge-cache staleness, D1 limits, CORS, email, GitLab, `ot` failures |
 
 These pages were written from the code in October 2026. When you change behaviour they describe, update them in the
 same commit.
@@ -43,28 +43,14 @@ feeds keep people up to date, and `/learn` is where to start.
 The repository also holds `otlite/`, the no-Docker edition `otlite` (the Python package manager formerly called
 `otinstaller`; see [otlite/](#otlite-the-no-docker-edition-otlite)).
 
-**How we describe it.** Copy leads with the outcome, then says what the product is, then shows what it replaces:
-- **Headline:** "Stop fixing OSINT tools. Start using them."
-- **One-liner:** "OTInstaller is the package manager and largest registry built only for OSINT tools."
-  - "Largest" is always qualified that way and always sits next to a count: the live number on site pages, "over
-    130 tools" (update it as the registry grows) in static files.
-- **otlite** is "every popular OSINT tool, managed for you": we pick, pin and test the tools.
-- **"What it replaces":** the job-by-job rows on the home page (`web/src/pages/index.astro`) are the source of truth
-  for the comparison. They cover install, run, results, API keys, keeping it working, trust and removal. The READMEs,
-  the FAQ, the blog post and the launch drafts repeat them.
-- **Under `otlite/`:** files there follow `otlite/AGENTS.md` (no AI wording, no marketing filler).
-
-The launch is **public**: the closed beta planned for week 12 never ran (nobody was invited), and the site is built
-with `PUBLIC_BETA=0`. `ot feedback` and issues on `OTInstaller/feedback` stay as the feedback channels.
-[docs/launch-checklist.md](docs/launch-checklist.md) records what is deployed and what is left; as of 22 Oct 2026 the
-latest `ot` is v0.13.1 on `OTInstaller/ot`, migrations up to 0014 are applied in production, and otlite is on PyPI.
-Check the checklist for anything newer; don't restate production state here.
+`ot feedback` and issues on `OTInstaller/feedback` are the feedback channels. The website, its user docs and the
+changelog live in a separate repository (see [The website](#the-website-a-separate-repository)).
 
 Production:
 
 | Thing | Where |
 | --- | --- |
-| Website | `https://otinstaller.com` (`web/`, a Cloudflare Worker) |
+| Website | `https://otinstaller.com` (a Cloudflare Worker built from the private `OTInstaller/otinstaller-site` repository) |
 | Registry API | `https://api.otinstaller.com/v1` (`api/`, Worker `otinstaller-registry-api`) |
 | Image mirror | `https://mirror.otinstaller.com` (`api/src/mirror/`, Worker `otinstaller-mirror`, config `api/wrangler.mirror.jsonc`) |
 | Remote MCP server | `https://api.otinstaller.com/mcp` (`api/src/mcp.ts`, same Worker as the API, read-only) |
@@ -84,32 +70,28 @@ The first-party namespace is `osintverse-community` (a GitHub organisation). The
 
 ```
 spec/        Manifest JSON Schema, valid/invalid fixtures, release workflow templates, the envelope, run-all and
-             error schemas, types.json, pivots.json and openapi/v1.json (the source of truth)
+             error schemas, types.json, pivots.json, openapi/v1.json and dockerfile-templates.ts (the source of truth)
 cli/         The `ot` CLI (Go 1.25+, cobra); cmd/ot is the binary, cmd/mcpb packs the release's MCP bundles
 api/         Registry API and image mirror (TypeScript, Hono on Cloudflare Workers, D1, Queues, R2)
-web/         Website (Astro 7 SSR on Cloudflare, Preact islands, strict CSP)
 ops/         scanner/ (scan.py, backup.py, health.py, tests, Dockerfile), workflows/ (scan.yml, health.yml) copied
              into registry-ops, get/ (worker.js, wrangler.jsonc: the get.otinstaller.com Worker)
-otlite/      otlite, the no-Docker edition (Python; formerly otinstaller; has its own AGENTS.md)
-seed/        Launch seed: 26 first-party tools, 119 community wrappers, 10 guides, outreach texts
+otlite/      otlite, the no-Docker edition (Python; formerly otinstaller; has its own AGENTS.md); web-catalog.json is
+             what the website's /otlite pages read
+seed/        Launch seed: 26 first-party tools, 119 community wrappers, 10 guides
 examples/    dns-lookup (scripts/e2e.sh), cosign and tldextract (the local/test seed in api/scripts/seed-lib.mjs
              and scripts/e2e-real.sh)
 scripts/     e2e.sh, e2e-real.sh, e2e-backups.sh, e2e-direct.sh, install/ (install.sh, install.ps1, make-test-release.sh),
-             beta/labels.sh, pm-catalog-to-wrappers.py
+             pm-catalog-to-wrappers.py
 integrations/ agent-plugin/ (the Claude Code and Cursor plugin, published as OTInstaller/agent-plugin) and
              mcp-registry/server.json (the remote server's MCP Registry entry)
-docs/        publishing-setup.md (operator runbook), launch-checklist.md, migrating-from-otinstaller.md,
-             typed-inputs-and-results.md and agent-friendly-plan.md (design notes), code-signing.md, seo.md,
-             web-redesign-plan.md, launch/ (posts, agent listings, rota), beta/ (unused beta drafts),
-             dev/ (developer reference, see the table above)
+docs/        publishing-setup.md (operator runbook), migrating-from-otinstaller.md, typed-inputs-and-results.md and
+             agent-friendly-plan.md (design notes), code-signing.md, dev/ (developer reference, see the table above)
 .github/     workflows/ (see CI below) and ISSUE_TEMPLATE/ (bug with severity, idea, config.yml contact links);
              the live issue forms are in the public OTInstaller/feedback repo
-.claude/     launch.json: dev-server definitions (`web` on 4321, `web-preview` on 4322); skills/design/: the site's
-             design system, layout rules and review checklist (read it before changing `web/`)
 LICENSE      Apache 2.0 for the whole repository; otlite/ keeps its own LICENSE and NOTICE
 ```
 
-There is no root package manager or monorepo tool. Each of `cli/`, `api/`, `web/` and `otlite/` is built on its own, but
+There is no root package manager or monorepo tool. Each of `cli/`, `api/` and `otlite/` is built on its own, but
 they **share files from `spec/`** (see [Spec copies](#spec-is-the-source-of-truth-keep-the-copies-in-sync)), and some
 tests read `spec/`, `seed/` or `examples/`, so tests must run inside a full checkout. (`scripts/pm-catalog-to-wrappers.py`
 reads `otlite/`; no test does.)
@@ -117,7 +99,7 @@ reads `otlite/`; no test does.)
 ## Requirements
 
 - Go 1.25+ (CLI)
-- Node.js 22+ (API and site); dependencies are pinned in each `package-lock.json`, install with `npm install`
+- Node.js 22+ (API); dependencies are pinned in each `package-lock.json`, install with `npm install`
 - Docker Desktop or Podman (running Docker tools, sandboxed pipx tools, the e2e scripts, the scanner image)
 - Python 3.12 (scanner, seed tool unit tests, the converter); Python 3.10+ on Linux or macOS for `otlite/`
 - `cosign`, `crane` and `git` for some e2e scripts and the `ot release` tests
@@ -139,10 +121,6 @@ The main development machine is Windows. Use forward slashes in scripts, keep fi
 | API dev server | `cd api && npm run dev` → `http://127.0.0.1:8787/v1/tools` |
 | Mirror dev server | `cd api && npx wrangler dev -c wrangler.mirror.jsonc` |
 | Regenerate API template copy | `cd api && npm run sync:templates` |
-| Site dev server | `cd web && npm run dev` (port 4321; CSP **not** enforced) |
-| Site production preview | `cd web && npm run build && npm run preview -- --port 4322` (CSP enforced; without `--port` Astro uses 4321) |
-| Site typecheck / tests / contrast | `cd web && npm run check` / `npm test` / `npm run contrast` |
-| Social image | `cd web && npm run og` (re-renders `public/og.png`) |
 | Scanner tests | `python -m unittest discover ops/scanner` |
 | Seed tool tests | `python -m unittest` inside a `seed/first-party/<tool>/` folder |
 | otlite/ checks | `cd otlite && pip install -e ".[dev,pipeline]" && ruff check . && ruff format --check . && pytest` |
@@ -152,11 +130,10 @@ The main development machine is Windows. Use forward slashes in scripts, keep fi
 | End-to-end, direct publishing | `bash scripts/e2e-direct.sh` (Docker, Go, Node, Python, network; ports 8787–8789) |
 | Test install scripts locally | `bash scripts/install/make-test-release.sh` (a release signed with a throwaway key) |
 
-There is no linter or formatter config for `api/` or `web/`; match the surrounding style. CI does **not** run the Go,
-API or site tests (see [CI](#ci-githubworkflows)), so run them yourself before you call a change done.
+There is no linter or formatter config for `api/`; match the surrounding style. CI does **not** run the Go or
+API tests (see [CI](#ci-githubworkflows)), so run them yourself before you call a change done.
 
-To point `ot` at a local API: `OT_API_URL=http://127.0.0.1:8787/v1`. To point the site at another API, set
-`PUBLIC_API_URL` (copy `web/.env.example` to `web/.env.development`). Setting up a machine from scratch is in
+To point `ot` at a local API: `OT_API_URL=http://127.0.0.1:8787/v1`. Setting up a machine from scratch is in
 [docs/dev/local-setup.md](docs/dev/local-setup.md).
 
 ---
@@ -172,7 +149,7 @@ heavy work (pulling, scanning and copying images). Step-by-step flows with file 
   git tag vX.Y.Z                 ot install / ot run / browser          review, takedowns
       |                              |              |                       |
       v                              v              v                       v
- GitHub / GitLab --webhook--> +---------------------------+ <--- otinstaller.com (web/, Astro SSR Worker)
+ GitHub / GitLab --webhook--> +---------------------------+ <--- otinstaller.com (Astro SSR Worker, own repo)
   (OAuth, commit      |       | api.otinstaller.com/v1    |      SSR reads public API; islands call it with cookie
    statuses, PR/MR)   |       | otinstaller-registry-api  |
       ^               |       |  edge cache -> Hono app   |---> Resend (email), Sentry (errors)
@@ -245,7 +222,7 @@ manifest endpoint serves `compatManifest()` (`api/src/lib/manifest.ts`) without 
 
 **Error codes are a contract.** The CLI (`cli/internal/manifest/validate.go`, `content.go`) and the API
 (`api/src/lib/manifest.ts`, `api/src/content.ts`) report the same `manifest_*` / `content_*` codes for the same problem, and
-every code is documented at `https://otinstaller.com/docs/errors#<code>` (`web/src/pages/docs/errors.md`). Adding or
+every code is documented at `https://otinstaller.com/docs/errors#<code>` (in the site's repository). Adding or
 changing a code means changing both validators, the error docs, and usually a fixture. Problems are sorted most specific
 code first, then deepest path, so "first problem" is stable.
 
@@ -263,10 +240,11 @@ invalid ones. Digests and hashes in fixtures are fake. Separately, `cli/internal
 | `spec/templates/*.yml` | `cli/internal/scaffold/templates/*.yml` (embedded) | `cd cli && go generate ./...` | `TestTemplatesMatchSpec` |
 | `spec/templates/*.yml` | `api/src/release-templates.ts` (generated, "Do not edit") | `cd api && npm run sync:templates` | `week7.test.ts` |
 | `spec/templates/github-docker.yml` | `seed/*/*/.github/workflows/otinstaller-release.yml` | copy by hand | — |
-| `spec/schema/v1.json` | imported directly by `api/src` and `web/src/pages/schema/v1.json.ts` | nothing to do | — |
+| `spec/schema/v1.json` | imported directly by `api/src`, and by the website through its submodule | nothing to do | — |
 | `spec/schema/{envelope,run-all,error}-v1.json`, `spec/pivots.json`, `spec/types.json` | `cli/internal/specfiles/files/` (embedded; MCP resources, `list_types`, `suggest_pivots`, `ot pivot`) | `cd cli && go generate ./...` | `TestCopiesMatchSpec`; `TestPivotsCoverEveryEntityType` and `TestTypesDescribeEverySchemaValue` check them against the schema |
 | `spec/pivots.json`, `spec/types.json`, `spec/openapi/v1.json` | imported directly by `api/src/index.ts` (`/pivots`, `/types`, `/openapi.json`) | nothing to do | `api.test.ts` checks every enum value has a description and that the OpenAPI document lists every public and owner route |
-| `spec/schema/{envelope,run-all,error}-v1.json` | imported directly by `web/src/pages/schema/[name].json.ts` | nothing to do | — |
+| `spec/schema/{envelope,run-all,error}-v1.json` | served by the website through its submodule (`/schema/<name>.json`) | nothing to do | — |
+| `spec/dockerfile-templates.ts` | imported directly by `api/test/week7.test.ts` and the website's import wizard | nothing to do | `week7.test.ts` checks every template passes `dockerfileChecks` |
 | `otlite/src/otlite/data/registry.yaml`, `seed/candidates.md` | `api/src/known-repos.ts` (generated: what otlite installs and why the seed survey dropped a repository, for tool requests) | `cd api && npm run sync:known-repos` | `requests.test.ts` |
 
 Never edit a generated copy by hand. Edit `spec/`, then regenerate. `TestWorkflowsAreValidYAML` (`scaffold_test.go`)
@@ -377,7 +355,7 @@ install when nothing takes a target), `runs.go` (runs), `saved.go` (extract/diff
 - Holds: installing an exact version (`ot install x@1.2.0`, or `ot run x@1.2.0` installing it) sets `held` in
   `state.json`; `ot update --all` skips held packages, and naming one (`ot update x`, `ot install x`) moves it and
   releases the hold. Under `AgentMode` an install keeps the hold as it was, and MCP `install_tool` refuses to change a
-  held version (`version_held`). User docs: `web/src/pages/docs/updates.md`.
+  held version (`version_held`). User docs: the site's `docs/updates.md`.
 - The daily update note (`updatecheck.go`): at a terminal, at most once a day, never in CI, under `ot mcp`, with JSON
   output, for quiet commands (`help`, completion, `uninstall`, `outdated`, `update`, `self-update`, `mcp`) or with
   `OT_NO_UPDATE_CHECK=1`. The root `PersistentPreRun` starts `GET /v1/latest` (every package's latest version, the same
@@ -767,7 +745,7 @@ cron deletes it two days after it expires.
   links clickable). Multi-problem responses add `problems`. Unhandled errors become 500 `internal_error` with a
   `request_id` (the `cf-ray` header) and go to Sentry; D1 failing on Cloudflare's side (`d1RetryAfter`) is 503
   `database_unavailable` with `Retry-After` instead, a Sentry warning grouped by kind, and the site's `api()` retries
-  such a read once. If you add a user-facing code, document it in `web/src/pages/docs/errors.md`.
+  such a read once. If you add a user-facing code, document it on the site's errors page (in its repository).
 - **All outbound HTTP goes through `deps.fetch`** (passed to host functions as `f: Fetch`). Calling `fetch` directly
   breaks the tests' fake hosts.
 - Raw D1 SQL with `?` bindings; multi-statement writes in `db.batch([...])` with `audit(...)` in the same batch.
@@ -811,149 +789,30 @@ inserts 5 namespaces, 11 tools, 13 versions, a source, a guide link and an alias
 
 ---
 
-## Website (`web/`)
+## The website (a separate repository)
 
-Astro 7 with `output: "server"` on `@astrojs/cloudflare`, Preact islands, no CSS framework. Worker
-`otinstaller-registry-web` on `otinstaller.com` and `www.otinstaller.com`; deploy with `npm run deploy` (only when asked).
+`otinstaller.com` is built from `OTInstaller/otinstaller-site`, a private repository that also holds the launch,
+planning and marketing material. It includes this repository as a git submodule at `otinstaller/`, pinned to a
+commit, and reads these files from it, so changing them can break the site's build or tests there:
 
-### Layout
+| File here | What the site does with it |
+| --- | --- |
+| `spec/schema/{v1,envelope-v1,run-all-v1,error-v1}.json` | Serves them at `/schema/...`; its tests read `v1.json` |
+| `spec/dockerfile-templates.ts` | The import wizard's "Someone else's tool" Dockerfiles (`api/test/week7.test.ts` checks them against `dockerfileChecks`) |
+| `otlite/web-catalog.json` | The `/otlite` pages (written by `otlite/scripts/web_catalog.py`) |
+| `api/src/lib/reserved.ts` | Its test checks that every top-level page is a reserved namespace |
+| Every `apiError` code in `api/src/` | Its test checks that each one has an entry on `/docs/errors` |
+| `api/src/community.ts`, `inbox.ts`, `proposals.ts` | Its tests keep its labels in step with them |
+| `seed/guides/` | The `/learn` page's tests |
 
-- `src/pages/`: SSR pages. Tool pages live under `[ns]/[name]/` (overview, versions, security, docs, report, claim),
-  guides under `guides/`, search at `search.astro`, plus `input/[type]`, `category/[slug]`, `[ns]/index.astro` (publisher),
-  `dashboard`, `import`, `feedback`, `publish.astro`, `tour.astro`, `settings/accounts`, `transfers/[id]`,
-  `admin/[...section]`, `docs/*.md` (including `agents`, `mcp-tools`, `automation`, `api`, `results`, `otlite`),
-  `policy/*`, `removed.astro`, `404.astro`, `500.astro` (API trouble, shows the request ID), `new.astro` (what's new),
-  `changelog/` and `blog/` (see below), `learn.astro` (+ `learn.md.ts`), the community pages (`community/` with the board and moderation,
-  `[ns]/[name]/issues/`, `requests/`, `people/[handle]`, `submissions/`, `unsubscribe`), a person's own pages
-  (`notifications.astro`, the inbox; `settings/` with `profile`, `notifications` and `accounts` under one
-  `SettingsNav`, and `settings/index.astro` redirecting to the profile),
-  Atom and JSON feeds (`feed.atom.ts`/`feed.json.ts` at the root, per publisher, per tool, per input type), `robots.txt.ts`,
-  `sitemap.xml.ts`, `llms.txt.ts` and `llms-full.txt.ts`, `schema/v1.json.ts` and `schema/[name].json.ts` (the
-  envelope, run-all and error schemas). Only `schema/v1.json.ts` is prerendered.
-- Markdown twins for agents: `<ns>/<name>.md`, guide pages and docs and policy pages as `.md` (`docs/[page].md.ts`,
-  `policy/[page].md.ts`, `lib/twins.ts`); `src/middleware.ts` serves them for `Accept: text/markdown` too.
-- `/changelog` and `/blog` (`changelog/index.astro`, `blog/index.astro`, `blog/[slug].astro`, their `feed.atom.ts` /
-  `feed.json.ts` and `.md` twins): hand-written Markdown in `src/content/changelog/` (one file per entry,
-  `YYYY-MM-DD-<words>.md`) and `src/content/blog/` (one per post, the file name is its URL), read by `lib/content.ts`
-  (metadata, feeds, twins; what `content.test.ts` loads) and rendered by `lib/content-html.ts` (Vitest can't load `.md`
-  components). Not an Astro content collection, so `lib/markdown.ts` and the middleware can answer the twins.
-  `src/content/README.md` says how to write an entry or a post.
-- `/agents` (`agents.astro`): the homepage for AI agents. Its Markdown twin (`agents.md.ts`, and
-  `Accept: text/markdown` on `/agents`) is built from the same content in `lib/agents.ts`, which `agents.test.ts`
-  keeps in step with `docs/agents.md` and `docs/mcp-tools.md`. `agents` must stay in `RESERVED` (`lib/twins.ts`),
-  or `/agents.md` is taken for a publisher's twin.
-- `/otlite` and `/otlite/tools`: the no-Docker edition and its tool catalog (both list every tool through
-  `components/OtliteCatalog.astro`, and `/otlite` computes its counts from it), read at build time from
-  `src/data/otlite-catalog.json`, which `otlite/scripts/web_catalog.py` generates from otlite's registry (a test in
-  `otlite/tests/test_web_catalog.py` fails when it is stale; regenerate it, don't edit it).
-- `/otlite/tools/<name>` (`otlite/tools/[name].astro`): one page per otlite tool, from the same JSON through
-  `lib/otlite.ts`. It shows install and run commands with a value builder (the value never leaves the page), what each
-  typed input becomes on the tool's command line (`tool_args`, computed by otlite's own `_build_tool_args`; the
-  browser's `lib/otlite-args.ts` must agree, which `otlite.test.ts` checks for every tool), caveats from the registry's
-  flags and `notes`, keys, results, batch runs and playbooks, and a link to the registry wrapper when the launch seed has
-  one and it is published. Its Markdown twin is `otlite/tools/[name].md.ts`; there is no sample output on purpose,
-  because otlite's example files are illustrative.
-- Tool pages show sample output: the envelope the scanner's smoke test recorded (`sample` from the API,
-  `recordedEnvelope` in `lib/evidence.ts`), else one shaped from the declared output types, with a caption saying
-  which.
-- `public/.well-known/mcp-registry-auth`: the public key that proves `otinstaller.com` to the MCP Registry. Don't
-  remove or change it without a new key pair (see [Agents](#agents-ot-mcp-the-remote-mcp-server-and-the-plugin)).
-- `src/layouts/`: `Base.astro` (HTML shell, beta strip, header with the account menu and the notifications bell, lean
-  footer, the one inline script, global client JS for copy buttons and the `/me` account check through
-  `lib/account.ts`), `Docs.astro` (with prev/next links), `Policy.astro`.
-- `lib/account.ts`: what the header knows about the person (login, staff, handle, unread count), cached in
-  `sessionStorage` for 10 minutes; `useMe`, the inbox and the settings pages keep it current, and its `ot-account`
-  event tells `FollowReleases` when the header learns someone is signed in.
-- `src/components/*.astro`: server components (PasteBox, InstallBlock, ToolRow, ToolCard, ToolHeader, Evidence,
-  Results, PageReader, Terminal, BetaNotice, CopyCode, CopyCommand, Logo, PageHead, SideNav, OnThisPage, SettingsNav,
-  ThemeToggle).
-  The design is dark first (decided 25 Oct 2026, `.claude/skills/design/SKILL.md`): Geist for what people wrote, Geist
-  Mono for what a machine reads, layered surfaces and hairlines instead of shadows, concentric radii, a `.frame`
-  around terminals and code, and accents from a code theme with blue leading. Markdown code blocks are highlighted at
-  build time by Prism, whose token classes the CSP allows.
-- `src/islands/*.tsx`: Preact islands for anything signed-in or interactive (AdminConsole with review, reports,
-  transfers, community, upstream, audit, feedback and beta tabs; Dashboard; PackageDetail and JobView (the `/dashboard/{ns}/{name}` and
-  `/dashboard/publish/{jobId}` pages); Backups (used by Dashboard and PackageDetail); ImportWizard (four steps; its
-  forms write YAML blocks through `lib/yaml-blocks.ts`), Accounts, ClaimFlow, TransferView, ReportProblem (the
-  report page: a public issue through `IssueForm`, a count without an account, or the private ReportForm), FeedbackForm,
-  VersionActions, SearchDialog; for the community IssueComposer, IssueThread, WorksForMe, FollowReleases (on tool and
-  guide pages; a followed package gets a level choice), CommunityModeration, Inbox (`/notifications`),
-  NotificationSettings, PersonProfileForm (`/settings/profile`; ProfileEditor is a publisher's), RequestForm, RequestVote, RequestDecision, SubmissionActions, UpstreamWatch, BumpRelease,
-  ProposeChange and ProposalActions (a community package's Changes tab, `[ns]/[name]/changes/`)).
-  The import wizard also packages someone else's tool ("Someone else's tool", with `lib/dockerfile-templates.ts`).
-  `shared.tsx` has `useMe`, `SignIn`, `ErrorNote`, `Status`, `Loading`, `Confirm`.
-- `src/lib/`: `api.ts` (the only fetch helper: `api<T>()`, `apiOrNull`, `ApiError`, `signInUrl`, response types, and the
-  `BETA` / `ISSUES_URL` settings), `page.ts` (`cacheFor`, `searchFrom`, `withParam`), `tool.ts` (`loadTool` handles
-  404/410/moved/guide redirects), `theme-boot.ts`, `format.ts` (+ `format.test.ts`, including `hintParts`),
-  `detect.ts` (the paste box's type detection, the CLI's rules; `/search` redirects typed values to `/input/{type}`),
-  `evidence.ts` (the tool page's evidence lines and sample envelope), `install.ts` (the install commands; a test
-  keeps `docs/getting-started.md` equal to them), `yaml-blocks.ts`, `feeds.ts` (Atom, JSON Feed, event wording),
-  `learn.ts`, `compare.ts` (the input pages' comparison table), `community.ts`, `requests.ts`, `submissions.ts` and
-  `proposals.ts` (labels), `first-week.ts` (wording a new version's first-week counts), `report.ts` (the report page's
-  choices, `reportHref`, `withError`), `twins.ts` (Markdown twins and `RESERVED`).
-- `src/styles/`: `tokens.css` (all colours, radii, motion, type scale; light and dark), `global.css` (shared classes),
-  `admin.css` (admin console only).
-
-Environment: `PUBLIC_API_URL` (default production), `PUBLIC_BETA` (`"0"` hides the beta strip), `PUBLIC_ISSUES_URL`
-(default `https://github.com/OTInstaller/feedback/issues`), `SITE_URL`.
-
-### Rules that are easy to break
-
-- **Strict CSP** (`astro.config.mjs`, hashed `script-src` and `style-src`). These are blocked in production and fail
-  silently: inline `style=""` attributes, `define:vars`, un-hashed `is:inline` scripts, `<ClientRouter />` /
-  view-transitions router, Shiki syntax highlighting (inline styles), third-party fonts or scripts not already listed.
-  - Put client code in bundled `<script>` tags in `.astro` files or in islands.
-  - The only inline script is `THEME_BOOT` (`src/lib/theme-boot.ts`); its hash is computed in `astro.config.mjs`. A new
-    inline script needs the same treatment.
-  - Stagger animations with `.stagger > :nth-child(n) { --i }`, hide reveal-on-scroll content only under `html.js`, and
-    use native `@view-transition` for page transitions.
-  - The CSS minifier drops unprefixed `backdrop-filter` when a `-webkit-` duplicate sits next to it: write only the
-    standard property.
-  - **`astro dev` does not enforce the CSP.** Check visual or motion changes in the production preview
-    (`npm run build && npm run preview -- --port 4322`, or the `web-preview` launch config).
-- Colours come from tokens in `tokens.css`, defined for light, dark (`prefers-color-scheme`) and `[data-theme]`; keep
-  pairs WCAG 2.2 AA in both themes. Honour `prefers-reduced-motion` (CSS zeroes durations; JS checks `matchMedia`).
-- `PUBLIC_API_URL` is read both in `astro.config.mjs` (CSP `connect-src`) and in `src/lib/api.ts`; they must agree.
-- SSR pages call the API without cookies and render only public data. Signed-in data loads in islands, and those pages
-  send `Cache-Control: private, no-store`. Public pages set caching with `cacheFor`.
-- Filter, sort and pagination links get `rel="nofollow"` (see the edge cache above); pages with a query string are
-  `noindex` automatically.
-- New docs pages need adding to the hardcoded nav in `Docs.astro` and to `DOCS` in `sitemap.xml.ts`. Policy pages go in
-  the nav in `Policy.astro`; the sitemap has no policy pages today.
-- Install instructions come from `lib/install.ts` (used by `InstallBlock.astro`) and are repeated in
-  `docs/getting-started.md`, which `install.test.ts` checks; Homebrew, Scoop and Go installs are hidden until after the
-  beta.
-- Nothing may be hidden at first paint waiting for JavaScript (no `opacity: 0` reveals), and nothing loops: the old
-  reveal-on-scroll hid the whole home page in some browsers. `npm run contrast` checks the token pairs for AA.
-- Grid tracks are `minmax(0, 1fr)`, never a bare `1fr` (one long command widens the whole page on a phone), colours
-  and font sizes come from `tokens.css`, and a page never names its own layout after a global class that draws a
-  surface (`.grid`, `.rows`, `.card`, `.panel`...). `src/lib/design-rules.test.ts` checks all four; the rest of the
-  design rules and the phone and theme checks are in `.claude/skills/design/SKILL.md`.
-- HTML from the registry (READMEs, guide pages) is already sanitized server-side and rendered with `set:html`; don't
-  render other untrusted HTML that way.
-- Every component and island file opens with a one-line purpose comment.
-- A new top-level page needs its name in `RESERVED` (`lib/twins.ts`) and in the API's `RESERVED_NAMESPACES`
-  (`api/src/lib/reserved.ts`), or a publisher with that name hides it; `reserved.test.ts` checks both.
-- Community content is user-written: render posts only through the API's `body_html` (sanitized, links
-  `nofollow ugc`), never put titles or notes into feeds, `aggregateRating` or `<title>` of an indexable page, and keep
-  issue, request and submission pages `noindex` until the API says `indexable`.
-
-### Local environments
-
-- Production API holds the published seed (most of `seed/`; the dry-run test packages were taken down on 21 Oct),
-  and sits behind the edge cache; staging (`staging-api.otinstaller.com`) only works
-  while a tunnel to someone's local `wrangler dev` is up, so it's usually down.
-- From a `localhost` origin, browser-side calls to the production API with credentials (`/me`, quick search) fail CORS.
-  That is expected, not a site bug.
-- For a full local check: run the API (`npx wrangler dev --var SITE_URL:http://127.0.0.1:<site port>` in `api/`, seeded)
-  and build the site with `PUBLIC_API_URL=http://127.0.0.1:8787`. Details in
-  [docs/dev/local-setup.md](docs/dev/local-setup.md).
-
----
+The user docs (`/docs`, `/policy`), the changelog and the blog live there too. A change people will notice needs a
+changelog entry there, and a docs change if it changes behaviour the docs describe. The site's checks also run
+`TestMCPToolsDocsMatch` (`cli/internal/cli/mcp_test.go`) with `OT_MCP_TOOLS_DOC` naming its `mcp-tools.md`; here
+that test is skipped.
 
 ## Community: issues, requests, submissions and the upstream watcher
 
-The plan is [docs/roadmap.md](docs/roadmap.md) (phase 1 built). User docs: `web/src/pages/docs/community.md` and
+Phase 1 of the community plan is built. User docs: the site's `docs/community.md` and
 `policy/community.md`; every route is in [docs/dev/api.md](docs/dev/api.md) and every table in
 [docs/dev/database.md](docs/dev/database.md).
 
@@ -1044,7 +903,7 @@ The plan is [docs/roadmap.md](docs/roadmap.md) (phase 1 built). User docs: `web/
 ## Agents: `ot mcp`, the remote MCP server and the plugin
 
 The design note is [docs/agent-friendly-plan.md](docs/agent-friendly-plan.md) (phases 1 to 5 built; each phase's
-status section says where the build differs). User docs: `web/src/pages/docs/agents.md`, `mcp-tools.md` (every tool,
+status section says where the build differs). User docs (in the site's repository): `docs/agents.md`, `mcp-tools.md` (every tool,
 resource and prompt) and `automation.md` (JSON output, exit and error codes, no prompts, consent for scripts).
 
 **`ot mcp`** (`cli/internal/cli/mcp_*.go`, rules in `cli/internal/agent/`) is a local MCP server over stdio, on the
@@ -1078,15 +937,16 @@ official Go SDK. Tools run on the person's machine in the same sandbox as `ot ru
   shows it instead). `ot mcp tools` lists the tools, resources and prompts.
 - API keys: agents never set keys. `key_setup` describes each key a tool needs (cost, sign-up link, whether it is set,
   never the value) and hands over `ot keys setup <tool>`, which only works at a terminal.
-- Tests: `mcp_test.go`. `TestMCPToolsDocsMatch` requires every tool's exact description in
-  `web/src/pages/docs/mcp-tools.md`, and `TestAgentPluginMatchesServer` that every tool and prompt the plugin names
-  exists, so a renamed or reworded tool means editing both.
+- Tests: `mcp_test.go`. `TestMCPToolsDocsMatch` requires every tool's exact description in the site's
+  `docs/mcp-tools.md` (it runs only with `OT_MCP_TOOLS_DOC` set, as the site's checks do), and
+  `TestAgentPluginMatchesServer` that every tool and prompt the plugin names exists, so a renamed or reworded tool
+  means editing both.
 
 **Remote MCP server** (`api/src/mcp.ts`, `https://api.otinstaller.com/mcp`): Streamable HTTP without sessions, answered
 by the API Worker's `fetch` before the Hono app. Six read-only tools (`search_tools`, `get_tool`, `list_types`,
 `suggest_pivots`, `search_guides`, `read_guide`), each an anonymous GET of the public API through the edge cache, so
 it costs what a page view does. It can't install or run anything and points agents at `ot mcp` for that. A
-Cloudflare rate-limiting rule on the zone covers `/mcp` and the search routes (launch checklist). Tests are in
+Cloudflare rate-limiting rule on the zone covers `/mcp` and the search routes. Tests are in
 `api/test/api.test.ts` ("remote MCP server"). It reports the consent class `ot mcp` would give a run, from a hand-made
 copy of `cli/internal/agent/consent.go` (`PERSONAL_INPUTS`); keep the two in step.
 
@@ -1101,7 +961,7 @@ descriptions must stay within the registry's 100 characters), `com.otinstaller/r
 with the registry's publisher (installed by `go install` as `publisher`), signed in with
 `publisher login http --domain otinstaller.com` and the owner's private key (kept outside the repository in
 `~/.mcp-registry/`); the registry checks it against
-`web/public/.well-known/mcp-registry-auth`. The steps are in [publishing-setup.md](docs/publishing-setup.md),
+the site's `web/public/.well-known/mcp-registry-auth` (in its repository). The steps are in [publishing-setup.md](docs/publishing-setup.md),
 section 10, "MCP bundles and the MCP Registry".
 
 ## Ops (`ops/`)
@@ -1175,7 +1035,6 @@ table, publish order (namespace → tools → guides), what was not converted an
 - `guides/<guide>/` (10): `otinstaller.yaml` (`kind: guide`, CC-BY-4.0), `docs/index.md` + numbered pages, README,
   LICENSE.md. Guides have no release workflow: release them with `ot release X.Y.Z` (or a plain `git tag vX.Y.Z && git
   push`), never through GitHub Actions.
-- `outreach/`: issue and PR texts for upstream maintainers.
 - The bundled playbooks' tools must exist in the seed (`TestBundledToolsAreSeeded`), take one of the playbook's
   `inputs` types and need no key (`TestBundledPlaybooksFitSeed`), and every seed manifest must validate
   (`TestSeedManifests`).
@@ -1203,10 +1062,9 @@ read and the first run copies settings from `~/.otinstaller`. Users of both edit
 - The one-line installer `curl -fsSL https://get.otinstaller.com/otlite | sh` is `otlite/scripts/install.sh` (pipx
   from PyPI when Python and pipx are there, else a pinned, hash-checked uv with its own Python 3.12, no sudo), served
   from `main` by `ops/get`. Bumping uv means changing `UV_VERSION` and all four SHA-256 values in the script.
-- `otlite/scripts/web_catalog.py` writes `web/src/data/otlite-catalog.json` for the site's `/otlite` pages (it reads
-  `seed/community/` to name each tool's registry wrapper); rerun
-  it whenever the catalog changes (its test fails otherwise). This is the one place where `otlite/` writes outside its
-  folder.
+- `otlite/scripts/web_catalog.py` writes `otlite/web-catalog.json` for the site's `/otlite` pages (it reads
+  `seed/community/` to name each tool's registry wrapper; the site reads the file through its submodule); rerun it
+  whenever the catalog changes (its test fails otherwise).
 - **Read [otlite/AGENTS.md](otlite/AGENTS.md) before touching anything in `otlite/`.** Its rules apply there and differ
   from the rest of the repo: the package and command are `otlite`; no "OSINT" in package/command names or CLI help;
   Typer (with click), Rich, PyYAML, sentry-sdk and the standard library only (ask before adding dependencies); pip or git installs, one venv per
@@ -1238,8 +1096,6 @@ read and the first run copies settings from `~/.otinstaller`. Users of both edit
   from anonymous pulls, readable with the scanner's credential and closed to another user's token, then reports a
   passing scan and checks `ot install` pulls the released image from the mirror.
 - `scripts/install/make-test-release.sh`: a locally signed release for testing the install scripts (used by CI).
-- `scripts/beta/labels.sh`: creates the issue labels (`sev-1..3`, `needs-triage`, `beta`, `area:*`) with `gh` (only when
-  asked: it changes a GitHub repo).
 
 ## CI (`.github/workflows/`)
 
@@ -1252,7 +1108,7 @@ read and the first run copies settings from `~/.otinstaller`. Users of both edit
 | `release-otlite.yml` | `otlite-v*.*.*` tags; `workflow_dispatch` (`testpypi` or `pypi`) | Tests, builds otlite and the shim, publishes each with PyPI trusted publishing from its own environment (otlite first), creates a GitHub release |
 | `issue-severity.yml` | issues opened/edited | Sets one `sev-N` label from the bug form's Severity field |
 
-Nothing in CI runs `go test`, the API tests, the site checks, the scanner tests or the e2e scripts.
+Nothing in CI runs `go test`, the API tests, the scanner tests or the e2e scripts.
 
 ---
 
@@ -1262,7 +1118,7 @@ Nothing in CI runs `go test`, the API tests, the site checks, the scanner tests 
 1. Edit `spec/schema/v1.json`; add valid/invalid fixtures (`# expect: <code>`).
 2. `cd cli && go generate ./...`; update `cli/internal/manifest` (typed struct, semantic checks, codes).
 3. Update `api/src/lib/manifest.ts` (and `publish.ts` if release-time) with the same codes.
-4. Update `web/src/pages/docs/manifest.md` and `errors.md`; check `api/scripts/seed-lib.mjs`, the seed manifests
+4. Update the site's `docs/manifest.md` and `errors.md` (in its repository); check `api/scripts/seed-lib.mjs`, the seed manifests
    (`TestSeedManifests`) and `scripts/pm-catalog-to-wrappers.py` still produce valid manifests.
 5. A new optional field: add it to `compatManifest()` so older `ot` releases can still install; a new input or entity
    type: describe it in `spec/types.json` and map it in `spec/pivots.json` (both have tests).
@@ -1275,16 +1131,16 @@ in `api`, keep the GitLab merge-request text in `api/src/imports.ts` in step, an
 **Adding an API endpoint**: put it in the matching `routes/*.ts`, logic in the domain module, outbound calls through
 `deps.fetch`, errors through `apiError`, the right caching (`public` lands in the edge cache), the right token scope
 (`requiredScope` in `scopes.ts`), the operation in `spec/openapi/v1.json` for public and owner routes, a test in the
-matching test file, and if the CLI or site uses it, the client in `cli/internal/api` or `web/src/lib/api.ts`.
-User-visible behaviour belongs in `web/src/pages/docs/`.
+matching test file, and if the CLI or site uses it, the client in `cli/internal/api` or the site's `lib/api.ts`.
+User-visible behaviour belongs in the site's `docs/`.
 
 **Adding a CLI command**: an `xxxCmd()` method registered in `Root()`, output via `a.Out`/`a.Err`, a `--json` form,
 no prompt without a terminal (`needsInput`), typed errors for exit codes (with a `Reason` for the JSON code), a test
-with `newTestApp`, entries in `web/src/pages/docs/cli.md` and [docs/dev/cli.md](docs/dev/cli.md), and in
+with `newTestApp`, entries in the site's `docs/cli.md` and [docs/dev/cli.md](docs/dev/cli.md), and in
 `cli/README.md` / `docs/typed-inputs-and-results.md` where relevant.
 
 **Changing an MCP tool**: `cli/internal/cli/mcp_tools.go` or `mcp_run.go`; its row in
-`web/src/pages/docs/mcp-tools.md` must carry the exact description (`TestMCPToolsDocsMatch`); the plugin's skills and
+the site's `docs/mcp-tools.md` must carry the exact description (`TestMCPToolsDocsMatch`); the plugin's skills and
 rule in `integrations/agent-plugin/` must name only tools that exist (`TestAgentPluginMatchesServer`); anything with an
 effect goes through `agent.Session.DecideRun` and the audit log. If the remote server should offer it too, add it to
 `api/src/mcp.ts` and bump `integrations/mcp-registry/server.json`'s version.
@@ -1292,52 +1148,47 @@ effect goes through `agent.Session.DecideRun` and the audit log. If the remote s
 **Changing what the scanner receives or reports**: `api/src/scans.ts` / `backups.ts`, the matching route parser,
 `ops/scanner/*.py` and their tests, and a note that registry-ops needs the new copy.
 
-**Adding a top-level site page**: the page, `RESERVED` in `web/src/lib/twins.ts`, `RESERVED_NAMESPACES` in
-`api/src/lib/reserved.ts`, the sitemap if it should be indexed, and `llms.txt` if agents should find it.
+**Adding a top-level site page** (in the site's repository): its name also goes in `RESERVED_NAMESPACES` in
+`api/src/lib/reserved.ts` here, or a publisher with that name hides it; the site's `reserved.test.ts` checks both.
 
 **Changing community rules** (who may post or triage, holds, limits): `api/src/community.ts` (or `requests.ts`,
-`submissions.ts`), the error codes in `web/src/pages/docs/errors.md`, `web/src/pages/docs/community.md` and
+`submissions.ts`), the error codes on the site's `docs/errors.md`, its `docs/community.md` and
 `policy/community.md`, and the tests in `community.test.ts` (or the matching file).
-
-**Changing the site's look or motion**: follow `.claude/skills/design/SKILL.md`: tokens first, no inline styles or
-scripts, test both themes, reduced motion and a 375 px phone (its `overflow-check.js`), and verify in the preview build.
 
 ## Git and commits
 
-- `main` is the default branch. Work happens on a `claude/<topic>` branch. Since PR #2 nearly everything lands as a
-  GitHub pull request (`Merge pull request #N from OTInstaller/claude/<topic>`); older work was merged locally with a
-  no-ff `Merge claude/<topic> (short description)`. Fetch first: `origin/main` moves often, and bring it in with a
-  merge (`Merge origin/main`), not a rebase of shared branches.
-- A change people will notice (an `ot` or otlite release, a new page or feature, the registry behaving differently)
-  adds a changelog entry, one file in `web/src/content/changelog/`, in the same pull request; how to write one is in
-  `web/src/content/README.md`. Date it the day it reaches people (release or deploy), and fix the date if the deploy
-  comes later. Internal changes (tests, refactors, ops, docs for contributors) get none.
+- `main` is the default branch. Work happens on a `claude/<topic>` branch and lands as a GitHub pull request. This
+  repository was split from the website's on 25 Oct 2026; merges before that read `Merge claude/<topic>`. Fetch
+  first: `origin/main` moves often, and bring it in with a merge (`Merge origin/main`), not a rebase of shared
+  branches.
+- A change people will notice (an `ot` or otlite release, a new feature, the registry behaving differently) needs a
+  changelog entry: one file in the site repository's `web/src/content/changelog/` (its `web/src/content/README.md`
+  says how). Date it the day it reaches people (release or deploy). Internal changes (tests, refactors, ops, docs for
+  contributors) get none.
 - Commit subjects: imperative, sentence case, no trailing period, no conventional-commit prefixes. An area prefix is
-  common: `Seed:`, `Scanner:`, `Web:`, `Site:`, `Backups:`, `Edge cache:`, `Admin API:`, `Install scripts:`,
-`Release workflow:`, `ot run:`, `ot feedback:`, `Launch checklist:`, `AGENTS.md:`. British spelling is used
+  common: `Seed:`, `Scanner:`, `Backups:`, `Edge cache:`, `Admin API:`, `Install scripts:`, `Release workflow:`,
+  `ot run:`, `ot feedback:`, `AGENTS.md:`. British spelling is used
   ("Honour", "organisation"). Backticks for commands are fine. Inside `otlite/`, follow its own style (short, lowercase,
   imperative).
 - Bodies: a short paragraph on why, then `- ` bullets in plain prose, wrapped at about 115 characters.
 - `Release X.Y.Z` is reserved for release commits made by workflows and `ot release`.
 - Don't add AI or tool attribution (no `Co-Authored-By` trailers, no "Generated with ..." lines) anywhere: commits, PRs,
   code, or docs.
-- Don't commit `.dev.vars`, `.env.development`, `bin/`, `dist/`, `results/`, `.wrangler/` or
+- Don't commit `.dev.vars`, `bin/`, `dist/`, `results/`, `.wrangler/` or
   `examples/dns-lookup/otinstaller.yaml` (all gitignored), nor `__pycache__/` (ignored only inside `otlite/` and
   `seed/`; one `.pyc` under `ops/scanner/` is committed by mistake).
 
 ## Things that need explicit permission
 
-These affect production or other people, so do them only when asked: `npm run deploy` / `wrangler deploy` (api, mirror,
-web or `ops/get`), `wrangler d1 ... --remote`, `wrangler secret put`, pushing `v*` tags on this repo (releases `ot`),
+These affect production or other people, so do them only when asked: `wrangler deploy` (api, mirror or `ops/get`),
+`wrangler d1 ... --remote`, `wrangler secret put`, pushing `v*` tags on this repo (releases `ot`),
 pushing tags or running workflows on seed repositories (publishes packages), publishing `otlite/` to PyPI (pushing
 `otlite-v*` tags or running `release-otlite.yml`), pushing to `OTInstaller/agent-plugin`, `publisher publish` to
-the MCP Registry, submitting to directories or marketplaces (Anthropic, Cursor), posting outreach issues or PRs or
-launch posts, running `scripts/beta/labels.sh`, triggering backups or drills on production, changing the Cloudflare
-rate-limiting rule, changing GitHub App, OAuth, R2 or registry-ops settings (including creating the community bot's
+the MCP Registry, submitting to directories or marketplaces (Anthropic, Cursor), posting outreach issues or PRs,
+triggering backups or drills on production, changing the Cloudflare rate-limiting rule, changing GitHub App, OAuth, R2 or registry-ops settings (including creating the community bot's
 App and setting `COMMUNITY_APP_*`), moving `UPSTREAM_WATCH` past `report`, and granting community roles in
 production. The operator runbook for all of these is
-[docs/publishing-setup.md](docs/publishing-setup.md); current production state is in
-[docs/launch-checklist.md](docs/launch-checklist.md).
+[docs/publishing-setup.md](docs/publishing-setup.md).
 
 ---
 
@@ -1358,7 +1209,6 @@ needs the owner's go-ahead.
 | Drill failed email | the `restore_drills` row | [Restore drill failures](docs/dev/troubleshooting.md#restore-drill-failures) |
 | Change not visible on the public API | `x-edge-cache: hit` and the endpoint's `max-age`; takedowns and yanks move the cache epoch, other changes wait it out | [Edge-cache staleness](docs/dev/troubleshooting.md#edge-cache-staleness) |
 | Every read answers 500 | D1 daily read allowance (the 21 Oct 2026 crawler outage); filter links must stay `nofollow` | [D1 read limits](docs/dev/troubleshooting.md#d1-read-limit-exhaustion) |
-| Works in `astro dev`, broken in production | CSP violations in the browser console of the preview build | [CSP failures](docs/dev/troubleshooting.md#csp-failures-on-the-site) |
 | CORS errors in the browser | Origin vs the API's `SITE_URL` (exact match) | [CORS from localhost](docs/dev/troubleshooting.md#cors-errors-from-localhost) |
 | No emails | `notifications.status` (`skipped` = no key); `POST /v1/admin/email-test` | [Emails not sending](docs/dev/troubleshooting.md#emails-not-sending) |
 | GitLab tag ignored | the source's webhook token, the OAuth `api` scope, job-token pushes | [GitLab problems](docs/dev/troubleshooting.md#gitlab-webhook-and-token-problems) |
@@ -1407,7 +1257,7 @@ change. Keep this list current when you fix one or find another.
 
 **Hygiene**
 
-- CI runs no Go, API, site or scanner tests; there is no `engines` field for Node; `cli/internal/api`, `keys`,
+- CI runs no Go, API or scanner tests; there is no `engines` field for Node; `cli/internal/api`, `keys`,
   `state` and `selfupdate` have no test files of their own.
 - Schema: `versions.status` allows `received`/`validating`, which nothing writes; `tools.latest_version_id` and
   `audit_log.actor_id` have no foreign key.
@@ -1472,15 +1322,12 @@ change. Keep this list current when you fix one or find another.
 
 | Where | What |
 | --- | --- |
-| [web/src/pages/docs/](web/src/pages/docs) | The site's docs: quick start, getting started, otlite, CLI, agents, MCP tools, automation, results, API, manifest, publishing, guides, security, errors, FAQ |
-| [web/src/pages/policy/](web/src/pages/policy) | Acceptable use, privacy, takedown, terms, transparency |
+| [otinstaller.com/docs](https://otinstaller.com/docs) | The user docs (their source is in the site's repository): quick start, getting started, otlite, CLI, agents, MCP tools, automation, results, API, manifest, publishing, guides, security, errors, FAQ |
+| [otinstaller.com/policy](https://otinstaller.com/policy/acceptable-use) | Acceptable use, privacy, takedown, terms, transparency |
 | [docs/publishing-setup.md](docs/publishing-setup.md) | Operator runbook: GitHub App, OAuth apps, registry-ops, secrets, imports, guides, trust, releasing `ot`, backups |
-| [docs/launch-checklist.md](docs/launch-checklist.md) | What is deployed, what was verified, what is left before launch |
 | [docs/typed-inputs-and-results.md](docs/typed-inputs-and-results.md) | Design note for typed inputs, saved results, `--all`, playbooks, auto, extract/diff, outdated/update |
 | [docs/agent-friendly-plan.md](docs/agent-friendly-plan.md) | Design note for `ot mcp`, consent, JSON output, scoped tokens, OpenAPI, the remote MCP server and the plugin |
-| [docs/launch/](docs/launch/README.md) | Launch posts, agent directory listings, on-call rota, demo video script (drafts; each needs the owner's OK) |
 | [docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md) | `otinstaller` to `ot` command map |
-| [docs/beta/](docs/beta) | Beta invitation, author onboarding, feedback survey (unused: no beta ran) |
 | [seed/README.md](seed/README.md) | The launch seed: every package, publish order, health risks |
 | [cli/README.md](cli/README.md) | The README shipped in `ot` release archives |
 | [otlite/README.md](otlite/README.md), [otlite/AGENTS.md](otlite/AGENTS.md) | otlite, the no-Docker edition |

@@ -34,7 +34,7 @@ export interface HostProfile {
 export const MAX_MEMBERS = 24;
 export const MAX_SOCIALS = 8;
 
-/** Avatar hosts the site's img-src allows (web/astro.config.mjs). */
+/** Avatar hosts the site's img-src allows (its astro.config.mjs). */
 const AVATAR_HOSTS = new Set(["avatars.githubusercontent.com", "gitlab.com", "secure.gravatar.com"]);
 
 /** Trimmed text with control characters removed and capped at `max`, or null when empty. */

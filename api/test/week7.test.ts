@@ -970,7 +970,7 @@ describe("community submissions", () => {
   });
 
   it("accepts the Dockerfile templates the import wizard offers", async () => {
-    const { dockerfileTemplate } = await import("../../web/src/lib/dockerfile-templates");
+    const { dockerfileTemplate } = await import("../../spec/dockerfile-templates");
     for (const kind of ["go", "pip", "pip_git"] as const) {
       const text = dockerfileTemplate(kind, { repo: "github.com/owner/tool", version: "v1.2.3", command: "tool" });
       expect(dockerfileChecks(text, "https://github.com/owner/tool"), kind).toMatchObject({ conformant: true });

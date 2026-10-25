@@ -13,8 +13,8 @@ detail it links to.
 | [ops-payloads.md](ops-payloads.md) | Scan, backup, drill and health payloads and callbacks; verdict rules; registry-ops workflows; token lifetimes |
 | [config.md](config.md) | Bindings, vars and secrets per Worker, registry-ops and the CLI release; values that must match across them |
 | [local-setup.md](local-setup.md) | From a clean Windows, macOS or Linux machine to running every part locally |
-| [troubleshooting.md](troubleshooting.md) | Recipes: stuck jobs, scans, backups, edge-cache staleness, D1 limits, CSP, CORS, email, GitLab, `ot` failures |
+| [troubleshooting.md](troubleshooting.md) | Recipes: stuck jobs, scans, backups, edge-cache staleness, D1 limits, CORS, email, GitLab, `ot` failures |
 
 They were written from the code in October 2026. The code wins when they disagree: fix the page in the same commit
-as the behaviour change. User-facing documentation lives in `web/src/pages/docs/`, and the operator runbook is
+as the behaviour change. User-facing documentation lives with the website, in its own repository, and the operator runbook is
 [publishing-setup.md](../publishing-setup.md).

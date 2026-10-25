@@ -527,7 +527,7 @@ export interface ProblemReport {
   platform: string;
 }
 
-/** The platforms the site guesses from a browser (guessPlatform in web/src/lib/community.ts); anything else is dropped. */
+/** The platforms the site guesses from a browser (guessPlatform in the site's lib/community.ts); anything else is dropped. */
 const SITE_PLATFORM = /^(linux|darwin|windows)(\/(amd64|arm64))?$/;
 
 /** Validates a report from a tool page's "Report a problem" without a sign-in: the kind, and maybe the version and platform. */

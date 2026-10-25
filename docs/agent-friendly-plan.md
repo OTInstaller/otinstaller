@@ -1,5 +1,7 @@
 # Making OTInstaller agent-friendly
 
+> The website this note mentions (`web/`) has moved to its own repository since it was written.
+
 Status: written 2026-10-21 on `claude/agent-friendly-plan-a8afd5`. **Phases 1 to 5 are built on that branch, not
 deployed;** each phase's status section says where the build differs from the plan. Phase 6 was dropped (§11).
 

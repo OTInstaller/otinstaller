@@ -1,8 +1,7 @@
 # Configuration and secrets per deployable
 
 Names only; no values. Derived from `api/wrangler.jsonc`, `api/wrangler.mirror.jsonc`, `api/src/env.ts`,
-`api/.dev.vars.example`, `api/src/mirror/registry.ts`, `web/wrangler.jsonc`, `web/astro.config.mjs`,
-`web/.env.example`, `web/src/lib/api.ts`, `ops/get/*`, `ops/workflows/*.yml`, `.github/workflows/release-cli.yml`
+`api/.dev.vars.example`, `api/src/mirror/registry.ts`, `ops/get/*`, `ops/workflows/*.yml`, `.github/workflows/release-cli.yml`
 and `cli/.goreleaser.yaml`.
 
 "Unset" behaviour: `requireSecret(env, NAME)` throws `apiError(503, "not_configured", "<NAME> is not configured on
@@ -14,7 +13,7 @@ this server")` at the moment the value is needed, so a missing secret only break
 | --- | --- | --- |
 | `otinstaller-registry-api` | `api/wrangler.jsonc` | `api.otinstaller.com` |
 | `otinstaller-mirror` | `api/wrangler.mirror.jsonc` | `mirror.otinstaller.com` |
-| `otinstaller-registry-web` | `web/wrangler.jsonc` | `otinstaller.com`, `www.otinstaller.com` |
+| `otinstaller-registry-web` | `web/wrangler.jsonc` in the site's repository | `otinstaller.com`, `www.otinstaller.com` |
 | `otinstaller-get` | `ops/get/wrangler.jsonc` | `get.otinstaller.com` |
 
 All four use `"custom_domain": true` (Cloudflare creates the DNS record on deploy). There are no `env` blocks; each
@@ -116,36 +115,9 @@ real host for `ot publish --image` images to be recognised as hosted.
 
 ## 3. `otinstaller-registry-web`
 
-`web/wrangler.jsonc`: name `otinstaller-registry-web`, `compatibility_date: 2026-10-12`, routes `otinstaller.com`
-and `www.otinstaller.com` (custom domains), observability on. The Cloudflare Vite plugin merges it into
-`dist/server/wrangler.json` at build time. No bindings (Astro `session: false`, so no KV). Deploy: `npm run deploy`
-(`astro build && wrangler deploy`).
-
-### 3.1 Build-time and public env vars
-
-| Name | Read in | Default | Purpose |
-| --- | --- | --- | --- |
-| `PUBLIC_API_URL` | `astro.config.mjs` (`process.env`) and `src/lib/api.ts` (`import.meta.env`) | `https://api.otinstaller.com` | API base for SSR and islands; its **origin** goes into the CSP |
-| `SITE_URL` | `astro.config.mjs` (`process.env`) → Astro `site` | `https://otinstaller.com` | canonical site; `api.ts` reads it back as `import.meta.env.SITE` |
-| `PUBLIC_BETA` | `src/lib/api.ts` | `"1"` | `"0"` hides the beta strip |
-| `PUBLIC_ISSUES_URL` | `src/lib/api.ts` | `https://github.com/OTInstaller/feedback/issues` | where bug-report links point |
-
-`web/.env.example` only lists `PUBLIC_API_URL` (pointing at staging); copy it to `.env.development`. These are build
-inputs (Vite inlines `import.meta.env.PUBLIC_*`), not Worker runtime vars or secrets. The site has no secrets.
-
-### 3.2 CSP link
-
-`astro.config.mjs` computes `api = new URL(process.env.PUBLIC_API_URL ?? "https://api.otinstaller.com").origin`
-and uses it in:
-
-- `connect-src 'self' <api> https://cloudflareinsights.com`
-- `img-src 'self' data: <api> https://avatars.githubusercontent.com https://gitlab.com https://secure.gravatar.com https://raw.githubusercontent.com`
-- `form-action 'self' <api>`
-- `script-src`: `'self'`, `https://static.cloudflareinsights.com` and the hash of `THEME_BOOT`
-
-If the value seen by `astro.config.mjs` (shell env at build) and by `api.ts` (Vite env files) differ, browser calls
-are blocked by `connect-src`. Set it the same way for both (for example in `.env.development` plus the shell, or
-only via the shell for a build). The API must also list the site in its `SITE_URL` for credentialed CORS.
+The website's Worker. Its configuration (build-time variables, the CSP and how `PUBLIC_API_URL` feeds it) is
+documented in the site's own repository. What this repository has to match is in section 7: the API's `SITE_URL` must
+be the site's origin for credentialed CORS.
 
 ---
 
@@ -209,7 +181,7 @@ Trigger: push of a tag `v*.*.*`. Permissions: `contents: read`, `id-token: write
 After GoReleaser, the workflow runs `go run ./cmd/mcpb -version <ver> -dist dist -out dist/mcpb -release-url ...` in
 `cli/` and uploads the six `ot_<ver>_<os>_<arch>.mcpb` bundles and `server.json` with `gh release upload` (using
 `RELEASE_GITHUB_TOKEN`). Publishing `server.json` to the MCP Registry is manual: `mcp-publisher` signed in with
-`login http --domain otinstaller.com` and the private key matching `web/public/.well-known/mcp-registry-auth`, which
+`login http --domain otinstaller.com` and the private key matching the site's `web/public/.well-known/mcp-registry-auth`, which
 lives outside the repository (`~/.mcp-registry/otinstaller.com.ed25519.hex` on the owner's machine).
 
 ## 6a. otlite release (`.github/workflows/release-otlite.yml`)
@@ -234,6 +206,6 @@ otlite is uploaded first, then the shim; a GitHub release is created for the tag
 | `MIRROR_PUSH_TOKEN` | mirror Worker secret, registry-ops secret |
 | `MIRROR_HOST` | API var, registry-ops variable (both default `mirror.otinstaller.com`) |
 | `API_URL` / `REGISTRY_API` | API var, registry-ops `REGISTRY_API` |
-| `SITE_URL` | API var (CORS), web build env |
-| `PUBLIC_API_URL` | web build env, must be the API's origin |
+| `SITE_URL` | API var (CORS), the site's build env |
+| `PUBLIC_API_URL` | the site's build env, must be the API's origin |
 | `OT_RELEASE_PUBLIC_KEY` | release variable, embedded in `ot` and the install scripts served by `otinstaller-get` |

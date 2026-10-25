@@ -1,8 +1,8 @@
 """Build the website's otlite catalog from the registry.
 
-Run `python scripts/web_catalog.py` to rewrite web/src/data/otlite-catalog.json, which the
-otinstaller.com /otlite pages read at build time: the catalog and a page for each tool.
-`tests/test_web_catalog.py` fails when it is stale.
+Run `python scripts/web_catalog.py` to rewrite web-catalog.json, which the otinstaller.com
+/otlite pages read at build time: the catalog and a page for each tool. The website's own
+repository includes this one to read it. `tests/test_web_catalog.py` fails when it is stale.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "src" / "otlite" / "data" / "registry.yaml"
 PLAYBOOKS = ROOT / "src" / "otlite" / "data" / "playbooks"
 SEED = ROOT.parent / "seed" / "community"
-OUTPUT = ROOT.parent / "web" / "src" / "data" / "otlite-catalog.json"
+OUTPUT = ROOT / "web-catalog.json"
 
 # The order a page offers a tool's inputs in: the one a newcomer most likely has first.
 _ORDER = ("u", "e", "d", "p", "url", "ip", "q", "tg", "geo", "lat", "lng")

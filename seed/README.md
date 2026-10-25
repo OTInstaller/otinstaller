@@ -11,7 +11,6 @@ content checks → review → published). Never seed production from `api/script
 | [`first-party/`](first-party) | Tools written for the registry, on the result envelope, namespace `osintverse-community` (11 for launch; 9 built on data providers' official PyPI clients and 6 on providers' HTTP APIs in October 2026) | 26 |
 | [`community/`](community) | Wrapper repositories for third-party tools, namespace `osintverse-community` (27 for launch, 26 published and `instaloader-profile` dropped; 11 converted from `otinstaller`; 65 open-source tools with more than 100 stars added in October 2026; 16 PyPI clients of data providers added in October 2026) | 119 |
 | [`guides/`](guides) | Launch guides, namespace `osintverse-community` (10 published; `osint-fundamentals` is a draft primer for `/learn`, not published yet) | 11 |
-| [`outreach/`](outreach) | Issue and pull request texts for maintainer outreach | 2 |
 
 Two more tools are **outreach only**: `p1ngul1n0/blackbird` (now `antoniaci/blackbird`), whose author removed its
 license in May 2024, so nobody may redistribute it, and `mxrch/GHunt` (AGPL-3.0), which can't do anything until it is
@@ -473,8 +472,8 @@ The step-by-step runbook with commands is in the session notes (`seeding.md`); i
    the registry), first-party tools and guides included.
 2. **First-party tools.** Create `osintverse-community/<name>` for each folder in `first-party/`, push its contents, run the
    **otinstaller release** workflow with `0.1.0`. The workflow builds, signs and pins the image and tags.
-3. **Third-party tools: outreach first.** For each upstream, post [`outreach/issue.md`](outreach/issue.md) and, if
-   the maintainer is interested, open [`outreach/pr.md`](outreach/pr.md) with the manifest from `community/<name>/`
+3. **Third-party tools: outreach first.** For each upstream, post the outreach issue and, if the maintainer is
+   interested, open the outreach pull request (both texts are kept with the launch material) with the manifest from `community/<name>/`
    adapted to their namespace. If they publish it themselves, drop the wrapper.
 4. **Community wrappers** after 14 days without an answer. Either run the import wizard with `community: true` and
    finish in wrapper mode, or create `osintverse-community/<name>`, push the folder and tag `v<version>` (pipx) or run

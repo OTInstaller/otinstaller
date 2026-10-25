@@ -201,13 +201,13 @@ just-changed must be `private, no-store`.
 
 ### D1 read-limit exhaustion
 
-Symptoms (21 October 2026, `docs/launch-checklist.md` blocker 5): every API read answered 500 `internal_error`
-(with `request_id`), the site showed its 500 page (`web/src/pages/500.astro`, with the request ID) or 404s, for
+Symptoms (21 October 2026): every API read answered 500 `internal_error`
+(with `request_id`), the site showed its 500 page (with the request ID) or 404s, for
 hours. Cause: crawlers walking every combination of search filters on the site; each uncached `/v1/tools` without
 `q` reads up to 1000 joined rows and ranks them in the Worker (`index.ts` `GET /tools`).
 
 Mitigations now in place: `edge-cache.ts` for anonymous GETs; `rel="nofollow"` on filter/sort/pagination links;
-`noindex` on any URL with a query string (`Base.astro`); `robots.txt` `Disallow: /*?`; the account moved to Workers
+`noindex` on any URL with a query string (the site's `Base.astro`); `robots.txt` `Disallow: /*?`; the account moved to Workers
 Paid. Remaining exposure: the cache key includes every query parameter, so new filter combinations still miss; every
 signed-in request goes to D1; `caches.default` is per data centre. Watch D1 reads in the Cloudflare dashboard; tail
 for `D1_ERROR` lines.
@@ -218,17 +218,6 @@ kind (fingerprint `d1-unavailable` + `transient` or `daily-limit`), not a new er
 retries such a read once after a second. A burst of `D1_ERROR: internal error; reference = ...` warnings (Sentry
 OTINSTALLER-A and -B, 21 to 23 Oct: twelve in three bursts, all read-only queries D1 had already retried twice) is
 Cloudflare's to explain; quote the references to Cloudflare support if it keeps happening.
-
-### CSP failures on the site
-
-The CSP is set by Astro's `security.csp` in `web/astro.config.mjs` (hashed scripts and styles, `connect-src 'self'
-<PUBLIC_API_URL> https://cloudflareinsights.com`, `img-src` with the API and repository hosts, `font-src 'self'`).
-`astro dev` (port 4321) does not enforce it. Reproduce with the production preview: `cd web && npm run build && npm
-run preview` (launch config `web-preview`, port 4322) and watch the browser console for "Refused to apply inline
-style", "Refused to execute inline script" or "Refused to connect". Usual causes: an inline `style=""`,
-`define:vars`, an unhashed `is:inline` script (only `THEME_BOOT` from `src/lib/theme-boot.ts` is hashed),
-`<ClientRouter />`, Shiki output, a third-party font or script, or a `PUBLIC_API_URL` at build time that differs from
-the API the page calls (`connect-src` is baked in at build).
 
 ### CORS errors from localhost
 

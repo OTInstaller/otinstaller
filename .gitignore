@@ -5,8 +5,6 @@ bin/
 examples/dns-lookup/otinstaller.yaml
 .dev.vars
 dist/
-.astro/
-.env.development
 /results/
 
 # Python bytecode, anywhere in the repository.

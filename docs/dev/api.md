@@ -781,8 +781,8 @@ The PUT writes a `pending/` marker (except for `sha256-*` tags) and a `mirror_pu
 
 ### Every code
 
-"Documented" = an `### <code>` heading exists in `web/src/pages/docs/errors.md` (the `docs` link anchors on headings).
-Every code below has one since the errors page was completed on 22 October 2026; `web/src/lib/errors-doc.test.ts` fails when a new code is added without an entry. Codes reached through `ImportProblem` (`refuse` in
+"Documented" = an `### <code>` heading exists in the site's `docs/errors.md` (the `docs` link anchors on headings).
+Every code below has one since the errors page was completed on 22 October 2026; the site's `errors-doc.test.ts` fails when a code in `api/src` has no entry (it reads this repository through its submodule). Codes reached through `ImportProblem` (`refuse` in
 imports.ts), `TransferError` (`fail` in transfers.ts) and `BackupError` (backups.ts) are turned into `apiError` by the
 route wrappers, so they reach clients the same way.
 

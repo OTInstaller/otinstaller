@@ -25,18 +25,17 @@ Two editions share the same typed inputs and `results/` layout:
 
 ## This repository
 
-It holds everything behind OTInstaller: the manifest spec, the `ot` CLI, the registry API and image mirror, the
-website, the scanner and backup jobs, the launch seed, and `otlite` (imported with its history into `otlite/`, called
-`otinstaller` until 1.0). [AGENTS.md](AGENTS.md) is the guide to working on it and [docs/dev/](docs/dev/README.md) the
+It holds the open-source parts of OTInstaller: the manifest spec, the `ot` CLI, the registry API and image mirror,
+the scanner and backup jobs, the launch seed, and `otlite` (imported with its history into `otlite/`, called
+`otinstaller` until 1.0). The website at otinstaller.com is built from a separate repository. [AGENTS.md](AGENTS.md) is the guide to working on it and [docs/dev/](docs/dev/README.md) the
 developer reference. To connect real GitHub and GitLab apps, follow [docs/publishing-setup.md](docs/publishing-setup.md).
 Moving between the two editions: [docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md).
 
 | Folder | What it is |
 | --- | --- |
-| `spec/` | Manifest JSON Schema (`schema/v1.json`), example manifests (3 valid, 24 invalid with expected error codes) and the release workflow templates (`templates/`) that `ot init` and the import wizard both use |
+| `spec/` | Manifest JSON Schema (`schema/v1.json`), example manifests (3 valid, 24 invalid with expected error codes), the release workflow templates (`templates/`) that `ot init` and the import wizard both use, and the import wizard's Dockerfile templates |
 | `cli/` | The `ot` CLI (Go): `init`, `validate`, `search`, `info`, `install`, `run`, `playbook`, `auto`, `extract`, `diff`, `list`, `outdated`, `update`, `uninstall`, `keys`, `doctor`, `login`, `logout`, `whoami`, `import`, `sync`, `feedback` |
 | `api/` | Registry API (Cloudflare Workers + Hono + D1 + Queues + R2): search and read endpoints, GitHub/GitLab sign-in and device flow, API tokens, GitHub App webhooks, publish validation, the import wizard, backups; and the image mirror Worker (`src/mirror/`, `wrangler.mirror.jsonc`) |
-| `web/` | The website (Astro on Cloudflare, Preact islands): home, search, tool and guide pages, docs, policies, the import wizard, dashboard and admin console. `npm run dev` for a dev server, `npm run og` to re-render the social preview image |
 | `otlite/` | `otlite`, the no-Docker edition (Python, Linux and macOS): installs tools from pip or git into per-tool virtualenvs, typed inputs, saved results, Debian packaging, its own PyPI release workflow. See below |
 | `seed/` | The launch seed: first-party tools, community wrappers (including those converted from `otlite`'s catalog), guides |
 | `ops/` | The scanner (`scanner/scan.py`, backups and restore drills in `scanner/backup.py`, its Docker image) and the GitHub Actions workflows for the registry-ops repo |
