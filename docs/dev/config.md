@@ -197,6 +197,11 @@ tokens. Each project has its own GitHub environment, because PyPI picks one publ
 
 otlite is uploaded first, then the shim; a GitHub release is created for the tag.
 
+Neither project exists on test.pypi.org, so the `testpypi` jobs fail until their publishers are added there. A
+`pypi` run while `main` has only versions PyPI already has checks both PyPI publishers and uploads nothing: on
+25 Oct 2026, right after this repository was split from the website's, run 40182371675 authenticated for otlite and
+the shim and skipped every file.
+
 ---
 
 ## 7. Cross-deployable secrets that must match

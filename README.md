@@ -151,8 +151,10 @@ How it fits with the registry:
   [docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md) covers the rename and maps `otlite`
   commands to `ot`.
 - **Releases.** Tag `otlite-vX.Y.Z` (matching `otlite/pyproject.toml`) and `.github/workflows/release-otlite.yml`
-  publishes to PyPI with trusted publishing; run it by hand with `repository: testpypi` for a dry run. The old PyPI
-  name `otinstaller` is a shim in `otlite/otinstaller-shim/` that depends on `otlite`.
+  publishes to PyPI with trusted publishing. Neither project is set up on TestPyPI yet, so its `repository: testpypi`
+  option fails; to check the PyPI publishers without releasing, run it by hand with `repository: pypi` while the
+  versions on `main` are already on PyPI (every file is skipped). The old PyPI name `otinstaller` is a shim in
+  `otlite/otinstaller-shim/` that depends on `otlite`.
 - **Catalog.** `otlite`'s tested catalog (`otlite/src/otlite/data/registry.yaml`) is converted into
   `osintverse-community` wrappers in `seed/community/` by `python scripts/pm-catalog-to-wrappers.py`: a pinned pip
   release with a pure-Python wheel on PyPI becomes a pipx package pinned by the wheel's SHA-256; git installs, extra
