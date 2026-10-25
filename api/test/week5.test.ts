@@ -68,10 +68,10 @@ async function reviewerToken(opts: { admin?: boolean } = {}) {
 }
 
 /** Tags a release, runs validation, and returns the scan token the dispatch carried. */
-async function tagAndValidate(p: Awaited<ReturnType<typeof publisher>>, version = "1.0.0") {
+async function tagAndValidate(p: Awaited<ReturnType<typeof publisher>>, version = "1.0.0", manifest = manifestFor(p.login, version)) {
   const res = await webhook("create", tagEvent(p.instId, p.repo, p.repoId, `v${version}`));
   const jobId = ((await res.json()) as any).jobId as string;
-  const calls = fakeRelease(p.repo, { "otinstaller.yaml": manifestFor(p.login, version), "README.md": README });
+  const calls = fakeRelease(p.repo, { "otinstaller.yaml": manifest, "README.md": README });
   const out = await processJob(await testEnv(), jobId);
   expect(out?.status).toBe("scanning");
   const dispatch = calls.find((c) => c.url.endsWith("/registry-ops/dispatches"))!;
@@ -186,9 +186,13 @@ describe("scan callback", () => {
     expect(emailsTo(first.calls).at(-1)!.subject).toBe(`${p.login}/whois-plus 1.0.0 was not published`);
     expect((await call(`/tools/${p.login}/whois-plus`)).status).toBe(404);
 
-    // Same version, fixed and re-tagged: validated again and reuses the version row.
-    const second = await tagAndValidate(p);
+    // Same version, fixed with a rebuilt image and re-tagged: validated again, and it reuses the version row with the
+    // new artifact, so the mirror sweep and the build watcher see the image that is actually published.
+    const rebuilt = `ghcr.io/${p.login}/whois-plus@sha256:${"f".repeat(64)}`;
+    const second = await tagAndValidate(p, "1.0.0", manifestFor(p.login).replace(/ghcr\.io\S+/, rebuilt));
     expect(second.versionId).toBe(first.versionId);
+    expect(await DB().prepare(`SELECT runtime_kind, artifact_ref FROM versions WHERE id = ?`).bind(second.versionId).first())
+      .toEqual({ runtime_kind: "docker", artifact_ref: rebuilt });
   });
 
   it("publishes with a warning when vulnerabilities have fixes available", async () => {

@@ -187,7 +187,8 @@ Step by step:
    `artifact_wheel_mismatch`). Guides: `guides.ts:relatedToolProblems`.
 9. **Record.** `publish.ts:record` writes in one `db.batch`: a new `tools` row (`community_packaged` when
    `upstreamOf()` finds a homepage in another repository, so only real wrappers in `osintverse-community`), a GitHub `sources` row (`ON CONFLICT (provider, project_id)`), the `versions` row
-   (re-tagging a rejected version reuses its row and resets `scan_status = 'pending'`), `publish_jobs` (`status`,
+   (re-tagging a rejected version reuses its row, takes the manifest, `runtime_kind` and `artifact_ref` from the new
+   release, and resets `scan_status = 'pending'`), `publish_jobs` (`status`,
    `error_code`, `error_detail`, `problems_json`) and an `audit_log` row `publish.scanning|rejected`.
 10. **Outcome.**
     - Valid: `guides.ts:storeContent` (pages and README in R2, `versions.search_text`), then
