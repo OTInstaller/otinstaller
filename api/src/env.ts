@@ -53,6 +53,8 @@ export interface Env {
   ISSUES_REPO?: string; // where beta bug reports are filed; defaults to OTInstaller/feedback
   ISSUES_TOKEN?: string; // optional token with Issues: read, needed to count sev-1 issues while that repository is private
   EDGE_CACHE?: string; // "off" sends every anonymous read to D1 (the tests do this)
+  // IndexNow (indexnow.ts): the key the site serves at /<key>.txt; unset or empty sends nothing.
+  INDEXNOW_KEY?: string;
 }
 
 /**

@@ -34,6 +34,8 @@
     "OPS_REPO": "OTInstaller/registry-ops",
     "EMAIL_FROM": "OTInstaller Registry <registry@otinstaller.com>",
     "MIRROR_HOST": "mirror.otinstaller.com",
+    // IndexNow (src/indexnow.ts): public by design; the site serves /<this key>.txt, so change both together.
+    "INDEXNOW_KEY": "e504c354f3a7f3b558b3d362b4b70767",
     // Outdated issues on community wrappers and first-party dependencies (24 Oct 2026); "prs" needs the community bot.
     "UPSTREAM_WATCH": "issues"
     // "GITHUB_APP_SLUG": "otinstaller" is the App's URL name for install links (this is the default)

@@ -9,6 +9,7 @@ import { bumpCacheEpoch } from "./edge-cache";
 import { ownerEmails, sendEmail, templates } from "./notify";
 import { scheduleDeletion } from "./backups";
 import { LIFECYCLE_LEVELS, notifyPackageFollowers, SECURITY_LEVELS } from "./inbox";
+import { indexNowStatements, packagePaths, queueIndexNow } from "./indexnow";
 
 export const REPORT_REASONS = ["malware", "policy", "impersonation", "license", "broken", "other"] as const;
 export const REMOVAL_CATEGORIES = ["malware", "policy", "impersonation", "license", "legal", "other"] as const;
@@ -60,6 +61,7 @@ export async function setYanked(env: Env, actorId: string, t: ToolRef, version: 
     audit(env.DB, actorId, "user", yanked ? "version.yank" : "version.unyank", "version", v.id, { ref: `${t.namespace}/${t.name}`, version }),
     // @latest moves at once instead of when cached answers run out.
     bumpCacheEpoch(env.DB),
+    ...indexNowStatements(env, packagePaths(t.kind, t.namespace, t.name)),
   ]);
   await recomputeLatest(env, t.id);
   const ref = `${t.namespace}/${t.name}`;
@@ -76,6 +78,7 @@ export async function setDeprecated(env: Env, actorId: string, t: ToolRef, messa
     env.DB.prepare(`UPDATE tools SET status = 'deprecated', deprecated_message = ?, deprecated_replacement = ? WHERE id = ? AND status != 'removed'`)
       .bind(message, replacement, t.id),
     audit(env.DB, actorId, "user", "tool.deprecate", "tool", t.id, { message, replacement }),
+    ...indexNowStatements(env, packagePaths(t.kind, t.namespace, t.name)),
   ]);
   // Changing the message of a package that is already deprecated tells nobody again.
   if (t.status === "deprecated" || !r?.meta.changes) return;
@@ -93,6 +96,7 @@ export async function clearDeprecated(env: Env, actorId: string, t: ToolRef) {
     audit(env.DB, actorId, "user", "tool.undeprecate", "tool", t.id),
   ]);
   if (!r?.meta.changes) return;
+  await queueIndexNow(env, packagePaths(t.kind, t.namespace, t.name));
   const ref = `${t.namespace}/${t.name}`;
   await notifyPackageFollowers(env, t.id, { kind: "lifecycle", scope: "lifecycle", actor_id: actorId, path: `/${ref}`, summary: `${ref} is no longer deprecated` }, LIFECYCLE_LEVELS);
 }
@@ -147,6 +151,8 @@ export async function removeVersion(env: Env, actorId: string, t: ToolRef, versi
   }
   // Nothing cached before the takedown (manifests, wheel copies, /removed) is served again.
   stmts.push(bumpCacheEpoch(db, now));
+  // Search engines drop the page (now a 410 for a whole package) or show it without the removed version.
+  stmts.push(...indexNowStatements(env, [...packagePaths(t.kind, t.namespace, t.name), ...(version ? [] : [`/${t.namespace}`])], now));
   await db.batch(stmts);
   await recomputeLatest(env, t.id);
   // Takedowns apply to backups: the mirror stops serving them now, and they are deleted after 14 days.

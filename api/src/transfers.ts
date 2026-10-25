@@ -13,6 +13,7 @@ import { audit } from "./routes/auth";
 import { ownerEmails, sendEmail, staffEmails, templates } from "./notify";
 import type { ToolRef } from "./trust";
 import { LIFECYCLE_LEVELS, notifyPackageFollowers } from "./inbox";
+import { indexNowStatements, packagePaths } from "./indexnow";
 
 export const CLAIM_FILE = ".otinstaller-claim";
 
@@ -205,8 +206,8 @@ export async function completeTransfer(env: Env, actorId: string, tr: Transfer) 
   if (tr.kind === "claim" && tr.status !== "verified") fail(409, "not_verified", "the claim is not verified yet");
   if (tr.kind === "transfer" && tr.status !== "accepted") fail(409, "not_accepted", "the receiving namespace has not accepted yet");
   const db = env.DB;
-  const tool = await db.prepare(`SELECT t.id, t.name, n.name AS ns FROM tools t JOIN namespaces n ON n.id = t.namespace_id WHERE t.id = ?`)
-    .bind(tr.tool_id).first<{ id: string; name: string; ns: string }>();
+  const tool = await db.prepare(`SELECT t.id, t.name, t.kind, n.name AS ns FROM tools t JOIN namespaces n ON n.id = t.namespace_id WHERE t.id = ?`)
+    .bind(tr.tool_id).first<{ id: string; name: string; kind: string; ns: string }>();
   const dest = await db.prepare(`SELECT name FROM namespaces WHERE id = ?`).bind(tr.to_namespace_id).first<{ name: string }>();
   if (!tool || !dest) fail(404, "not_found", "the package or namespace no longer exists");
   const clash = await db.prepare(`SELECT 1 FROM tools WHERE namespace_id = ? AND name = ?`).bind(tr.to_namespace_id, tool!.name).first();
@@ -223,6 +224,8 @@ export async function completeTransfer(env: Env, actorId: string, tr: Transfer) 
     db.prepare(`UPDATE transfers SET status = 'declined', verification_error = 'another transfer of this package completed', updated_at = ?
                 WHERE tool_id = ? AND id != ? AND status IN ('pending', 'verified', 'accepted')`).bind(now, tool!.id, tr.id),
     audit(db, actorId, "user", "transfer.complete", "tool", tool!.id, { transfer: tr.id, from: `${tool!.ns}/${tool!.name}`, to: `${dest!.name}/${tool!.name}`, kind: tr.kind }),
+    // The old address now redirects to the new one, and both publishers' pages changed.
+    ...indexNowStatements(env, [...packagePaths(tool!.kind, tool!.ns, tool!.name), ...packagePaths(tool!.kind, dest!.name, tool!.name), `/${tool!.ns}`, `/${dest!.name}`], now),
   ]);
   const oldRef = `${tool!.ns}/${tool!.name}`;
   const newRef = `${dest!.name}/${tool!.name}`;
