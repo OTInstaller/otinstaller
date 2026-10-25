@@ -1,5 +1,7 @@
 # Releases otlite (otlite/) to PyPI with trusted publishing. Push a tag `otlite-vX.Y.Z` whose version matches
-# otlite/pyproject.toml; run the workflow by hand with `repository: testpypi` for a dry run first.
+# otlite/pyproject.toml. Neither project is set up on test.pypi.org yet, so a `repository: testpypi` run fails at
+# publishing until their publishers are added there. To check PyPI's publishers without releasing, run it by hand with
+# `repository: pypi` while otlite's and the shim's versions on main are ones PyPI already has: every file is skipped.
 # The `otinstaller` shim (otlite/otinstaller-shim) is built alongside and published after otlite by its own job;
 # a version PyPI already has is skipped, so bump its version only when it changes. To retry a failed release, run the
 # workflow by hand with `repository: pypi`: it uploads what is missing and creates the GitHub release for an
@@ -8,7 +10,7 @@
 # Setup on PyPI (once, per project): Publishing → add a GitHub publisher with owner OTInstaller, repository
 # otinstaller and workflow release-otlite.yml. The environment differs per project:
 #   pypi.org      otlite: pypi                 otinstaller: pypi-otinstaller
-#   test.pypi.org otlite: testpypi             otinstaller: testpypi-otinstaller
+#   test.pypi.org otlite: testpypi             otinstaller: testpypi-otinstaller   (not set up yet)
 name: Release otlite
 
 on:
