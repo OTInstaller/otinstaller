@@ -128,15 +128,15 @@ export function profileRoutes(app: App) {
     }
     const [tools, total] = await Promise.all([
       c.env.DB.prepare(
-        `SELECT ${SUMMARY_COLUMNS}, v.published_at FROM tools t JOIN namespaces n ON n.id = t.namespace_id
+        `SELECT ${SUMMARY_COLUMNS} FROM tools t JOIN namespaces n ON n.id = t.namespace_id
          JOIN versions v ON v.id = t.latest_version_id WHERE n.id = ? AND ${VISIBLE} ORDER BY t.installs_30d DESC, t.name`,
-      ).bind(ns.id).all<SummaryRow & { published_at: number | null }>(),
+      ).bind(ns.id).all<SummaryRow>(),
       c.env.DB.prepare(
         `SELECT COALESCE(SUM(ic.count), 0) AS n FROM install_counts ic JOIN tools t ON t.id = ic.tool_id
          WHERE t.namespace_id = ? AND t.status != 'removed' AND t.latest_version_id IS NOT NULL`,
       ).bind(ns.id).first<{ n: number }>(),
     ]);
-    const list = tools.results.map((r) => ({ ...summary(r), published_at: r.published_at }));
+    const list = tools.results.map(summary);
     const prof = effectiveProfile(ns, p, hosts);
     const visible = new Set(list.map((t) => t.name));
     const onlyTools = list.filter((t) => t.kind === "tool");

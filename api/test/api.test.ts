@@ -70,6 +70,21 @@ describe("search", () => {
     expect(refs(b.body)).toEqual(refs(a.body));
   });
 
+  it("says when each package's latest version was published", async () => {
+    for (const path of ["/tools?limit=100", "/guides"]) {
+      const { body } = await get(path);
+      expect(body.results.length).toBeGreaterThan(0);
+      for (const t of body.results) expect(t.published_at === null || typeof t.published_at === "number").toBe(true);
+    }
+    const latest = await env.DB.prepare(
+      `SELECT v.published_at FROM tools t JOIN namespaces n ON n.id = t.namespace_id JOIN versions v ON v.id = t.latest_version_id
+       WHERE n.name = 'osintverse-community' AND t.name = 'sherlock'`,
+    ).first<{ published_at: number }>();
+    const sherlock = (await get("/tools?q=sherlock")).body.results[0];
+    expect(sherlock.published_at).toBe(latest!.published_at);
+    expect(sherlock.published_at).toEqual(expect.any(Number));
+  });
+
   it("filters by runtime and category", async () => {
     expect(refs((await get("/tools?runtime=pipx")).body).sort()).toEqual(["osintverse-community/tldextract", "osintverse/phone-parse"]);
     expect(refs((await get("/tools?category=domain-dns")).body).sort()).toEqual(["dheeraj/whois-lite", "osintverse-community/tldextract"]);
