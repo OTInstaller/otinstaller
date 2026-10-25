@@ -23,6 +23,8 @@ runtime:
   platforms: [linux/amd64, linux/arm64]
   command: ["holehe", "--only-used", "--no-color", "--no-clear", "{email}"]
   output_format: text
+  # Entities come only from lines that start with these, not from banners, sponsor links or update notices.
+  finding_prefixes: ["[+]"]
   timeout_seconds: 600
 network:
   egress: true

@@ -80,6 +80,8 @@ type Runtime struct {
 	TimeoutSeconds int      `json:"timeout_seconds,omitempty"`
 	// TypicalSeconds is how long a run usually takes.
 	TypicalSeconds int `json:"typical_seconds,omitempty"`
+	// FindingPrefixes, for text output, are how the lines that hold findings start; entities are read only from them.
+	FindingPrefixes []string `json:"finding_prefixes,omitempty"`
 
 	// Docker.
 	Image     string   `json:"image,omitempty"`

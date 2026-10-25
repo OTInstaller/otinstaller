@@ -1,6 +1,7 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { ftsQuery } from "../src/index";
+import { compatManifest } from "../src/lib/manifest";
 import { rank } from "../src/ranking";
 
 const get = async (path: string) => {
@@ -338,6 +339,12 @@ describe("install manifests for older ot", () => {
     expect(body.manifest.inputs.some((i: any) => "example" in i)).toBe(false);
     expect(body.manifest.outputs).toEqual([{ type: "account" }]);
     expect(body.manifest.secrets[0].pricing).toBeUndefined();
+  });
+
+  it("leaves finding_prefixes out of the manifest older ot reads", () => {
+    const m = { runtime: { kind: "docker", output_format: "text", finding_prefixes: ["[+]"] } };
+    expect(compatManifest(m)).toEqual({ runtime: { kind: "docker", output_format: "text" } });
+    expect(m.runtime.finding_prefixes).toEqual(["[+]"]);
   });
 
   it("serves only `manifest` when nothing had to be left out", async () => {

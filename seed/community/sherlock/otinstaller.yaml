@@ -31,6 +31,8 @@ runtime:
   wheel_sha256: "7f1341dcd554a39d529bcfff14b133410e8773e3e1083fc5bdd0cd0a579fb46f"
   command: ["sherlock", "--print-found", "--no-color", "--timeout", "20", "--site", "{site}", "{username}"]
   output_format: text
+  # Entities come only from lines that start with these, not from banners, sponsor links or update notices.
+  finding_prefixes: ["[+]"]
   timeout_seconds: 900
 network:
   egress: true
