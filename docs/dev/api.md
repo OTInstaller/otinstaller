@@ -644,6 +644,8 @@ GitHub 403 rate-limit bodies).
    at most once a day each.
 7. `deliverInbox(env, "immediate")` (inbox.ts): inbox items older than 2 minutes, grouped into one email per person who
    asked for them at once (at most 12 community emails a day).
+8. `flushIndexNow(env)` (indexnow.ts): up to 500 queued site paths sent to `https://api.indexnow.org/indexnow` in one
+   POST (`host`, `key`, `keyLocation`, `urlList`); a no-op without `INDEXNOW_KEY` or with nothing queued.
 
 `refreshDueProfiles(env)` (profiles.ts) also runs in this block, between the source poll and the stuck-job alert.
 

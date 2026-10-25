@@ -4,8 +4,8 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 `api/migrations/*.sql` and the code in `api/src/`, `api/test/` and `api/scripts/`.
 
 - Binding: `DB`, database name `otinstaller`, `migrations_dir: "migrations"` (`api/wrangler.jsonc`).
-- 36 migrations, `0001` to `0036`.
-- Final schema: **65 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 66. FTS5 also creates its own shadow
+- 37 migrations, `0001` to `0037`.
+- Final schema: **66 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 67. FTS5 also creates its own shadow
   tables, which aren't listed here.
 
 ---
@@ -50,6 +50,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0034 | `0034_namespace_rename_search.sql` | Trigger `tools_fts_namespace_rename` (AFTER UPDATE OF name ON namespaces): rewrites the namespace's tools' `tools_fts` rows with the new name. |
 | 0035 | `0035_cache_epoch.sql` | New table `settings` (`key` PK, `value`, `updated_at`) with the row `cache_epoch`, which edge-cache keys carry and removals and yanks move on. Apply before an API that reads it is deployed. |
 | 0036 | `0036_people_and_notification_settings.sql` | `users` + `display_name`, `bio`, `location`, `website` (TEXT), `links_json` (TEXT NN default `'[]'`), `handle_changed_at`; new table `handle_aliases` (old handles, kept by their owner and redirecting) and index `handle_aliases_user`; `package_follows` + `level` (CHECK all/releases/muted, default all); `email_prefs` + `lifecycle` and `security` (CHECK immediate/daily/off, default immediate, then set to each row's `releases`), `inbox_muted_json` (TEXT NN default `'[]'`), `email_provider`; `inbox` rebuilt so `scope` also takes `lifecycle` and `security`, indexes `inbox_user` and `inbox_pending` again. Apply before an API that reads them is deployed. |
+| 0037 | `0037_indexnow.sql` | New table `indexnow_queue` (`path` PK, `queued_at`) and index `idx_indexnow_queue_queued`: site pages waiting to be sent to IndexNow. Apply before an API that writes it is deployed. |
 
 ---
 
@@ -617,6 +618,18 @@ Purpose: fixed-window counters, for example anonymous reports (5 per hour per IP
 version and day, so `install_counts` can't be inflated). The nightly cron purges windows older than a day.
 - PK `(key, window_start)` · `key` TEXT NN (a salted hash, never the raw IP) · `window_start` INTEGER NN · `count` INTEGER NN default 0
 - Written by `trust.ts` with `INSERT ... ON CONFLICT`.
+
+### 2.13a IndexNow queue (0037)
+
+#### `indexnow_queue`
+Purpose: paths on `SITE_URL` that a release, yank, deprecation, takedown or transfer changed, waiting to be sent to
+IndexNow (`indexnow.ts`). One row per path, so a page changed twice between runs is sent once.
+- PK `path` TEXT · `queued_at` INTEGER NN (the latest change) · index `idx_indexnow_queue_queued (queued_at)`
+- Written with `INSERT ... ON CONFLICT (path) DO UPDATE` by `scans.ts:publishVersion` (when a version is announced),
+  `trust.ts` (`setYanked`, `setDeprecated`, `clearDeprecated`, `removeVersion`) and `transfers.ts:completeTransfer`,
+  only while `INDEXNOW_KEY` is set and `SITE_URL` is a public https origin.
+- Emptied by `indexnow.ts:flushIndexNow` on every cron run: up to 500 rows a run; rows sent (200/202) or refused for
+  good (400/422) are deleted unless re-queued since; rows older than 7 days are dropped.
 
 ### 2.14 Audit
 

@@ -507,6 +507,7 @@ and beta work, so `R2_*`, `ISSUES_REPO`/`ISSUES_TOKEN` and `EDGE_CACHE` are only
 | --- | --- |
 | `index.ts` | App setup, CORS (credentialed only when `Origin` equals `SITE_URL` exactly, so not `www.`), auth middleware, write rate limit (30/min per signed-in non-staff user on non-GET requests; registered after `authRoutes`, so auth, token and device routes aren't limited), public read routes, `onError`/`notFound`, default export `{ fetch, queue, scheduled }` (fetch wrapped in `edgeCached`). Exporting anything but the handlers from this file makes workerd refuse to start, and vitest won't catch it |
 | `edge-cache.ts` | Edge cache for anonymous reads (see below), plus weak ETags and 304s on every successful JSON or text read |
+| `indexnow.ts` | IndexNow: queues the site pages a release, yank, deprecation, takedown or transfer changed (`indexnow_queue`), and the 15-minute cron sends them to the search engines in one request. Off without `INDEXNOW_KEY`, which must match the key file the site serves at `/<key>.txt` |
 | `mcp.ts` | The read-only remote MCP server at `/mcp` (outside `/v1`; see [Agents](#agents-ot-mcp-the-remote-mcp-server-and-the-plugin)) |
 | `scopes.ts` | API token scopes: `requiredScope(method, path)`, `enforceScopes` (403 `insufficient_scope`, and an audit row for every write a token makes) |
 | `env.ts` | `Env`, `PublishMessage`, `User`, `deps.fetch` (all outbound HTTP), `requireSecret` |
@@ -637,7 +638,7 @@ nothing cached before a takedown is served again. On a hit the original `Cache-C
 5. Backups: a passing scan's callback answer tells the scanner to back up right away; versions published another way
    (namespace approval, guides) queue `{ backupVersionId }`. See below.
 6. Every 15 minutes: expire stale scans (1 h), poll due sources, alert on jobs stuck > 30 min, expire backup runs and
-   drills, backfill up to 5 versions with no backup, email inbox items due now. `scheduled()` runs this block on
+   drills, backfill up to 5 versions with no backup, email inbox items due now, send queued pages to IndexNow. `scheduled()` runs this block on
    **every** trigger, including the nightly, weekly and monthly ones. Nightly also: guide link rechecks (> 20% dead →
    needs update), the reviewer digest, rate-limit purge, backup purge, locking stale closed threads, daily inbox
    digests and the inbox purge, the `contributor_stats` recount, queuing every community wrapper's upstream check and every community-namespace build's dependency and base-image check,
@@ -696,9 +697,9 @@ publishing (`trusted_publishers`, the CI token columns `api_tokens.namespace_id`
 (`request_comments`, `request_subscriptions`, flags on requests, 0026) and change proposals (`change_proposals`,
 0027), the build watcher (`dependency_watch`, `base_images`, `base_watch`, `bump_prs.kind`, 0031), email retries
 (`notifications.body`/`attempts`/`sent_at`, 0033), search following a namespace rename (a trigger, 0034), the edge
-cache's epoch (`settings`, 0035) and people's profiles and notification settings (`users` profile fields and
+cache's epoch (`settings`, 0035), people's profiles and notification settings (`users` profile fields and
 `handle_changed_at`, `handle_aliases`, `package_follows.level`, `email_prefs` `lifecycle`/`security`/`inbox_muted_json`/
-`email_provider`, 0036). That is 65 tables plus `tools_fts`; every
+`email_provider`, 0036) and the IndexNow queue (`indexnow_queue`, 0037). That is 66 tables plus `tools_fts`; every
 table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
 

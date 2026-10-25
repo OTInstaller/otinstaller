@@ -50,6 +50,7 @@ restore drill).
 | `EMAIL_FROM` | no | sender address | defaults to `OTInstaller Registry <registry@otinstaller.com>` |
 | `MIRROR_HOST` | no | host in mirror targets and `mirror_image` | defaults to `mirror.otinstaller.com` |
 | `GITHUB_APP_SLUG` | no (commented out) | App install link `https://github.com/apps/<slug>/installations/new` | defaults to `otinstaller` |
+| `INDEXNOW_KEY` | no | IndexNow key (`indexnow.ts`); public by design, must equal the name and content of the site's `web/public/<key>.txt` | nothing queued or sent (also off when `SITE_URL` is http or localhost; tests set it to `""`) |
 
 ### 1.3 Secrets and optional settings (from `env.ts`)
 
@@ -207,5 +208,6 @@ otlite is uploaded first, then the shim; a GitHub release is created for the tag
 | `MIRROR_HOST` | API var, registry-ops variable (both default `mirror.otinstaller.com`) |
 | `API_URL` / `REGISTRY_API` | API var, registry-ops `REGISTRY_API` |
 | `SITE_URL` | API var (CORS), the site's build env |
+| `INDEXNOW_KEY` | API var, the file name and content of the site's `web/public/<key>.txt` (and its `_headers` rule) |
 | `PUBLIC_API_URL` | the site's build env, must be the API's origin |
 | `OT_RELEASE_PUBLIC_KEY` | release variable, embedded in `ot` and the install scripts served by `otinstaller-get` |

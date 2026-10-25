@@ -3,7 +3,7 @@
 schema: 1
 name: social-analyzer
 namespace: osintverse-community
-version: 0.45.0
+version: 0.45.1
 summary: "Finds profiles for a username across 1,000+ social media and other websites, with a confidence rating"
 readme: README.md
 license: AGPL-3.0
