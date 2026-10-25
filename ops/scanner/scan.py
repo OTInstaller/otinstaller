@@ -9,7 +9,7 @@ Reads the scan request the registry dispatched, checks the artifact, and posts r
   secrets          Trivy secret scanning
   malware          GuardDog source-code heuristics (Python wheels)
   sbom             Trivy CycloneDX package count
-  smoke            the manifest's test input, run with no network
+  smoke            the manifest's test input, in ot's sandbox: offline unless the manifest declares network egress
 
 After a passing verdict the registry answers the callback with a backup job (signed upload URLs); this script
 then copies the image to the mirror, or uploads the wheel, and uploads a git bundle (see backup.py). The same
