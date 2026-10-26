@@ -59,10 +59,9 @@ Contents
                                      | OTInstaller/registry-ops (GitHub Actions)     |
                                      |  scan.yml: scan.py (cosign, Trivy, GuardDog,  |
                                      |            smoke test), backup.py, drills     |
-                                     |  health.yml: health.py (nightly 02:00 UTC)    |
                                      +-----------------------------------------------+
                                        | POST /v1/internal/scans, /internal/backups/:run,
-                                       | /internal/drills/:id, /internal/health  ---> API
+                                       | /internal/drills/:id  ---> API
 
  Sign-in: API /v1/auth/:provider/... <-> github.com OAuth, gitlab.com OAuth, osintverse.com OIDC
  Install: curl get.otinstaller.com/ot | sh -> otinstaller-get Worker (ops/get/worker.js)
@@ -84,7 +83,7 @@ What each cron does (`api/src/index.ts` `scheduled`), in order:
 | Every 15 min (all four crons run this part) | `scans.ts:expireStaleScans`, `sync.ts:pollDueSources` (50 sources not polled for 6 h), `ops.ts:alertStuckJobs`, `backups.ts:expireRuns`, `backups.ts:expireDrills`, `backups.ts:backfillBackups` (5 versions), `indexnow.ts:flushIndexNow` |
 | Mondays 04:41 UTC | + `backups.ts:weeklyBackups` |
 | 1st of month 05:23 UTC | + `backups.ts:startDrill` |
-| Nightly 03:17 UTC | + `guides.ts:queueNightlyLinkChecks`, `ops.ts:dailyDigest`, `ops.ts:purgeRateLimits`, `backups.ts:purgeBackups`, `installs_30d` recompute (SQL inline) |
+| Nightly 03:17 UTC | + `guides.ts:queueNightlyLinkChecks`, `ops.ts:dailyDigest`, `ops.ts:purgeRateLimits`, `backups.ts:purgeBackups`, `community.ts:refreshAllHealth`, `installs_30d` recompute (SQL inline) |
 
 Queue messages (`PublishMessage` in `env.ts`) and who handles them in `publish.ts:handleBatch`:
 
@@ -773,7 +772,7 @@ The design is [docs/agent-friendly-plan.md](../agent-friendly-plan.md); the rule
          client supports elicitation    -> form with the tool's ethics, egress and notifies_target
          neither (or the form failed)   -> error consent_required + summary + consent_token
                                            (HMAC over tool, artifact and arguments; single use; 10 min; this process)
-     install: RequireSignature (signer recorded and cosign present); no local manifests, yanked, failed or broken;
+     install: RequireSignature (signer recorded and cosign present); no local manifests, yanked or failed (broken warns);
               on an installed tool the question names both versions, a held one is refused (version_held), a native
               one too (trust_refused), and the same version answers already_installed
      run: the same runner and sandbox as `ot run`; output saved under <ot home>/results (or --results-dir)

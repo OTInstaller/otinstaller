@@ -9,7 +9,6 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import health
 import scan
 
 # A public Fulcio certificate from a real keyless signature (dheerajydv19/ot-test-tool, released from main).
@@ -123,9 +122,8 @@ class AnySignerTest(unittest.TestCase):
 
 
 class PipxImageTest(unittest.TestCase):
-    """pipx tools are smoke-tested and health-checked in the image `ot` runs them in. The sandbox is read-only except
-    /tmp, so the image starts there; otherwise a tool that writes into its working folder works in `ot` but fails the
-    scan and the nightly health check."""
+    """pipx tools are smoke-tested in the image `ot` runs them in. The sandbox is read-only except /tmp, so the image
+    starts there; otherwise a tool that writes into its working folder works in `ot` but fails the scan."""
 
     def test_starts_in_tmp(self):
         workdirs = [line.split()[1] for line in scan.PYTHON_DOCKERFILE.splitlines() if line.startswith("WORKDIR ")]
@@ -139,7 +137,7 @@ class PipxImageTest(unittest.TestCase):
         self.assertIsNotNone(found, "pythonDockerfile is no longer a raw string constant in install.go")
         self.assertEqual(scan.PYTHON_DOCKERFILE, found.group(1))
 
-    def test_smoke_test_and_health_check_run_in_it(self):
+    def test_smoke_test_runs_in_it(self):
         wheel = b"not really a wheel"
         sha = hashlib.sha256(wheel).hexdigest()
         meta = {"urls": [{"packagetype": "bdist_wheel", "digests": {"sha256": sha}, "filename": "tool-1.0.0-py3-none-any.whl",
@@ -160,11 +158,9 @@ class PipxImageTest(unittest.TestCase):
               mock.patch.object(scan.urllib.request, "urlopen", lambda url, timeout=None: io.BytesIO(wheel)),
               tempfile.TemporaryDirectory() as tmp):
             scanned = scan.scan_pipx({"ref": "ns/tool", "runtime": rt, "test_input": {"domain": "example.com"}}, Path(tmp))
-            checked = health.check({"version_id": "v1", "ref": "ns/tool", "runtime": rt, "test_input": {"domain": "example.com"}})
         self.assertEqual(scanned["smoke"]["status"], "pass")
-        self.assertEqual(checked["result"], "pass", checked["error_excerpt"])
-        self.assertEqual(dockerfiles, [scan.PYTHON_DOCKERFILE] * 2)
-        self.assertEqual(images, ["ot-scan/ns-tool:latest", "ot-health/ns-tool:latest"])
+        self.assertEqual(dockerfiles, [scan.PYTHON_DOCKERFILE])
+        self.assertEqual(images, ["ot-scan/ns-tool:latest"])
 
 
 if __name__ == "__main__":

@@ -4,8 +4,8 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 `api/migrations/*.sql` and the code in `api/src/`, `api/test/` and `api/scripts/`.
 
 - Binding: `DB`, database name `otinstaller`, `migrations_dir: "migrations"` (`api/wrangler.jsonc`).
-- 38 migrations, `0001` to `0038`.
-- Final schema: **66 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 67. FTS5 also creates its own shadow
+- 39 migrations, `0001` to `0039`.
+- Final schema: **65 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 66. FTS5 also creates its own shadow
   tables, which aren't listed here.
 
 ---
@@ -52,6 +52,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0036 | `0036_people_and_notification_settings.sql` | `users` + `display_name`, `bio`, `location`, `website` (TEXT), `links_json` (TEXT NN default `'[]'`), `handle_changed_at`; new table `handle_aliases` (old handles, kept by their owner and redirecting) and index `handle_aliases_user`; `package_follows` + `level` (CHECK all/releases/muted, default all); `email_prefs` + `lifecycle` and `security` (CHECK immediate/daily/off, default immediate, then set to each row's `releases`), `inbox_muted_json` (TEXT NN default `'[]'`), `email_provider`; `inbox` rebuilt so `scope` also takes `lifecycle` and `security`, indexes `inbox_user` and `inbox_pending` again. Apply before an API that reads them is deployed. |
 | 0037 | `0037_indexnow.sql` | New table `indexnow_queue` (`path` PK, `queued_at`) and index `idx_indexnow_queue_queued`: site pages waiting to be sent to IndexNow. Apply before an API that writes it is deployed. |
 | 0038 | `0038_versions_artifact_from_manifest.sql` | Data only: sets `versions.runtime_kind` and `artifact_ref` from `manifest_json` where they differ (versions re-released after a rejection kept the rejected release's; naminter 1.0.9 and octosuite 5.1.0 in production). |
+| 0039 | `0039_community_health.sql` | Drops table `health_checks` and column `tools.health_fail_streak` (the nightly health check is gone); recomputes `tools.health_status` and `health_checked_at` for every tool from issues and confirmations, which also clears `not_checked`. |
 
 ---
 
@@ -215,8 +216,10 @@ Purpose: a package (`kind` tool or guide) at `<namespace>/<name>`.
 - `deprecated_message` TEXT · `deprecated_replacement` TEXT (0009)
 - `community_packaged` INTEGER NN default 0
 - `stars_count` INTEGER NN default 0 · `installs_30d` INTEGER NN default 0
-- `health_status` TEXT NN default `'unknown'` CHECK `('unknown', 'healthy', 'broken', 'not_checked')`
-- `health_fail_streak` INTEGER NN default 0 · `health_checked_at` INTEGER (0009)
+- `health_status` TEXT NN default `'unknown'` CHECK `('unknown', 'healthy', 'broken', 'not_checked')`; from community
+  reports since 0039 (see 3.9), and `not_checked` is no longer set
+- `health_checked_at` INTEGER (0009): since 0039, the latest "works for me" on the latest version in the last 30 days;
+  null when there is none
 - `readme_text` TEXT NN default `''` (feeds `tools_fts.body`)
 - `needs_update` INTEGER NN default 0 · `dead_link_ratio` REAL (0007, guides)
 - `removed_at` INTEGER · `removed_reason` TEXT · `removed_category` TEXT (0009)
@@ -337,7 +340,7 @@ Purpose: an import-wizard draft for one repository (single or bulk).
 - `error_code`, `error` TEXT · `created_at`, `updated_at` INTEGER NN
 - Indexes `imports_user (user_id, created_at DESC)`, `imports_batch (batch_id)`
 
-### 2.6 Scans, review and health
+### 2.6 Scans and review
 
 #### `scans`
 Purpose: one check result for a version (scanner callback for tools, Worker content checks for guides).
@@ -347,12 +350,6 @@ Purpose: one check result for a version (scanner callback for tools, Worker cont
 - `summary_json` TEXT · `report_r2_key` TEXT · `ran_at` INTEGER NN
 
 Review has no table of its own: it uses `namespaces.status/reviewed_*`, `versions.status = 'awaiting_review'` and `audit_log`.
-
-#### `health_checks`
-Purpose: nightly health-check results. `applyHealth` keeps the latest 30 per tool.
-- PK `id` TEXT · `tool_id` TEXT NN → `tools(id)` ON DELETE CASCADE · `version_id` TEXT NN → `versions(id)`
-- `result` TEXT NN CHECK `('pass', 'fail')` · `duration_ms` INTEGER · `error_excerpt` TEXT · `ran_at` INTEGER NN
-- Index `health_checks_tool (tool_id, ran_at DESC)` (0009)
 
 ### 2.7 Guides and pages
 
@@ -808,8 +805,11 @@ There is no guard on the current status, so a resolved report can be resolved ag
   `approved`); `pending` → `denied` in `routes/auth.ts:osintverseCallback`.
 - **`tools.status`**: `active` ↔ `deprecated` (`routes/trust.ts` `POST`/`DELETE /tools/:ns/:name/deprecate`;
   `sync.ts:applyMeta` for archived repos, using a fixed `ARCHIVED_MESSAGE`) → `removed` (`trust.ts:removeVersion`, whole tool).
-- **`tools.health_status`**: `ops.ts:applyHealth` (→ `healthy` on a pass, → `broken` after 3 failures in a row);
-  `scans.ts:latestMetadata` (→ `not_checked` with no test input, `not_checked` → `unknown` once there is one).
+- **`tools.health_status`**: set by `community.ts:healthSet`, inside `refreshCounts` (every confirmation, issue create,
+  status or moderation change, and `scans.ts:latestMetadata` when the latest version changes) and nightly
+  `refreshAllHealth`. `broken` while the tool has an open (`open`/`confirmed`, visible, not deleted) broken issue, or
+  while at least 2 "broken" confirmations of the latest version in the last 30 days outnumber the "works" ones;
+  else `healthy` when there is at least one "works"; else `unknown`.
 - **`sources.sync_status`**: → `unavailable` / `transfer_pending` / `ok` in `sync.ts:applyMeta`; → `error` / `paused` in
   `sync.ts:pollSource`; → `paused` in `routes/sources.ts` `DELETE /sources/:id` and `transfers.ts:completeTransfer`
   (claims); → `ok` in `routes/sources.ts:switchSource`.
@@ -841,8 +841,7 @@ Exceptions:
   `install_counts`, `install_clients` (day + client), `aliases` (name-based), `rate_limits` (hash + window).
 - **Seed IDs are deterministic, not ULIDs**: `ns_dheeraj`, `tool_<ns>_<name>`, `ver_<ns>_<name>_<version>`, `src_<name>`.
   Tests also insert `ot_test_<id>` tokens.
-- **Not milliseconds**: `install_counts.day` and `install_clients.day` are TEXT `YYYY-MM-DD`; `rate_limits.window_start` is the window start;
-  `health_checks.duration_ms` is a duration.
+- **Not milliseconds**: `install_counts.day` and `install_clients.day` are TEXT `YYYY-MM-DD`; `rate_limits.window_start` is the window start.
 - **Provider IDs stored as INTEGER, without an FK**: `installations.github_installation_id`,
   `publish_jobs.installation_id`, `sources.installation_id`.
 - **Missing FKs**: `tools.latest_version_id` and `audit_log.actor_id` have none.
@@ -889,7 +888,7 @@ Exceptions:
 | --- | --- | --- | --- |
 | `dheeraj/holehe-lite` | fixture `docker-tool.yaml` | 1.0.0 `removed`, 1.1.0 and 1.2.0 `published` | 1.0.0 removed for a malicious dependency; has `repo_url` |
 | `osintverse/phone-parse` | fixture `pipx-tool.yaml` | 0.3.1 | |
-| `dheeraj/email-investigation-playbook` | fixture `guide.yaml` | 1.0.0 | guide, `not_checked`, related to holehe-lite |
+| `dheeraj/email-investigation-playbook` | fixture `guide.yaml` | 1.0.0 | guide, related to holehe-lite |
 | `osintverse-community/sherlock` | inline | 0.15.0 | community |
 | `osintverse/email-header-parser` | inline | 1.0.0 | |
 | `dheeraj/whois-lite` | inline | 2.0.0 | registry-held manifest |

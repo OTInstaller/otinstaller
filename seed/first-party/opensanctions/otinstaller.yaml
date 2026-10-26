@@ -66,6 +66,6 @@ ethics:
   notifies_target: false
   notes: "Shows the sanctions, PEP and watch-list records whose names match; a match on a name alone may be a different person, and being a politically exposed person is not wrongdoing."
 test:
-  # Scans and health checks run without secrets, so the tool reports the missing key with exit code 3.
+  # The publish scan runs the test without secrets, so the tool reports the missing key with exit code 3.
   expect_exit_code: 3
   input: { name: "Vladimir Putin" }

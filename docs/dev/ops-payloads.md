@@ -7,10 +7,9 @@ Reference for the contracts between the registry API (`api/`) and the jobs run i
 - `api/src/backups.ts` (`releasePlan`, `createRun`, `dispatchBackups`, `completeRun`, `startDrill`, `completeDrill`)
 - `api/src/routes/review.ts` (`POST /internal/scans`, `parseResults`)
 - `api/src/routes/backups.ts` (`POST /internal/backups/:run`, `POST /internal/drills/:id`, signed object URLs)
-- `api/src/routes/ops.ts`, `api/src/ops.ts` (health endpoints, `healthTargets`, `applyHealth`)
 - `api/src/lib/presign.ts` (signed URLs)
-- `ops/scanner/scan.py`, `backup.py`, `health.py`, `ops/scanner/Dockerfile`
-- `ops/workflows/scan.yml`, `ops/workflows/health.yml`
+- `ops/scanner/scan.py`, `backup.py`, `ops/scanner/Dockerfile`
+- `ops/workflows/scan.yml`
 
 If you change either side of a contract, change the other in the same commit, and remember the copies in
 registry-ops have to be updated separately.
@@ -30,10 +29,9 @@ registry-ops have to be updated separately.
 | Image copy | scanner → mirror | OCI push with `crane` | `MIRROR_PUSH_TOKEN` |
 | Restore drill | API → registry-ops | `repository_dispatch` `otinstaller-drill` | GitHub token |
 | Drill report | scanner → API | `POST /v1/internal/drills/:id` | single-use drill `token` (Bearer) |
-| Health targets | health job → API | `GET /v1/internal/health/targets` | static `HEALTH_TOKEN` (Bearer) |
-| Health results | health job → API | `POST /v1/internal/health` | static `HEALTH_TOKEN` (Bearer) |
 
-Only one workflow (`scan.yml`) handles all three dispatch types; `health.yml` is cron-driven and pulls its work.
+One workflow (`scan.yml`) handles all three dispatch types. A package's health is not checked by a job: it comes from
+community reports (`refreshCounts` and the nightly `refreshAllHealth` in `api/src/community.ts`).
 
 ---
 
@@ -577,76 +575,9 @@ Authorization: Bearer <drill token>
 
 ---
 
-## 6. Health checks
+## 6. Workflows (registry-ops)
 
-### 6.1 Auth
-
-Both endpoints use the static shared secret `HEALTH_TOKEN` (API secret and registry-ops secret). It is **not**
-single-use. Missing on the server → 503 `not_configured`; missing or wrong Bearer → 401 `unauthenticated`. The
-comparison is of SHA-256 digests (constant-length, to avoid timing leaks).
-
-### 6.2 `GET /v1/internal/health/targets`
-
-Targets: every tool (`kind = 'tool'`, not `removed`, namespace `active`) whose **latest** version's manifest has
-`test.input`.
-
-```json
-{
-  "targets": [
-    {
-      "version_id": "01J...",
-      "ref": "osintverse-community/dns-lookup",
-      "version": "1.2.0",
-      "runtime": { "kind": "docker", "image": "...@sha256:...", "command": ["..."] },
-      "test_input": { "domain": "example.com" },
-      "expect_exit_code": 0,
-      "domains": ["dns.google"]
-    }
-  ]
-}
-```
-
-`domains` = `network.domains ?? []`; used only to space out checks.
-
-### 6.3 `POST /v1/internal/health`
-
-```json
-{
-  "results": [
-    { "version_id": "01J...", "result": "pass", "duration_ms": 3120, "error_excerpt": "" },
-    { "version_id": "01J...", "result": "fail", "duration_ms": 120000, "error_excerpt": "timed out" }
-  ]
-}
-```
-
-Validation: `results` must be an array of at most 500 (400 `invalid_body`). Entries with an unknown `version_id` or
-a `result` other than `pass`/`fail` are skipped silently. Response: `{ "applied": <n> }`.
-
-`applyHealth` per result:
-
-- Inserts a `health_checks` row (`error_excerpt` keeps the last 1000 chars), keeps the newest 30 per tool.
-- `health_fail_streak`: 0 on pass, +1 on fail. `health_checked_at` = now.
-- `health_status`: `healthy` on any pass; `broken` (shown as "Possibly broken") when the streak reaches 3
-  (`BROKEN_AFTER`); otherwise unchanged.
-- On the first failure of a run (streak becomes 1) the owners get one `health` email; not every night.
-- Broken tools are excluded from the pivots list and penalised in search ranking.
-
-### 6.4 `ops/scanner/health.py`
-
-Needs `REGISTRY_API` (origin, e.g. `https://api.otinstaller.com`; `/v1` is appended) and `HEALTH_TOKEN`.
-
-- `health.py targets`: GETs targets, prints `[{"n": 0, "targets": [...10...]}, ...]` (batches of 10) for the matrix.
-- `health.py run batch.json`: for each target, waits so the same domain is hit at most every 20 s
-  (`PER_DOMAIN_GAP`), builds the image (Docker: `docker pull`; pipx: fetches the pinned wheel from PyPI and builds
-  the same `python:3.12-slim` image as the scanner, tag `ot-health/<slug>:latest`), runs `scan.smoke(...,
-  egress=True)` (always with network, unlike the publish smoke test), and maps pass/fail. Any exception is a `fail`
-  with the exception text. Then POSTs all results at once.
-
----
-
-## 7. Workflows (registry-ops)
-
-### 7.1 `ops/workflows/scan.yml`
+### 6.1 `ops/workflows/scan.yml`
 
 - Trigger: `repository_dispatch` types `otinstaller-scan`, `otinstaller-backup`, `otinstaller-drill`.
 - Permissions: `contents: read`.
@@ -671,18 +602,7 @@ Note: `MIRROR_HOST` is only used for the crane login; `scan.py`/`backup.py` take
 `target`, so the variable must match the API's `MIRROR_HOST`. Backup and drill events run without Trivy, GuardDog or
 `cryptography` (not needed there).
 
-### 7.2 `ops/workflows/health.yml`
-
-- Triggers: cron `0 2 * * *` (02:00 UTC) and `workflow_dispatch`. Permissions `contents: read`. Concurrency group
-  `health`, no cancel.
-- Job `targets`: `python3 ops/scanner/health.py targets` → output `batches`.
-- Job `check` (skipped when `batches == '[]'`): matrix over batches, `fail-fast: false`, `max-parallel: 20`,
-  60-minute timeout; writes the batch to `$RUNNER_TEMP/batch.json` and runs `health.py run`.
-- Env for both: `REGISTRY_API` = `vars.REGISTRY_API`, `HEALTH_TOKEN` = `secrets.HEALTH_TOKEN`.
-- No Trivy, cosign or crane is installed; it uses the runner's Docker and Python. Images are not cosign-verified
-  during health checks.
-
-### 7.3 Local runs
+### 6.2 Local runs
 
 `ops/scanner/Dockerfile` (`python:3.12-slim` with Docker CLI 29.9.1, Trivy 0.76.0, cosign 3.1.3, crane 0.20.6, git,
 GuardDog 3.2.0, cryptography 50.0.2; entrypoint `scan.py`):
@@ -692,28 +612,26 @@ docker build -t otinstaller-scanner ops/scanner
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/req.json:/req.json" otinstaller-scanner /req.json
 ```
 
-The image copies only `scan.py` and `backup.py` (not `health.py`). `POST /v1/admin/tools/:ns/:name/:version/backup`
+The image copies `scan.py` and `backup.py`. `POST /v1/admin/tools/:ns/:name/:version/backup`
 with `{"dispatch": false}` returns `{status: "created", job: {backup: {jobs: [plan]}}}`, which `scan.py` accepts as a
 file as it is.
 
-### 7.4 Environment and tools summary
+### 6.3 Environment and tools summary
 
 | Script | Args | Env vars | Shells out to |
 | --- | --- | --- | --- |
 | `scan.py` | `<request.json> [--post]` | none for scans; `MIRROR_PUSH_TOKEN` and optional `CRANE_JOBS` via `backup.py` | `docker` (pull, build, run), `cosign` (verify, download signature), `trivy`, `guarddog` (optional), Python `cryptography` |
 | `backup.py` | called from `scan.py` | `MIRROR_PUSH_TOKEN` (needed for layers over 90 MB; pushes otherwise rely on `crane auth login`), `CRANE_JOBS` (optional `crane copy --jobs`) | `crane` (manifest, blob, copy, digest), `git`, `docker` (drill pull, optional), `cosign` (drill verify) |
-| `health.py` | `targets` \| `run <batch.json>` | `REGISTRY_API`, `HEALTH_TOKEN` (both required; KeyError otherwise) | `docker` (pull, build, run) |
 
 ---
 
-## 8. Token and limit summary
+## 7. Token and limit summary
 
 | Token | Created | Stored | Lifetime | Single-use | Cleared by |
 | --- | --- | --- | --- | --- | --- |
 | Scan `callback_token` | `dispatchScan` | `versions.scan_token_hash` | 1 h | yes | `applyScanResults`; `expireStaleScans` rejects with `scan_timeout` |
 | Backup run `token` | `createRun` | `backup_runs.token_hash` | 3 h (release/manual), 12 h (weekly) | yes | `completeRun`; `expireRuns` |
 | Drill `token` | `startDrill` | `restore_drills.token_hash` | 6 h | yes | `finishDrill` (complete or expire) |
-| `HEALTH_TOKEN` | operator | API secret and registry-ops secret | static | no | – |
 | `MIRROR_PUSH_TOKEN` | operator | mirror Worker secret and registry-ops secret | static | no | – |
 | Mirror bearer tokens | `/token` on the mirror | not stored (HMAC-signed) | 300 s | no | – |
 | Signed object URLs | `signedUrl` | not stored | same as the run / 6 h drill / 1 h restore | no | – |
@@ -722,7 +640,6 @@ file as it is.
 | --- | --- |
 | Scan results body | 256 KiB (`Content-Length`) |
 | Backup report items | 10 per request |
-| Health results | 500 per request |
 | Image backup | 2 GiB (all platforms) |
 | Wheel backup | 1 GiB |
 | Git bundle | 500 MiB (clone over 1000 MiB is rejected before bundling) |

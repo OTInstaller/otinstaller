@@ -9,7 +9,7 @@ import { audit } from "./routes/auth";
 import { ownerEmails, sendEmail, templates } from "./notify";
 import { notifyFollowers, notifyPackageFollowers, SECURITY_LEVELS } from "./inbox";
 import { updateLinkHealth } from "./guides";
-import { announceVersion } from "./community";
+import { announceVersion, refreshCounts } from "./community";
 import { linkPublished } from "./requests";
 import { firstReleasePublished, firstReleaseScanned } from "./submissions";
 import { recordHostedImage } from "./backups";
@@ -337,9 +337,8 @@ export function latestMetadata(db: D1Database, toolId: string, kind: string, ver
   const stmts = [
     db.prepare(`UPDATE tools SET summary = ?, categories = ?, tags = ?, readme_text = COALESCE((SELECT search_text FROM versions WHERE id = ?), readme_text) WHERE id = ?`)
       .bind(m.summary, JSON.stringify(m.categories), JSON.stringify(m.tags ?? []), versionId, toolId),
-    // Tools without a test input are never health-checked; adding one makes them eligible again.
-    db.prepare(`UPDATE tools SET health_status = CASE WHEN ? THEN (CASE WHEN health_status = 'not_checked' THEN 'unknown' ELSE health_status END) ELSE 'not_checked' END WHERE id = ?`)
-      .bind(kind === "guide" || m.test ? 1 : 0, toolId),
+    // What people said about the version before no longer decides the status.
+    refreshCounts(db, toolId),
     db.prepare(`DELETE FROM tool_io WHERE tool_id = ?`).bind(toolId),
     db.prepare(`DELETE FROM tool_secrets WHERE tool_id = ?`).bind(toolId),
   ];

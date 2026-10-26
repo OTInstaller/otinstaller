@@ -55,6 +55,6 @@ ethics:
   collects_personal_data: false
   notifies_target: false
 test:
-  # Scans and health checks run without secrets, so the CLI stops at the missing account email with exit code 1.
+  # The publish scan runs the test without secrets, so the CLI stops at the missing account email with exit code 1.
   expect_exit_code: 1
   input: { ip: "8.8.8.8" }

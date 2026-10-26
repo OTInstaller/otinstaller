@@ -55,7 +55,7 @@ OVERRIDES: dict[str, dict] = {
     # Queries the domain's own name servers and tries a zone transfer.
     "fierce": {"touches_target": True},
     # instaloader-profile was dropped from the seed for this reason.
-    "instaloader": {"skip": "Instagram blocks anonymous requests from cloud servers, so its health check can't pass"},
+    "instaloader": {"skip": "Instagram blocks anonymous requests from cloud servers, so the scan's smoke test can't pass"},
     "edgar-tool": {"skip": "writes its results only to a file, not to stdout"},
     "instagram-location-search": {"skip": "drives Chrome through Selenium, which the wrapper image lacks"},
     "spiderfoot": {"skip": "a passive scan runs for more than an hour, past ot's longest timeout"},

@@ -108,7 +108,7 @@ lists the rest.
 | `ghunt` | none | not packaged: needs a Google login before it can do anything |
 | `theharvester` | `osintverse-community/theharvester` | d: |
 | `spiderfoot` | none | not packaged: a passive scan runs for more than an hour, past ot's longest timeout |
-| `instaloader` | none | not packaged: Instagram blocks anonymous requests from cloud servers, so its health check can't pass |
+| `instaloader` | none | not packaged: Instagram blocks anonymous requests from cloud servers, so the scan's smoke test can't pass |
 | `sherlock` | `osintverse-community/sherlock` | u: |
 | `holehe` | `osintverse-community/holehe` | e: |
 | `bbot` | none | not packaged: installs system packages with sudo when it runs, which ot's sandbox (no root) refuses |

@@ -162,12 +162,6 @@ export const templates = {
     subject: `Claim of ${ref} by ${to} is verified`,
     text: `The upstream owner verified their claim of ${ref} for the namespace ${to}. Complete it: ${env.SITE_URL}/admin/transfers#${id}`,
   }),
-  healthFailing: (env: Env, ref: string, version: string, excerpt: string) => ({
-    subject: `${ref} ${version} failed its health check`,
-    text: `Tonight's health check ran ${ref} ${version} with its test input and it failed:\n\n${excerpt || "(no output)"}\n\n` +
-      `After 3 failures in a row the tool is marked Possibly broken in search. One passing run clears it. Usually a site the tool queries changed; ` +
-      `publish a fixed version when you can. You get this email once per run of failures.` + footer(env),
-  }),
   failedJob: (env: Env, job: { id: string; repo: string | null; tag: string | null; error: string }) => ({
     subject: `A publish job failed after its retries: ${job.repo ?? "an upload"} ${job.tag ?? ""}`.trim(),
     text: `The queue gave up on job ${job.id} (${job.repo ?? "an upload"} ${job.tag ?? ""}) after five attempts:\n\n${job.error}\n\n` +

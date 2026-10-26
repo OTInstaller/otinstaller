@@ -34,7 +34,7 @@ const packages = [
   [fixture("docker-tool.yaml"), { installs: 1200, stars: 40, health: "healthy", signed: true, repo: "https://github.com/dheeraj/holehe-lite",
     history: [["1.0.0", "removed", "Malicious dependency found in 1.0.0"], ["1.1.0", "published"]] }],
   [fixture("pipx-tool.yaml"), { installs: 300, stars: 12, health: "healthy", signed: true }],
-  [fixture("guide.yaml"), { installs: 0, stars: 25, health: "not_checked", related: ["dheeraj/holehe-lite"] }],
+  [fixture("guide.yaml"), { installs: 0, stars: 25, health: "unknown", related: ["dheeraj/holehe-lite"] }],
   [base({
     name: "sherlock", namespace: "osintverse-community", version: "0.15.0",
     summary: "Finds accounts by username across 400+ social networks",

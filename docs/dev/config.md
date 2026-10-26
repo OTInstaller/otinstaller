@@ -70,14 +70,13 @@ restore drill).
 | `OPS_DISPATCH_TOKEN` | one of this or `OPS_INSTALLATION_ID` | fine-grained token with Contents: write on `OPS_REPO` only | falls back to the App installation token | yes ("or") | no |
 | `OPS_INSTALLATION_ID` | one of the two | the App's installation on registry-ops | 503 on dispatch if `OPS_DISPATCH_TOKEN` is also unset | yes ("or") | no |
 | `RESEND_API_KEY` | no | email via Resend | emails are recorded with status `skipped` and not sent | yes | no |
-| `HEALTH_TOKEN` | for health checks | shared with registry-ops' health workflow | `/v1/internal/health*` answer 503 `not_configured` | **no** | yes |
-| `SENTRY_DSN` | no | error reports to Sentry | no reporting | **no** | yes |
+| `SENTRY_DSN` | no | error reports to Sentry | no reporting | yes | yes |
 | `SENTRY_ENVIRONMENT` | no | Sentry environment tag | `production` | no | no |
 | `CF_URLSCAN_ACCOUNT_ID` / `CF_URLSCAN_TOKEN` | no | Cloudflare URL Scanner for guide links | URL Scanner step skipped (needs both) | yes | yes |
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | no (needed for real-size backups) | S3 presigned URLs straight to R2 for backup uploads, drill and restore downloads (all three needed) | URLs go through the API (`/v1/internal/backups/objects/*`, HMAC with `TOKEN_ENC_KEY`), capped by the 100 MB Worker body limit | yes | no |
 | `BACKUPS_BUCKET` | no | bucket name in presigned URLs | `otinstaller-backups` | no | no |
 | `ISSUES_REPO` | no | repo whose open `sev-1` issues the beta metrics count | `OTInstaller/feedback` | no | no |
-| `ISSUES_TOKEN` | no | token with Issues: read, needed while that repo is private | anonymous GitHub search; a private repo answers 422 and the count is `null` with a hint | no | no |
+| `ISSUES_TOKEN` | no | token with Issues: read, needed while that repo is private | anonymous GitHub search; a private repo answers 422 and the count is `null` with a hint | yes | no |
 | `EDGE_CACHE` | no | `"off"` sends every anonymous read to D1 | edge cache on (tests set `off` in `vitest.config.ts`) | no | no |
 
 `.dev.vars.example` also sets `SITE_URL` and `API_URL` (local values `http://localhost:4321` and
@@ -86,8 +85,8 @@ restore drill).
 Not in `.dev.vars.example` at all: `OPS_DISPATCH_TOKEN`, `OPS_INSTALLATION_ID`, `RESEND_API_KEY`, `R2_*`,
 `BACKUPS_BUCKET`, `ISSUES_REPO`, `ISSUES_TOKEN`, `EDGE_CACHE`, `SENTRY_ENVIRONMENT`, `OSINTVERSE_ISSUER`,
 `GITHUB_APP_SLUG` (`OPS_REPO`, `EMAIL_FROM` and `MIRROR_HOST` come from `wrangler.jsonc` vars locally too).
-Not in the `wrangler.jsonc` secrets comment: `HEALTH_TOKEN`, `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `ISSUES_TOKEN`,
-`ISSUES_REPO`, `OSINTVERSE_ISSUER`, `BACKUPS_BUCKET`, `EDGE_CACHE`.
+Not in the `wrangler.jsonc` secrets comment: `SENTRY_ENVIRONMENT`, `ISSUES_REPO`, `OSINTVERSE_ISSUER`, `BACKUPS_BUCKET`,
+`EDGE_CACHE`.
 
 GitLab webhooks are not authorised by an env secret: each GitLab source has its own webhook token stored in D1.
 
@@ -155,13 +154,11 @@ with `cache-control: public, max-age=300`. A non-OK upstream answers 502 with a 
 | --- | --- | --- | --- | --- |
 | `MIRROR_PUSH_TOKEN` | secret | `scan.yml` | `crane auth login` and `docker login <MIRROR_HOST> -u scanner` (Docker pulls publishers' unreleased images for scanning); chunked pushes of layers over 90 MB in `backup.py` | login step skipped; image backups fail at push (big layers raise immediately); scans of hosted images fail at pull |
 | `MIRROR_HOST` | variable | `scan.yml` | host for the crane login | `mirror.otinstaller.com` |
-| `HEALTH_TOKEN` | secret | `health.yml` | Bearer for `/v1/internal/health*`; must equal the API's `HEALTH_TOKEN` | API answers 401 and the job fails |
-| `REGISTRY_API` | variable | `health.yml` | API origin (`https://api.otinstaller.com`; `/v1` appended) | `health.py` raises `KeyError` |
-| `GITHUB_TOKEN` | automatic | both | `actions/checkout` | – |
+| `GITHUB_TOKEN` | automatic | `scan.yml` | `actions/checkout` | – |
 
 `scan.yml` is triggered by `repository_dispatch` (`otinstaller-scan`, `otinstaller-backup`, `otinstaller-drill`),
 so the API needs `OPS_DISPATCH_TOKEN` or the App installed on registry-ops (`OPS_INSTALLATION_ID`) with Contents:
-write. `health.yml` runs on cron `0 2 * * *` and `workflow_dispatch`. Both use `permissions: contents: read`.
+write. It uses `permissions: contents: read`.
 
 ---
 
@@ -208,10 +205,8 @@ the shim and skipped every file.
 
 | Value | Where |
 | --- | --- |
-| `HEALTH_TOKEN` | API secret, registry-ops secret |
 | `MIRROR_PUSH_TOKEN` | mirror Worker secret, registry-ops secret |
 | `MIRROR_HOST` | API var, registry-ops variable (both default `mirror.otinstaller.com`) |
-| `API_URL` / `REGISTRY_API` | API var, registry-ops `REGISTRY_API` |
 | `SITE_URL` | API var (CORS), the site's build env |
 | `INDEXNOW_KEY` | API var, the file name and content of the site's `web/public/<key>.txt` (and its `_headers` rule) |
 | `PUBLIC_API_URL` | the site's build env, must be the API's origin |

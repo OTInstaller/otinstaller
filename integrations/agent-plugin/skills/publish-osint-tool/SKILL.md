@@ -31,7 +31,7 @@ the release, security-scans it, sends a new publisher to human review, and publi
      `collects_personal_data`. Wrong answers are a policy violation, and they decide when agents must ask for consent.
    - `network.egress` with its `domains`, only if the tool needs the internet
    - `secrets` for API keys, with the URL where users get one
-   - `test.input`, a harmless input the scanner and health checks run
+   - `test.input`, a harmless input `ot validate --smoke` and the publish scan run
 3. **Write the Dockerfile.**
    - Pin the base image.
    - Run as a non-root user.

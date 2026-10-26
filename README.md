@@ -108,7 +108,8 @@ link- and content-checked, then published; a new publisher's first release waits
   (a pipx tool you choose to run with `--native` runs outside the container instead).
 - If the original host refuses an artifact, `ot` installs the same digest or hash from the registry's mirror and
   checks it the same way. Network errors never trigger that fallback.
-- Every published tool is run again every night; three failures in a row mark it as possibly broken.
+- A tool is marked possibly broken while it has an open broken issue, or while at least two signed-in people said in
+  the last 30 days that its latest version is broken and they outnumber those who said it works.
 
 Details: [security](https://otinstaller.com/docs/security) and the
 [acceptable use policy](https://otinstaller.com/policy/acceptable-use).
@@ -133,7 +134,7 @@ follow [docs/publishing-setup.md](docs/publishing-setup.md).
 | `spec/` | The manifest JSON Schema (`schema/v1.json`), the envelope, run-all and error schemas, valid and invalid example manifests, the release workflow templates, and the import wizard's Dockerfile templates |
 | `cli/` | `ot` (Go): installing and running tools, typed inputs, playbooks, saved runs, keys, publishing, `ot mcp`, self-update |
 | `api/` | The registry API (Cloudflare Workers, Hono, D1, Queues, R2): search and reads, sign-in, publishing and review, scans, backups, the community features and the remote MCP server; plus the image mirror Worker (`src/mirror/`) |
-| `ops/` | The scanner, backup and health-check jobs (`scanner/`), the workflows that run them in a separate repository, and the Worker behind get.otinstaller.com (`get/`) |
+| `ops/` | The scanner and backup jobs (`scanner/`), the workflows that run them in a separate repository, and the Worker behind get.otinstaller.com (`get/`) |
 | `otlite/` | otlite, the no-Docker edition (Python), with its own [README](otlite/README.md), [rules](otlite/AGENTS.md), tests, Debian packaging and release workflow |
 | `seed/` | The launch seed: first-party tools, community wrappers of third-party tools, and guides, each its own repository under `osintverse-community` ([seed/README.md](seed/README.md)) |
 | `integrations/` | The agent plugin and the remote MCP server's MCP Registry entry |

@@ -3131,8 +3131,8 @@
         "tags": [
           "Community"
         ],
-        "summary": "How a package is doing: health check, confirmations and open issues",
-        "description": "One line built from facts (the nightly health check, what signed-in people said about the latest version in the last 30 days, or since it came out while it is under a week old, open broken issues), plus the last 30 health checks with their failure class. Error excerpts are never included. Cached for 5 minutes.",
+        "summary": "How a package is doing: health, confirmations and open issues",
+        "description": "One line built from facts (what signed-in people said about the latest version in the last 30 days, or since it came out while it is under a week old, and open broken issues), plus the package's health, which comes from those same reports. Cached for 5 minutes.",
         "responses": {
           "200": {
             "description": "OK",
@@ -3164,7 +3164,21 @@
                       }
                     },
                     "health": {
-                      "type": "object"
+                      "type": "object",
+                      "description": "The package's health from community reports",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "description": "healthy (at least one person said the latest version works in the last 30 days), broken (shown as Possibly broken: an open broken issue, or at least two recent broken reports on the latest version that outnumber the works reports) or unknown. It comes from community reports, not from running the tool"
+                        },
+                        "checked_at": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "description": "When someone last said the latest version works, in Unix milliseconds; null when nobody did in the last 30 days"
+                        }
+                      }
                     },
                     "confirmations": {
                       "type": "object"
@@ -9835,7 +9849,7 @@
                 "health"
               ]
             },
-            "description": "relevance (default), installs, stars, updated, or health (healthy tools by their last passing nightly check first)"
+            "description": "relevance (default), installs, stars, updated, or health (healthy tools first, most recently reported working first; possibly broken ones last)"
           },
           {
             "name": "no_keys",
@@ -11692,7 +11706,8 @@
             "type": "integer"
           },
           "health": {
-            "type": "string"
+            "type": "string",
+            "description": "healthy (at least one person said the latest version works in the last 30 days), broken (shown as Possibly broken: an open broken issue, or at least two recent broken reports on the latest version that outnumber the works reports) or unknown. It comes from community reports, not from running the tool"
           },
           "verified": {
             "type": "boolean"
@@ -11752,7 +11767,7 @@
               "integer",
               "null"
             ],
-            "description": "When the nightly health check last ran, in Unix milliseconds; null when never"
+            "description": "When someone last said the latest version works, in Unix milliseconds; null when nobody did in the last 30 days"
           }
         }
       },
@@ -11977,7 +11992,8 @@
             "type": "string"
           },
           "health": {
-            "type": "string"
+            "type": "string",
+            "description": "healthy, broken (Possibly broken, from community reports; ot warns, it does not refuse) or unknown"
           },
           "verified_publisher": {
             "type": "boolean"
@@ -12755,7 +12771,7 @@
                 },
                 "health": {
                   "type": "string",
-                  "description": "healthy, broken (possibly broken), unknown or not_checked"
+                  "description": "healthy, broken (possibly broken, from community reports) or unknown"
                 },
                 "replacement": {
                   "type": "string",

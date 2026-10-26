@@ -44,7 +44,6 @@ export interface Env {
   OPS_INSTALLATION_ID?: string; // the GitHub App's installation on that repo
   OPS_DISPATCH_TOKEN?: string; // optional fine-grained token with Contents: write on OPS_REPO only; used instead of the App
   RESEND_API_KEY?: string;
-  HEALTH_TOKEN?: string; // shared with the nightly health workflow in registry-ops
   SENTRY_DSN?: string; // optional: errors are reported to Sentry
   SENTRY_ENVIRONMENT?: string;
   EMAIL_FROM?: string;

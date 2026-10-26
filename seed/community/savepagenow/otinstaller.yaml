@@ -38,4 +38,4 @@ ethics:
   notifies_target: false
   notes: "The Wayback Machine fetches the page from its own servers and keeps a public copy of it."
 # No test: every run would leave a public capture, and Save Page Now limits anonymous captures per address (shared CI
-# runners hit that limit), so scans skip the smoke test and the nightly health check leaves this tool out.
+# runners hit that limit), so scans skip the smoke test.

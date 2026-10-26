@@ -78,8 +78,9 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   no trust line). `@version` is parsed but ignored (always the latest detail).
 - Flags: `--json` (bool, false): prints `{"registry": <tool detail or null>, "manifest": <parsed manifest>}`.
 - API: `GET /tools/{ns}/{name}`.
-- Output: kind, summary, Trust (verified publisher, signed, manifest held by registry, community-packaged, health),
-  Deprecated message, License, then Inputs/Outputs/Key/Ethics and a `Run:` example (tools) or Level/Tools (guides).
+- Output: kind, summary, Trust (verified publisher, signed, manifest held by registry, community-packaged, health, or
+  `health: no reports yet` when the registry sends none), Deprecated message, License, then Inputs/Outputs/Key/Ethics
+  and a `Run:` example (tools) or Level/Tools (guides).
 - Sign-in: no. Exit: 0; 2 for a bad reference; 1 for registry errors (4xx not wrapped) or manifest parse errors.
 
 #### `ot changelog <namespace/name>`

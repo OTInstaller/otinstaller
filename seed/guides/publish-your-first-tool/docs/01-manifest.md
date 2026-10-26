@@ -40,7 +40,7 @@ ethics:
   auth_required: false                # does it need an account or API key?
   collects_personal_data: false
 test:
-  input: { name: "Ada Lovelace" }     # safe values; used for checks and nightly health
+  input: { name: "Ada Lovelace" }     # safe values; used by `ot validate --smoke` and the publish scan
 ```
 
 ## The parts that matter most

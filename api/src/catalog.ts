@@ -83,7 +83,8 @@ export function summary(r: SummaryRow) {
     stars: r.stars_count,
     installs_30d: r.installs_30d,
     health: r.health_status,
-    // When the nightly health check last ran (ms), so the site can say "worked last night"; null when never.
+    // When someone last said the latest version works (ms), so the site can say "reported working yesterday"; null
+    // when nobody has in 30 days.
     health_checked_at: r.health_checked_at ?? null,
     verified: r.verified === 1,
     // Registry-held manifests never get the Signed badge.

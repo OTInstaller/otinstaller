@@ -22,7 +22,6 @@ import { importRoutes } from "./routes/imports";
 import { guideRoutes } from "./routes/guides";
 import { trustRoutes } from "./routes/trust";
 import { transferRoutes } from "./routes/transfers";
-import { opsRoutes } from "./routes/ops";
 import { betaRoutes } from "./routes/beta";
 import { backupRoutes } from "./routes/backups";
 import { profileRoutes } from "./routes/profiles";
@@ -58,7 +57,7 @@ import { renderNotes } from "./changelog";
 import { siteActivity } from "./activity";
 import { firstWeekCounts } from "./first-week";
 import { mcpEndpoint } from "./mcp";
-import { lockStaleThreads } from "./community";
+import { lockStaleThreads, refreshAllHealth } from "./community";
 
 export type { Env } from "./env";
 
@@ -94,7 +93,6 @@ importRoutes(app);
 guideRoutes(app);
 trustRoutes(app);
 transferRoutes(app);
-opsRoutes(app);
 betaRoutes(app);
 backupRoutes(app);
 profileRoutes(app);
@@ -277,7 +275,7 @@ app.get("/tools", async (c) => {
     installs: (a, b) => b.r.installs_30d - a.r.installs_30d,
     stars: (a, b) => b.r.stars_count - a.r.stars_count,
     updated: (a, b) => ((b.r as any).updated_at ?? 0) - ((a.r as any).updated_at ?? 0),
-    // "Recently verified working": healthy tools by the time of their last passing nightly check, then the rest.
+    // "Recently reported working": healthy tools by when someone last said the latest version works, then the rest.
     health: (a, b) => {
       const h = (x: typeof a) => (x.r.health_status === "healthy" ? 2 : x.r.health_status === "broken" ? 0 : 1);
       return h(b) - h(a) || (b.r.health_checked_at ?? 0) - (a.r.health_checked_at ?? 0) || b.score - a.score;
@@ -633,13 +631,14 @@ export default {
     if (event.cron === WEEKLY_BACKUP_CRON) await weeklyBackups(env);
     // Monthly: restore a random bundle into an empty repository and pull a mirrored image by digest.
     if (event.cron === RESTORE_DRILL_CRON) await startDrill(env);
-    // Nightly: recompute 30-day install totals that ranking uses, and re-check guides' links.
+    // Nightly: recompute 30-day install totals and package statuses that ranking uses, and re-check guides' links.
     if (event.cron === "17 3 * * *") {
       await queueNightlyLinkChecks(env);
       await dailyDigest(env);
       await purgeRateLimits(env);
       await purgeBackups(env);
       await lockStaleThreads(env);
+      await refreshAllHealth(env);
       await deliverInbox(env, "daily");
       await purgeInbox(env);
       await refreshContributorStats(env);

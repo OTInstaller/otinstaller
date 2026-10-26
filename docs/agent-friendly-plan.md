@@ -892,8 +892,8 @@ depend on MCP spec churn, and it carries the least risk.
   - Long runs use `wait_seconds` and polling only; neither the Tasks extension nor progress notifications are used
     yet.
   - `--http` (loopback Streamable HTTP) is not built.
-  - Agent installs also refuse yanked versions, failed scans, broken health, local manifests and `--native` pipx
-    tools.
+  - Agent installs also refuse yanked versions, failed scans, local manifests and `--native` pipx tools. Broken
+    health was refused at first; since health comes from what people report, it is a warning, as for a person.
   - `OT_CONSENT=off` (not a `config.json` key) turns the unattended CLI check off.
 
 ### Phase 3: packaging and listings (≈ 4–6 days, overlaps Phase 2's end)
