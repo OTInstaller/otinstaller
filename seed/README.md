@@ -25,15 +25,15 @@ not.
 
 | Package | Version | License | Upstream | Runtime | Inputs | Categories |
 | --- | --- | --- | --- | --- | --- | --- |
-| `osintverse-community/maigret` | 0.6.6 | MIT | soxoj/maigret | pipx (PyPI wheel) | `username` (username), `site` (string)?, `top_sites` (integer)? | username, social-media |
+| `osintverse-community/maigret` | 0.6.8 | MIT | soxoj/maigret | pipx (PyPI wheel) | `username` (username), `site` (string)?, `top_sites` (integer)? | username, social-media |
 | `osintverse-community/naminter` | 1.0.9 | MIT | 3xp0rt/Naminter | Docker, built in wrapper | `username` (username), `category` (string)? | username |
-| `osintverse-community/sherlock` | 0.16.2 | MIT | sherlock-project/sherlock | pipx (PyPI wheel) | `username` (username), `site` (string)? | username, social-media |
+| `osintverse-community/sherlock` | 0.16.4 | MIT | sherlock-project/sherlock | pipx (PyPI wheel) | `username` (username), `site` (string)? | username, social-media |
 | `osintverse-community/socialscan` | 2.0.1 | MPL-2.0 | iojw/socialscan | pipx (PyPI wheel) | `query` (username), `platforms` (string)? | username, email, social-media |
 | `osintverse-community/username-permutations` | 0.1.0 | MIT | first-party | Docker, built here | `name` (name), `extra` (string)? | username, people |
 | `osintverse-community/checkdmarc` | 6.0.4 | Apache-2.0 | domainaware/checkdmarc | pipx (PyPI wheel) | `domain` (domain) | email, domain-dns |
-| `osintverse-community/holehe` | 1.61.0 | GPL-3.0 | megadose/holehe | Docker, built in wrapper | `email` (email) | email |
+| `osintverse-community/holehe` | 1.61.3 | GPL-3.0 | megadose/holehe | Docker, built in wrapper | `email` (email) | email |
 | `osintverse-community/mailcat` | 0.1.1 | Apache-2.0 | sharsil/mailcat | pipx (PyPI wheel) | `username` (username), `provider` (string)? | email, username |
-| `osintverse-community/email-header-parser` | 0.1.0 | MIT | first-party | Docker, built here | `headers` (string) | email |
+| `osintverse-community/email-header-parser` | 0.1.1 | MIT | first-party | Docker, built here | `headers` (string) | email |
 | `osintverse-community/dnsrecon` | 1.6.3 | GPL-2.0 | darkoperator/dnsrecon | Docker, built in wrapper | `domain` (domain) | domain-dns |
 | `osintverse-community/dnstwist` | 20250130.0.0 | Apache-2.0 | elceef/dnstwist | pipx (PyPI wheel) | `domain` (domain) | domain-dns |
 | `osintverse-community/httpx` | 1.12.0 | MIT | projectdiscovery/httpx | Docker, built in wrapper | `target` (url) | domain-dns, ip-network |
@@ -198,7 +198,7 @@ Every repository and its outcome is in [`candidates.md`](candidates.md).
 | `osintverse-community/uncover` | 1.2.1 | MIT | projectdiscovery/uncover | Docker, built in wrapper | `query` (string), `engine` (enum)?, `limit` (integer)? | ip-network, domain-dns |
 | `osintverse-community/urlfinder` | 0.0.3 | MIT | projectdiscovery/urlfinder | Docker, built in wrapper | `domain` (domain) | domain-dns, web-archive |
 | `osintverse-community/urx` | 0.11.0 | MIT | hahwul/urx | Docker, built in wrapper | `domain` (domain) | web-archive, domain-dns |
-| `osintverse-community/user-scanner` | 1.5.2 | MIT | kaifcodec/user-scanner | pipx (PyPI wheel) | `username` (username)?, `email` (email)? | username, email, social-media |
+| `osintverse-community/user-scanner` | 1.5.3 | MIT | kaifcodec/user-scanner | pipx (PyPI wheel) | `username` (username)?, `email` (email)? | username, email, social-media |
 | `osintverse-community/waybackpack` | 0.6.4 | MIT | jsvine/waybackpack | pipx (PyPI wheel) | `url` (url), `from_date` (string)?, `to_date` (string)? | web-archive |
 | `osintverse-community/waymore` | 8.9.0 | MIT | xnl-h4ck3r/waymore | pipx (PyPI wheel) | `domain` (domain), `from_date` (string)?, `to_date` (string)? | web-archive, domain-dns |
 | `osintverse-community/webpalm` | 2.0.20 | GPL-3.0 | XORbit01/webpalm | Docker, built in wrapper | `url` (url), `level` (integer)? | domain-dns, utilities |

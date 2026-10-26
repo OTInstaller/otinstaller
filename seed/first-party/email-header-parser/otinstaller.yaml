@@ -3,7 +3,7 @@
 schema: 1
 name: email-header-parser
 namespace: osintverse-community
-version: 0.1.0
+version: 0.1.1
 summary: "Parses raw email headers into senders, relay hops, IPs and SPF/DKIM/DMARC results"
 readme: README.md
 license: MIT
