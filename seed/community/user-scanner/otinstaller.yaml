@@ -3,7 +3,7 @@
 schema: 1
 name: user-scanner
 namespace: osintverse-community
-version: 1.5.2
+version: 1.5.3
 summary: "Checks whether a username or email is registered on 2,700+ sites and services"
 readme: README.md
 license: MIT
