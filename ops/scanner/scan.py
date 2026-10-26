@@ -10,6 +10,8 @@ Reads the scan request the registry dispatched, checks the artifact, and posts r
   malware          GuardDog source-code heuristics (Python wheels)
   sbom             Trivy CycloneDX package count
   smoke            the manifest's test input, in ot's sandbox: offline unless the manifest declares network egress
+  python_lock      pipx: the wheel's dependencies, pinned with the sha256 of every file (what ot's local build installs)
+  sandbox          pipx: the scanned image, pushed to the mirror and signed, when the request names a target
 
 After a passing verdict the registry answers the callback with a backup job (signed upload URLs); this script
 then copies the image to the mirror, or uploads the wheel, and uploads a git bundle (see backup.py). The same
@@ -330,15 +332,83 @@ def scan_docker(req: dict) -> dict:
 
 
 # The image `ot` runs a pipx tool in (pythonDockerfile in cli/internal/runner/install.go; test_scan.py keeps the two
-# equal), so the smoke test and the health check run it as users do. The sandbox is read-only except /tmp, so it
-# starts there: a tool that writes into its working folder (reports, caches) works in `ot` and must pass here too.
-PYTHON_DOCKERFILE = """FROM python:3.12-slim
+# equal), so the smoke test runs it as users do. The sandbox is read-only except /tmp, so it starts there: a tool
+# that writes into its working folder (reports, caches) works in `ot` and must pass here too. The base is pinned by
+# digest; requirements.lock holds the dependencies resolve_lock pinned (empty: pip resolves them).
+PYTHON_DOCKERFILE = """FROM python:3.12-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704
 RUN useradd --uid 10001 --create-home ot
-COPY *.whl /tmp/
-RUN pip install --no-cache-dir /tmp/*.whl && rm /tmp/*.whl
+COPY *.whl requirements.lock /tmp/
+RUN if [ -s /tmp/requirements.lock ]; then pip install --no-cache-dir --no-deps --require-hashes -r /tmp/requirements.lock && pip install --no-cache-dir --no-deps /tmp/*.whl; else pip install --no-cache-dir /tmp/*.whl; fi && rm /tmp/*.whl /tmp/requirements.lock
 USER ot
 WORKDIR /tmp
 """
+PYTHON_BASE = PYTHON_DOCKERFILE.split()[1]
+# A lock line ot accepts (lockLine in install.go): a pinned package and the sha256 of each of its files.
+LOCK_LINE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*==[A-Za-z0-9._+!-]+( --hash=sha256:[0-9a-f]{64})+$")
+
+
+def lock_from_report(report: dict) -> str | None:
+    """A lock from pip's installation report: each dependency pinned, with the sha256 of every file PyPI has for that
+    version, so the same lock installs on amd64 and arm64. None when a dependency doesn't come from PyPI."""
+    lines = []
+    for item in report.get("install") or []:
+        if item.get("is_direct"):
+            continue  # the wheel itself, installed from the local file
+        info = item.get("download_info") or {}
+        if "archive_info" not in info or not str(info.get("url", "")).startswith("https://files.pythonhosted.org/"):
+            log(f"not locking dependencies: {info.get('url')} is not a PyPI file")
+            return None
+        name, version = item["metadata"]["name"], item["metadata"]["version"]
+        meta = http_json(f"https://pypi.org/pypi/{name}/{version}/json") or {}
+        hashes = sorted({u["digests"]["sha256"] for u in meta.get("urls") or [] if (u.get("digests") or {}).get("sha256")})
+        line = f"{name}=={version} " + " ".join(f"--hash=sha256:{h}" for h in hashes)
+        if not hashes or not LOCK_LINE.match(line):
+            log(f"not locking dependencies: no usable hashes for {name} {version}")
+            return None
+        lines.append(line)
+    return "".join(f"{line}\n" for line in sorted(lines, key=str.lower))
+
+
+def resolve_lock(work: Path, wheel_name: str) -> str | None:
+    """Resolves the wheel's dependencies once, with pip in the sandbox's own base image (so markers and platform tags
+    match), and returns the lock; None when pip can't (the image then resolves them itself, as before)."""
+    report = work / "report.json"
+    r = run(["docker", "run", "--rm", "-v", f"{work}:/w", PYTHON_BASE, "pip", "install", "--quiet", "--disable-pip-version-check",
+             "--root-user-action=ignore", "--dry-run", "--ignore-installed", "--report", "/w/report.json", f"/w/{wheel_name}"], timeout=600)
+    if r.returncode != 0 or not report.exists():
+        log(f"could not resolve the dependencies: {r.stderr[-300:]}")
+        return None
+    try:
+        return lock_from_report(json.loads(report.read_text()))
+    finally:
+        report.unlink(missing_ok=True)
+
+
+def push_sandbox(req: dict, local_tag: str) -> dict | None:
+    """Pushes the scanned image to the mirror target in the request and signs it with this workflow's identity, so `ot`
+    pulls it instead of building it. The mirror withholds a sandbox-* tag's image until the version is published.
+    None when the request names no target (no mirror, or a license that doesn't allow sharing it) or the push fails."""
+    target = req.get("sandbox") or {}
+    repo, tag = target.get("repository"), target.get("tag")
+    if not repo or not tag:
+        return None
+    ref = f"{repo}:{tag}"
+    if run(["docker", "tag", local_tag, ref]).returncode != 0:
+        return None
+    pushed = run(["docker", "push", ref], timeout=1200)
+    digest = re.search(r"digest: (sha256:[0-9a-f]{64})", pushed.stdout)
+    if pushed.returncode != 0 or not digest:
+        log(f"could not push the sandbox image: {(pushed.stderr or pushed.stdout)[-300:]}")
+        return None
+    image = f"{repo}@{digest.group(1)}"
+    # Keyless, with the workflow's OIDC token (the job needs id-token: write). ot checks this identity.
+    signed = False
+    if shutil.which("cosign") and os.environ.get("ACTIONS_ID_TOKEN_REQUEST_URL"):
+        s = run(["cosign", "sign", "--yes", image], timeout=600)
+        signed = s.returncode == 0
+        if not signed:
+            log(f"could not sign the sandbox image: {s.stderr[-300:]}")
+    return {"image": image, "signed": signed}
 
 
 def scan_pipx(req: dict, work: Path) -> dict:
@@ -359,10 +429,19 @@ def scan_pipx(req: dict, work: Path) -> dict:
     signature = check_wheel_provenance(rt["package"], rt["package_version"], wheel["filename"], req.get("source_repo", ""),
                                        req.get("upstream_repo", ""))
 
-    # Install the wheel into an image (dependencies included) so Trivy scans what users would run.
+    # Install the wheel into an image (dependencies included) so Trivy scans what users would run: with the
+    # dependencies pinned and hashed, the image ot builds from the same lock is the one scanned here.
     (work / "Dockerfile").write_text(PYTHON_DOCKERFILE)
+    lock = resolve_lock(work, wheel["filename"])
+    (work / "requirements.lock").write_text(lock or "")
     tag = f"ot-scan/{re.sub(r'[^a-z0-9]+', '-', req['ref'].lower())}:latest"
     built = run(["docker", "build", "-q", "-t", tag, str(work)], timeout=1200)
+    if built.returncode != 0 and lock:
+        # A dependency pip can only build from source can fail under --require-hashes; ot would fail the same way.
+        log("building with the dependency lock failed; building without it")
+        lock = None
+        (work / "requirements.lock").write_text("")
+        built = run(["docker", "build", "-q", "-t", tag, str(work)], timeout=1200)
     if built.returncode != 0:
         raise RuntimeError(f"building the wheel image failed: {built.stderr[-500:]}")
     # Only the Python packages: the wrapper's base image is ours, not the author's.
@@ -382,14 +461,22 @@ def scan_pipx(req: dict, work: Path) -> dict:
             malware["note"] = "guarddog output could not be read"
     else:
         malware["note"] = "guarddog not installed"
-    return {
+    smoked = smoke(tag, rt, req.get("test_input"), bool(req.get("network_egress")), int(req.get("expect_exit_code") or 0))
+    results = {
         "signature": signature,
         "vulnerabilities": vulns,
         "secrets": secrets,
         "malware": malware,
-        "smoke": smoke(tag, rt, req.get("test_input"), bool(req.get("network_egress")), int(req.get("expect_exit_code") or 0)),
+        "smoke": smoked,
         "sbom": {"packages": packages},
+        "python_lock": lock,
     }
+    # A release that will be rejected gets no image (the registry decides; these are the scanner's own fail rules).
+    if smoked.get("status") != "fail" and not malware["count"] and not secrets["count"]:
+        sandbox = push_sandbox(req, tag)
+        if sandbox:
+            results["sandbox"] = sandbox
+    return results
 
 
 def empty_results() -> dict:

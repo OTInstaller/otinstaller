@@ -64,6 +64,6 @@ ethics:
   collects_personal_data: false
   notifies_target: false
 test:
-  # Scans and health checks run without secrets, so the tool reports the missing key with exit code 3.
+  # The publish scan runs the test without secrets, so the tool reports the missing key with exit code 3.
   expect_exit_code: 3
   input: { ip: "8.8.8.8" }

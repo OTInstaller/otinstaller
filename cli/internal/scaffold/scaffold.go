@@ -217,7 +217,7 @@ ethics:
   auth_required: false
   collects_personal_data: true
 test:
-  # Safe test values only. Used by ` + "`ot validate --smoke`" + ` and nightly health checks.
+  # Safe test values only. Used by ` + "`ot validate --smoke`" + ` and the publish scan.
   input: { target: "example.com" }
 <<- end >>
 `

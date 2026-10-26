@@ -138,7 +138,7 @@ func (a *App) offerInstall(ctx context.Context, refs []string, types map[string]
 			fmt.Fprintf(a.Err, "  note: leaving out %s: it is deprecated\n", ref)
 			continue
 		case t.Health == "broken":
-			fmt.Fprintf(a.Err, "  note: leaving out %s: recent health checks mark it possibly broken\n", ref)
+			fmt.Fprintf(a.Err, "  note: leaving out %s: people who use it mark it possibly broken\n", ref)
 			continue
 		case t.Kind == "guide":
 			continue

@@ -58,6 +58,6 @@ ethics:
   notifies_target: false
   notes: "Returns officers and people with significant control, with the month and year of birth the public register shows."
 test:
-  # Scans and health checks run without secrets, so the tool reports the missing key with exit code 3.
+  # The publish scan runs the test without secrets, so the tool reports the missing key with exit code 3.
   expect_exit_code: 3
   input: { company: "Tesco" }

@@ -17,18 +17,25 @@ export const SUMMARY_COLUMNS = `
   t.id, t.rowid AS rowid, n.name AS namespace, t.name, t.kind, t.summary, t.categories, t.status,
   t.stars_count, t.installs_30d, t.health_status, t.health_checked_at, t.community_packaged, t.needs_update, n.verified,
   v.version AS latest_version, v.runtime_kind, v.signer_identity, v.published_at AS published_at,
-  json_extract(v.manifest_json, '$.title') AS title, json_extract(v.manifest_json, '$.level') AS level,
-  json_extract(v.manifest_json, '$.format') AS format, json_extract(v.manifest_json, '$.language') AS language,
+  t.title, t.level, t.format, t.language,
   (SELECT s.manifest_mode FROM sources s WHERE s.tool_id = t.id) AS manifest_mode,
   (SELECT s.sync_status FROM sources s WHERE s.tool_id = t.id) AS source_status,
   (SELECT group_concat(type) FROM tool_io WHERE tool_id = t.id AND direction = 'in') AS inputs,
   (SELECT group_concat(type) FROM tool_io WHERE tool_id = t.id AND direction = 'out') AS outputs,
   EXISTS (SELECT 1 FROM tool_secrets WHERE tool_id = t.id AND required = 1) AS needs_keys,
-  json_extract(v.manifest_json, '$.ethics.touches_target') AS touches_target,
-  json_extract(v.manifest_json, '$.ethics.auth_required') AS auth_required,
-  json_extract(v.manifest_json, '$.ethics.collects_personal_data') AS collects_personal_data,
-  json_extract(v.manifest_json, '$.ethics.notifies_target') AS notifies_target,
-  json_extract(v.manifest_json, '$.network.egress') AS egress`;
+  t.touches_target, t.auth_required, t.collects_personal_data, t.notifies_target, t.egress`;
+
+/**
+ * What search filters and summaries read from the latest version's manifest, copied onto tools so a search doesn't
+ * parse the manifest of every candidate: `UPDATE tools SET ${SEARCH_FIELDS} FROM versions v WHERE v.id = ...`.
+ * latestMetadata runs it whenever the latest version changes; migration 0042 and the seed ran the same for every tool.
+ * Null where the manifest leaves a field out, as json_extract gives.
+ */
+export const SEARCH_FIELDS = `title = json_extract(v.manifest_json, '$.title'), level = json_extract(v.manifest_json, '$.level'),
+  format = json_extract(v.manifest_json, '$.format'), language = json_extract(v.manifest_json, '$.language'),
+  touches_target = json_extract(v.manifest_json, '$.ethics.touches_target'), auth_required = json_extract(v.manifest_json, '$.ethics.auth_required'),
+  collects_personal_data = json_extract(v.manifest_json, '$.ethics.collects_personal_data'),
+  notifies_target = json_extract(v.manifest_json, '$.ethics.notifies_target'), egress = json_extract(v.manifest_json, '$.network.egress')`;
 
 export type SummaryRow = {
   id: string;
@@ -83,7 +90,8 @@ export function summary(r: SummaryRow) {
     stars: r.stars_count,
     installs_30d: r.installs_30d,
     health: r.health_status,
-    // When the nightly health check last ran (ms), so the site can say "worked last night"; null when never.
+    // When someone last said the latest version works (ms), so the site can say "reported working yesterday"; null
+    // when nobody has in 30 days.
     health_checked_at: r.health_checked_at ?? null,
     verified: r.verified === 1,
     // Registry-held manifests never get the Signed badge.

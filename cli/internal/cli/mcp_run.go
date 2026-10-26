@@ -235,7 +235,7 @@ func effectful(title string, destructive, idempotent bool) *mcp.ToolAnnotations 
 
 func (s *mcpServer) addRunTools() {
 	mcp.AddTool(s.srv, &mcp.Tool{Name: "install_tool", Title: "Install a tool", Annotations: effectful("Install a tool", false, true),
-		Description: "Install a published tool: pull its Docker image by digest and verify its cosign signature, or fetch its Python wheel by SHA-256 and build it into a sandbox image. Agents can't install yanked, failed, broken or local packages, or a Docker image whose signature can't be verified. On an installed tool it updates to the latest version (or the one named), saying so when it asks, but never moves a version the person held. Asks the person first unless the policy allows installs."},
+		Description: "Install a published tool: pull its Docker image by digest and verify its cosign signature, or fetch its Python wheel by SHA-256 and build it into a sandbox image. Agents can't install yanked, failed or local packages, or a Docker image whose signature can't be verified. On an installed tool it updates to the latest version (or the one named), saying so when it asks, but never moves a version the person held. Asks the person first unless the policy allows installs."},
 		s.installTool)
 	mcp.AddTool(s.srv, &mcp.Tool{Name: "uninstall_tool", Title: "Uninstall a tool", Annotations: effectful("Uninstall a tool", true, true),
 		Description: "Remove an installed tool. Always asks the person."},

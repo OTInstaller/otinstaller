@@ -3,7 +3,7 @@
 // token scopes.
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { announceVersion, closeSystemIssue, fileSystemIssue, REDACTED, renderPost, screen } from "../src/community";
+import { announceVersion, closeSystemIssue, fileSystemIssue, REDACTED, refreshAllHealth, renderPost, screen } from "../src/community";
 import { requiredScope } from "../src/scopes";
 import { sha256Hex, ulid } from "../src/lib/crypto";
 import { call } from "./helpers";
@@ -288,17 +288,13 @@ describe("system issues", () => {
 });
 
 describe("community status", () => {
-  it("puts the health check, confirmations and open issues in one line, without error excerpts", async () => {
+  it("puts confirmations and open issues in one line", async () => {
     const p = await person();
     await req(p, "PUT", `/tools/${TOOL}/confirmations`, { result: "works", platform: "linux/amd64" });
-    const v = (await DB().prepare(`SELECT latest_version_id FROM tools WHERE id = ?`).bind(TOOL_ID).first<{ latest_version_id: string }>())!;
-    await DB().prepare(`INSERT INTO health_checks (id, tool_id, version_id, result, duration_ms, error_excerpt, failure_class, ran_at) VALUES (?, ?, ?, 'fail', 900, 'secret output about a target', 'timeout', ?)`)
-      .bind(ulid(), TOOL_ID, v.latest_version_id, Date.now() - 1000).run();
     const s = await req(null, "GET", `/tools/${TOOL}/status`);
     expect(s.res.headers.get("cache-control")).toMatch(/public.*max-age=300/);
     expect(s.body.line.text).toMatch(/works for \d+ (person|people)[^(]*\([^)]*linux\/amd64/);
-    expect(s.body.health.history[0]).toMatchObject({ result: "fail", failure: "timeout" });
-    expect(JSON.stringify(s.body)).not.toContain("secret output");
+    expect(s.body.health).toEqual({ status: expect.any(String), checked_at: expect.any(Number) });
     const detail = await req(null, "GET", `/tools/${TOOL}`);
     expect(detail.body.community).toEqual({ open_broken: expect.any(Number), open_outdated: expect.any(Number) });
   });
@@ -306,12 +302,56 @@ describe("community status", () => {
   it("says failing, mixed, working or unknown from the facts", async () => {
     const { statusLine } = await import("../src/community");
     const now = Date.now();
-    const base = { health: "healthy", checked_at: now - 3600_000, works: 0, broken: 0, platforms: [], open_broken: 0, version: "1.0.0" };
-    expect(statusLine(base, now)).toEqual({ state: "working", text: "Passed the registry's health check today." });
-    expect(statusLine({ ...base, health: "broken" }, now).state).toBe("failing");
+    const base = { works: 0, broken: 0, platforms: [], open_broken: 0, version: "1.0.0" };
+    expect(statusLine(base, now)).toEqual({ state: "unknown", text: "Nobody has said in the last 30 days whether 1.0.0 works." });
+    expect(statusLine({ ...base, works: 2 }, now)).toEqual({ state: "working", text: "1.0.0 works for 2 people in the last 30 days." });
     expect(statusLine({ ...base, broken: 3, works: 1 }, now).state).toBe("failing");
-    expect(statusLine({ ...base, open_broken: 1 }, now)).toMatchObject({ state: "mixed", text: expect.stringContaining("1 open broken issue") });
-    expect(statusLine({ ...base, health: "unknown", checked_at: null }, now)).toEqual({ state: "unknown", text: "Not health-checked yet." });
+    expect(statusLine({ ...base, broken: 1, works: 1 }, now).state).toBe("mixed");
+    expect(statusLine({ ...base, works: 2, open_broken: 1 }, now)).toMatchObject({ state: "failing", text: expect.stringContaining("1 open broken issue") });
+  });
+
+  it("marks a package healthy or possibly broken from what people report", async () => {
+    const toolId = ulid();
+    const name = `health${uniq()}`;
+    const [old, latest] = [ulid(), ulid()];
+    await DB().batch([
+      DB().prepare(`INSERT INTO tools (id, namespace_id, kind, name, summary, created_at, updated_at) VALUES (?, 'ns_community', 'tool', ?, 'Health test tool', 1, 1)`).bind(toolId, name),
+      DB().prepare(`INSERT INTO versions (id, tool_id, version, semver_major, semver_minor, semver_patch, manifest_json, status, published_at, created_at) VALUES (?, ?, '1.0.0', 1, 0, 0, '{}', 'published', 1, 1)`).bind(old, toolId),
+      DB().prepare(`INSERT INTO versions (id, tool_id, version, semver_major, semver_minor, semver_patch, manifest_json, status, published_at, created_at) VALUES (?, ?, '1.1.0', 1, 1, 0, '{}', 'published', 2, 2)`).bind(latest, toolId),
+      DB().prepare(`UPDATE tools SET latest_version_id = ? WHERE id = ?`).bind(latest, toolId),
+    ]);
+    const ref = `osintverse-community/${name}`;
+    const health = async () => (await DB().prepare(`SELECT health_status, health_checked_at FROM tools WHERE id = ?`).bind(toolId).first<{ health_status: string; health_checked_at: number | null }>())!;
+    const [a, b, c] = await Promise.all([person(), person(), person()]);
+
+    // Reports about an older version don't count.
+    await req(a, "PUT", `/tools/${ref}/confirmations`, { result: "broken", version: "1.0.0", platform: "linux/amd64" });
+    await req(b, "PUT", `/tools/${ref}/confirmations`, { result: "broken", version: "1.0.0", platform: "linux/amd64" });
+    expect((await health()).health_status).toBe("unknown");
+
+    await req(a, "PUT", `/tools/${ref}/confirmations`, { result: "works", platform: "linux/amd64" });
+    expect(await health()).toEqual({ health_status: "healthy", health_checked_at: expect.any(Number) });
+    expect((await req(null, "GET", `/tools/${ref}`)).body.health).toBe("healthy");
+
+    // Two people who say it is broken outnumber one who says it works.
+    await req(b, "PUT", `/tools/${ref}/confirmations`, { result: "broken", platform: "linux/amd64" });
+    expect((await health()).health_status).toBe("healthy");
+    await req(c, "PUT", `/tools/${ref}/confirmations`, { result: "broken", platform: "darwin/arm64" });
+    expect((await health()).health_status).toBe("broken");
+    expect((await req(null, "GET", `/tools/${ref}/status`)).body.line.state).toBe("failing");
+    await req(c, "PUT", `/tools/${ref}/confirmations`, { result: "works", platform: "darwin/arm64" });
+    expect((await health()).health_status).toBe("healthy");
+
+    // An open broken issue makes it possibly broken until it is closed.
+    await fileSystemIssue(env as any, toolId, "broken", { title: "Several reports of it failing", markdown: "Failed runs.", version: "1.1.0" }, "health:test", "run_signals");
+    expect((await health()).health_status).toBe("broken");
+    await closeSystemIssue(env as any, toolId, "health:test", "fixed");
+    expect((await health()).health_status).toBe("healthy");
+
+    // What people said more than 30 days ago stops counting at the nightly recount.
+    await DB().prepare(`UPDATE confirmations SET created_at = ? WHERE tool_id = ?`).bind(Date.now() - 31 * 86_400_000, toolId).run();
+    await refreshAllHealth(env as any);
+    expect(await health()).toEqual({ health_status: "unknown", health_checked_at: null });
   });
 });
 

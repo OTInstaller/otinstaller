@@ -16,6 +16,13 @@ const validate = ajv.compile(schema);
 const fixture = (name) => YAML.parse(readFileSync(path.join(root, "spec/fixtures/valid", name), "utf8"));
 const example = (name) => YAML.parse(readFileSync(path.join(root, "examples", name, "otinstaller.yaml"), "utf8"));
 
+// A copy of SEARCH_FIELDS in src/catalog.ts (this file runs in plain Node); api.test.ts checks the two are the same.
+export const SEARCH_FIELDS = `title = json_extract(v.manifest_json, '$.title'), level = json_extract(v.manifest_json, '$.level'),
+  format = json_extract(v.manifest_json, '$.format'), language = json_extract(v.manifest_json, '$.language'),
+  touches_target = json_extract(v.manifest_json, '$.ethics.touches_target'), auth_required = json_extract(v.manifest_json, '$.ethics.auth_required'),
+  collects_personal_data = json_extract(v.manifest_json, '$.ethics.collects_personal_data'),
+  notifies_target = json_extract(v.manifest_json, '$.ethics.notifies_target'), egress = json_extract(v.manifest_json, '$.network.egress')`;
+
 // Real packages: a PyPI wheel whose hash ot checks, and Sigstore's keyless-signed cosign image.
 const COSIGN_SIGNER = { identity: "keyless@projectsigstore.iam.gserviceaccount.com", issuer: "https://accounts.google.com" };
 const digest = (c) => c.repeat(64);
@@ -34,7 +41,7 @@ const packages = [
   [fixture("docker-tool.yaml"), { installs: 1200, stars: 40, health: "healthy", signed: true, repo: "https://github.com/dheeraj/holehe-lite",
     history: [["1.0.0", "removed", "Malicious dependency found in 1.0.0"], ["1.1.0", "published"]] }],
   [fixture("pipx-tool.yaml"), { installs: 300, stars: 12, health: "healthy", signed: true }],
-  [fixture("guide.yaml"), { installs: 0, stars: 25, health: "not_checked", related: ["dheeraj/holehe-lite"] }],
+  [fixture("guide.yaml"), { installs: 0, stars: 25, health: "unknown", related: ["dheeraj/holehe-lite"] }],
   [base({
     name: "sherlock", namespace: "osintverse-community", version: "0.15.0",
     summary: "Finds accounts by username across 400+ social networks",
@@ -154,5 +161,7 @@ export function buildSeedStatements(now = Date.UTC(2026, 9, 1)) {
   }
   // holehe-lite was a community wrapper before its owner claimed it.
   out.push(insert("aliases", { old_namespace: "osintverse-community", old_name: "holehe", tool_id: toolIds["dheeraj/holehe-lite"], created_at: now }));
+  // What search filters on, from each tool's latest manifest, as latestMetadata writes it (SEARCH_FIELDS in src/catalog.ts).
+  out.push(`UPDATE tools SET ${SEARCH_FIELDS} FROM versions v WHERE v.id = tools.latest_version_id;`);
   return out;
 }

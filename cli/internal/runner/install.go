@@ -14,6 +14,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 
@@ -41,6 +42,14 @@ type InstallOptions struct {
 	// RequireSignature refuses a Docker image without a recorded signer, or when cosign is missing, instead of
 	// warning. Installs an AI agent asks for use it.
 	RequireSignature bool
+	// SandboxImage is the image the registry's scanner built from a pipx package's wheel (on the mirror, by digest),
+	// signed by SandboxSignerIdentity. When it can be used, ot pulls it instead of downloading the wheel and building.
+	SandboxImage          string
+	SandboxSignerIdentity string
+	SandboxSignerIssuer   string
+	// PythonLock is the wheel's dependencies as the scanner resolved them (name==version with every file's sha256),
+	// which a local build installs instead of resolving them again.
+	PythonLock string
 }
 
 // Install pulls or builds everything a package needs and returns its state record.
@@ -73,18 +82,28 @@ func (r *Runner) Install(ctx context.Context, m *manifest.Manifest, rawManifest 
 		}
 	case "pipx":
 		native := opt.Native || r.Engine == ""
+		inst.Artifact = "sha256:" + m.Runtime.WheelSHA256
+		if !native {
+			image, err := r.pullSandbox(ctx, opt)
+			if err != nil {
+				return nil, err
+			}
+			if image != "" {
+				inst.LocalImage = image
+				return inst, nil
+			}
+		}
 		wheel, fromBackup, err := FetchWheelWithBackup(ctx, m, opt.WheelBackupURL, r.Stderr)
 		inst.FromBackup = fromBackup
 		if err != nil {
 			return nil, err
 		}
 		defer os.RemoveAll(filepath.Dir(wheel))
-		inst.Artifact = "sha256:" + m.Runtime.WheelSHA256
 		inst.Native = native
 		if native {
 			err = r.installPipxNative(ctx, m, wheel)
 		} else {
-			inst.LocalImage, err = r.buildPythonImage(ctx, m, wheel)
+			inst.LocalImage, err = r.buildPythonImage(ctx, m, wheel, r.pythonLock(opt.PythonLock))
 		}
 		if err != nil {
 			return nil, err
@@ -122,9 +141,10 @@ func sameDigest(original, mirror string) bool {
 	return ok1 && ok2 && a == b
 }
 
-// installDocker pulls the image by digest and verifies its signature. If the original registry refuses the
-// image, it pulls the same digest from the mirror and verifies the same signature there. It returns the
-// reference that was pulled and whether its signature was verified.
+// installDocker pulls the image by digest and verifies its signature at the same time (cosign reads the signature
+// from the registry, not from the pulled copy). If the original registry refuses the image, it pulls the same digest
+// from the mirror and verifies the same signature there. It returns the reference that was pulled and whether its
+// signature was verified.
 func (r *Runner) installDocker(ctx context.Context, m *manifest.Manifest, opt InstallOptions) (string, bool, error) {
 	if err := r.requireEngine(); err != nil {
 		return "", false, err
@@ -133,43 +153,133 @@ func (r *Runner) installDocker(ctx context.Context, m *manifest.Manifest, opt In
 	if !strings.Contains(image, "@sha256:") {
 		return "", false, &TrustError{"image " + image + " is not pinned by digest"}
 	}
-	// The engine's progress lines go to a buffer: a first run should read as three lines, not a screen of
-	// layer hashes. On failure the buffer is the error.
-	var out bytes.Buffer
-	code, err := r.Exec.Run(ctx, r.Engine, []string{"pull", image}, nil, nil, &out, &out)
-	if err != nil || code != 0 {
-		if opt.MirrorImage == "" || !sameDigest(image, opt.MirrorImage) || !unavailable.MatchString(out.String()) {
-			return "", false, commandFailed("pulling "+image, code, err, out.String())
+	// What an agent may not install is refused before anything is downloaded.
+	if opt.SignerIdentity == "" && opt.RequireSignature {
+		return "", false, &TrustError{image + " is not signed, and agents may only install signed images; install it yourself with `ot install` if you trust it"}
+	}
+	verify := r.verifyArgs(opt.SignerIdentity, opt.SignerIssuer)
+	if opt.SignerIdentity != "" && verify == nil && opt.RequireSignature {
+		return "", false, &TrustError{"cosign is not installed, so the signature of " + image + " can't be verified; agents may only install verified images (install cosign: https://docs.sigstore.dev/cosign/system_config/installation/)"}
+	}
+	res := r.pullVerified(ctx, image, verify)
+	if res.err != nil || res.code != 0 {
+		if opt.MirrorImage == "" || !sameDigest(image, opt.MirrorImage) || !unavailable.MatchString(res.out) {
+			return "", false, commandFailed("pulling "+image, res.code, res.err, res.out)
 		}
 		fmt.Fprintf(r.Stderr, "note: %s refused the image; pulling the same digest from the OTInstaller mirror\n", strings.SplitN(image, "/", 2)[0])
 		image = opt.MirrorImage
-		out.Reset()
-		if code, err := r.Exec.Run(ctx, r.Engine, []string{"pull", image}, nil, nil, &out, &out); err != nil || code != 0 {
-			return "", false, commandFailed("pulling "+image+" from the mirror", code, err, out.String())
+		if res = r.pullVerified(ctx, image, verify); res.err != nil || res.code != 0 {
+			return "", false, commandFailed("pulling "+image+" from the mirror", res.code, res.err, res.out)
 		}
 	}
 	fmt.Fprintf(r.Stderr, "pulled %s\n", shortImage(image))
 	if opt.SignerIdentity == "" {
-		if opt.RequireSignature {
-			return "", false, &TrustError{image + " is not signed, and agents may only install signed images; install it yourself with `ot install` if you trust it"}
-		}
 		return image, false, nil
 	}
-	if _, err := r.Exec.LookPath("cosign"); err != nil {
-		if opt.RequireSignature {
-			return "", false, &TrustError{"cosign is not installed, so the signature of " + image + " can't be verified; agents may only install verified images (install cosign: https://docs.sigstore.dev/cosign/system_config/installation/)"}
-		}
+	if verify == nil {
 		fmt.Fprintln(r.Stderr, "warning: cosign is not installed, so the image signature was not verified locally")
 		return image, false, nil
 	}
-	args := []string{"verify", "--certificate-identity", opt.SignerIdentity, "--certificate-oidc-issuer", opt.SignerIssuer, image}
-	var verify bytes.Buffer
-	if code, err := r.Exec.Run(ctx, "cosign", args, nil, nil, &verify, &verify); err != nil || code != 0 {
-		fmt.Fprint(r.Stderr, verify.String())
+	if !res.verified {
+		fmt.Fprint(r.Stderr, res.verifyOut)
 		return "", false, &TrustError{"signature verification failed for " + image + "; refusing to install"}
 	}
 	fmt.Fprintf(r.Stderr, "signature verified: signed by %s\n", opt.SignerIdentity)
 	return image, true, nil
+}
+
+// verifyArgs is the cosign command that checks an image was signed by identity (the image goes last), or nil when
+// there is no signer to check against or cosign isn't installed.
+func (r *Runner) verifyArgs(identity, issuer string) []string {
+	if identity == "" {
+		return nil
+	}
+	if _, err := r.Exec.LookPath("cosign"); err != nil {
+		return nil
+	}
+	return []string{"verify", "--certificate-identity", identity, "--certificate-oidc-issuer", issuer}
+}
+
+// pulled is how a pull went and, when cosign ran, whether it verified the image.
+type pulled struct {
+	code      int
+	err       error
+	out       string
+	verified  bool
+	verifyOut string
+}
+
+// pullVerified pulls image and, given verify (from verifyArgs), runs cosign on it at the same time. The engine's
+// progress lines go to a buffer: a first run should read as three lines, not a screen of layer hashes. On failure
+// the buffer is the error.
+func (r *Runner) pullVerified(ctx context.Context, image string, verify []string) pulled {
+	var res pulled
+	vctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	done := make(chan struct{})
+	if verify == nil {
+		close(done)
+	} else {
+		go func() {
+			defer close(done)
+			var buf bytes.Buffer
+			code, err := r.Exec.Run(vctx, "cosign", append(append([]string{}, verify...), image), nil, nil, &buf, &buf)
+			res.verified, res.verifyOut = err == nil && code == 0, buf.String()
+		}()
+	}
+	var out bytes.Buffer
+	res.code, res.err = r.Exec.Run(ctx, r.Engine, []string{"pull", image}, nil, nil, &out, &out)
+	res.out = out.String()
+	if res.err != nil || res.code != 0 {
+		cancel() // the verdict on an image that didn't arrive doesn't matter
+	}
+	<-done
+	return res
+}
+
+// sandboxArch is the platform the scanner builds sandbox images for; on any other ot builds the image itself.
+const sandboxArch = "amd64"
+
+// hostArch can be overridden in tests.
+var hostArch = runtime.GOARCH
+
+// pullSandbox pulls the sandbox image the registry built for a pipx package and checks the registry's scanner signed
+// it. It returns "" when ot should build the image itself: no sandbox image, another platform, an agent's install
+// without cosign (agents use verified images only, and the local build checks the wheel's hash), or a pull that
+// failed. A signature that doesn't verify refuses the install.
+func (r *Runner) pullSandbox(ctx context.Context, opt InstallOptions) (string, error) {
+	if opt.SandboxImage == "" || hostArch != sandboxArch || !strings.Contains(opt.SandboxImage, "@sha256:") {
+		return "", nil
+	}
+	if err := r.requireEngine(); err != nil {
+		return "", err
+	}
+	verify := r.verifyArgs(opt.SandboxSignerIdentity, opt.SandboxSignerIssuer)
+	if verify == nil && opt.RequireSignature {
+		return "", nil
+	}
+	res := r.pullVerified(ctx, opt.SandboxImage, verify)
+	if res.err != nil || res.code != 0 {
+		err := commandFailed("pulling the sandbox image", res.code, res.err, res.out)
+		var missing *RuntimeMissingError
+		if errors.As(err, &missing) {
+			return "", err
+		}
+		fmt.Fprintf(r.Stderr, "note: couldn't pull the registry's sandbox image (%s); building it locally\n", lastLine(res.out))
+		return "", nil
+	}
+	if verify != nil && !res.verified {
+		fmt.Fprint(r.Stderr, res.verifyOut)
+		return "", &TrustError{"signature verification failed for the sandbox image " + opt.SandboxImage + "; refusing to install"}
+	}
+	fmt.Fprintf(r.Stderr, "pulled %s (built and scanned by the registry)\n", shortImage(opt.SandboxImage))
+	return opt.SandboxImage, nil
+}
+
+// lastLine is the last non-empty line of a command's output.
+func lastLine(out string) string {
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	return strings.TrimSpace(lines[len(lines)-1])
 }
 
 // shortImage is the image name with its digest cut to twelve hex characters, for progress lines.
@@ -224,23 +334,50 @@ func (r *Runner) installPipxNative(ctx context.Context, m *manifest.Manifest, wh
 
 // pythonDockerfile wraps a verified wheel in a small non-root image so pipx packages run with the
 // same sandbox as Docker packages. The container is read-only except /tmp, so tools that write
-// into their working folder (reports, caches) start there.
-const pythonDockerfile = `FROM python:3.12-slim
+// into their working folder (reports, caches) start there. The base is pinned by digest (the index, so
+// arm64 builds too), and with a requirements.lock the dependencies are exactly the ones the scanner
+// resolved and scanned, checked by hash, with nothing resolved again; an empty lock resolves them as
+// before. ops/scanner/scan.py builds the same file (test_scan.py keeps the two equal).
+const pythonDockerfile = `FROM python:3.12-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704
 RUN useradd --uid 10001 --create-home ot
-COPY *.whl /tmp/
-RUN pip install --no-cache-dir /tmp/*.whl && rm /tmp/*.whl
+COPY *.whl requirements.lock /tmp/
+RUN if [ -s /tmp/requirements.lock ]; then pip install --no-cache-dir --no-deps --require-hashes -r /tmp/requirements.lock && pip install --no-cache-dir --no-deps /tmp/*.whl; else pip install --no-cache-dir /tmp/*.whl; fi && rm /tmp/*.whl /tmp/requirements.lock
 USER ot
 WORKDIR /tmp
 `
 
-func (r *Runner) buildPythonImage(ctx context.Context, m *manifest.Manifest, wheel string) (string, error) {
+// lockLine is one line of a dependency lock: a pinned package and the sha256 of each of its files on PyPI. Nothing
+// else (no options, URLs or editable installs) is accepted.
+var lockLine = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*==[A-Za-z0-9._+!-]+( --hash=sha256:[0-9a-f]{64})+$`)
+
+// pythonLock is the registry's dependency lock when every line is a pinned, hashed package, else "" (a local build
+// then resolves the dependencies itself).
+func (r *Runner) pythonLock(lock string) string {
+	lock = strings.TrimSpace(strings.ReplaceAll(lock, "\r\n", "\n"))
+	if lock == "" {
+		return ""
+	}
+	for _, l := range strings.Split(lock, "\n") {
+		if !lockLine.MatchString(l) {
+			fmt.Fprintln(r.Stderr, "note: the registry's dependency lock for this package can't be used; resolving dependencies instead")
+			return ""
+		}
+	}
+	return lock + "\n"
+}
+
+func (r *Runner) buildPythonImage(ctx context.Context, m *manifest.Manifest, wheel, lock string) (string, error) {
 	dir := filepath.Dir(wheel)
 	if err := os.WriteFile(filepath.Join(dir, "Dockerfile"), []byte(pythonDockerfile), 0o644); err != nil {
 		return "", err
 	}
+	if err := os.WriteFile(filepath.Join(dir, "requirements.lock"), []byte(lock), 0o644); err != nil {
+		return "", err
+	}
 	tag := LocalImageName(m)
 	var out bytes.Buffer
-	code, err := r.Exec.Run(ctx, r.Engine, []string{"build", "--pull", "-t", tag, dir}, nil, nil, r.Stderr, io.MultiWriter(r.Stderr, &out))
+	// No --pull: the base is pinned by digest, so a cached copy is the same image.
+	code, err := r.Exec.Run(ctx, r.Engine, []string{"build", "-t", tag, dir}, nil, nil, r.Stderr, io.MultiWriter(r.Stderr, &out))
 	if err != nil || code != 0 {
 		return "", commandFailed("building the sandbox image", code, err, out.String())
 	}

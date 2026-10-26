@@ -1,0 +1,2 @@
+guarddog==3.2.0
+cryptography==50.0.2

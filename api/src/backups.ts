@@ -4,6 +4,7 @@
 //   image  each published Docker version, copied with its signatures to the mirror (mirror.otinstaller.com) by
 //          the scanner after a passing verdict (crane copy keeps the digest, so cosign verifies the same signature).
 //          An image a publisher pushed to the mirror itself is not copied: its row is the image (hosted = 1)
+//          A pipx version's sandbox image (the scanner pushes the image it scanned) is recorded the same way
 //   wheel  each published pipx version's wheel, in R2 at wheels/<ns>/<name>/<sha256>.whl
 //   git    a git bundle of a mirror clone (all branches and tags) at every release and weekly, in R2 at
 //          git/<provider>/<project_id>/<date>-<version|weekly>.bundle
@@ -20,7 +21,7 @@ import { randomToken, sha256Hex, ulid } from "./lib/crypto";
 import type { Manifest } from "./lib/manifest";
 import { apiObjectUrl, presignSigV4 } from "./lib/presign";
 import { deleteImage, hideImage, imageExists, purgeUploads, releaseImage, sweepRepo } from "./mirror/registry";
-import { dispatchOps } from "./scans";
+import { dispatchOps, sandboxSigner } from "./scans";
 import { audit } from "./routes/auth";
 import { ownerEmails, sendEmail, staffEmails, templates } from "./notify";
 
@@ -220,7 +221,8 @@ export async function backfillBackups(env: Env, now = Date.now(), limit = BACKFI
   const rows = (await env.DB.prepare(
     `SELECT v.id FROM versions v JOIN tools t ON t.id = v.tool_id JOIN namespaces n ON n.id = t.namespace_id
      WHERE v.status IN ('published', 'yanked') AND v.runtime_kind IN ('docker', 'pipx') AND t.status != 'removed' AND n.status = 'active'
-       AND NOT EXISTS (SELECT 1 FROM backups b WHERE b.version_id = v.id AND b.kind IN ('image', 'wheel') AND b.status IN ('stored', 'pending', 'too_large'))
+       AND NOT EXISTS (SELECT 1 FROM backups b WHERE b.version_id = v.id AND b.kind = CASE v.runtime_kind WHEN 'docker' THEN 'image' ELSE 'wheel' END
+                       AND b.status IN ('stored', 'pending', 'too_large'))
        AND NOT EXISTS (SELECT 1 FROM backup_runs r WHERE r.version_id = v.id AND r.created_at > ?)
      ORDER BY v.published_at DESC LIMIT ?`,
   ).bind(now - BACKFILL_RETRY, limit).all<{ id: string }>()).results;
@@ -411,8 +413,10 @@ export async function sweepMirrorRepo(env: Env, repo: string, now = Date.now()) 
   const refs = (await env.DB.prepare(
     `SELECT v.artifact_ref AS ref FROM versions v JOIN tools t ON t.id = v.tool_id JOIN namespaces n ON n.id = t.namespace_id
      WHERE n.name = ? AND t.name = ? AND v.status != 'rejected' AND v.artifact_ref LIKE '%@sha256:%'
+     UNION SELECT v.sandbox_image AS ref FROM versions v JOIN tools t ON t.id = v.tool_id JOIN namespaces n ON n.id = t.namespace_id
+     WHERE n.name = ? AND t.name = ? AND v.status != 'rejected' AND v.sandbox_image IS NOT NULL
      UNION SELECT location AS ref FROM backups WHERE location LIKE ? AND status != 'deleted'`,
-  ).bind(ns, name, `${repo}@sha256:%`).all<{ ref: string }>()).results;
+  ).bind(ns, name, ns, name, `${repo}@sha256:%`).all<{ ref: string }>()).results;
   const keep = new Set(refs.map((r) => r.ref.slice(r.ref.indexOf("@") + 1)));
   const out = await sweepRepo(env.MIRROR, repo, keep, { now });
   await env.DB.prepare(`DELETE FROM mirror_pushes WHERE repo = ? AND created_at < ?`).bind(repo, now - MIRROR_SWEEP_AGE).run();
@@ -420,6 +424,28 @@ export async function sweepMirrorRepo(env: Env, repo: string, now = Date.now()) 
 }
 
 // ---------- installs and restores ----------
+
+/**
+ * What ot needs to install a pipx version without resolving its dependencies again: the lock the scanner pinned and,
+ * while its backup row says it is served (published, public, not waiting for deletion), the sandbox image the
+ * scanner built and the identity that signed it.
+ */
+export async function pipxInstall(env: Env, versionId: string) {
+  const row = await env.DB.prepare(
+    `SELECT v.python_lock, v.sandbox_image,
+       EXISTS (SELECT 1 FROM backups b WHERE b.version_id = v.id AND b.kind = 'image' AND b.hosted = 1 AND b.status = 'stored'
+               AND b.visibility = 'public' AND b.delete_after IS NULL AND ? || b.location = v.sandbox_image) AS served
+     FROM versions v WHERE v.id = ? AND v.runtime_kind = 'pipx'`,
+  ).bind(`${mirrorHost(env)}/`, versionId).first<{ python_lock: string | null; sandbox_image: string | null; served: number }>();
+  if (!row) return {};
+  const signer = sandboxSigner(env);
+  return {
+    python_lock: row.python_lock || undefined,
+    ...(row.served && row.sandbox_image && signer
+      ? { sandbox_image: row.sandbox_image, sandbox_signer_identity: signer.identity, sandbox_signer_issuer: signer.issuer }
+      : {}),
+  };
+}
 
 /** Where ot can get a version when its original registry refuses: the public mirror and the R2 copy of the wheel. */
 export async function installFallbacks(env: Env, versionId: string, ns: string, name: string, version: string) {
@@ -578,7 +604,8 @@ export async function startDrill(env: Env, now = Date.now()) {
   ).first<{ id: string; location: string; sha256: string | null; refs_count: number | null }>();
   const image = await env.DB.prepare(
     `SELECT b.id, b.location, v.signer_identity, v.signer_issuer FROM backups b JOIN versions v ON v.id = b.version_id
-     WHERE b.kind = 'image' AND b.status = 'stored' AND b.visibility = 'public' AND b.delete_after IS NULL AND v.status = 'published' ORDER BY random() LIMIT 1`,
+     WHERE b.kind = 'image' AND b.status = 'stored' AND b.visibility = 'public' AND b.delete_after IS NULL AND v.status = 'published'
+       AND v.runtime_kind = 'docker' ORDER BY random() LIMIT 1`,
   ).first<{ id: string; location: string; signer_identity: string | null; signer_issuer: string | null }>();
   if (!git && !image) return null;
   const id = ulid(now);

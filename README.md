@@ -19,192 +19,187 @@ removes any of them on Windows, macOS or Linux.
 Two editions share the same typed inputs and `results/` layout:
 
 - **`ot`** (Windows, macOS, Linux; needs Docker or Podman) installs signed, scanned packages from the registry and
-  runs them in a sandbox. Start with the [quick start](https://otinstaller.com/docs/quick-start).
-- **`otlite`** (Linux and macOS, no Docker) is one CLI for popular OSINT tools, managed for you: each tool pinned and
-  tested, in its own virtualenv, with every API key in one file. See [otinstaller.com/otlite](https://otinstaller.com/otlite).
+  runs them in a sandbox.
+- **`otlite`** (Linux and macOS, no Docker) is every popular OSINT tool, managed for you: each one pinned and tested,
+  in its own virtualenv, with every API key in one file.
 
-## This repository
+## Install
 
-It holds the open-source parts of OTInstaller: the manifest spec, the `ot` CLI, the registry API and image mirror,
-the scanner and backup jobs, the launch seed, and `otlite` (imported with its history into `otlite/`, called
-`otinstaller` until 1.0). The website at otinstaller.com is built from a separate repository. [AGENTS.md](AGENTS.md) is the guide to working on it and [docs/dev/](docs/dev/README.md) the
-developer reference. To connect real GitHub and GitLab apps, follow [docs/publishing-setup.md](docs/publishing-setup.md).
-Moving between the two editions: [docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md).
+`ot` on macOS or Linux:
+
+```sh
+curl -fsSL https://get.otinstaller.com/ot | sh
+```
+
+`ot` on Windows (PowerShell):
+
+```powershell
+irm https://get.otinstaller.com/ot.ps1 | iex
+```
+
+The scripts download the latest release from [OTInstaller/ot](https://github.com/OTInstaller/ot/releases) and check
+its signed checksums before installing; archives, deb and rpm packages are there too. `ot` needs Docker Desktop or
+Podman running, and uses `cosign` to verify images when it's installed.
+
+`otlite` on Linux or macOS, with nothing installed first (or `pipx install otlite`):
+
+```sh
+curl -fsSL https://get.otinstaller.com/otlite | sh
+```
+
+## First run
+
+```sh
+ot doctor                                                # checks Docker, cosign, the keychain and the registry
+ot search email                                          # tools that take an email address
+ot run osintverse-community/holehe e:someone@example.com # installs it on first use, then runs it
+ot auto someone@example.com                              # every installed tool that takes this input
+ot runs                                                  # saved runs, newest first
+```
+
+Typed inputs fill the matching input of any tool: `u:` username, `e:` email, `d:` domain, `p:` phone, `ip:` IP
+address and `url:` URL. Every run is saved under `./results/` with a `.meta.json` sidecar, and prints one JSON envelope
+whose shape is the same for every tool ([results](https://otinstaller.com/docs/results)). `ot pivot <run-id>` suggests
+what to run next from what a run found, and `ot playbook --list` shows bundled tool sets for a username, an email, a
+domain, a phone number or an IP address.
+
+More in the [quick start](https://otinstaller.com/docs/quick-start), the
+[getting started guide](https://otinstaller.com/docs/getting-started) and the
+[CLI reference](https://otinstaller.com/docs/cli). For otlite, see [otlite/README.md](otlite/README.md).
+
+## For AI agents
+
+- **`ot mcp`** is a local MCP server that searches, installs and runs tools on your machine. `ot mcp install claude`
+  (or `claude-desktop`, `cursor`, `vscode`, `codex`, `gemini`) adds it to your client. The agent asks you before any
+  run that goes online, touches a target or involves a person's identifiers, and every run is written to a local
+  audit log (`ot mcp audit`). See [AI agents and MCP](https://otinstaller.com/docs/agents).
+- **The agent plugin** for Claude Code and Cursor adds skills for investigating, packaging tools and writing guides:
+  [OTInstaller/agent-plugin](https://github.com/OTInstaller/agent-plugin), built from
+  [integrations/agent-plugin/](integrations/agent-plugin).
+- **The remote MCP server** at `https://api.otinstaller.com/mcp` searches the registry and reads guides without
+  installing anything.
+- **Scripts and CI**: `--json` (or `OT_OUTPUT=json`) on every command, one-line JSON errors on stderr, stable exit
+  codes, and no prompts without a terminal ([automation](https://otinstaller.com/docs/automation)).
+
+## Publish a tool or a guide
+
+A package is a repository (on GitHub or GitLab) or an upload with an `otinstaller.yaml` manifest next to it. `ot init`
+writes a starter manifest, Dockerfile and release workflow; `ot validate` checks it against
+[the schema](https://otinstaller.com/schema/v1.json).
+
+- **From a repository:** run the release workflow `ot init` added, from the Actions tab with the version to
+  release. It builds and signs the image, pins its digest in the manifest and tags the release, which the registry
+  picks up; or it publishes with `ot publish --oidc` as a trusted publisher. `ot import <repository-url>` drafts the
+  manifest for an existing project and opens a pull or merge request with it.
+- **Without a repository:** `ot namespace create <name>`, then `ot publish` uploads the manifest, README and docs, and
+  `--image` or `--build` pushes the Docker image to the registry's own mirror.
+- **Guides** are Markdown pages with `kind: guide`, released with `ot release X.Y.Z`.
+
+Every release is validated, security-scanned (signature, Trivy, GuardDog and a sandboxed smoke test) or, for guides,
+link- and content-checked, then published; a new publisher's first release waits for a reviewer. See
+[publishing](https://otinstaller.com/docs/publishing) and [the manifest](https://otinstaller.com/docs/manifest).
+
+## Security model
+
+- Docker images are pinned by digest and their cosign signature is checked against the publisher's identity; wheels
+  are pinned by SHA-256 and checked again after download. A pipx tool runs in the image the registry built from its
+  wheel and scanned, pulled by digest and signed by the registry's scanner, or one `ot` builds from the same
+  hash-locked dependencies.
+- Tools run with a read-only root, no capabilities, no new privileges, an unprivileged user, memory, CPU and process
+  limits, and no network unless the manifest declares it. They see only an output folder and the API keys they declare
+  (a pipx tool you choose to run with `--native` runs outside the container instead).
+- If the original host refuses an artifact, `ot` installs the same digest or hash from the registry's mirror and
+  checks it the same way. Network errors never trigger that fallback.
+- A tool is marked possibly broken while it has an open broken issue, or while at least two signed-in people said in
+  the last 30 days that its latest version is broken and they outnumber those who said it works.
+
+Details: [security](https://otinstaller.com/docs/security) and the
+[acceptable use policy](https://otinstaller.com/policy/acceptable-use).
+
+## Feedback and security reports
+
+- Bugs and ideas: [OTInstaller/feedback](https://github.com/OTInstaller/feedback/issues), or `ot feedback "..."` from
+  the terminal.
+- A problem with a published tool (malware, abuse, a license): report it from the tool's page on otinstaller.com.
+- A security problem in OTInstaller itself: email security@otinstaller.com instead of opening an issue.
+
+## Development
+
+This repository holds the open-source parts of OTInstaller. The website at otinstaller.com is built from a separate
+repository that includes this one. [AGENTS.md](AGENTS.md) is the guide to working on the code, and
+[docs/dev/](docs/dev/README.md) the developer reference: architecture, every API route, the database, every `ot`
+command, configuration, local setup and troubleshooting. To run your own registry with real GitHub and GitLab apps,
+follow [docs/publishing-setup.md](docs/publishing-setup.md).
 
 | Folder | What it is |
 | --- | --- |
-| `spec/` | Manifest JSON Schema (`schema/v1.json`), example manifests (3 valid, 24 invalid with expected error codes), the release workflow templates (`templates/`) that `ot init` and the import wizard both use, and the import wizard's Dockerfile templates |
-| `cli/` | The `ot` CLI (Go): `init`, `validate`, `search`, `info`, `install`, `run`, `playbook`, `auto`, `extract`, `diff`, `list`, `outdated`, `update`, `uninstall`, `keys`, `doctor`, `login`, `logout`, `whoami`, `import`, `sync`, `feedback` |
-| `api/` | Registry API (Cloudflare Workers + Hono + D1 + Queues + R2): search and read endpoints, GitHub/GitLab sign-in and device flow, API tokens, GitHub App webhooks, publish validation, the import wizard, backups; and the image mirror Worker (`src/mirror/`, `wrangler.mirror.jsonc`) |
-| `otlite/` | `otlite`, the no-Docker edition (Python, Linux and macOS): installs tools from pip or git into per-tool virtualenvs, typed inputs, saved results, Debian packaging, its own PyPI release workflow. See below |
-| `seed/` | The launch seed: first-party tools, community wrappers (including those converted from `otlite`'s catalog), guides |
-| `ops/` | The scanner (`scanner/scan.py`, backups and restore drills in `scanner/backup.py`, its Docker image) and the GitHub Actions workflows for the registry-ops repo |
-| `examples/dns-lookup/` | A tiny real tool used by the end-to-end test |
-| `examples/tldextract/`, `examples/cosign/` | Real packages (a PyPI wheel and Sigstore's signed image) used by `scripts/e2e-real.sh` |
-| `scripts/e2e.sh` | Builds the example, pushes it to a local registry, then validates, smoke-tests and runs it with `ot` |
-| `scripts/e2e-backups.sh` | The week 11 exit test: installs from the mirror and the wheel copy with the original registry blocked, and restores a bundle into an empty repository |
+| `spec/` | The manifest JSON Schema (`schema/v1.json`), the envelope, run-all and error schemas, valid and invalid example manifests, the release workflow templates, and the import wizard's Dockerfile templates |
+| `cli/` | `ot` (Go): installing and running tools, typed inputs, playbooks, saved runs, keys, publishing, `ot mcp`, self-update |
+| `api/` | The registry API (Cloudflare Workers, Hono, D1, Queues, R2): search and reads, sign-in, publishing and review, scans, backups, the community features and the remote MCP server; plus the image mirror Worker (`src/mirror/`) |
+| `ops/` | The scanner and backup jobs (`scanner/`), the workflows that run them in a separate repository, and the Worker behind get.otinstaller.com (`get/`) |
+| `otlite/` | otlite, the no-Docker edition (Python), with its own [README](otlite/README.md), [rules](otlite/AGENTS.md), tests, Debian packaging and release workflow |
+| `seed/` | The launch seed: first-party tools, community wrappers of third-party tools, and guides, each its own repository under `osintverse-community` ([seed/README.md](seed/README.md)) |
+| `integrations/` | The agent plugin and the remote MCP server's MCP Registry entry |
+| `examples/` | A tiny real tool and two real packages used by the end-to-end tests |
+| `scripts/` | The end-to-end tests and the install scripts |
+| `docs/` | The developer reference (`dev/`), the operator runbook, design notes and the `otinstaller` to `ot` migration guide |
 
-## Requirements
+Requirements: Go 1.25+, Node.js 22+, Docker Desktop or Podman, and Python 3.12 (3.10+ on Linux or macOS for otlite).
 
-- Go 1.25+ (for the CLI)
-- Node.js 22+ (for the API)
-- Docker Desktop or Podman (to run Docker tools and sandboxed pipx tools)
-
-## CLI
-
-```bash
-cd cli
-go test ./...
-go build -o ../bin/ot ./cmd/ot
-../bin/ot validate ../spec/fixtures/valid/docker-tool.yaml
+```sh
+(cd cli && go test ./... && go build -o ../bin/ot ./cmd/ot)       # the CLI
+(cd api && npm install && npm test)                                # the API, in the Workers runtime with a seeded D1
+(cd api && npm run db:migrate && npm run db:seed && npm run dev)   # a local registry at http://127.0.0.1:8787/v1
+python -m unittest discover ops/scanner                            # the scanner
+(cd otlite && pip install -e ".[dev,pipeline]" && pytest)          # otlite (Linux or macOS)
+bash scripts/e2e.sh                                                # end to end, with Docker
 ```
 
-`ot` talks to `https://api.otinstaller.com/v1` by default. Point it at a local API with `OT_API_URL=http://127.0.0.1:8787/v1`.
-Its data lives in `%APPDATA%\ot` on Windows and `~/.ot` elsewhere (override with `OT_HOME`). API keys go to the OS keychain;
-an environment variable with the same name takes precedence, which is handy in CI.
+Point `ot` at a local registry with `OT_API_URL=http://127.0.0.1:8787/v1`. CI runs otlite's tests and the install
+scripts, not the Go or API tests, so run those before opening a pull request. Changes to `spec/` have copies to
+regenerate (`go generate ./...` in `cli/`, `npm run sync:templates` in `api/`); AGENTS.md lists them.
 
-Exit codes: 0 success, 1 tool error, 2 bad usage or invalid manifest, 3 missing key, 4 trust refusal, 5 runtime missing, 124 timeout,
-130 interrupted.
+`otlite/` was imported with `git subtree`, so its full history is kept: `git log --follow otlite/pyproject.toml`
+shows the import and `git log 842c78e` the original commits. It was renamed from `otinstaller` to `otlite` at 1.0.0;
+[docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md) maps its commands to `ot`.
 
-`ot run` takes inputs as `--<input> <value>` or as typed inputs after the package, which fill the tool's input of that
-type: `u:` username, `d:` domain, `e:` email, `p:` phone, `url:` url (`ot run osintverse-community/sherlock u:johndoe`).
-Every run's raw output is saved to `./results/<tool>/<target>/<timestamp>_<tool>_<target>_<runid>.<ext>` with a
-`.meta.json` sidecar (command, timing, exit code, status, SHA-256, entities); `--results-dir` or `OT_RESULTS_DIR` moves
-it (`OTINSTALLER_RESULTS_DIR` still works), `--case NAME` groups runs under `cases/NAME/`, `--no-save` skips it. The
-envelope still goes to stdout. `ot run --all u:johndoe` runs every installed tool with a username input, four at a time
-(`--parallel N`), skips those that need other inputs or a missing key, and prints a summary (`--format json` for JSON).
-These are the Python `otinstaller` features; see [docs/typed-inputs-and-results.md](docs/typed-inputs-and-results.md).
+## License
 
-The CLI embeds copies of `spec/schema/v1.json` and `spec/templates/`. After changing the spec, run `go generate ./...` in `cli/`
-and `npm run sync:templates` in `api/`; tests fail if the copies drift.
+Apache License 2.0 ([LICENSE](LICENSE)). `otlite/` keeps its own copy of the same [LICENSE](otlite/LICENSE) and its
+[NOTICE](otlite/NOTICE), which must be kept with any redistribution or derived work of it ("OTinstaller by
+OSINTverse"). Tools installed by either CLI, and the upstream projects the community wrappers in `seed/` package, keep
+their own licenses.
 
-`ot import <github-or-gitlab-url>` publishes an existing repository: the registry drafts `otinstaller.yaml` from what is
-in it (a Dockerfile, a `pyproject.toml` console script, or `docs/`), `ot` asks for what it could not detect (inputs,
-outputs, command, ethics), and then opens a pull or merge request with the manifest and a release workflow. `--registry`
-keeps the manifest on the registry instead (repository owners only), several URLs start a bulk import, and `--list`
-shows your imports. `osintverse-community` admins can package a tool they don't own with `--community`: the draft goes
-into the `osintverse-community` namespace (only for upstream licenses that allow it), the pull or merge request goes to a
-wrapper repository (`--wrapper`) with a README crediting the upstream project, and the package is labelled
-Community-packaged.
-
-`ot sync <namespace/name>` checks a package's source repository now instead of waiting for a webhook or the 6-hourly
-poll (10 times an hour at most); `ot sync --log <namespace/name>` shows its sync status and recent events.
-
-## API
-
-```bash
-cd api
-npm install
-npm test                 # runs in the Workers runtime with a seeded D1
-npm run db:migrate       # local D1
-npm run db:seed          # demo packages from spec/fixtures plus a few extras
-npm run dev              # http://127.0.0.1:8787/v1/tools
-```
-
-Before deploying, create the database with `npx wrangler d1 create otinstaller` and put its ID in `wrangler.jsonc`.
-
-## End-to-end
-
-With Docker running:
-
-```bash
-bash scripts/e2e.sh
-```
-
-Against real artifacts (a keyless-signed image and a real PyPI wheel), with Docker, cosign and the local API running:
-
-```bash
-bash scripts/e2e-real.sh
-```
-
-## Backups
-
-Every published package has a registry-held copy, so a mistaken ban or takedown on GitHub or GitLab never breaks installs
-or loses code. After a passing scan, the scan job copies the image with its signatures to the mirror (`crane copy`, same
-digest, so cosign verifies the same signature), uploads the verified wheel and a `git bundle` of a mirror clone through
-short-lived signed URLs, and reports back; a weekly job bundles every active source again. When the original registry
-refuses an image (401, 403, 404, "denied"), `ot install` pulls the same digest from `mirror.otinstaller.com` and verifies it;
-when PyPI no longer serves a wheel, it uses the registry's copy with the same SHA-256 check. Owners get Restore from
-backup and Switch source on the dashboard. Rules: public repositories of published packages only; 500 MB per bundle and
-2 GB per image; public mirrors only for OSI-approved licenses; takedowns delete backups 14 days later unless on legal
-hold; owners can opt out of git backups. Setup (R2 buckets, the mirror Worker, DNS, credentials):
-[docs/publishing-setup.md, section 11](docs/publishing-setup.md#11-backups-the-image-mirror-r2-buckets-and-restore-drills).
-
-```bash
-bash scripts/e2e-backups.sh   # needs Docker, cosign, crane, git, Go, Node and Python
-```
-
-## otlite (otlite/)
-
-`otlite/` is the no-Docker edition of OTInstaller: the OTinstaller package manager, imported with `git subtree` so its
-full history is kept (`git log --follow otlite/pyproject.toml` shows the import; `git log 3c3bfb5` the original
-commits) and renamed from `otinstaller` to `otlite` at 1.0.0. It keeps its own conventions in
-[otlite/AGENTS.md](otlite/AGENTS.md), its changelog and its Debian packaging (`otlite/debian/`, built from
-`otlite/`). Install it with `pipx install otlite`; the docs are at
-[otinstaller.com/docs/otlite](https://otinstaller.com/docs/otlite).
-
-How it fits with the registry:
-
-- **Two editions.** `ot` installs signed, scanned packages from the registry and runs them in containers on Linux,
-  macOS and Windows. `otlite` installs pinned pip or git releases into per-tool virtualenvs on Linux and macOS and needs no
-  container runtime. Both use the same typed inputs and `results/` layout.
-  [docs/migrating-from-otinstaller.md](docs/migrating-from-otinstaller.md) covers the rename and maps `otlite`
-  commands to `ot`.
-- **Releases.** Tag `otlite-vX.Y.Z` (matching `otlite/pyproject.toml`) and `.github/workflows/release-otlite.yml`
-  publishes to PyPI with trusted publishing; run it by hand with `repository: testpypi` for a dry run. The old PyPI
-  name `otinstaller` is a shim in `otlite/otinstaller-shim/` that depends on `otlite`.
-- **Catalog.** `otlite`'s tested catalog (`otlite/src/otlite/data/registry.yaml`) is converted into
-  `osintverse-community` wrappers in `seed/community/` by `python scripts/pm-catalog-to-wrappers.py`: a pinned pip
-  release with a pure-Python wheel on PyPI becomes a pipx package pinned by the wheel's SHA-256; git installs, extra
-  packages, Playwright browsers and releases without a wheel become Docker wrappers built at the same pinned
-  version. Typed inputs (`u:`, `e:`, `d:`, `url:`, `p:`) become manifest inputs, and the flags they map to become
-  the command template. Existing seed folders are never overwritten. Tools that need a login or a terminal, take no
-  typed input, or whose license doesn't allow a wrapper are listed and skipped; see [seed/README.md](seed/README.md).
-- **Install paths.** apt (Debian/Kali) and pip/pipx installs of `otlite` stay as they are. Through the
-  registry, the same tools install with `ot` as Docker images or sandboxed pipx wheels; the bare per-tool
-  virtualenvs and unpinned git checkouts don't carry over.
-
-Tests (Linux only, so on Windows run them in a container):
-
-```bash
-cd otlite
-pip install -e ".[dev,pipeline]"
-ruff check . && ruff format --check . && pytest
-```
-
-CI for it is `.github/workflows/otlite-ci.yml` (tests, a Kali `.deb`, a pipx install and the shim) and
-`otlite-nightly.yml`, scoped to `otlite/**`.
-
-## Licenses
-
-The whole repository is under the Apache License 2.0 ([LICENSE](LICENSE)). `otlite/` keeps its own copy of the same
-[LICENSE](otlite/LICENSE) and its [NOTICE](otlite/NOTICE), which must be kept with any redistribution or derived work
-of it ("OTinstaller by OSINTverse"). Tools installed by either CLI, and the upstream projects the community wrappers in
-`seed/` package, keep their own licenses.
-
-## Notes on the plan
+## Design notes
 
 - Guide manifests use `topics:` (not `inputs:`) for what a guide helps investigate, so `inputs` always means tool inputs.
-- `ot` drives the `docker` (or `podman`) CLI rather than the Engine API, which keeps it working with Docker Desktop, OrbStack, Colima and Podman.
-- Sandboxed pipx tools are built into a local image (`ot-local/<namespace>-<name>:<version>`) from a verified wheel on `python:3.12-slim`.
-- An extra `tool_secrets` table powers the "no API keys needed" search filter.
-- Config is `config.json` in the data directory.
-- Smoke tests run offline unless the manifest declares `network.egress: true`; then they keep the network, on a disposable
-  runner with no secrets in the container. Fully offline smoke tests would fail most OSINT tools.
-- Wheels are scanned for vulnerabilities in their Python packages only; the base image the scanner wraps them in is not the author's.
-- Release templates sign on the default branch before creating the tag, so the expected signer accepts the repository's
-  CI on a branch ref as well as on the release tag.
-- Docker images are not run through GuardDog (it reads Python packages); Trivy and the smoke test cover them.
+- `ot` drives the `docker` (or `podman`) CLI rather than the Engine API, which keeps it working with Docker Desktop,
+  OrbStack, Colima and Podman.
+- The scanner resolves a pipx tool's dependencies once, pins each with the SHA-256 of every file PyPI has for it (so
+  the lock installs on amd64 and arm64), builds the sandbox image from that lock on `python:3.12-slim` pinned by digest,
+  scans and smoke-tests it, and pushes it to the mirror signed by its workflow. `ot` pulls that image on amd64;
+  elsewhere, or when it can't, it builds `ot-local/<namespace>-<name>:<version>` from the verified wheel and the same
+  lock, so nothing is resolved again at install time.
+- Smoke tests run offline unless the manifest declares `network.egress: true`; then they keep the network, on a
+  disposable runner with no secrets in the container. Fully offline smoke tests would fail most OSINT tools.
+- Wheels are scanned for vulnerabilities in their Python packages only; the base image the scanner wraps them in is not
+  the author's. Docker images are not run through GuardDog (it reads Python packages); Trivy and the smoke test cover
+  them.
+- Release templates sign on the default branch before creating the tag, so the expected signer accepts the
+  repository's CI on a branch ref as well as on the release tag.
 - The import wizard opens GitHub pull requests through the GitHub App, so the App also needs Contents and Workflows
   write access (GitHub requires the Workflows permission to add a file under `.github/workflows/`). GitLab merge
-  requests use the author's own token with the `api` scope, asked for only when they finish an import.
-- A GitLab project that already has a `.gitlab-ci.yml` gets the release job as `.gitlab/otinstaller-release.yml`, with a
-  note in the merge request to include it; an existing pipeline is never rewritten.
-- The mirror is a small OCI registry of our own on R2 (`api/src/mirror/registry.ts`) rather than a fork of Cloudflare's
-  serverless-registry: it only needs pulls, the scanner's pushes (including chunked uploads, for layers over the Workers
-  request limit) and deletes for takedowns. It has no referrers API, so signatures use the tag schema: the scanner copies
-  those tags with crane, and `cosign verify` reads them. Each repository keeps its own blobs, so a takedown never touches another package.
-- Git bundles hold branches and tags only, not the hosts' own refs (`refs/pull/*`, `refs/merge-requests/*`), which
-  cannot be pushed to the other host.
-- A registry-held manifest is published with the version from each new tag, and the image tagged with that version (or
-  the PyPI wheel of that version) is looked up at publish time, so authors don't edit the manifest for every release.
+  requests use the author's own token with the `api` scope, asked for only when they finish an import. A GitLab
+  project that already has a `.gitlab-ci.yml` gets the release job as `.gitlab/otinstaller-release.yml`, with a note
+  in the merge request to include it; an existing pipeline is never rewritten.
+- The mirror is a small OCI registry of our own on R2 (`api/src/mirror/registry.ts`) rather than a fork of
+  Cloudflare's serverless-registry: it only needs pulls, the scanner's pushes (including chunked uploads, for layers
+  over the Workers request limit) and deletes for takedowns. It has no referrers API, so signatures use the tag schema:
+  the scanner copies those tags with crane, and `cosign verify` reads them. Each repository keeps its own blobs, so a
+  takedown never touches another package.
+- Every published package has a registry-held copy (the image on the mirror, the wheel, and a `git bundle` of the
+  source), so a ban or takedown on GitHub or GitLab never breaks installs or loses code. Git bundles hold branches and
+  tags only, not the hosts' own refs (`refs/pull/*`, `refs/merge-requests/*`), which cannot be pushed to the other host.
+- A registry-held manifest is published with the version from each new tag, and the image tagged with that version
+  (or the PyPI wheel of that version) is looked up at publish time, so authors don't edit the manifest for every
+  release.

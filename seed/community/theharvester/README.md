@@ -47,4 +47,4 @@ Other packages that take a domain:
 - [hackertarget](https://otinstaller.com/osintverse-community/hackertarget): finds a domain's subdomains and DNS records through HackerTarget.
 - [hunter-domain-search](https://otinstaller.com/osintverse-community/hunter-domain-search): lists the email addresses Hunter has found for a domain (needs a key).
 
-Packaged version: 4.11.2.
+Packaged version: 4.11.3.

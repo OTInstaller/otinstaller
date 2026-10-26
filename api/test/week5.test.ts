@@ -186,13 +186,13 @@ describe("scan callback", () => {
     expect(emailsTo(first.calls).at(-1)!.subject).toBe(`${p.login}/whois-plus 1.0.0 was not published`);
     expect((await call(`/tools/${p.login}/whois-plus`)).status).toBe(404);
 
-    // Same version, fixed and re-tagged: validated again and reuses the version row, with the runtime and artifact of
-    // the new manifest (the rejected attempt was, say, a pipx package rebuilt as a Docker image).
-    await DB().prepare(`UPDATE versions SET runtime_kind = 'pipx', artifact_ref = ? WHERE id = ?`).bind(`sha256:${"a".repeat(64)}`, first.versionId).run();
-    const image = `ghcr.io/${p.login}/whois-plus@sha256:${"f".repeat(64)}`;
-    const second = await tagAndValidate(p, "1.0.0", manifestFor(p.login).replace(/ghcr\.io\S+/, image));
+    // Same version, fixed with a rebuilt image and re-tagged: validated again, and it reuses the version row with the
+    // new artifact, so the mirror sweep and the build watcher see the image that is actually published.
+    const rebuilt = `ghcr.io/${p.login}/whois-plus@sha256:${"f".repeat(64)}`;
+    const second = await tagAndValidate(p, "1.0.0", manifestFor(p.login).replace(/ghcr\.io\S+/, rebuilt));
     expect(second.versionId).toBe(first.versionId);
-    expect(await DB().prepare(`SELECT runtime_kind, artifact_ref FROM versions WHERE id = ?`).bind(first.versionId).first()).toEqual({ runtime_kind: "docker", artifact_ref: image });
+    expect(await DB().prepare(`SELECT runtime_kind, artifact_ref FROM versions WHERE id = ?`).bind(second.versionId).first())
+      .toEqual({ runtime_kind: "docker", artifact_ref: rebuilt });
   });
 
   it("publishes with a warning when vulnerabilities have fixes available", async () => {

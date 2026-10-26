@@ -307,6 +307,25 @@ describe("helpers", () => {
     expect(rank({ ...baseline, manifestHeld: true })).toBeCloseTo(-0.15);
     expect(rank({ ...baseline, installs30d: Math.E - 1 })).toBeCloseTo(0.35);
   });
+
+  it("keeps the seed's copy of the search fields the same as the API's", async () => {
+    const { SEARCH_FIELDS } = await import("../src/catalog");
+    expect((env as unknown as { TEST_SEED_SEARCH_FIELDS: string }).TEST_SEED_SEARCH_FIELDS).toBe(SEARCH_FIELDS);
+  });
+
+  it("filters on the latest version's manifest fields copied onto tools", async () => {
+    // Every listed tool's copied fields match its latest manifest, as latestMetadata and the seed write them.
+    const rows = (await env.DB.prepare(
+      `SELECT t.touches_target, t.collects_personal_data, t.egress, t.language, t.level, v.manifest_json FROM tools t JOIN versions v ON v.id = t.latest_version_id`,
+    ).all<{ touches_target: number | null; collects_personal_data: number | null; egress: number | null; language: string | null; level: string | null; manifest_json: string }>()).results;
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) {
+      const m = JSON.parse(r.manifest_json);
+      const flag = (b: unknown) => (b === undefined ? null : b ? 1 : 0);
+      expect([r.touches_target, r.collects_personal_data, r.egress, r.language, r.level])
+        .toEqual([flag(m.ethics?.touches_target), flag(m.ethics?.collects_personal_data), flag(m.network?.egress), m.language ?? null, m.level ?? null]);
+    }
+  });
 });
 
 describe("OpenAPI", () => {

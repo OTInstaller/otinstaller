@@ -320,7 +320,7 @@ export function missingFields(m: Record<string, any>): string[] {
   return out;
 }
 
-/** Optional parts worth filling in: a test input (smoke tests and health checks) and a guide's tools. */
+/** Optional parts worth filling in: a test input (the publish scan's smoke test) and a guide's tools. */
 export function suggestedFields(m: Record<string, any>): string[] {
   if (m.kind === "guide") return Array.isArray(m.related_tools) && m.related_tools.length ? [] : ["related_tools"];
   return m.runtime && !m.test ? ["test"] : [];

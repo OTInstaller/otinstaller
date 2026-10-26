@@ -308,10 +308,9 @@ async function record(env: Env, job: Job, sha: string, ns: Namespace, m: Manifes
       stmts.push(db.prepare(`UPDATE sources SET tool_id = COALESCE(tool_id, ?) WHERE id = ?`).bind(toolId, job.source_id));
     }
     const sv = semverParts(m.version);
-    // Re-tagging a version that was rejected reuses its row. Only a rejected row is ever reused: a release of the
-    // same version still being checked (two uploads at once) is left alone, and this one stops below. Everything read
-    // from the manifest is taken from the new one: the fix may have changed the runtime (a pipx package rebuilt as a
-    // Docker image) or the artifact.
+    // Re-tagging a version that was rejected reuses its row, with everything taken from the new manifest (the fix may
+    // have changed the runtime or the image). Only a rejected row is ever reused: a release of the same version still
+    // being checked (two uploads at once) is left alone, and this one stops below.
     const prior = tool ? await db.prepare(`SELECT id FROM versions WHERE tool_id = ? AND version = ?`).bind(toolId, m.version).first<{ id: string }>() : null;
     versionId = prior?.id ?? ulid(now);
     versionStmt = stmts.length;

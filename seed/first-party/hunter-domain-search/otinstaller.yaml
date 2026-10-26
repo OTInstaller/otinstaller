@@ -51,6 +51,6 @@ ethics:
   notifies_target: false
   notes: "Returns work email addresses and the names, positions and public profiles Hunter links to them."
 test:
-  # Scans and health checks run without secrets, so the tool reports the missing key with exit code 3.
+  # The publish scan runs the test without secrets, so the tool reports the missing key with exit code 3.
   expect_exit_code: 3
   input: { domain: "example.com" }

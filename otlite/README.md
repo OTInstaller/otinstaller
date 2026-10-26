@@ -25,7 +25,6 @@
   <a href="#command-reference">Commands</a> ·
   <a href="#tool-catalogue">Tools</a> ·
   <a href="#faq">FAQ</a> ·
-  <a href="#tools">Tools</a> ·
   <a href="#team">Team</a> ·
   <a href="#contact">Contact</a> ·
   <a href="https://youtu.be/_AfUGMFRaKA">Launch video</a>
@@ -105,8 +104,9 @@ otlite run sherlock -- u:johndoe
 
 The installer needs nothing installed first. If the machine has a Python 3.10 to 3.14 and pipx, it installs otlite
 with pipx. Otherwise it downloads uv into `~/.local/bin` and installs otlite with uv on a Python 3.12 that uv keeps in
-your home directory, without sudo. Newer tool versions come with newer otlite releases, and `otlite check-updates` says when one is out. Upgrade with `pipx upgrade otlite` or `uv tool upgrade otlite`, whichever
-the installer used. If you already have pipx, `pipx install otlite` does the same.
+your home directory, without sudo. Newer tool versions come with newer otlite releases, and `otlite check-updates`
+says when one is out. Upgrade with `pipx upgrade otlite` or `uv tool upgrade otlite`, whichever the installer used.
+If you already have pipx, `pipx install otlite` does the same.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/OTInstaller/otinstaller/main/otlite/docs/images/otlite-demo.png" alt="Installing and running a tool with otlite" width="820">
@@ -156,7 +156,7 @@ Some managed tools only work on some Python versions. otlite checks before insta
 
 ## Install otlite
 
-For system-wide installation, use `pipx install otlite`. This provides the `otlite` command on your PATH without a virtualenv.
+For system-wide installation, use `pipx install otlite`. This puts the `otlite` command on your PATH without a virtualenv to activate.
 On Debian, Ubuntu and Kali there is also a `.deb`, built from [`debian/`](https://github.com/OTInstaller/otinstaller/tree/main/otlite/debian)
 by the CI; releases are on [PyPI](https://pypi.org/project/otlite/).
 
@@ -466,7 +466,9 @@ macOS, yes, from 1.2. On Windows, inside WSL2 with Ubuntu. Most of the tools are
 not run on macOS.
 
 **Do I need root?**
-No. Root is only needed once, for `sudo apt install python3-venv git`. Everything else lives in your home directory under `~/.otlite/`.
+No. The one-line installer needs no sudo, so only git has to come from your system's package manager. With your own
+Python on Debian, Ubuntu or Kali, `sudo apt install python3-venv git` is the one command that needs root. Everything
+else lives in your home directory under `~/.otlite/`.
 
 **Does otlite send my data anywhere?**
 otlite itself contacts GitHub and PyPI to install and update tools, and asks PyPI whether a newer otlite is out (`check-updates`, `update`, `doctor`, and at most once a day when you install a tool at a terminal); `OTLITE_NO_UPDATE_CHECK=1`, `DO_NOT_TRACK=1` or `CI` turn that off. It has no usage tracking. Crash reports are off unless you say yes: `otlite init` asks once, and Enter means no. If you turn them on, a report is sent only when otlite itself crashes, and it holds the error, where in otlite's code it happened, and the otlite, Python and OS versions, never your targets, command arguments, tool output, results, API keys, file paths or user name. Turn them on or off with `otlite crash-reports on` or `off`, and send a test report with `otlite crash-reports test`; `DO_NOT_TRACK=1` or `OTLITE_CRASH_REPORTS=off` always turns them off. The tools you run contact the services they are built to query.

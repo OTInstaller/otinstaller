@@ -244,10 +244,10 @@ Read them with `ot guide search|read|open|get|tools` and `ot docs <ns>/<tool>`, 
 **Reviewers and admins.** Set `is_reviewer` (review queue, reports, takedowns, audit log) or `is_admin` (also bans and
 completing claims) on a user in D1. The console is at `/admin` on the site.
 
-**Health checks.** Generate a long random `HEALTH_TOKEN` and set it on the Worker (`wrangler secret put HEALTH_TOKEN`) and as
-the secret `HEALTH_TOKEN` in registry-ops, with the repository variable `REGISTRY_API` (`https://api.otinstaller.com`).
-Copy `ops/workflows/health.yml` and `ops/scanner/health.py` (with `scan.py`) into registry-ops. Every night at 02:00 UTC it
-runs each tool's test input with network access; 3 failures in a row mark a tool Possibly broken, one pass clears it.
+**Health.** Nothing to set up: a package's health comes from what people report. It is Possibly broken while it has an
+open broken issue, or while at least two signed-in people said in the last 30 days that its latest version is broken and
+they outnumber those who said it works; healthy once someone said the latest version works. The Worker's nightly cron
+recomputes it so reports older than 30 days stop counting.
 
 **Monitoring.** Stuck publish jobs (over 30 minutes) are emailed to admins every 15 minutes, and reviewers get a daily
 digest of namespaces waiting more than 2 business days and reports older than 48 hours. Set `SENTRY_DSN` (optional) to

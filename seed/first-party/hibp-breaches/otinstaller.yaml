@@ -43,6 +43,6 @@ ethics:
   notifies_target: false
   notes: "Shows only which breaches the address is in and what kinds of data they exposed, never the breached data."
 test:
-  # Scans and health checks run without secrets, so the tool reports the missing key with exit code 3.
+  # The publish scan runs the test without secrets, so the tool reports the missing key with exit code 3.
   expect_exit_code: 3
   input: { email: "test@example.com" }

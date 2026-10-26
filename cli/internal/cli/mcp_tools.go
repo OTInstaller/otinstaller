@@ -68,7 +68,7 @@ type toolInfo struct {
 	Typical     int                `json:"typical_seconds,omitempty" jsonschema:"how long a run usually takes"`
 	Consent     agent.Class        `json:"consent_class" jsonschema:"passive runs need no consent; networked, target and personal runs ask the person"`
 	Effects     []string           `json:"effects" jsonschema:"what a run does, in plain words"`
-	Trust       *api.ToolSummary   `json:"registry,omitempty" jsonschema:"the registry's listing: signed, verified publisher, health, installs"`
+	Trust       *api.ToolSummary   `json:"registry,omitempty" jsonschema:"the registry's listing: signed, verified publisher, health from what people report, installs"`
 	Installed   *installRecord     `json:"installed,omitempty"`
 	Example     map[string]any     `json:"run_tool_example,omitempty"`
 	TestInput   map[string]any     `json:"test_input,omitempty"`
@@ -265,7 +265,7 @@ type consentStatusOut struct {
 func (s *mcpServer) addReadTools() {
 	a := s.a
 	readTool(s, "search_tools", "Search tools",
-		"Search the OTInstaller Registry for OSINT tools. Results list each tool's input and output types, whether it needs API keys, its ethics flags and network access, and its trust status (signed, verified publisher, health).",
+		"Search the OTInstaller Registry for OSINT tools. Results list each tool's input and output types, whether it needs API keys, its ethics flags and network access, and its trust status (signed, verified publisher, health from what people report).",
 		func(ctx context.Context, in searchIn) (*api.SearchResult, error) {
 			return a.API.Search(ctx, api.SearchParams{Query: in.Query, Input: in.InputType, Output: in.OutputType, Category: in.Category,
 				Runtime: in.Runtime, Kind: "tool", NoKeys: in.NoKeys, PassiveOnly: in.PassiveOnly, Limit: orInt(in.Limit, 20), Cursor: in.Cursor})

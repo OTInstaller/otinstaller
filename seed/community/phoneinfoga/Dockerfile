@@ -1,18 +1,18 @@
-FROM alpine:3.22 AS download
-ARG TARGETARCH
-RUN apk add --no-cache curl
-RUN set -eu; \
-    case "$TARGETARCH" in \
-      amd64) file=phoneinfoga_Linux_x86_64.tar.gz; sum=6173dfc4ec009a6fe688068bac5a250646f5a8f56409098f5edcc7e404b12a52 ;; \
-      arm64) file=phoneinfoga_Linux_arm64.tar.gz; sum=bc8ed51e3e20fe4b82999aac16a7925f783562346563ba4b26e33c90434cd58b ;; \
-      *) echo "unsupported architecture $TARGETARCH" >&2; exit 1 ;; \
-    esac; \
-    curl -fsSLo /tmp/p.tar.gz "https://github.com/sundowndev/phoneinfoga/releases/download/v2.11.0/$file"; \
-    echo "$sum  /tmp/p.tar.gz" | sha256sum -c -; \
-    tar -xzf /tmp/p.tar.gz -C /usr/local/bin phoneinfoga
+FROM golang:1.26-alpine AS build
+RUN apk add --no-cache git
+RUN git clone --depth 1 --branch v2.11.0 https://github.com/sundowndev/phoneinfoga /src
+WORKDIR /src
+# Upstream's release binary was built with Go 1.20 and dependencies that have known vulnerabilities, so build it again
+# with current ones. The web interface it embeds is built with Node and not in the repository; `phoneinfoga scan`
+# doesn't use it, so a placeholder page stands in.
+RUN mkdir -p web/client/dist && echo '<!doctype html><title>PhoneInfoga</title>' > web/client/dist/index.html
+RUN go get golang.org/x/crypto@v0.58.0 golang.org/x/net@v0.61.0 golang.org/x/text@v0.43.0 golang.org/x/oauth2@v0.37.0 \
+      google.golang.org/grpc@v1.84.0 github.com/sirupsen/logrus@v1.10.2 github.com/gin-gonic/gin@v1.12.0 && go mod tidy
+RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w -X github.com/sundowndev/phoneinfoga/v2/build.Version=v2.11.0' \
+      -o /usr/local/bin/phoneinfoga .
 
 FROM alpine:3.22
-RUN apk add --no-cache ca-certificates libc6-compat
-COPY --from=download /usr/local/bin/phoneinfoga /usr/local/bin/phoneinfoga
+RUN apk add --no-cache ca-certificates
+COPY --from=build /usr/local/bin/phoneinfoga /usr/local/bin/phoneinfoga
 USER 65534
 ENTRYPOINT ["phoneinfoga"]
