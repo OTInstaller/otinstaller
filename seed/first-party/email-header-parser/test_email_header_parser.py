@@ -32,6 +32,12 @@ class EmailHeaderParserTest(unittest.TestCase):
         self.assertEqual(out["hops"][1]["by"], "mx.example.net")
         self.assertTrue(out["hops"][0]["date"].startswith("2025-01-06T10:00:01"))
 
+    def test_host_before_date_without_space(self):
+        out = parse("Received: from mail.example.org (mail.example.org [93.184.216.34]) by mx.example.net; Mon, 6 Jan 2025 10:00:05 +0000")
+        self.assertEqual(out["hops"][0]["from"], "mail.example.org")
+        self.assertEqual(out["hops"][0]["by"], "mx.example.net")
+        self.assertTrue(out["hops"][0]["date"].startswith("2025-01-06T10:00:05"))
+
     def test_escaped_newlines(self):
         out = parse("From: a@example.com\\nReply-To: b@example.net")
         self.assertEqual([e["value"] for e in out["entities"] if e["type"] == "email"], ["a@example.com", "b@example.net"])

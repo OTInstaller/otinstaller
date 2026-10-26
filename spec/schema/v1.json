@@ -134,7 +134,12 @@
             "command": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
             "output_format": { "enum": ["json", "jsonl", "csv", "text"] },
             "timeout_seconds": { "type": "integer", "minimum": 1, "maximum": 3600, "default": 300 },
-            "typical_seconds": { "type": "integer", "minimum": 1, "maximum": 3600, "description": "How long a run usually takes, so callers know how long to wait" }
+            "typical_seconds": { "type": "integer", "minimum": 1, "maximum": 3600, "description": "How long a run usually takes, so callers know how long to wait" },
+            "finding_prefixes": {
+              "type": "array", "minItems": 1, "maxItems": 10, "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1, "maxLength": 40 },
+              "description": "For text output: how the lines that hold findings start, such as \"[+]\", ignoring indentation and colour codes. ot reads entities only from those lines, so banners, sponsor links and update notices aren't taken for findings"
+            }
           },
           "allOf": [
             {

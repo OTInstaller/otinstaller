@@ -9,7 +9,7 @@ Reads the scan request the registry dispatched, checks the artifact, and posts r
   secrets          Trivy secret scanning
   malware          GuardDog source-code heuristics (Python wheels)
   sbom             Trivy CycloneDX package count
-  smoke            the manifest's test input, run with no network
+  smoke            the manifest's test input, in ot's sandbox: offline unless the manifest declares network egress
   python_lock      pipx: the wheel's dependencies, pinned with the sha256 of every file (what ot's local build installs)
   sandbox          pipx: the scanned image, pushed to the mirror and signed, when the request names a target
 

@@ -22,10 +22,35 @@ var fileTLDs = map[string]bool{"py": true, "sh": true, "md": true, "zip": true, 
 // MaxTextEntities caps what TextEntities returns, so a chatty tool can't flood an agent.
 const MaxTextEntities = 200
 
+// lineStart is what may come before a line's first character: indentation and terminal colour codes.
+var lineStart = regexp.MustCompile(`^(?:\s|\x1b\[[0-9;]*[A-Za-z])*`)
+
+// FindingLines keeps the lines of text output that start with one of prefixes (the manifest's
+// runtime.finding_prefixes), ignoring indentation and colour codes, so a tool's banner, sponsor links, donation
+// lines and update notices aren't read as findings. With no prefixes it returns the text as it is.
+func FindingLines(text string, prefixes []string) string {
+	if len(prefixes) == 0 {
+		return text
+	}
+	var keep []string
+	for _, line := range strings.Split(text, "\n") {
+		rest := lineStart.ReplaceAllString(line, "")
+		for _, p := range prefixes {
+			if strings.HasPrefix(rest, p) {
+				keep = append(keep, line)
+				break
+			}
+		}
+	}
+	return strings.Join(keep, "\n")
+}
+
 // TextEntities finds emails, URLs, IP addresses and domains in text output, for tools that print text or CSV
 // rather than entities. They are marked confidence "low" and found_in "text output": a pattern match, not something
-// the tool reported. Values equal to one of the run's inputs are left out, since they aren't findings.
-func TextEntities(text string, inputs map[string]string) []envelope.Entity {
+// the tool reported. Values equal to one of the run's inputs are left out, since they aren't findings. When the
+// manifest names the prefixes of the lines that hold findings, only those lines are read (FindingLines).
+func TextEntities(text string, inputs map[string]string, prefixes []string) []envelope.Entity {
+	text = FindingLines(text, prefixes)
 	skip := map[string]bool{}
 	for _, v := range inputs {
 		skip[strings.ToLower(strings.TrimSpace(v))] = true

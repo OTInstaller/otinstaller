@@ -202,7 +202,8 @@ breach-data, web-archive, documents-metadata, utilities). Optional: `kind` (`too
   domain, subdomain, ip, url, person, organization, location, breach, certificate, dns_record, image, document,
   crypto_address, transaction, other.
 - `runtime`: `kind` (`docker` | `pipx`), `command` (an **array**, never a shell string, with `{input_name}` placeholders),
-  `output_format` (json | jsonl | csv | text), `timeout_seconds` (default 300), `typical_seconds?`.
+  `output_format` (json | jsonl | csv | text), `timeout_seconds` (default 300), `typical_seconds?`,
+  `finding_prefixes?` (for text output: how the lines that hold findings start, such as `[+]`).
   - docker: `image` pinned by digest (`...@sha256:<64 hex>`), `platforms` must include `linux/amd64`.
   - pipx: `package`, `package_version`, `entrypoint`, `wheel_sha256`; optional `index: pypi`, `python`.
 - `secrets[]`: `{name (^[A-Z][A-Z0-9_]{2,63}$), required, description?, url?, pricing?}`.
@@ -212,7 +213,7 @@ breach-data, web-archive, documents-metadata, utilities). Optional: `kind` (`too
 - `docs`: `{root: "docs/", nav: ["page.md", ...]}` for tool docs.
 
 The optional fields marked `?` above that came after `ot` v0.12 (`example`, output `description`/`attrs`,
-`typical_seconds`, `pricing`, `notifies_target`, `notes`) are rejected by v0.12's install-time validation, so the
+`typical_seconds`, `finding_prefixes`, `pricing`, `notifies_target`, `notes`) are rejected by v0.12's install-time validation, so the
 manifest endpoint serves `compatManifest()` (`api/src/lib/manifest.ts`) without them and the full one as
 `manifest_full`. A new optional field needs the same treatment.
 
@@ -321,6 +322,8 @@ install when nothing takes a target), `runs.go` (runs), `saved.go` (extract/diff
 - The envelope carries `run_id`, `ot_version` and `client` (`cli`, `ci` when `CI` is set, `mcp`). When a text or CSV
   tool reports no entities, `runner/textentities.go` lists the emails, URLs, IPs and domains its output mentions (up
   to 200, `confidence: low`, the run's own inputs left out), so pivots and summaries have something to chain from.
+  With `runtime.finding_prefixes` it reads only the lines that start with one of them, so banners, sponsor and
+  donation links and update notices aren't taken for findings.
 - Nothing prompts without a terminal (`machine.go`): piped stdin, `OT_NONINTERACTIVE=1`, CI and `ot mcp` get an
   `input_required` error naming the flag to pass. Unattended `run`, `--all`, `playbook` and `auto` (`consent.go`) also
   need `--yes` for any tool that isn't passive (exit 2, `consent_required`; `OT_CONSENT=off` turns the check off) and

@@ -37,6 +37,7 @@ export interface Manifest {
     output_format: string;
     timeout_seconds?: number;
     typical_seconds?: number;
+    finding_prefixes?: string[];
   };
   secrets?: { name: string; required: boolean; description?: string; url?: string; pricing?: "free" | "free_tier" | "paid" }[];
   ethics?: { touches_target: boolean; auth_required: boolean; collects_personal_data: boolean; notifies_target?: boolean; notes?: string };
@@ -177,7 +178,7 @@ function exampleProblem(inp: { type: string; values?: string[]; example?: unknow
 
 /**
  * The manifest without the optional fields added after ot v0.12 (input examples, output descriptions and attributes,
- * typical_seconds, secret pricing, notifies_target and notes). ot v0.12 validates the manifest it installs against
+ * typical_seconds, finding_prefixes, secret pricing, notifies_target and notes). ot v0.12 validates the manifest it installs against
  * its own schema, which rejects fields it doesn't know, so the install endpoint serves this as `manifest` and the
  * whole one as `manifest_full`. Add every new optional field here. Returns null when nothing had to be left out.
  */
@@ -189,7 +190,7 @@ export function compatManifest(m: Record<string, any>): Record<string, any> | nu
   };
   for (const i of c.inputs ?? []) drop(i, "example");
   for (const o of c.outputs ?? []) drop(o, "description", "attrs");
-  drop(c.runtime, "typical_seconds");
+  drop(c.runtime, "typical_seconds", "finding_prefixes");
   for (const s of c.secrets ?? []) drop(s, "pricing");
   drop(c.ethics, "notifies_target", "notes");
   return changed ? c : null;

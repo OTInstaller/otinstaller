@@ -34,6 +34,8 @@ runtime:
   wheel_sha256: "ebb7dc99213f91757ece6259f2b9a655d639ed4a2936703ada7eb51b72f1c757"
   command: ["user-scanner", "-u", "{username}", "-e", "{email}"]
   output_format: text
+  # Entities come only from lines that start with these, not from banners, sponsor links or update notices.
+  finding_prefixes: ["[✔]", "├─", "└─"]
   timeout_seconds: 1200
   typical_seconds: 180
 network:

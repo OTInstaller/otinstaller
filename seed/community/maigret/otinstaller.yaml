@@ -36,6 +36,8 @@ runtime:
   wheel_sha256: "f382e7174d202a8002b2ac3ce3cde7c11900c506399dd6110f57b9256c4181c7"
   command: ["maigret", "--no-color", "--no-progressbar", "--no-autoupdate", "--folderoutput", "/tmp/maigret", "--timeout", "20", "--top-sites", "{top_sites}", "--site", "{site}", "{username}"]
   output_format: text
+  # Entities come only from lines that start with these, not from banners, sponsor links or update notices.
+  finding_prefixes: ["[+]", "├─", "└─"]
   timeout_seconds: 1200
 network:
   egress: true

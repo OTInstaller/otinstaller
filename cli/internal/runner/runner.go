@@ -153,7 +153,7 @@ func (r *Runner) Run(ctx context.Context, inst *state.Installed, opt RunOptions)
 	}
 	// Text and CSV tools report no entities themselves; give agents and `ot run --all` what the output mentions.
 	if f := m.Runtime.OutputFormat; len(entities) == 0 && (f == "text" || f == "csv" || f == "") {
-		entities = TextEntities(buf.String(), opt.Values)
+		entities = TextEntities(buf.String(), opt.Values, m.Runtime.FindingPrefixes)
 		if len(entities) == MaxTextEntities {
 			warnings = append(warnings, "entities were cut at the first 200 found in the text output")
 		}

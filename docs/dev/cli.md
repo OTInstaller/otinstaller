@@ -254,7 +254,8 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 - The envelope carries `run_id`, `ot_version` and `client` (`cli`, `ci` when `CI` is set, `mcp` under `ot mcp`). When a
   text or CSV tool reports no entities, `runner/textentities.go` adds the emails, URLs, IP addresses and domains its
   output mentions (up to 200, `confidence: low`, `found_in: "text output"`, leaving out the run's own inputs, an
-  email's own domain and file-extension lookalikes).
+  email's own domain and file-extension lookalikes). When the manifest sets `runtime.finding_prefixes`, only lines
+  that start with one of them (after indentation and colour codes) are read (`FindingLines`).
 - Single run flow: `ensureInstalled` (installed version used if no `@version` or it matches; an installed version
   on the removal list, refreshed at most hourly via `GET /removed`, is refused with exit 4; otherwise prompts
   `Install it now? [Y/n]` on stderr unless `-y`, a non-yes answer is exit 2; local manifest paths are always
