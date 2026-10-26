@@ -115,7 +115,7 @@ func updateCounts(st *state.State, c *latestCache) (updates, held int) {
 // output, or (completion) run on every Tab.
 var quietCommands = map[string]bool{
 	"help": true, "completion": true, cobra.ShellCompRequestCmd: true, cobra.ShellCompNoDescRequestCmd: true,
-	"uninstall": true, "outdated": true, "update": true, "self-update": true, "mcp": true,
+	"uninstall": true, "outdated": true, "update": true, "self-update": true, "mcp": true, "start": true,
 }
 
 // topLevel is the name of the root's child that cmd belongs to, or "" for the root itself.

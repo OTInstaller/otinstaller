@@ -8,11 +8,15 @@ inputs, runs in a container that can't read your files, and saves its result in 
 ## Get started
 
 Put `ot` (or `ot.exe`) somewhere on your PATH. Tools run in containers, so Docker Desktop or Podman must be running;
-with `cosign` installed, `ot` also verifies each image's signature. Then check your machine:
+with `cosign` installed, `ot` also verifies each image's signature. Then set it up:
 
 ```sh
-ot doctor
+ot start      # pick starter packs and tools, AI agents and settings, then install
+ot doctor     # check Docker, cosign, the keychain and the registry
 ```
+
+`ot start` asks at a terminal; `ot start --tools <ns/name> --yes` does the same from a script, and
+https://otinstaller.com/start builds the command for you.
 
 ## Run tools
 

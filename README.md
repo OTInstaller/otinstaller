@@ -50,6 +50,7 @@ curl -fsSL https://get.otinstaller.com/otlite | sh
 ## First run
 
 ```sh
+ot start                                                 # pick tools, AI agents and settings, then install them
 ot doctor                                                # checks Docker, cosign, the keychain and the registry
 ot search email                                          # tools that take an email address
 ot run osintverse-community/holehe e:someone@example.com # installs it on first use, then runs it
@@ -62,6 +63,10 @@ address and `url:` URL. Every run is saved under `./results/` with a `.meta.json
 whose shape is the same for every tool ([results](https://otinstaller.com/docs/results)). `ot pivot <run-id>` suggests
 what to run next from what a run found, and `ot playbook --list` shows bundled tool sets for a username, an email, a
 domain, a phone number or an IP address.
+
+`ot start` is a short wizard: starter packs (the bundled playbooks) and tools from the registry, which AI clients get
+ot's MCP server, the output format, where results go, and API keys. [otinstaller.com/start](https://otinstaller.com/start)
+builds the same choices into one command to copy.
 
 More in the [quick start](https://otinstaller.com/docs/quick-start), the
 [getting started guide](https://otinstaller.com/docs/getting-started) and the

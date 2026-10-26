@@ -23,7 +23,7 @@ Conventions used here:
   `PersistentPostRun` (after the command's output; skipped when the command fails) calls `finishDailyNote`. It runs only
   when `App.CheckUpdates` is on, `interactive()` holds, output isn't JSON (`--json`, `OT_OUTPUT=json`, or `ot run`'s own
   `--json`/`-f json` through `jsonRequested`), `CI` is unset, not under `AgentMode` or `OT_NO_UPDATE_CHECK=1`, the
-  top-level command isn't `help`, `completion`, `__complete`, `uninstall`, `outdated`, `update`, `self-update` or `mcp`,
+  top-level command isn't `help`, `completion`, `__complete`, `uninstall`, `outdated`, `update`, `self-update`, `mcp` or `start`,
   and `cache/latest.json`'s `noted_at` is over 24 h old. It then refreshes `cache/latest.json` (`latestList`: `GET
   /latest`, 3 s, at most every 24 h by `checked_at`, which every attempt sets) and `cache/ot-latest.json` (`latestOT`)
   concurrently, and prints at most two `note:` lines: how many installed packages have a newer version or a new
@@ -34,10 +34,10 @@ Conventions used here:
 
 ## 1. Commands
 
-Registered in `Root()` (`cli/root.go`) in this order: init, validate, search, info, changelog, install, run, playbook,
+Registered in `Root()` (`cli/root.go`) in this order: init, validate, start, search, info, changelog, install, run, playbook,
 auto, runs, issues, request, extract, diff, list, outdated, update, uninstall, keys, doctor, login, logout, whoami, import,
 publish, namespace, sync, guide, docs, report, feedback, claim, transfer, yank, deprecate, self-update, release, mcp,
-pivot, token, profile. 41 top-level commands,
+pivot, token, profile. 42 top-level commands,
 plus subcommands `keys set|setup|list|rm`, `guide search|read|open|get|tools`, `mcp install|audit|policy|tools`
 (with `mcp policy reset`), `token create|list|revoke` and `namespace create`.
 
@@ -757,6 +757,47 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 
 ### 1.7 Other
 
+#### `ot start`
+- File: `cli/start.go`. Args: `NoArgs`. Sets ot up in one go, like `shadcn create`; otinstaller.com/start (the site's
+  `lib/start.ts`) builds the same flags.
+- Flags:
+
+  | Flag | Type | Default | Meaning |
+  | --- | --- | --- | --- |
+  | `--playbooks` | string slice | none | starter packs: **bundled** playbooks whose tools to install (`playbook.Bundled`; never `<ot home>/playbooks` or `./playbooks`) |
+  | `--tools` | string slice | none | more tools, `namespace/name` (a local manifest or an `@version` → exit 2) |
+  | `--agents` | string slice | none | AI clients to add ot's MCP server to: `mcpClients` (as `ot mcp install`) |
+  | `--format` | string | `""` | `config.json` `format`: `json`, `table`, `csv` or `raw` |
+  | `--results-dir` | string | `""` | `config.json` `results_dir` (`~` expanded; `./results`, the default, removes the key) |
+  | `--telemetry` | string | `""` | `on` or `off` (`config.json` `telemetry`) |
+  | `--registry` | string | `""` | `config.json` `api_url` (http(s) only; `/v1` added to a bare host; the default removes the key). Also used for this run, without the sign-in token |
+  | `--keys` | bool | false | walk through the installed tools' keys (`setupKeys`, as `ot keys setup`); only at a terminal, even with `--yes` |
+  | `--native` | bool | false | as `ot install --native` |
+  | `-y`, `--yes` | bool | false | apply the flags without the wizard |
+  | `--dry-run` | bool | false | print what the flags would do (`--json`: the report with `dry_run: true`) and change nothing |
+
+- At a terminal without `--yes`/`--dry-run`: the wizard (`runStartWizard`, charmbracelet/huh; plain prompts when
+  `ACCESSIBLE` is set), pre-filled from the flags and `config.json` as written (`state.FileConfig`, no env overrides).
+  Screens: starter packs; then tools (every `kind=tool` package from `GET /tools?kind=tool&limit=100`, following
+  `next_cursor`; installed ones left out; the packs' tools picked except deprecated or possibly broken ones), AI
+  clients (labels say "already set up" or "found on this machine"; none picked unless named), output format, results
+  folder, keys (only when a picked tool `needs_keys`), and an optional registry and telemetry screen; then a review
+  showing the equivalent `ot start ... --yes`. `pick` folds the selection back into the flags: a pack stays only when
+  all its tools are picked or installed. Ctrl-C → exit 130 "cancelled; nothing was changed"; Cancel at the review →
+  exit 0 "Nothing was changed.". Tests replace the wizard with `App.StartWizard`.
+- Without a terminal and without `--yes`/`--dry-run`: exit 2 `input_required`. `--json` needs `--yes` or `--dry-run`
+  (exit 2 `input_required`). `--format json` here is the setting, so `jsonRequested` ignores it for `start`.
+- Applying, in this order: `state.SetConfig` with only the keys that differ from the file (`configChanges`: a value,
+  or `null` to go back to a default; other keys kept); each AI client (`mcpConfigured` → skipped as
+  `already_set_up`, else `addMCPServer`; a failure is reported and the rest go on); the tools not yet installed
+  (`installMany`, so a missing engine stops only the installs), with `printInstallHints`; keys; and "Next:" lines (an
+  `ot playbook <pack> <example>` per pack, `ot mcp policy` when a client was added). A note says when `OT_API_URL`,
+  `OT_RESULTS_DIR` or `OT_NO_TELEMETRY` overrides a key it just saved.
+- `--json`: `{dry_run?, command, config_path, config_changes, install, already_installed?, installed?: [installResult],
+  agents: [{client, status: planned|added|already_set_up|failed, path?, error?}], missing_keys?}`.
+- Exit: 0; 2 for bad flags or no terminal; `installMany`'s code (1, or 5 without Docker or Podman); 1 when an AI
+  client's configuration couldn't be written (Claude Code missing from PATH only prints the command); 130 cancelled.
+
 #### `ot feedback [message]`
 - File: `cli/feedback.go`. Args: any (joined with spaces).
 - Flags: `--kind` (string, default `other`: bug, idea, question, other; anything else → exit 2); `--email` (string):
@@ -860,8 +901,8 @@ Read by the CLI (`os.Getenv` calls in `cli/`, plus the keychain lookup):
 | `ACTIONS_ID_TOKEN_REQUEST_URL`, `ACTIONS_ID_TOKEN_REQUEST_TOKEN` | `cli/oidc.go` `ciIDToken` | set by GitHub Actions for jobs with `id-token: write`; `ot publish --oidc` asks it for an ID token with the audience `otinstaller`. `GITHUB_ACTIONS=true` without them makes the error hint name the permission | unset |
 | `OT_SITE_URL` | `state/state.go` `LoadConfig` | website base for `guide open`, `report` (form), `feedback` (form); overrides `site_url` | `https://otinstaller.com` |
 | `OT_NO_TELEMETRY` | `state/state.go` `LoadConfig` | any non-empty value (even `0`) disables the `POST /installs` ping; overrides `telemetry` | telemetry on |
-| `OT_RESULTS_DIR` | `results/results.go` `Dir` | results directory when `--results-dir` is not given (`~` expanded) | `./results` |
-| `OTINSTALLER_RESULTS_DIR` | `results/results.go` `Dir` | legacy fallback after `OT_RESULTS_DIR` | `./results` |
+| `OT_RESULTS_DIR` | `results/results.go` `Dir` | results directory when `--results-dir` is not given (`~` expanded) | `config.json` `results_dir`, else `./results` |
+| `OTINSTALLER_RESULTS_DIR` | `results/results.go` `Dir` | legacy fallback after `OT_RESULTS_DIR` | `config.json` `results_dir`, else `./results` |
 | `OTINSTALLER_TOKEN` | `keys.Get(TokenKey)` in `NewApp` | registry API token; an env var wins over the keychain entry of the same name | keychain entry |
 | `OT_OUTPUT` | `root.go` `jsonMode` | `json` turns on `--json` for every command | off |
 | `OT_NONINTERACTIVE` | `machine.go` `interactive` | `1`: never prompt, as if there were no terminal | prompts at a terminal |
@@ -903,7 +944,7 @@ Data directory (`state.Home()`): `$OT_HOME` if set; else on Windows `%APPDATA%\o
 | Path | Written by | Contents |
 | --- | --- | --- |
 | `<home>/state.json` | `install`, `update`, `uninstall`, `run` (auto-install), `playbook -y`, `guide tools`, `validate --smoke` | `{"installed": {"ns/name": {ref, version, runtime, artifact, local_image, native, from_backup, installed_at, manifest, manifest_raw}}}`; written atomically via `state.json.tmp` and rename, mode 0600; directory created 0700 |
-| `<home>/config.json` | never written by ot (read only) | `api_url`, `site_url`, `telemetry` (bool), `format` (default `ot run` format); env vars override the first three |
+| `<home>/config.json` | `ot start` only (`state.SetConfig`: the keys it changes, others kept; atomic, mode 0600) | `api_url`, `site_url`, `telemetry` (bool), `format` (default `ot run` format), `results_dir` (results folder after `--results-dir` and the env vars; `ot mcp` uses it when it is absolute); env vars override `api_url`, `site_url`, `telemetry` and `results_dir` |
 | `<home>/keys.json` | `keys set`, `keys rm`, `login`, `logout`, `doctor` | sorted JSON array of key names (never values), mode 0600 |
 | `<home>/cache/removed.json` | pre-run check (24 h), `ot run` (1 h) | `{"fetched_at", "removed": [...]}` from `GET /removed`, mode 0644 |
 | `<home>/cache/latest.json` | the daily note and MCP `list_installed` (24 h) | `{"checked_at", "fetched_at", "noted_at", "packages", "moved"}` from `GET /latest`; written atomically, mode 0644 |
@@ -921,7 +962,8 @@ Data directory (`state.Home()`): `$OT_HOME` if set; else on Windows `%APPDATA%\o
 | `<exe>.ot-update-*`, `<exe>.old` | `self-update` | new binary staging; old binary on Windows |
 
 Results (not under the data directory): base = `--results-dir`, else `$OT_RESULTS_DIR`, else
-`$OTINSTALLER_RESULTS_DIR`, else `./results` relative to the current directory.
+`$OTINSTALLER_RESULTS_DIR`, else `config.json` `results_dir` (`results.DefaultDir`, set by `NewApp`), else `./results`
+relative to the current directory.
 
 ```
 <base>/[cases/<case>/]<tool>/<target>/<YYYYMMDD-HHMMSS>_<tool>_<target>_<8 hex>.<ext>
@@ -975,14 +1017,14 @@ the wheel plus `requirements.lock`, the registry's `python_lock`, installed with
 | `oci` | `ot publish --image`: `Read` unpacks an OCI layout or docker-archive tar (gzipping docker-archive layers, dropping index platforms whose blobs are missing); `Registry.Push` uploads blobs in `ChunkSize` (50 MiB) PATCHes with a token from the registry's `/token`, then platform manifests and the tag. Standard library only |
 | `selfupdate` | Release lookup (get.otinstaller.com, else the GitHub API), Ed25519-signed checksums, archive SHA-256, extraction, atomic replace |
 | `specfiles` | Embedded copies of `spec/schema/{envelope,run-all,error}-v1.json`, `spec/pivots.json` and `spec/types.json` (`go generate`) |
-| `state` | Data directory, `state.json` load/atomic save, read-only `config.json` with env overrides |
+| `state` | Data directory, `state.json` load/atomic save, `config.json` with env overrides (`LoadConfig`), as written (`FileConfig`) and changed by `ot start` (`SetConfig`) |
 
 `cli/cmd/mcpb` (not under `internal/`) packs the release binaries into MCP Bundles and writes the MCP Registry
 `server.json`; the release workflow runs it after GoReleaser.
 
 ### Test files
 
-`api`, `keys` and `state` have **no test files** (`api` is exercised through the commands' fake registries).
+`api` and `keys` have **no test files** (`api` is exercised through the commands' fake registries).
 `selfupdate_test.go` covers `LatestVersion` and the lookup order; downloads and signatures are exercised by
 `TestSelfUpdate` and `TestSelfUpdateViaLatestURL` in `cli/trust_test.go`.
 
@@ -1014,6 +1056,8 @@ the wheel plus `requirements.lock`, the registry's `python_lock`, installed with
 | `cli/info_test.go` | `ot info` prints a runnable command and the key hint |
 | `cli/starter_test.go` | A fresh machine: `ot auto` offering the starter playbook's tools at a terminal (no, dry run, yes; deprecated tools left out), `not_installed` with the `ot playbook … --yes` hint without one, `ot playbook` asking, MCP `run_all` answering `not_installed` with `suggested_tools` |
 | `cli/install_test.go` | `ot install` with one and several packages: hints, JSON shapes, a bad reference installing nothing, exit codes when installs fail, a missing engine stopping the rest; `playbook -y` installing in one go |
+| `cli/start_test.go` | `ot start`: `--yes` installing packs and tools and writing only the changed `config.json` keys (unknown keys kept, defaults removed), `input_required` without a terminal or with `--json` alone, bad flags changing nothing, `--dry-run` (text and JSON), the wizard through `App.StartWizard` (catalog, pre-fill, VS Code configured, already set up, Ctrl-C and Cancel), `pick` and the equivalent command line, `configChanges`, registry URLs |
+| `state/state_test.go` | `SetConfig` keeps other keys and removes `nil` ones, refuses a broken file; `FileConfig` ignores env overrides |
 | `agent/agent_test.go` | `Classify`, `DecideRun`, policy lists and limits, loading, live policy changes, consent tokens, the audit log, `notifies_target` in descriptions |
 | `specfiles/specfiles_test.go` | Copies equal `spec/`; the pivot map covers every entity type; every schema enum value has a description |
 | `runner/textentities_test.go`, `runner/example_test.go` | Entities from text output; example commands |
@@ -1024,7 +1068,7 @@ the wheel plus `requirements.lock`, the registry's `python_lock`, installed with
 | `oci/oci_test.go` | Reading a multi-platform layout, one missing a platform (index rewritten), an arm64-only image, a docker-archive (layers gzipped, entries that escape the folder skipped); pushing in chunks to a fake registry, skipping blobs it has, signing in again on an expired token, wrong credentials |
 | `manifest/bundle_test.go` | `BundleFiles`: the manifest uploaded as `otinstaller.yaml`, images under the folder (skipping dot and build folders and images over 2 MB), only referenced images when over the limit, a missing README |
 | `playbook/playbook_test.go` | Bundled playbooks, bundled tools exist in the seed (`TestBundledPlaybooksFitSeed`: each takes one of its playbook's input types and needs no key), later dirs win, parse errors, a broken file is an error |
-| `results/results_test.go` | `Sanitize`, `Dir` precedence (flag, `OT_RESULTS_DIR`, `OTINSTALLER_RESULTS_DIR`), start/finish sidecar, stderr file only when written |
+| `results/results_test.go` | `Sanitize`, `Dir` precedence (flag, `OT_RESULTS_DIR`, `OTINSTALLER_RESULTS_DIR`, `DefaultDir`), start/finish sidecar, stderr file only when written |
 | `results/saved_test.go` | `Outputs` and `Extract`; `Diff` |
 | `runner/runner_test.go` | `BuildCommand` (dropping optional args, no re-expansion), `ResolveInputs`, sandbox container args, docker install and run, no engine (exit 5), signature failure refuses, wheel hash check, sandboxed pipx image build |
 | `runner/backup_test.go` | Mirror fallback with the same signature, no fallback for other failures, bad mirror signature refused, wheel fallback to the registry copy, wheel backup when PyPI dropped the file |

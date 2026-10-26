@@ -90,7 +90,7 @@ func (a *App) extractCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&caseName, "case", "", "scan the runs saved under this case")
-	cmd.Flags().StringVar(&resultsDir, "results-dir", "", "where runs are saved (default $OT_RESULTS_DIR, else ./results)")
+	cmd.Flags().StringVar(&resultsDir, "results-dir", "", "where runs are saved (default $OT_RESULTS_DIR, else results_dir in config.json, else ./results)")
 	return cmd
 }
 
@@ -141,6 +141,6 @@ func (a *App) diffCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&caseName, "case", "", "compare runs saved under this case")
-	cmd.Flags().StringVar(&resultsDir, "results-dir", "", "where runs are saved (default $OT_RESULTS_DIR, else ./results)")
+	cmd.Flags().StringVar(&resultsDir, "results-dir", "", "where runs are saved (default $OT_RESULTS_DIR, else results_dir in config.json, else ./results)")
 	return cmd
 }

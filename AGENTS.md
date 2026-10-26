@@ -288,14 +288,14 @@ stderr and returns `ExitCodeFor(err)`. `cli/README.md` ships in the release arch
 | `envelope` | The normalized result envelope (`Version = 1`) and `ParseOutput` / `Write` (json, raw, csv, table) |
 | `results` | Saving each run's raw output plus `.meta.json` (and lazy `.stderr.txt`); `saved.go` reads them back for `extract` and `diff` |
 | `keys` | OS keychain (service `osintverse-ot`); an env var of the same name wins; names indexed in `keys.json` |
-| `state` | Data dir (`OT_HOME` → `%APPDATA%\ot` → `~/.ot`), `state.json` (atomic write, 0600, records `from_backup`), read-only `config.json` |
+| `state` | Data dir (`OT_HOME` → `%APPDATA%\ot` → `~/.ot`), `state.json` (atomic write, 0600, records `from_backup`), `config.json` (read by every command, written only by `ot start` through `SetConfig`) |
 | `scaffold` | Files written by `ot init` (manifest, Dockerfile, starter tool, READMEs, guide pages) and embedded templates; uses `<<`/`>>` template delimiters |
 | `selfupdate` | `ot self-update`: release lookup (`get.otinstaller.com/ot/latest`, else the GitHub API), Ed25519-signed `checksums.txt`, archive SHA-256, atomic replace |
 | `oci` | `ot publish --image`: reads an OCI layout or docker-archive tar and pushes it to the mirror in 50 MiB chunks (the Worker's 100 MB request limit), standard library only |
 
 ### Commands
 
-Packages: `search`, `info`, `changelog`, `install`, `list`, `uninstall`, `outdated`, `update`. Running: `run`, `auto`, `playbook`,
+Setup: `start`. Packages: `search`, `info`, `changelog`, `install`, `list`, `uninstall`, `outdated`, `update`. Running: `run`, `auto`, `playbook`,
 `runs`, `extract`, `diff`, `pivot`, `keys set|setup|list|rm`, `doctor`. Agents: `mcp` (`mcp install|audit|policy [reset]|tools`).
 Guides: `guide search|read|open|get|tools`, `docs`. Publishing: `init`, `validate`, `import`, `publish`,
 `namespace create`, `sync`, `release`,
@@ -315,7 +315,7 @@ install when nothing takes a target), `runs.go` (runs), `saved.go` (extract/diff
 `import.go`, `publish.go`, `namespace.go`, `sync.go`, `release.go`, `login.go`, `token.go`, `trust.go`
 (report/claim/transfer/yank/deprecate), `issues.go` (issues, and `report --works|--broken`), `request.go` (request),
 `changelog.go` (changelog, and `info`'s "What's new"), `report_prompt.go` (the failure prompt), `feedback.go`,
-`selfupdate.go`, `mcp_cmd.go` (mcp and its subcommands), `consent.go` (unattended runs).
+`selfupdate.go`, `mcp_cmd.go` (mcp and its subcommands), `consent.go` (unattended runs), `start.go` (start).
 
 - `ot run` disables cobra flag parsing and parses its own args (`run_cmd.go`): ot flags (`-f/--format`, `--json`, `-o`,
   `--out-dir`, `--native`, `-y`, `--results-dir`, `--case`, `--no-save`, `--max-raw`, `--all`, `--parallel`,
@@ -459,7 +459,8 @@ for `ot publish --oidc`; GitHub's comes from `ACTIONS_ID_TOKEN_REQUEST_URL`/`_TO
 `OT_NONINTERACTIVE=1` (never prompt), `OT_CONSENT=off` (no `--yes` needed unattended; still audited), `OT_MAX_RAW`
 (leave `raw` out of large envelopes), `OT_NO_UPDATE_CHECK=1` (no daily update note, and `ot outdated` doesn't look up the latest `ot`), `CI`
 (the envelope's `client` becomes `ci`, and there is no daily note or newer-`ot` check). `config.json` (`api_url`,
-`site_url`, `telemetry`, `format`) is read, never written. Install scripts:
+`site_url`, `telemetry`, `format`, `results_dir`) is read by every command and written only by `ot start`, which
+changes just the keys the person chose. Install scripts:
 `OT_VERSION`, `OT_RELEASE_REPO`, `OT_INSTALL_DIR`, `OT_DOWNLOAD_BASE` (serve a release from another URL; checks still
 apply), `OT_NO_MODIFY_PATH=1` (Windows). Build-time only: `OT_RELEASE_PUBLIC_KEY`, `OT_RELEASE_KEY_FILE`,
 `RELEASE_OWNER`, `RELEASE_NAME`, `TAP_GITHUB_TOKEN`.

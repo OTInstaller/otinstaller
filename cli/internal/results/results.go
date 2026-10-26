@@ -19,14 +19,18 @@ import (
 	"github.com/otinstaller/otinstaller/cli/internal/envelope"
 )
 
-// Dir is where results go: flag, then $OT_RESULTS_DIR, then $OTINSTALLER_RESULTS_DIR, then ./results.
+// DefaultDir is where results go when neither the flag nor the environment says: config.json's results_dir (set
+// when ot starts), else ./results.
+var DefaultDir = "results"
+
+// Dir is where results go: flag, then $OT_RESULTS_DIR, then $OTINSTALLER_RESULTS_DIR, then DefaultDir.
 func Dir(flag string) string {
 	for _, v := range []string{flag, os.Getenv("OT_RESULTS_DIR"), os.Getenv("OTINSTALLER_RESULTS_DIR")} {
 		if v != "" {
 			return expandHome(v)
 		}
 	}
-	return "results"
+	return expandHome(DefaultDir)
 }
 
 func expandHome(p string) string {

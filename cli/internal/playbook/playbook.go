@@ -120,6 +120,10 @@ func bundledPlaybooks() ([]*Playbook, error) {
 	return out, nil
 }
 
+// Bundled are the playbooks shipped with ot, sorted by name: the starter packs `ot start` and otinstaller.com/start
+// offer. Like Starter, it never reads <ot home>/playbooks or ./playbooks.
+func Bundled() ([]*Playbook, error) { return bundledPlaybooks() }
+
 // Starter is the playbook ot offers to install when no installed tool takes an input type, as on a fresh machine:
 // the first bundled one whose main input is that type, or nil. Only bundled playbooks are offered, never one from
 // <ot home>/playbooks or ./playbooks, which could have come with any folder someone downloaded.

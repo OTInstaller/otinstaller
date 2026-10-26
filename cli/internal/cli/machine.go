@@ -37,13 +37,23 @@ type jsonError struct {
 
 // jsonRequested reports whether the command line asks for JSON, for errors raised before cobra has
 // parsed the flags (an unknown flag) and for `ot run`, which parses its own: --json, or -f/--format json
-// or jsonl.
+// or jsonl. `ot start --format` is the setting it saves, not its own output.
 func jsonRequested(args []string) bool {
+	start := false
+	for _, arg := range args {
+		if !strings.HasPrefix(arg, "-") {
+			start = arg == "start"
+			break
+		}
+	}
 	for i, arg := range args {
 		switch {
 		case arg == "--":
 			return false
-		case arg == "--json", arg == "--json=true", arg == "--format=json", arg == "-f=json", arg == "--format=jsonl", arg == "-f=jsonl":
+		case arg == "--json", arg == "--json=true":
+			return true
+		case start:
+		case arg == "--format=json", arg == "-f=json", arg == "--format=jsonl", arg == "-f=jsonl":
 			return true
 		case (arg == "-f" || arg == "--format") && i+1 < len(args) && (args[i+1] == "json" || args[i+1] == "jsonl"):
 			return true

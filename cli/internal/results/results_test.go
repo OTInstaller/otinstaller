@@ -35,6 +35,13 @@ func TestDir(t *testing.T) {
 	if d := Dir(""); d != "results" {
 		t.Errorf("default: %q", d)
 	}
+	// config.json's results_dir comes after the environment.
+	old := DefaultDir
+	defer func() { DefaultDir = old }()
+	DefaultDir = "configured"
+	if d := Dir(""); d != "configured" {
+		t.Errorf("config: %q", d)
+	}
 	t.Setenv("OTINSTALLER_RESULTS_DIR", "legacy")
 	if d := Dir(""); d != "legacy" {
 		t.Errorf("legacy variable: %q", d)

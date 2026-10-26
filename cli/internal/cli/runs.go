@@ -74,7 +74,7 @@ func (a *App) runsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "runs [run-id]",
 		Short: "List saved runs, or show one",
-		Long: "Lists the runs saved under the results folder ($OT_RESULTS_DIR, else ./results) and <ot home>/results, newest\n" +
+		Long: "Lists the runs saved under the results folder ($OT_RESULTS_DIR, else results_dir in config.json, else ./results) and <ot home>/results, newest\n" +
 			"first: by default the last 20 from the past week. With a run id it shows that run: what ran, how it ended, what it\n" +
 			"found and where it is saved. `ot pivot <run-id>` then suggests what to run next.",
 		Args: cobra.MaximumNArgs(1),
@@ -142,7 +142,7 @@ func (a *App) runsCmd() *cobra.Command {
 	fl.StringVar(&f.Status, "status", "", "only runs that ended complete, failed, timeout or interrupted")
 	fl.DurationVar(&since, "since", 7*24*time.Hour, "only runs started this long ago or less (0 for all)")
 	fl.IntVar(&f.Limit, "limit", 20, "at most this many, newest first (0 for all)")
-	fl.StringVar(&resultsDir, "results-dir", "", "read runs from this folder only (default $OT_RESULTS_DIR, else ./results, and <ot home>/results)")
+	fl.StringVar(&resultsDir, "results-dir", "", "read runs from this folder only (default $OT_RESULTS_DIR, else results_dir in config.json, else ./results, and <ot home>/results)")
 	return cmd
 }
 

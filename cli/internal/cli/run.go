@@ -336,12 +336,8 @@ func (a *App) doctorChecks(ctx context.Context) []doctorCheck {
 		}
 		return bad
 	}
-	if a.Runner.Engine != "" {
-		code, _ := ex.Run(ctx, a.Runner.Engine, []string{"info", "--format", "{{.ServerVersion}}"}, nil, nil, io.Discard, io.Discard)
-		check("containers", okOr(code == 0, "fail"), a.Runner.Engine+map[bool]string{true: " is running", false: " is installed but not running; start Docker Desktop (or `sudo systemctl start docker` on a Linux server)"}[code == 0])
-	} else {
-		check("containers", "fail", "Docker or Podman not found; tools run in containers, so install Docker Desktop (https://docs.docker.com/desktop/) or Docker Engine (https://docs.docker.com/engine/install/), then run `ot doctor` again")
-	}
+	engineOK, engineDetail := a.engineStatus(ctx)
+	check("containers", okOr(engineOK, "fail"), engineDetail)
 	_, _, hasPipx := runner.FindPipx(ex)
 	check("pipx", okOr(hasPipx || a.Runner.Engine != "", "fail"), map[bool]string{true: "found", false: "not found (only needed for --native pipx runs)"}[hasPipx])
 	py := "python3"
@@ -363,6 +359,18 @@ func (a *App) doctorChecks(ctx context.Context) []doctorCheck {
 	_, aerr := a.API.Search(ctx, api.SearchParams{Limit: 1})
 	check("registry", okOr(aerr == nil, "fail"), a.Config.APIURL+map[bool]string{true: " reachable", false: fmt.Sprintf(" unreachable: %v", aerr)}[aerr == nil])
 	return checks
+}
+
+// engineStatus says whether Docker or Podman is installed and running, for `ot doctor` and `ot start`.
+func (a *App) engineStatus(ctx context.Context) (bool, string) {
+	if a.Runner.Engine == "" {
+		return false, "Docker or Podman not found; tools run in containers, so install Docker Desktop (https://docs.docker.com/desktop/) or Docker Engine (https://docs.docker.com/engine/install/), then run `ot doctor` again"
+	}
+	code, _ := a.Runner.Exec.Run(ctx, a.Runner.Engine, []string{"info", "--format", "{{.ServerVersion}}"}, nil, nil, io.Discard, io.Discard)
+	if code != 0 {
+		return false, a.Runner.Engine + " is installed but not running; start Docker Desktop (or `sudo systemctl start docker` on a Linux server)"
+	}
+	return true, a.Runner.Engine + " is running"
 }
 
 // atVersion is "@version", or nothing for the latest.

@@ -67,7 +67,7 @@ try {
         [Environment]::SetEnvironmentVariable('Path', ($userPath.TrimEnd(';') + ';' + $dir), 'User')
         Write-Host "Added $dir to your PATH (open a new terminal to use it)."
     }
-    Write-Host "Installed ot $tag to $dir\ot.exe. Next: ot doctor"
+    Write-Host "Installed ot $tag to $dir\ot.exe. Next: ot start (pick tools and settings), or ot doctor to check your setup"
 } finally {
     Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 }
