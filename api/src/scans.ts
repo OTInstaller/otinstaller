@@ -12,7 +12,9 @@ import { updateLinkHealth } from "./guides";
 import { announceVersion, refreshCounts } from "./community";
 import { linkPublished } from "./requests";
 import { firstReleasePublished, firstReleaseScanned } from "./submissions";
-import { recordHostedImage } from "./backups";
+import { hostedImage, mirrorHost, mirrorRepo, osiApproved, recordHostedImage } from "./backups";
+import { imageExists } from "./mirror/registry";
+import { SEARCH_FIELDS } from "./catalog";
 import { settleBump } from "./bumps";
 import { queueIndexNow, releasePaths } from "./indexnow";
 
@@ -31,6 +33,27 @@ export interface ScanResults {
   malware: { count: number; findings?: unknown[] };
   smoke: { status: "pass" | "fail" | "skipped"; exit_code?: number; duration_ms?: number; output_excerpt?: string; sample?: SmokeSample };
   sbom?: { packages: number };
+  // pipx tools: the wheel's dependencies as the scanner pinned them (LOCK_LINE lines; "" when it has none, null when
+  // they couldn't be pinned), and the image it scanned, pushed to the mirror and signed by the scan workflow.
+  python_lock?: string | null;
+  sandbox?: { image: string; signed: boolean };
+}
+
+/** A dependency lock line: a pinned package and the sha256 of each of its files (lockLine in ot's install.go). */
+export const LOCK_LINE = /^[A-Za-z0-9][A-Za-z0-9._-]*==[A-Za-z0-9._+!-]+( --hash=sha256:[0-9a-f]{64})+$/;
+export const MAX_LOCK_BYTES = 64 * 1024;
+
+/** A lock the scanner sent, when every line is a pinned, hashed package; anything else is dropped (ot resolves then). */
+export function cleanLock(lock: unknown): string | null {
+  if (typeof lock !== "string" || lock.length > MAX_LOCK_BYTES) return null;
+  const lines = lock.split("\n").map((l) => l.trim()).filter(Boolean);
+  return lines.every((l) => LOCK_LINE.test(l)) ? lines.map((l) => `${l}\n`).join("") : null;
+}
+
+/** Who signs sandbox images: the registry's scan workflow, keyless on GitHub Actions. Null without OPS_REPO. */
+export function sandboxSigner(env: Env): { identity: string; issuer: string } | null {
+  const identity = env.SANDBOX_SIGNER_IDENTITY?.trim() || (env.OPS_REPO ? `https://github.com/${env.OPS_REPO}/.github/workflows/scan.yml@refs/heads/main` : "");
+  return identity ? { identity, issuer: "https://token.actions.githubusercontent.com" } : null;
 }
 
 export interface SignerIdentity {
@@ -133,6 +156,11 @@ export async function dispatchScan(env: Env, opts: { versionId: string; signer: 
     // Tools that declare egress get network access during the smoke test; everything else runs offline.
     network_egress: (m.network as { egress?: boolean } | undefined)?.egress === true,
     expected_signer: signer,
+    // pipx tools: where the scanner pushes the image it scanned, so ot pulls it instead of building it. Only when the
+    // license lets the registry share it; the mirror withholds a sandbox-* tag's image until the version is published.
+    ...(m.runtime?.kind === "pipx" && osiApproved(m.license as string | undefined)
+      ? { sandbox: { repository: `${mirrorHost(env)}/${mirrorRepo(m.namespace, m.name, true)}`, tag: `sandbox-${m.version}` } }
+      : {}),
     callback_url: `${env.API_URL}/v1/internal/scans`,
     callback_token: token,
   };
@@ -248,6 +276,18 @@ async function pinSigner(env: Env, v: VersionCtx, r: ScanResults): Promise<{ res
   return { results: seen[0] ? { ...r, signature: { ...r.signature, identity: seen[0].identity, issuer: seen[0].issuer } } : r };
 }
 
+/**
+ * The sandbox image the scanner reported for a pipx version, when it can be offered to ot: signed (ot checks the
+ * signature), in this package's own public mirror repository, and really there. Null otherwise; ot then builds.
+ */
+async function sandboxImage(env: Env, v: VersionCtx, r: ScanResults): Promise<string | null> {
+  const s = r.sandbox;
+  if (!s?.signed || typeof s.image !== "string" || !sandboxSigner(env)) return null;
+  const hosted = hostedImage(env, s.image);
+  if (!hosted || hosted.repo !== mirrorRepo(v.namespace, v.name, true) || !/^sha256:[0-9a-f]{64}$/.test(hosted.digest)) return null;
+  return (await imageExists(env.MIRROR, hosted.repo, hosted.digest)) ? s.image : null;
+}
+
 /** Applies scan results to a version: reject, publish, or hold for review. */
 export async function applyScanResults(env: Env, v: VersionCtx, scanned: ScanResults): Promise<{ status: string; verdict: Verdict }> {
   const db = env.DB;
@@ -292,9 +332,11 @@ export async function applyScanResults(env: Env, v: VersionCtx, scanned: ScanRes
   }
 
   const signed = r.signature.status === "pass";
+  const pipx = (JSON.parse(v.manifest_json) as Manifest).runtime?.kind === "pipx";
   stmts.push(
-    db.prepare(`UPDATE versions SET scan_status = ?, signer_identity = ?, signer_issuer = ? WHERE id = ?`)
-      .bind(vd.result, signed ? r.signature.identity ?? null : null, signed ? r.signature.issuer ?? null : null, v.id),
+    db.prepare(`UPDATE versions SET scan_status = ?, signer_identity = ?, signer_issuer = ?, python_lock = ?, sandbox_image = ? WHERE id = ?`)
+      .bind(vd.result, signed ? r.signature.identity ?? null : null, signed ? r.signature.issuer ?? null : null,
+        pipx ? cleanLock(r.python_lock) : null, pipx ? await sandboxImage(env, v, r) : null, v.id),
     audit(db, null, "system", `scan.${vd.result}`, "version", v.id),
   );
   await db.batch(stmts);
@@ -332,11 +374,15 @@ export function pickLatest<T extends SemverRow>(rows: T[]): T | null {
   return pool.reduce((a, b) => (cmpSemver(a, b) >= 0 ? a : b));
 }
 
-/** Search metadata follows the latest version: summary, categories, inputs and outputs, keys, and a guide's tools. */
+/**
+ * Search metadata follows the latest version: summary, categories, the manifest fields search filters on
+ * (SEARCH_FIELDS), inputs and outputs, keys, and a guide's tools.
+ */
 export function latestMetadata(db: D1Database, toolId: string, kind: string, versionId: string, m: Manifest): D1PreparedStatement[] {
   const stmts = [
     db.prepare(`UPDATE tools SET summary = ?, categories = ?, tags = ?, readme_text = COALESCE((SELECT search_text FROM versions WHERE id = ?), readme_text) WHERE id = ?`)
       .bind(m.summary, JSON.stringify(m.categories), JSON.stringify(m.tags ?? []), versionId, toolId),
+    db.prepare(`UPDATE tools SET ${SEARCH_FIELDS} FROM versions v WHERE v.id = ? AND tools.id = ?`).bind(versionId, toolId),
     // What people said about the version before no longer decides the status.
     refreshCounts(db, toolId),
     db.prepare(`DELETE FROM tool_io WHERE tool_id = ?`).bind(toolId),
@@ -386,8 +432,13 @@ export async function publishVersion(env: Env, versionId: string, opts: { backup
   }
   const results = await db.batch(stmts);
   const announce = isLatest && !!results.at(-1)?.meta.changes;
-  // An image a publisher pushed to the mirror goes public now, recorded as its own backup.
+  // An image a publisher pushed to the mirror goes public now, recorded as its own backup; so does a pipx tool's
+  // sandbox image, which the scanner pushed (takedowns, purges and legal holds then treat both alike).
   if (m.runtime?.kind === "docker") await recordHostedImage(env, versionId, v.tool_id, m.runtime.image ?? "");
+  if (m.runtime?.kind === "pipx") {
+    const s = await db.prepare(`SELECT sandbox_image FROM versions WHERE id = ?`).bind(versionId).first<{ sandbox_image: string | null }>();
+    if (s?.sandbox_image) await recordHostedImage(env, versionId, v.tool_id, s.sandbox_image);
+  }
   if (announce) {
     // People following open broken or outdated issues are asked whether the new version fixes them...
     await announceVersion(env, v.tool_id, v.version).catch((e) => console.error("announcing the version on issues failed", e));

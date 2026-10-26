@@ -4,7 +4,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 `api/migrations/*.sql` and the code in `api/src/`, `api/test/` and `api/scripts/`.
 
 - Binding: `DB`, database name `otinstaller`, `migrations_dir: "migrations"` (`api/wrangler.jsonc`).
-- 39 migrations, `0001` to `0039`.
+- 41 migrations, `0001` to `0042` (no `0040` yet).
 - Final schema: **65 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 66. FTS5 also creates its own shadow
   tables, which aren't listed here.
 
@@ -53,6 +53,8 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0037 | `0037_indexnow.sql` | New table `indexnow_queue` (`path` PK, `queued_at`) and index `idx_indexnow_queue_queued`: site pages waiting to be sent to IndexNow. Apply before an API that writes it is deployed. |
 | 0038 | `0038_versions_artifact_from_manifest.sql` | Data only: sets `versions.runtime_kind` and `artifact_ref` from `manifest_json` where they differ (versions re-released after a rejection kept the rejected release's; naminter 1.0.9 and octosuite 5.1.0 in production). |
 | 0039 | `0039_community_health.sql` | Drops table `health_checks` and column `tools.health_fail_streak` (the nightly health check is gone); recomputes `tools.health_status` and `health_checked_at` for every tool from issues and confirmations, which also clears `not_checked`. |
+| 0041 | `0041_pipx_sandbox.sql` | `versions` + `python_lock` (the dependencies the scanner pinned, one `name==version --hash=sha256:...` line each) and `sandbox_image` (`<mirror host>/<ns>/<name>@sha256:...`, the signed image it built and scanned). |
+| 0042 | `0042_search_fields.sql` | `tools` + `title`, `level`, `format`, `language`, `touches_target`, `auth_required`, `collects_personal_data`, `notifies_target`, `egress`: the latest version's manifest fields search filters on and summaries show, filled for every tool with `SEARCH_FIELDS`. |
 
 ---
 
@@ -221,6 +223,11 @@ Purpose: a package (`kind` tool or guide) at `<namespace>/<name>`.
 - `health_checked_at` INTEGER (0009): since 0039, the latest "works for me" on the latest version in the last 30 days;
   null when there is none
 - `readme_text` TEXT NN default `''` (feeds `tools_fts.body`)
+- `title`, `level`, `format`, `language` TEXT · `touches_target`, `auth_required`, `collects_personal_data`,
+  `notifies_target`, `egress` INTEGER (0042): the latest version's manifest fields (`$.title`, `$.level`, `$.format`,
+  `$.language`, `$.ethics.*`, `$.network.egress`; null when left out), copied by `latestMetadata` with `SEARCH_FIELDS`
+  (`catalog.ts`) whenever the latest version changes. Search filters (`level`, `format`, `lang`, `passive_only`) and
+  `SUMMARY_COLUMNS` read these instead of parsing `versions.manifest_json`
 - `needs_update` INTEGER NN default 0 · `dead_link_ratio` REAL (0007, guides)
 - `removed_at` INTEGER · `removed_reason` TEXT · `removed_category` TEXT (0009)
 - `git_backups` INTEGER NN default 1 · `legal_hold` INTEGER NN default 0 · `legal_hold_reason` TEXT (0011)
@@ -241,6 +248,9 @@ Purpose: one release of a tool or guide, holding its full manifest.
 - `yanked_at`, `published_at` INTEGER · `created_at` INTEGER NN
 - `scan_token_hash` TEXT · `scan_token_expires_at` INTEGER · `scan_dispatched_at` INTEGER (0003)
 - `expected_signer_regexp`, `expected_signer_issuer` TEXT (0003) · `rejected_reason` TEXT (0003)
+- `python_lock` TEXT · `sandbox_image` TEXT (0041, pipx only): the dependency lock and the signed sandbox image from the
+  scan (`applyScanResults`); the manifest response serves the lock, and the image while its `hosted = 1` image backup
+  row is stored, public and not scheduled for deletion (`backups.ts:pipxInstall`)
 - `changelog` TEXT (0004; release notes as cleaned Markdown, rendered when served) · `changelog_source` TEXT (0015; `release` | `file`) · `search_text` TEXT (0007; plain text copied to `tools.readme_text` when it becomes latest)
 - UNIQUE `(tool_id, version)`
 - Indexes `versions_tool_status (tool_id, status, published_at DESC)`, `versions_status (status, scan_dispatched_at)`,

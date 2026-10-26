@@ -256,8 +256,10 @@ Step by step:
 - **Publishing.** `publishVersion` calls `recordHostedImage`: `releaseImage` clears the pending markers (index children
   too), and a `backups` row with `hosted = 1` stands for the image. `releasePlan` never copies such an image, and
   `installFallbacks` never offers it.
-- **Clean-up.** Nightly, `queueMirrorSweeps` queues `{mirrorSweepRepo}` for repositories with pushes older than a week.
-  `sweepMirrorRepo` keeps the digests of the package's non-rejected versions and backups, with their index children and
+- **Clean-up.** Nightly, `queueMirrorSweeps` queues `{mirrorSweepRepo}` for repositories with pushes older than a week
+  (the scanner's `sandbox-*` pushes are recorded there too).
+  `sweepMirrorRepo` keeps the digests of the package's non-rejected versions (their image, or their pipx
+  `sandbox_image`) and backups, with their index children and
   `sha256-*` tags; it deletes other manifests older than a week and unused blobs older than a day (`sweepRepo`).
   `purgeUploads` clears blob uploads idle for a day.
 
@@ -348,9 +350,12 @@ answers `already_received`, so a repository with both doesn't fail one of them.
    `scan()`. `scan()` returns empty results for guides. Docker: `scan_docker` (`check_image_signature` with the
    expected signer plus `signer_identities` to tell "signed by someone else" from unsigned; `trivy` vuln and secret
    scan; SBOM). pipx: `scan_pipx` (download by hash, `check_wheel_provenance` against `source_repo` or
-   `upstream_repo`, Trivy on python:3.12-slim, GuardDog). Then `smoke()` runs `test_input` in the same sandbox as
-   `ot`, `--network bridge` only when `network_egress` is true, and passes when the exit code equals
-   `expect_exit_code`.
+   `upstream_repo`, `resolve_lock` pins the dependencies with every file's hash, the sandbox image is built from the
+   wheel and that lock on the digest-pinned base, Trivy, GuardDog). Then `smoke()` runs `test_input` in the same
+   sandbox as `ot`, `--network bridge` only when `network_egress` is true, and passes when the exit code equals
+   `expect_exit_code`. A pipx image that didn't fail goes to the request's `sandbox` target (`push_sandbox`: push,
+   then keyless `cosign sign`); results carry `python_lock` and `sandbox`, which `applyScanResults` stores on the
+   version (`python_lock`, and `sandbox_image` when signed and on the mirror) and `publishVersion` releases.
 3. `scan.py:post` POSTs results to `callback_url` with `Authorization: Bearer <callback_token>`.
 4. `routes/review.ts POST /internal/scans`: 413 over 256 KB; `scans.ts:loadVersion` with
    `scan_token_hash = sha256(token) AND scan_token_expires_at > now AND status = 'scanning'` (else 401
@@ -515,13 +520,17 @@ answers `already_received`, so a repository with both doesn't fail one of them.
      manifest.Validate(doc)         -> invalid: exit 4
      runner.(*Runner).Install
         docker: installDocker
-          engine pull <image@sha256>  -- refused (401/403/404/denied/...) and mirror_image has the
-                                         same digest -> engine pull <mirror_image>
-          cosign verify --certificate-identity <signer> --certificate-oidc-issuer <issuer> <pulled>
-             missing cosign: warning only; failure: TrustError (exit 4)
+          pullVerified: engine pull <image@sha256>  and, at the same time,
+                        cosign verify --certificate-identity <signer> --certificate-oidc-issuer <issuer> <image>
+             refused (401/403/404/denied/...) and mirror_image has the same digest -> both again on <mirror_image>
+             missing cosign: warning only (agents: refused before pulling); failure: TrustError (exit 4)
+        pipx, sandboxed: pullSandbox (amd64, sandbox_image set)
+              pullVerified <sandbox_image> with cosign against sandbox_signer_identity -> LocalImage = sandbox_image
+                 (no wheel download, no build); bad signature: TrustError; failed pull, other platform,
+                 or an agent without cosign: fall through to the local build
         pipx: FetchWheelWithBackup -> FetchWheel (PyPI JSON, sha256 match, re-hash)
                 gone (403/404/410/no matching file) + wheel_url -> download(wheel_url, same sha)
-              sandboxed: buildPythonImage -> ot-local/<ns>-<name>:<version>
+              sandboxed: buildPythonImage(wheel, python_lock) -> ot-local/<ns>-<name>:<version>
               --native or no engine: installPipxNative
      state.Load -> st.Installed[ref] = inst -> st.Save      (state.json, records from_backup)
      POST /v1/installs {tool, version}   (unless OT_NO_TELEMETRY / config telemetry false; 3 s)
@@ -555,8 +564,12 @@ answers `already_received`, so a repository with both doesn't fail one of them.
    - pipx: `FetchWheelWithBackup` → `FetchWheel` (`<PyPIBase>/pypi/<pkg>/<ver>/json`, the `bdist_wheel` whose
      `digests.sha256` equals `wheel_sha256`, `download` re-hashes) — fallback when `gone(err)` (403/404/410 or the
      "no wheel for ... matches" `TrustError`) and `wheel_url` ends in `.whl`. Then `buildPythonImage`
-     (`<engine> build --pull -t ot-local/<ns>-<name>:<version>`) or `installPipxNative` (ot's own `PIPX_HOME`,
-     `PIPX_BIN_DIR`).
+     (`<engine> build -t ot-local/<ns>-<name>:<version>`, no `--pull`: the base is pinned by digest; the build folder
+     holds the wheel and `requirements.lock`, the response's `python_lock` when `pythonLock` accepts every line, else
+     empty, and the Dockerfile installs a non-empty lock with `--require-hashes --no-deps`) or `installPipxNative`
+     (ot's own `PIPX_HOME`, `PIPX_BIN_DIR`). Before all that, `pullSandbox` uses the response's `sandbox_image` when ot
+     runs on amd64 (the platform the scanner builds for): pull and `cosign verify` against `sandbox_signer_identity`
+     together, and the image is the install (`LocalImage`), with no wheel download.
 4. `state.Load` / `(*State).Save` (`cli/internal/state/state.go`; data dir `OT_HOME` → `%APPDATA%\ot` → `~/.ot`).
 5. Install ping: `api.(*Client).InstallPing` (anonymous, through `anon()`) → `POST /v1/installs` `{tool, version,
    client}` (counted once per address, version and day; per-day counters in `install_counts` and `install_clients`;

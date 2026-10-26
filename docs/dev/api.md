@@ -72,7 +72,7 @@ in code; a Cloudflare rate-limiting rule on the zone covers `/mcp`, `/v1/tools*`
 | GET | `/guides` | none | 60 (inherited) | index.ts | Re-dispatches internally to `/v1/tools?kind=guide` with `app.fetch`, so the `/tools` response (and its `max-age=60`) is returned |
 | GET | `/tools/:ns/:name` | none | `cached(c, 60)` | index.ts | Follows aliases (`moved_to`); not found goes through `notFound()`: 410 `tool_removed` or 404 `tool_not_found`. `sample` is the latest version's passing `smoke` scan row's `sample` (entities or stdout from the test input) with `version` and `recorded_at`, when the scanner sent one |
 | GET | `/tools/:ns/:name/versions` | none | `cached(c, 60)` | index.ts | Published, yanked and removed versions, semver-sorted, each with `changelog`, `changelog_html` (rendered by `changelog.ts:renderNotes`) and `changelog_source`; versions under a week old also carry `first_week` (`{works, broken, ends_at}`, `first-week.ts:firstWeekCounts`), which `ot outdated` reads |
-| GET | `/tools/:ns/:name/:version/manifest` | none | `cached(c, version === "latest" ? 60 : 3600)` | index.ts | Removed versions return status and `removed_reason` with `manifest: null`; otherwise adds `installFallbacks()` (`mirror_image` / `wheel_url`). A deprecated package adds `deprecated`, `deprecated_message` and `deprecated_replacement`, which `ot install` warns with. `manifest` is `compatManifest()` (`lib/manifest.ts`): without the optional fields added after ot v0.12, whose install-time validation rejects them; `manifest_full` carries them when anything was left out |
+| GET | `/tools/:ns/:name/:version/manifest` | none | `cached(c, version === "latest" ? 60 : 3600)` | index.ts | Removed versions return status and `removed_reason` with `manifest: null`; otherwise adds `installFallbacks()` (`mirror_image` / `wheel_url`) and, for pipx versions, `pipxInstall()`: `python_lock`, and `sandbox_image` with `sandbox_signer_identity` / `sandbox_signer_issuer` once the image's hosted backup row is stored and public. A deprecated package adds `deprecated`, `deprecated_message` and `deprecated_replacement`, which `ot install` warns with. `manifest` is `compatManifest()` (`lib/manifest.ts`): without the optional fields added after ot v0.12, whose install-time validation rejects them; `manifest_full` carries them when anything was left out |
 | GET | `/tools/:ns/:name/:version/scans` | none | `cached(c, 300)` | index.ts | PII scan summaries reduced to `{hits: <count>}` |
 | GET | `/tools/:ns/:name/:version` | none | `cached(c, 3600)` | index.ts | Also 3600 for `latest` (unlike `/manifest`, which uses 60 for `latest`); carries the same release-notes fields |
 | GET | `/namespaces` | none | `cached(c, 600)` | routes/profiles.ts | Publishers with a visible package (at most 500), most installed first, for the sitemap and llms.txt |
@@ -733,6 +733,10 @@ publisher of that namespace, which is not `rejected` or `suspended`, and there i
   sizes).
 
 The PUT writes a `pending/` marker (except for `sha256-*` tags) and a `mirror_pushes` row.
+
+**The scanner's manifest PUT of a `sandbox-*` tag** (a pipx release's sandbox image) writes the same `pending/` marker
+and a `mirror_pushes` row (no user or token), so it is withheld until `publishVersion` releases it and swept if the
+release never is.
 
 **Uploads.**
 - An upload session holds at most 2 GiB (`MAX_UPLOAD_BYTES`; 413 `SIZE_INVALID`).

@@ -12025,6 +12025,21 @@
           "wheel_url": {
             "type": "string"
           },
+          "python_lock": {
+            "type": "string",
+            "description": "pipx: the dependencies the scanner pinned, one `name==version --hash=sha256:...` line each, for a local build to install with --require-hashes"
+          },
+          "sandbox_image": {
+            "type": "string",
+            "description": "pipx: the sandbox image the scanner built from the wheel and python_lock and scanned, on the mirror by digest"
+          },
+          "sandbox_signer_identity": {
+            "type": "string",
+            "description": "The keyless identity that signed sandbox_image (the registry's scan workflow)"
+          },
+          "sandbox_signer_issuer": {
+            "type": "string"
+          },
           "deprecated": {
             "type": "boolean",
             "description": "The package's owner marked it superseded; ot warns on install"

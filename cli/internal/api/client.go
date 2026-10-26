@@ -149,6 +149,12 @@ type ManifestResponse struct {
 	// Backups the registry keeps, used when the original registry or PyPI refuses the artifact.
 	MirrorImage string `json:"mirror_image,omitempty"`
 	WheelURL    string `json:"wheel_url,omitempty"`
+	// pipx packages: the sandbox image the scanner built from the wheel (on the mirror, by digest), the identity that
+	// signed it (the registry's scan workflow), and the hash-locked dependencies a local build installs instead.
+	SandboxImage          string `json:"sandbox_image,omitempty"`
+	SandboxSignerIdentity string `json:"sandbox_signer_identity,omitempty"`
+	SandboxSignerIssuer   string `json:"sandbox_signer_issuer,omitempty"`
+	PythonLock            string `json:"python_lock,omitempty"`
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {

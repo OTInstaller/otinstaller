@@ -33,6 +33,11 @@ export function parseResults(body: unknown): ScanResults {
   if (v !== null && (typeof v !== "object" || !["critical", "high", "medium", "low", "fixable_critical", "fixable_high"].every((k) => isCount((v as any)[k])))) {
     bad("vulnerabilities must be null or counts");
   }
+  // pipx extras: a malformed lock or sandbox entry is dropped rather than failing the scan (ot then builds the image
+  // itself and resolves the dependencies, as before). applyScanResults checks what is left.
+  if (r.python_lock !== undefined && r.python_lock !== null && typeof r.python_lock !== "string") delete r.python_lock;
+  const s = r.sandbox;
+  if (s !== undefined && !(s && typeof s === "object" && typeof s.image === "string" && s.image.length <= 300 && typeof s.signed === "boolean")) delete r.sandbox;
   return r;
 }
 

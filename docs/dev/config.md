@@ -46,7 +46,8 @@ restore drill).
 | --- | --- | --- | --- |
 | `SITE_URL` | yes | site origin: CORS (credentialed only for it), sign-in redirects, email links, commit-status links, edge-cache key | not optional in `Env`; URL building breaks |
 | `API_URL` | yes | public API origin: OAuth callbacks, scan/backup/drill callback URLs, signed object URLs, `wheel_url` | not optional; callbacks would point nowhere |
-| `OPS_REPO` | for scans/backups/drills | registry-ops repo for `repository_dispatch` | `requireSecret` → 503 on dispatch |
+| `OPS_REPO` | for scans/backups/drills | registry-ops repo for `repository_dispatch`; also names the identity that signs pipx sandbox images (`scan.yml` on `main`) | `requireSecret` → 503 on dispatch; no sandbox images offered |
+| `SANDBOX_SIGNER_IDENTITY` | no | the cosign identity ot checks pipx sandbox images against, when registry-ops' default branch isn't `main` or the workflow moves | `https://github.com/<OPS_REPO>/.github/workflows/scan.yml@refs/heads/main` |
 | `EMAIL_FROM` | no | sender address | defaults to `OTInstaller Registry <registry@otinstaller.com>` |
 | `MIRROR_HOST` | no | host in mirror targets and `mirror_image` | defaults to `mirror.otinstaller.com` |
 | `GITHUB_APP_SLUG` | no (commented out) | App install link `https://github.com/apps/<slug>/installations/new` | defaults to `otinstaller` |
@@ -152,13 +153,15 @@ with `cache-control: public, max-age=300`. A non-OK upstream answers 502 with a 
 
 | Name | Kind | Workflow | Purpose | When unset |
 | --- | --- | --- | --- | --- |
-| `MIRROR_PUSH_TOKEN` | secret | `scan.yml` | `crane auth login` and `docker login <MIRROR_HOST> -u scanner` (Docker pulls publishers' unreleased images for scanning); chunked pushes of layers over 90 MB in `backup.py` | login step skipped; image backups fail at push (big layers raise immediately); scans of hosted images fail at pull |
+| `MIRROR_PUSH_TOKEN` | secret | `scan.yml` | `crane auth login` and `docker login <MIRROR_HOST> -u scanner` (Docker pulls publishers' unreleased images for scanning, and pushes pipx sandbox images); chunked pushes of layers over 90 MB in `backup.py` | login step skipped; image backups fail at push (big layers raise immediately); scans of hosted images fail at pull; pipx scans push no sandbox image |
 | `MIRROR_HOST` | variable | `scan.yml` | host for the crane login | `mirror.otinstaller.com` |
 | `GITHUB_TOKEN` | automatic | `scan.yml` | `actions/checkout` | – |
 
 `scan.yml` is triggered by `repository_dispatch` (`otinstaller-scan`, `otinstaller-backup`, `otinstaller-drill`),
 so the API needs `OPS_DISPATCH_TOKEN` or the App installed on registry-ops (`OPS_INSTALLATION_ID`) with Contents:
-write. It uses `permissions: contents: read`.
+write. It uses `permissions: contents: read, id-token: write`: the OIDC token signs pipx sandbox images keyless (no key
+or secret to configure), and the API's `OPS_REPO` or `SANDBOX_SIGNER_IDENTITY` must name this workflow on the branch
+it runs from.
 
 ---
 
@@ -207,6 +210,7 @@ the shim and skipped every file.
 | --- | --- |
 | `MIRROR_PUSH_TOKEN` | mirror Worker secret, registry-ops secret |
 | `MIRROR_HOST` | API var, registry-ops variable (both default `mirror.otinstaller.com`) |
+| registry-ops' scan workflow and branch | API `OPS_REPO` (or `SANDBOX_SIGNER_IDENTITY`), the identity `scan.yml` signs sandbox images with |
 | `SITE_URL` | API var (CORS), the site's build env |
 | `INDEXNOW_KEY` | API var, the file name and content of the site's `web/public/<key>.txt` (and its `_headers` rule) |
 | `PUBLIC_API_URL` | the site's build env, must be the API's origin |
