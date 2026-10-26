@@ -149,7 +149,7 @@ class PipxImageTest(unittest.TestCase):
         def run(cmd, timeout=600, check=False):
             if cmd[:2] == ["docker", "build"]:
                 dockerfiles.append(Path(cmd[-1], "Dockerfile").read_text())
-            elif cmd[:2] == ["docker", "run"]:
+            elif cmd[:2] == ["docker", "run"] and "--entrypoint" in cmd:
                 images.append(cmd[cmd.index("--entrypoint") + 2])
             return subprocess.CompletedProcess(cmd, 0, "", "")
 
@@ -161,6 +161,153 @@ class PipxImageTest(unittest.TestCase):
         self.assertEqual(scanned["smoke"]["status"], "pass")
         self.assertEqual(dockerfiles, [scan.PYTHON_DOCKERFILE])
         self.assertEqual(images, ["ot-scan/ns-tool:latest"])
+
+    def test_base_is_pinned_by_digest(self):
+        self.assertRegex(scan.PYTHON_BASE, r"^python:3\.12-slim@sha256:[0-9a-f]{64}$")
+
+
+H = {c: c * 64 for c in "abcdef"}
+REPORT = {"install": [
+    {"is_direct": True, "download_info": {"url": "file:///w/tool-1.0.0-py3-none-any.whl", "archive_info": {}},
+     "metadata": {"name": "tool", "version": "1.0.0"}},
+    {"download_info": {"url": "https://files.pythonhosted.org/packages/r/requests-2.32.3-py3-none-any.whl", "archive_info": {"hashes": {"sha256": H["a"]}}},
+     "metadata": {"name": "requests", "version": "2.32.3"}},
+    {"download_info": {"url": "https://files.pythonhosted.org/packages/c/charset_normalizer-3.4.0-cp312-manylinux.whl", "archive_info": {}},
+     "metadata": {"name": "charset-normalizer", "version": "3.4.0"}},
+]}
+PYPI_FILES = {
+    "requests/2.32.3": [H["a"], H["b"]],
+    # One version, a wheel per platform and the sdist: the lock lists them all, so it installs on arm64 too.
+    "charset-normalizer/3.4.0": [H["c"], H["d"], H["e"]],
+}
+
+
+def pypi(url):
+    m = re.search(r"/pypi/(.+/[^/]+)/json$", url)
+    files = PYPI_FILES.get(m.group(1)) if m else None
+    return {"urls": [{"digests": {"sha256": h}} for h in files]} if files else None
+
+
+class LockTest(unittest.TestCase):
+    def test_lock_pins_every_file_of_each_dependency(self):
+        with mock.patch.object(scan, "http_json", pypi):
+            lock = scan.lock_from_report(REPORT)
+        self.assertEqual(lock, f"charset-normalizer==3.4.0 --hash=sha256:{H['c']} --hash=sha256:{H['d']} --hash=sha256:{H['e']}\n"
+                               f"requests==2.32.3 --hash=sha256:{H['a']} --hash=sha256:{H['b']}\n")
+        for line in lock.splitlines():
+            self.assertRegex(line, scan.LOCK_LINE)
+
+    def test_no_dependencies_is_an_empty_lock(self):
+        self.assertEqual(scan.lock_from_report({"install": REPORT["install"][:1]}), "")
+
+    def test_a_dependency_from_elsewhere_means_no_lock(self):
+        report = {"install": [{"download_info": {"url": "https://github.com/x/y/archive/main.zip", "archive_info": {}},
+                               "metadata": {"name": "y", "version": "0.1"}}]}
+        with mock.patch.object(scan, "http_json", pypi):
+            self.assertIsNone(scan.lock_from_report(report))
+        vcs = {"install": [{"download_info": {"url": "https://github.com/x/y", "vcs_info": {"vcs": "git"}}, "metadata": {"name": "y", "version": "0.1"}}]}
+        self.assertIsNone(scan.lock_from_report(vcs))
+
+    def test_resolve_runs_pip_in_the_pinned_base(self):
+        calls = []
+
+        def run(cmd, timeout=600, check=False):
+            calls.append(cmd)
+            Path(cmd[cmd.index("-v") + 1].rsplit(":/w", 1)[0], "report.json").write_text(json.dumps(REPORT))
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        with mock.patch.object(scan, "run", run), mock.patch.object(scan, "http_json", pypi), tempfile.TemporaryDirectory() as tmp:
+            lock = scan.resolve_lock(Path(tmp), "tool-1.0.0-py3-none-any.whl")
+            self.assertFalse(Path(tmp, "report.json").exists())
+        self.assertIn(scan.PYTHON_BASE, calls[0])
+        self.assertIn("--dry-run", calls[0])
+        self.assertTrue(lock.startswith("charset-normalizer==3.4.0"))
+
+
+class SandboxTest(unittest.TestCase):
+    REQ = {"ref": "ns/tool", "sandbox": {"repository": "mirror.otinstaller.com/ns/tool", "tag": "sandbox-1.0.0"}}
+    DIGEST = "sha256:" + "9" * 64
+
+    def run_ok(self, calls):
+        def run(cmd, timeout=600, check=False):
+            calls.append(cmd)
+            out = f"sandbox-1.0.0: digest: {self.DIGEST} size: 1234\n" if cmd[:2] == ["docker", "push"] else ""
+            return subprocess.CompletedProcess(cmd, 0, out, "")
+        return run
+
+    def test_pushes_and_signs_the_scanned_image(self):
+        calls = []
+        with (mock.patch.object(scan, "run", self.run_ok(calls)), mock.patch.object(scan.shutil, "which", lambda n: "/usr/bin/" + n),
+              mock.patch.dict(scan.os.environ, {"ACTIONS_ID_TOKEN_REQUEST_URL": "https://token"})):
+            out = scan.push_sandbox(self.REQ, "ot-scan/ns-tool:latest")
+        image = "mirror.otinstaller.com/ns/tool@" + self.DIGEST
+        self.assertEqual(out, {"image": image, "signed": True})
+        self.assertIn(["docker", "tag", "ot-scan/ns-tool:latest", "mirror.otinstaller.com/ns/tool:sandbox-1.0.0"], calls)
+        self.assertIn(["cosign", "sign", "--yes", image], calls)
+
+    def test_unsigned_outside_actions(self):
+        calls = []
+        with mock.patch.object(scan, "run", self.run_ok(calls)), mock.patch.dict(scan.os.environ, {}, clear=True):
+            out = scan.push_sandbox(self.REQ, "ot-scan/ns-tool:latest")
+        self.assertFalse(out["signed"])
+        self.assertFalse(any(c[0] == "cosign" for c in calls))
+
+    def test_nothing_without_a_target_or_after_a_failed_push(self):
+        self.assertIsNone(scan.push_sandbox({"ref": "ns/tool"}, "x"))
+        failed = lambda cmd, timeout=600, check=False: subprocess.CompletedProcess(cmd, 1 if cmd[1] == "push" else 0, "", "denied")
+        with mock.patch.object(scan, "run", failed):
+            self.assertIsNone(scan.push_sandbox(self.REQ, "x"))
+
+
+class PipxBuildTest(unittest.TestCase):
+    def scan(self, build_fails_with_lock=False, smoke_code=0):
+        wheel = b"w"
+        sha = hashlib.sha256(wheel).hexdigest()
+        meta = {"urls": [{"packagetype": "bdist_wheel", "digests": {"sha256": sha}, "filename": "tool-1.0.0-py3-none-any.whl", "url": "https://f/w.whl"}]}
+        rt = {"kind": "pipx", "package": "tool", "package_version": "1.0.0", "wheel_sha256": sha, "command": ["tool", "{domain}"], "output_format": "json"}
+        locks, pushes = [], []
+
+        def run(cmd, timeout=600, check=False):
+            if cmd[:2] == ["docker", "run"] and "--dry-run" in cmd:
+                Path(cmd[cmd.index("-v") + 1].rsplit(":/w", 1)[0], "report.json").write_text(json.dumps(REPORT))
+            if cmd[:2] == ["docker", "build"]:
+                lock = Path(cmd[-1], "requirements.lock").read_text()
+                locks.append(lock)
+                return subprocess.CompletedProcess(cmd, 1 if (lock and build_fails_with_lock) else 0, "", "")
+            if cmd[:2] == ["docker", "run"] and "--entrypoint" in cmd:
+                return subprocess.CompletedProcess(cmd, smoke_code, "", "")
+            if cmd[:2] == ["docker", "push"]:
+                pushes.append(cmd)
+                return subprocess.CompletedProcess(cmd, 0, f"x: digest: sha256:{'9' * 64} size: 1\n", "")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        req = {"ref": "ns/tool", "runtime": rt, "test_input": {"domain": "example.com"}, **SandboxTest.REQ}
+        with (mock.patch.object(scan, "run", run),
+              mock.patch.object(scan, "http_json", lambda url: meta if url.endswith("/tool/1.0.0/json") else pypi(url)),
+              mock.patch.object(scan.urllib.request, "urlopen", lambda url, timeout=None: io.BytesIO(wheel)),
+              mock.patch.object(scan, "trivy", lambda args: ({}, {"count": 0}, 0)),
+              mock.patch.object(scan.shutil, "which", lambda n: None),
+              tempfile.TemporaryDirectory() as tmp):
+            return scan.scan_pipx(req, Path(tmp)), locks, pushes
+
+    def test_builds_with_the_lock_and_reports_it(self):
+        out, locks, pushes = self.scan()
+        self.assertEqual(len(locks), 1)
+        self.assertEqual(out["python_lock"], locks[0])
+        self.assertTrue(locks[0].startswith("charset-normalizer==3.4.0"))
+        self.assertEqual(out["sandbox"]["image"], "mirror.otinstaller.com/ns/tool@sha256:" + "9" * 64)
+        self.assertEqual(len(pushes), 1)
+
+    def test_falls_back_to_resolving_when_the_locked_build_fails(self):
+        out, locks, _ = self.scan(build_fails_with_lock=True)
+        self.assertEqual([bool(lock) for lock in locks], [True, False])
+        self.assertIsNone(out["python_lock"])
+
+    def test_a_failed_smoke_test_pushes_nothing(self):
+        out, _, pushes = self.scan(smoke_code=3)
+        self.assertEqual(out["smoke"]["status"], "fail")
+        self.assertNotIn("sandbox", out)
+        self.assertEqual(pushes, [])
 
 
 if __name__ == "__main__":

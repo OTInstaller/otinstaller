@@ -42,7 +42,7 @@ import { trustedRoutes } from "./routes/trusted";
 import { purgeIdleNamespaces } from "./direct";
 import { purgeCiTokens } from "./trusted";
 import { refreshDueProfiles } from "./profiles";
-import { backfillBackups, expireDrills, expireRuns, installFallbacks, purgeBackups, queueMirrorSweeps, RESTORE_DRILL_CRON, startDrill, WEEKLY_BACKUP_CRON, weeklyBackups } from "./backups";
+import { backfillBackups, expireDrills, expireRuns, installFallbacks, pipxInstall, purgeBackups, queueMirrorSweeps, RESTORE_DRILL_CRON, startDrill, WEEKLY_BACKUP_CRON, weeklyBackups } from "./backups";
 import { alertStuckJobs, dailyDigest, purgeRateLimits, reportError } from "./ops";
 import { flushIndexNow } from "./indexnow";
 import { queueNightlyLinkChecks } from "./guides";
@@ -231,20 +231,19 @@ app.get("/tools", async (c) => {
     where.push(`t.kind = ?`);
     params.push(kind);
   }
+  // These read the latest version's manifest fields that latestMetadata copies onto tools (SEARCH_FIELDS).
   for (const [field, value] of [["level", level], ["format", format]] as const) {
     if (!value) continue;
-    where.push(`t.kind = 'guide' AND json_extract(v.manifest_json, '$.${field}') = ?`);
+    where.push(`t.kind = 'guide' AND t.${field} = ?`);
     params.push(value);
   }
   if (lang) {
-    where.push(`t.kind = 'guide' AND COALESCE(json_extract(v.manifest_json, '$.language'), 'en') = ?`);
+    where.push(`t.kind = 'guide' AND COALESCE(t.language, 'en') = ?`);
     params.push(lang);
   }
   if (noKeys) where.push(`NOT EXISTS (SELECT 1 FROM tool_secrets WHERE tool_id = t.id AND required = 1)`);
   if (passiveOnly) {
-    where.push(`t.kind = 'tool' AND COALESCE(json_extract(v.manifest_json, '$.ethics.touches_target'), 1) = 0
-      AND COALESCE(json_extract(v.manifest_json, '$.ethics.collects_personal_data'), 1) = 0
-      AND COALESCE(json_extract(v.manifest_json, '$.network.egress'), 0) = 0`);
+    where.push(`t.kind = 'tool' AND COALESCE(t.touches_target, 1) = 0 AND COALESCE(t.collects_personal_data, 1) = 0 AND COALESCE(t.egress, 0) = 0`);
   }
 
   const match = ftsQuery(q);
@@ -423,6 +422,9 @@ app.get("/tools/:ns/:name/:version/manifest", async (c) => {
     // Where ot retries when the original registry refuses (403, 404, denied): the same digest on the mirror,
     // and the registry's copy of the wheel. Only for OSI-approved licenses.
     ...(removed ? {} : await installFallbacks(c.env, v.id, row.namespace, row.name, v.version)),
+    // pipx: the dependencies the scanner pinned (a local build installs exactly these), and the image it built and
+    // scanned, which ot pulls instead of building when the signature checks out.
+    ...(removed ? {} : await pipxInstall(c.env, v.id)),
   });
 });
 

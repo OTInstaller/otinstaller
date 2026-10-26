@@ -411,7 +411,15 @@ on stderr (`spec/schema/error-v1.json`, shared with the API); its `code` is the 
 ### Security model when installing and running tools (don't weaken it)
 
 - Docker images must be pinned by digest. If the registry returns a signer identity, `cosign verify` must pass
-  (missing cosign only warns). Wheels are matched by `wheel_sha256` from PyPI and re-hashed after download.
+  (missing cosign only warns); the pull and the check run at the same time (`pullVerified`), and an agent's install that
+  can't be checked is refused before anything is pulled. Wheels are matched by `wheel_sha256` from PyPI and re-hashed
+  after download.
+- pipx tools: when the manifest response has `sandbox_image` (the image the scanner built from the wheel and the
+  `python_lock`, scanned, pushed to the mirror and signed by the scan workflow) and ot runs on amd64, ot pulls it by
+  digest and `cosign verify`s `sandbox_signer_identity` (a failed check refuses the install; a failed pull, another
+  platform, or an agent without cosign builds locally instead). The local build installs `python_lock` with
+  `--require-hashes --no-deps` (`pythonLock` refuses any line that isn't `name==version --hash=sha256:...`); without a
+  lock, pip resolves the dependencies as before. Tests are in `runner/runner_test.go`.
 - Backup fallbacks: when the original registry refuses the image (401/403/404, denied, manifest unknown...), `ot` pulls
   the same digest from `mirror_image` and verifies the same signature; when PyPI answers 403/404/410 or lacks the wheel,
   it downloads `wheel_url` and checks the same SHA-256. Network errors never trigger a fallback. Tests are in
@@ -427,10 +435,11 @@ on stderr (`spec/schema/error-v1.json`, shared with the API); its `code` is the 
 - Secrets are passed as `-e NAME` with the value only in the child process environment, so they never appear in argv,
   in `.meta.json` or in logs. Containers get only `HOME` and the declared secrets; `--native` pipx tools inherit ot's
   whole environment.
-- Sandboxed pipx tools are built into `ot-local/<ns>-<name>:<version>` on `python:3.12-slim` with `WORKDIR /tmp` (the only
-  writable folder); `--native` uses ot's own `PIPX_HOME`/`PIPX_BIN_DIR`. The scanner's smoke test runs
-  pipx tools in the same image (`PYTHON_DOCKERFILE` in `ops/scanner/scan.py`, which `test_scan.py` keeps equal to
-  `pythonDockerfile`), so a change to one goes into the other.
+- Locally built pipx images are `ot-local/<ns>-<name>:<version>` on `python:3.12-slim` pinned by digest (no
+  `--pull`), with `WORKDIR /tmp` (the only writable folder); `--native` uses ot's own `PIPX_HOME`/`PIPX_BIN_DIR` and
+  still resolves dependencies. The scanner builds, smoke-tests and pushes the same image (`PYTHON_DOCKERFILE` in
+  `ops/scanner/scan.py`, which `test_scan.py` keeps equal to `pythonDockerfile`), so a change to one goes into the
+  other. Bumping the base digest means changing both.
 - Removed packages (`tool_removed`) are refused with exit 4; `cache/removed.json` drives warnings.
 
 ### Environment variables
@@ -571,7 +580,8 @@ nothing cached before a takedown is served again. On a hit the original `Cache-C
   (follows `spec/pivots.json`), `/removed`, guide pages, tool docs, readmes, `/assets/:sha256.ext`; `POST /installs`
   (counted once per address, version and day through a salted hash in `rate_limits`; only per-version and
   per-client-kind daily counts are kept), `POST /feedback`. The manifest response includes
-  `mirror_image` / `wheel_url` install fallbacks for public backups. `GET /tools/:ns/:name` carries `sample`: what the
+  `mirror_image` / `wheel_url` install fallbacks for public backups and, for pipx versions, `python_lock` and (once
+  published) `sandbox_image` with `sandbox_signer_identity`/`_issuer` (`backups.ts:pipxInstall`). `GET /tools/:ns/:name` carries `sample`: what the
   scanner's smoke test of the latest version produced (first five entities, or the start of stdout), which the tool
   page shows as its sample output.
 - Auth: `/auth/:provider/login|callback` (github, gitlab, osintverse), `/auth/logout`, `/auth/device/start|token`,
@@ -700,7 +710,10 @@ publishing (`trusted_publishers`, the CI token columns `api_tokens.namespace_id`
 cache's epoch (`settings`, 0035), people's profiles and notification settings (`users` profile fields and
 `handle_changed_at`, `handle_aliases`, `package_follows.level`, `email_prefs` `lifecycle`/`security`/`inbox_muted_json`/
 `email_provider`, 0036) and the IndexNow queue (`indexnow_queue`, 0037). 0039 drops `health_checks` and
-`tools.health_fail_streak`: health comes from community reports. That is 65 tables plus `tools_fts`; every
+`tools.health_fail_streak`: health comes from community reports. 0041 adds `versions.python_lock` and
+`versions.sandbox_image` (pipx sandbox images); 0042 copies the manifest fields search filters on onto `tools`
+(`title`, `level`, `format`, `language`, the four ethics flags, `egress`; `SEARCH_FIELDS` in `catalog.ts`, written by
+`latestMetadata`). That is 65 tables plus `tools_fts`; every
 table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
 
@@ -978,9 +991,15 @@ section 10, "MCP bundles and the MCP Registry".
   `{"job": ...}` wrapper, a backup payload or a drill payload.
   - Scans: Docker images are pulled, `cosign verify`ed against the expected signer (plus a loose verify to tell "signed by
     someone else" from "unsigned"), Trivy vuln+secret scanned, SBOM'd. pipx wheels are downloaded by hash, checked for
-    PEP 740 provenance against the source (or upstream) repo, Trivy scanned on python:3.12-slim, and run through
-    GuardDog. Then a sandboxed smoke test with `test.input` (network only if egress is declared) passes when the exit
-    code equals `test.expect_exit_code`. Results POST to `callback_url`; if the answer has a `backup` plan, it runs.
+    PEP 740 provenance against the source (or upstream) repo, their dependencies pinned with every file's hash
+    (`resolve_lock`: `pip install --dry-run --report` in the pinned base, then PyPI's hashes per version), built into
+    `ot`'s sandbox image from that lock, Trivy scanned, and run through GuardDog. Then a sandboxed smoke test with
+    `test.input` (network only if egress is declared) passes when the exit code equals `test.expect_exit_code`. A pipx
+    image that didn't fail is pushed to the request's `sandbox` target (`<mirror>/<ns>/<name>:sandbox-<version>`, held
+    back by the mirror until the version is published) and signed keyless (`push_sandbox`; the workflow needs
+    `id-token: write`). Results POST to `callback_url`; if the answer has a `backup` plan, it runs.
+  - `ops/workflows/scan.yml` caches Trivy's database per six-hour window (skipping the update on an exact hit) and pip's
+    downloads (`ops/scanner/requirements.txt`), so a scan doesn't download either again.
 - `ops/scanner/backup.py`: image copies with `crane` (signature, attestation and SBOM tags included; big layers chunked),
   wheel and git-bundle uploads to signed URLs, and restore drills.
 - `ops/scanner/Dockerfile`: pinned Docker CLI, Trivy, cosign, crane, GuardDog for local runs. Tests: `test_scan.py`,

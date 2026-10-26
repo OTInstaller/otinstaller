@@ -120,9 +120,11 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   manifests: no API calls, no ping, and a `note:` that signatures are not checked.
 - Behaviour: warns (`warning:`) when unsigned, scan status `warn`, health `broken`, publisher not verified, or source
   gone; notes `moved_to`. Validates the manifest before installing. Docker: `pull` by digest, mirror fallback on
-  refusal, `cosign verify` when the registry returned a signer identity (missing cosign only warns). Pipx: wheel from
-  PyPI by `wheel_sha256` (registry wheel copy as fallback), then a sandbox image `ot-local/<ns>-<name>:<version>` or
-  native `pipx install` into `<ot home>/pipx`. Records the install in `state.json`.
+  refusal, `cosign verify` (run alongside the pull) when the registry returned a signer identity (missing cosign only
+  warns). Pipx: on amd64, the registry's `sandbox_image` pulled by digest and checked with cosign against
+  `sandbox_signer_identity` (no wheel download, no build); otherwise the wheel from PyPI by `wheel_sha256` (registry
+  wheel copy as fallback), then a sandbox image `ot-local/<ns>-<name>:<version>` built from the registry's
+  `python_lock`, or native `pipx install` into `<ot home>/pipx`. Records the install in `state.json`.
 - Sign-in: no. Exit: 0; **2** when the registry answers 404 ("not found in the registry") or the reference is bad or
   the manifest is a guide (`UsageError`: "use `ot guide get`"); **4** when the error code is `tool_removed`, the
   response status is `removed`, the manifest fails validation, the image is not digest-pinned, cosign verification
@@ -947,8 +949,9 @@ platform and hashes the address only to count it once a day.
 Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-only --tmpfs /tmp:rw,size=256m
 --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --memory 1g --cpus 2 --user 65534:65534 -e HOME=/tmp`,
 `--network none` unless the manifest has `network.egress: true`, `-e NAME` per secret, `-v <out-dir>:/out:rw`,
-`--entrypoint <command[0]> <image> <command[1:]...>`. Sandboxed pipx images are built from `python:3.12-slim` as
-`ot-local/<ns>-<name>:<version>` (`docker build --pull`).
+`--entrypoint <command[0]> <image> <command[1:]...>`. Sandboxed pipx tools run in the registry's `sandbox_image` (amd64)
+or an image built from `python:3.12-slim@sha256:...` as `ot-local/<ns>-<name>:<version>` (`docker build`, no `--pull`;
+the wheel plus `requirements.lock`, the registry's `python_lock`, installed with `--require-hashes`).
 
 ---
 

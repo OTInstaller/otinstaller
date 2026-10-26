@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { defineConfig } from "vitest/config";
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
 // @ts-expect-error plain JS module
-import { buildSeedStatements } from "./scripts/seed-lib.mjs";
+import { buildSeedStatements, SEARCH_FIELDS } from "./scripts/seed-lib.mjs";
 // @ts-expect-error plain JS module
 import { buildKnownRepos } from "./scripts/known-repos-lib.mjs";
 
@@ -35,6 +35,8 @@ export default defineConfig(async () => {
         miniflare: { bindings: {
           TEST_MIGRATIONS: migrations,
           TEST_SEED: buildSeedStatements(),
+          // The seed's copy of SEARCH_FIELDS (src/catalog.ts), which api.test.ts holds to the original.
+          TEST_SEED_SEARCH_FIELDS: SEARCH_FIELDS,
           TEST_FIXTURES: fixtures,
           TEST_TEMPLATES: templates,
           TEST_KNOWN_REPOS: buildKnownRepos(".."),

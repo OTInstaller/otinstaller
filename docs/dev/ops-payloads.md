@@ -127,6 +127,7 @@ After a successful dispatch it sets `scan_dispatched_at`. A failed dispatch leav
 | `expect_exit_code` | `m.test.expect_exit_code ?? 0`. Smoke passes when the exit code equals this (tools that need a key can declare the code they give without one; the scan has no secrets). |
 | `network_egress` | `true` only when `m.network.egress === true`; the smoke container then gets `--network bridge`, otherwise `none`. |
 | `expected_signer` | `identityRegexp` + `issuer` that a valid cosign signature must match (see 3.3). `null` for a direct upload: any keyless signature counts, and the API holds the package to its first signer (3.6). |
+| `sandbox` | pipx tools with an OSI-approved license only: `{repository: "<MIRROR_HOST>/<ns>/<name>", tag: "sandbox-<version>"}`, where the scanner pushes the image it scanned. The mirror withholds a scanner push of a `sandbox-*` tag (a `pending/` marker and a `mirror_pushes` row) until the version is published. |
 | `callback_url` | `${API_URL}/v1/internal/scans`. |
 | `callback_token` | The plaintext single-use token; only its hash is stored. |
 
@@ -168,13 +169,20 @@ Per runtime:
   (mismatch → signature `fail`). Provenance: `https://pypi.org/integrity/<pkg>/<ver>/<file>/provenance` (PEP 740);
   pass when an attestation publisher's repository equals `source_repo` or `upstream_repo` (host prefix stripped,
   lowercase); none → `absent`; others → `fail`. With neither (a direct upload) any publisher passes, reported as
-  `identities` (`pypi:<kind>:<repo>/<workflow>`, issuer `https://pypi.org`). Builds a `python:3.12-slim` image with
-  the wheel installed (`PYTHON_DOCKERFILE`: uid 10001, starting in `/tmp`, the only folder the sandbox can write to;
-  the same Dockerfile `ot` builds pipx tools from, which `test_scan.py` checks) and runs Trivy on it with
-  `--pkg-types library`. GuardDog (`guarddog pypi scan <wheel>
+  `identities` (`pypi:<kind>:<repo>/<workflow>`, issuer `https://pypi.org`). Pins the dependencies (`resolve_lock`):
+  `pip install --dry-run --ignore-installed --report` on the wheel inside `PYTHON_BASE` (`python:3.12-slim@sha256:...`,
+  so markers and platform tags are the sandbox's), then for each package in the report (the wheel itself left out) the
+  sha256 of every file PyPI has for that version (`lock_from_report`), one `name==version --hash=sha256:...` line each.
+  A dependency that isn't a PyPI file, or a failed resolve, gives no lock (`null`). Builds the image with the wheel and
+  that lock (`PYTHON_DOCKERFILE`: uid 10001, starting in `/tmp`, the only folder the sandbox can write to; the same
+  Dockerfile `ot` builds pipx tools from, which `test_scan.py` checks; a locked build that fails is retried without the
+  lock) and runs Trivy on it with `--pkg-types library`. GuardDog (`guarddog pypi scan <wheel>
   --output-format json`) restricted to code-behaviour rules: code-execution, cmd-overwrite, download-executable,
   exec-base64, exfiltrate-sensitive-data, obfuscation, silent-process-execution, steganography, dll-hijacking,
-  clipboard-access. If GuardDog is not installed, malware count is 0 with a note.
+  clipboard-access. If GuardDog is not installed, malware count is 0 with a note. After the smoke test, unless it failed
+  or malware or secrets were found, `push_sandbox` tags the image `<sandbox.repository>:<sandbox.tag>`, `docker push`es
+  it (the digest comes from the push output) and, on GitHub Actions with cosign present, `cosign sign --yes
+  <repository>@<digest>` (keyless, the workflow's identity). Results gain `python_lock` and, when pushed, `sandbox`.
 - **Smoke test** (`smoke`): builds the command from `runtime.command`, substituting `{name}` from `test_input`;
   an argument whose placeholder has no value is dropped, together with a preceding `-flag`. Runs:
   `docker run --rm --network <bridge|none> --read-only --tmpfs /tmp:rw,size=256m --cap-drop ALL
@@ -213,7 +221,10 @@ Body (`ScanResults`):
   "malware": { "count": 0, "findings": [{ "rule": "exec-base64", "detail": "..." }], "note": "optional" },
   "smoke": { "status": "pass", "exit_code": 0, "network": "none", "duration_ms": 2140, "output_excerpt": "...",
              "sample": { "output_format": "json", "entities": [{ "type": "domain", "value": "example.com" }], "entity_count": 3 } },
-  "sbom": { "packages": 132 }
+  "sbom": { "packages": 132 },
+  "python_lock": "requests==2.32.3 --hash=sha256:<64 hex> --hash=sha256:<64 hex>
+",
+  "sandbox": { "image": "mirror.otinstaller.com/ns/tool@sha256:<64 hex>", "signed": true }
 }
 ```
 
@@ -228,6 +239,8 @@ Body (`ScanResults`):
 | `smoke.sample` | optional object | Sent only on `pass` with non-empty stdout: `output_format`, then either `entities` (first 5, each ≤ 500 chars, from a json `{entities: [...]}`/array or jsonl lines with `type` and `value`) with `entity_count`, or `stdout` (first 2000 chars). `trimSample` (`scans.ts`) re-caps it on arrival. Stored in the `smoke` scan row and served by `GET /tools/:ns/:name` as `sample` for the latest version. |
 | `sbom` | optional `{packages}` | Stored as an `sbom` scan row when present. |
 | `scanner_version` | optional string | |
+| `python_lock` | optional string or `null` (pipx) | `cleanLock` keeps it only when every line matches `LOCK_LINE` and it is at most 64 KiB; stored as `versions.python_lock`, served as `python_lock`. Anything else is dropped, never a 400. |
+| `sandbox` | optional `{image, signed}` (pipx) | Stored as `versions.sandbox_image` only when `signed`, the image is `<MIRROR_HOST>/<ns>/<name>@sha256:<64 hex>` of this package, and its manifest is in the `MIRROR` bucket (`sandboxImage` in `scans.ts`). A malformed entry is dropped. On publishing, `recordHostedImage` releases it and records a `hosted = 1` image backup. |
 
 `parseResults` checks (400 `invalid_scan_results`, message `scan results: <what>`), in this order: body is an
 object; `signature.status` in the set; `signature.identities`, when present, is at most 20 `{identity ≤ 500, issuer
@@ -580,22 +593,26 @@ Authorization: Bearer <drill token>
 ### 6.1 `ops/workflows/scan.yml`
 
 - Trigger: `repository_dispatch` types `otinstaller-scan`, `otinstaller-backup`, `otinstaller-drill`.
-- Permissions: `contents: read`.
+- Permissions: `contents: read`, `id-token: write` (keyless signing of pipx sandbox images; ot checks the identity
+  `https://github.com/<OPS_REPO>/.github/workflows/scan.yml@refs/heads/main`, or the API's `SANDBOX_SIGNER_IDENTITY`).
 - Concurrency group: `<action>-<scan.version_id || drill.id || run_id>`, no cancel-in-progress.
 - One job on `ubuntu-latest`, 60-minute timeout.
 - Env: `MIRROR_PUSH_TOKEN` = `secrets.MIRROR_PUSH_TOKEN`; `MIRROR_HOST` = `vars.MIRROR_HOST || 'mirror.otinstaller.com'`.
 - Steps:
   1. `actions/checkout@v5`
-  2. scan only: `aquasecurity/setup-trivy@v0.3.1` (Trivy v0.76.0)
-  3. `sigstore/cosign-installer@v4.1.2` (cosign v3.1.3)
-  4. `imjasonh/setup-crane@v0.4`
-  5. `actions/setup-python@v6` (3.12)
-  6. scan only: `pip install guarddog==3.2.0 cryptography==50.0.2`
-  7. if `MIRROR_PUSH_TOKEN` set: `crane auth login "$MIRROR_HOST" -u scanner --password-stdin`, then the same with
+  2. scan only: `aquasecurity/setup-trivy@v0.3.1` (Trivy v0.76.0, binary cached)
+  3. scan only: Trivy's database (`~/.cache/trivy/db`) through `actions/cache@v4`, keyed `trivy-db-<date>-<0..3>` (one
+     key per six-hour window, when Trivy republishes it; any older copy is restored by prefix). On an exact hit the
+     scan step sets `TRIVY_SKIP_DB_UPDATE=true`, so Trivy doesn't download it again.
+  4. `sigstore/cosign-installer@v4.1.2` (cosign v3.1.3)
+  5. `imjasonh/setup-crane@v0.4`
+  6. `actions/setup-python@v6` (3.12, pip cache keyed by `ops/scanner/requirements.txt`)
+  7. scan only: `pip install -r ops/scanner/requirements.txt` (GuardDog 3.2.0, cryptography 50.0.2)
+  8. if `MIRROR_PUSH_TOKEN` set: `crane auth login "$MIRROR_HOST" -u scanner --password-stdin`, then the same with
      `docker login` (images publishers pushed to the mirror are only served to this credential until they are
-     published, and the scan pulls them with Docker)
-  8. writes `toJSON(github.event.client_payload)` to `$RUNNER_TEMP/request.json`
-  9. `python3 ops/scanner/scan.py "$RUNNER_TEMP/request.json" --post`
+     published, and the scan pulls them with Docker; it also pushes pipx sandbox images)
+  9. writes `toJSON(github.event.client_payload)` to `$RUNNER_TEMP/request.json`
+  10. `python3 ops/scanner/scan.py "$RUNNER_TEMP/request.json" --post`
 - Docker is the runner's preinstalled engine (no setup step).
 
 Note: `MIRROR_HOST` is only used for the crane login; `scan.py`/`backup.py` take the mirror host from each item's
@@ -612,7 +629,8 @@ docker build -t otinstaller-scanner ops/scanner
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/req.json:/req.json" otinstaller-scanner /req.json
 ```
 
-The image copies `scan.py` and `backup.py`. `POST /v1/admin/tools/:ns/:name/:version/backup`
+The image copies `scan.py` and `backup.py`. Run this way a pipx scan has no dependency lock: `resolve_lock` mounts its
+work folder into a container, and the host's engine can't see the scanner container's folders. `POST /v1/admin/tools/:ns/:name/:version/backup`
 with `{"dispatch": false}` returns `{status: "created", job: {backup: {jobs: [plan]}}}`, which `scan.py` accepts as a
 file as it is.
 

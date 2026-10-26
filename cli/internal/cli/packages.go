@@ -430,6 +430,8 @@ func (a *App) install(ctx context.Context, ref pkgRef, native bool) (*state.Inst
 		}
 		opt.SignerIdentity, opt.SignerIssuer = resp.SignerIdentity, resp.SignerIssuer
 		opt.MirrorImage, opt.WheelBackupURL = resp.MirrorImage, resp.WheelURL
+		opt.SandboxImage, opt.SandboxSignerIdentity, opt.SandboxSignerIssuer = resp.SandboxImage, resp.SandboxSignerIdentity, resp.SandboxSignerIssuer
+		opt.PythonLock = resp.PythonLock
 		// An agent gets no "warning:" it can scroll past: what a person would be warned about, it is refused.
 		if a.AgentMode {
 			opt.RequireSignature = true
