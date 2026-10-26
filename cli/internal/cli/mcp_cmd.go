@@ -65,8 +65,9 @@ func (a *App) serveMCP(ctx context.Context, p *agent.Policy, resultsDir string) 
 	switch {
 	case resultsDir != "":
 		os.Setenv("OT_RESULTS_DIR", resultsDir)
-	case os.Getenv("OT_RESULTS_DIR") == "" && os.Getenv("OTINSTALLER_RESULTS_DIR") == "":
-		// Clients start servers in any folder, often one that isn't writable.
+	case os.Getenv("OT_RESULTS_DIR") == "" && os.Getenv("OTINSTALLER_RESULTS_DIR") == "" && a.Config.ResultsDir == "":
+		// Clients start servers in any folder, often one that isn't writable; results_dir from `ot start` is a
+		// folder the person chose, so it is used as it is.
 		os.Setenv("OT_RESULTS_DIR", state.Path("results"))
 	}
 	a.AgentMode = true
@@ -140,41 +141,61 @@ func clientConfigPath(client string) (string, error) {
 }
 
 func (a *App) installMCPClient(client, exe string, print bool) error {
-	entry := map[string]any{"command": exe, "args": []string{"mcp"}}
+	if print {
+		return a.printMCPClient(client, exe)
+	}
+	where, err := a.addMCPServer(client, exe)
+	if err != nil {
+		return err
+	}
+	return a.mcpInstalled(client, where)
+}
+
+// printMCPClient prints what `ot mcp install` would add to a client's configuration.
+func (a *App) printMCPClient(client, exe string) error {
 	if client == "claude" {
-		args := []string{"mcp", "add", "--scope", "user", "otinstaller", "--", exe, "mcp"}
-		line := "claude " + strings.Join(quoteArgs(args), " ")
-		claude, err := exec.LookPath("claude")
-		if print {
-			return a.printMCPConfig(client, "", line)
-		}
-		if err != nil {
-			fmt.Fprintln(a.Err, "Run this where Claude Code is installed:")
-			fmt.Fprintln(a.Err, line)
-			return &ExitError{Code: ExitRuntimeMissing, Reason: "runtime_missing", Err: errors.New("claude (Claude Code) is not on PATH, so nothing was added")}
-		}
-		c := exec.Command(claude, args...)
-		c.Stdout, c.Stderr = a.Err, a.Err
-		if err := c.Run(); err != nil {
-			return fmt.Errorf("`%s` failed: %w", line, err)
-		}
-		return a.mcpInstalled(client, "Claude Code (user scope)")
+		return a.printMCPConfig(client, "", claudeAddLine(exe))
 	}
 	path, err := clientConfigPath(client)
 	if err != nil {
 		return err
 	}
 	if client == "codex" {
-		block := fmt.Sprintf("[mcp_servers.otinstaller]\ncommand = %s\nargs = [\"mcp\"]\n", tomlString(exe))
-		if print {
-			return a.printMCPConfig(client, path, block)
+		return a.printMCPConfig(client, path, codexBlock(exe))
+	}
+	key, entry := mcpEntry(client, exe)
+	b, _ := json.MarshalIndent(map[string]any{key: map[string]any{"otinstaller": entry}}, "", "  ")
+	return a.printMCPConfig(client, path, string(b))
+}
+
+// addMCPServer adds `ot mcp` to a client's configuration and says where, for `ot mcp install` and `ot start`.
+func (a *App) addMCPServer(client, exe string) (string, error) {
+	if client == "claude" {
+		line := claudeAddLine(exe)
+		claude, err := exec.LookPath("claude")
+		if err != nil {
+			fmt.Fprintln(a.Err, "Run this where Claude Code is installed:")
+			fmt.Fprintln(a.Err, line)
+			return "", &ExitError{Code: ExitRuntimeMissing, Reason: "runtime_missing", Err: errors.New("claude (Claude Code) is not on PATH, so nothing was added")}
 		}
+		c := exec.Command(claude, claudeAddArgs(exe)...)
+		c.Stdout, c.Stderr = a.Err, a.Err
+		if err := c.Run(); err != nil {
+			return "", fmt.Errorf("`%s` failed: %w", line, err)
+		}
+		return "Claude Code (user scope)", nil
+	}
+	path, err := clientConfigPath(client)
+	if err != nil {
+		return "", err
+	}
+	if client == "codex" {
 		old, err := os.ReadFile(path)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
+			return "", err
 		}
 		if strings.Contains(string(old), "[mcp_servers.otinstaller]") {
-			return exitErr(ExitUsage, "%s already has [mcp_servers.otinstaller]; edit it there if it needs changing", path)
+			return "", exitErr(ExitUsage, "%s already has [mcp_servers.otinstaller]; edit it there if it needs changing", path)
 		}
 		text := string(old)
 		if text != "" && !strings.HasSuffix(text, "\n") {
@@ -183,28 +204,21 @@ func (a *App) installMCPClient(client, exe string, print bool) error {
 		if text != "" {
 			text += "\n"
 		}
-		if err := writeConfig(path, []byte(text+block)); err != nil {
-			return err
+		if err := writeConfig(path, []byte(text+codexBlock(exe))); err != nil {
+			return "", err
 		}
-		return a.mcpInstalled(client, path)
+		return path, nil
 	}
-	key := "mcpServers"
-	if client == "vscode" {
-		key, entry = "servers", map[string]any{"type": "stdio", "command": exe, "args": []string{"mcp"}}
-	}
-	if print {
-		b, _ := json.MarshalIndent(map[string]any{key: map[string]any{"otinstaller": entry}}, "", "  ")
-		return a.printMCPConfig(client, path, string(b))
-	}
+	key, entry := mcpEntry(client, exe)
 	doc := map[string]any{}
 	if b, err := os.ReadFile(path); err == nil {
 		if len(strings.TrimSpace(string(b))) > 0 {
 			if err := json.Unmarshal(b, &doc); err != nil {
-				return exitErr(ExitUsage, "%s is not plain JSON (%v), so ot won't rewrite it; add the server yourself (`ot mcp install %s --print`)", path, err, client)
+				return "", exitErr(ExitUsage, "%s is not plain JSON (%v), so ot won't rewrite it; add the server yourself (`ot mcp install %s --print`)", path, err, client)
 			}
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
+		return "", err
 	}
 	servers, _ := doc[key].(map[string]any)
 	if servers == nil {
@@ -217,9 +231,53 @@ func (a *App) installMCPClient(client, exe string, print bool) error {
 	doc[key] = servers
 	b, _ := json.MarshalIndent(doc, "", "  ")
 	if err := writeConfig(path, append(b, '\n')); err != nil {
-		return err
+		return "", err
 	}
-	return a.mcpInstalled(client, path)
+	return path, nil
+}
+
+// mcpConfigured reports whether a client's configuration file already has the otinstaller server. Claude Code keeps
+// its own list, so for it the answer is always no.
+func mcpConfigured(client string) bool {
+	path, err := clientConfigPath(client)
+	if err != nil || client == "claude" {
+		return false
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	if client == "codex" {
+		return strings.Contains(string(b), "[mcp_servers.otinstaller]")
+	}
+	var doc map[string]any
+	if json.Unmarshal(b, &doc) != nil {
+		return false
+	}
+	key, _ := mcpEntry(client, "")
+	servers, _ := doc[key].(map[string]any)
+	_, ok := servers["otinstaller"]
+	return ok
+}
+
+// mcpEntry is the JSON key a client lists servers under and the entry for ot.
+func mcpEntry(client, exe string) (string, map[string]any) {
+	if client == "vscode" {
+		return "servers", map[string]any{"type": "stdio", "command": exe, "args": []string{"mcp"}}
+	}
+	return "mcpServers", map[string]any{"command": exe, "args": []string{"mcp"}}
+}
+
+func claudeAddArgs(exe string) []string {
+	return []string{"mcp", "add", "--scope", "user", "otinstaller", "--", exe, "mcp"}
+}
+
+func claudeAddLine(exe string) string {
+	return "claude " + strings.Join(quoteArgs(claudeAddArgs(exe)), " ")
+}
+
+func codexBlock(exe string) string {
+	return fmt.Sprintf("[mcp_servers.otinstaller]\ncommand = %s\nargs = [\"mcp\"]\n", tomlString(exe))
 }
 
 func writeConfig(path string, b []byte) error {

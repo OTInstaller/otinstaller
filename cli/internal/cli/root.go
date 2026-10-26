@@ -14,6 +14,7 @@ import (
 
 	"github.com/otinstaller/otinstaller/cli/internal/api"
 	"github.com/otinstaller/otinstaller/cli/internal/keys"
+	"github.com/otinstaller/otinstaller/cli/internal/results"
 	"github.com/otinstaller/otinstaller/cli/internal/runner"
 	"github.com/otinstaller/otinstaller/cli/internal/selfupdate"
 	"github.com/otinstaller/otinstaller/cli/internal/state"
@@ -81,10 +82,15 @@ type App struct {
 	JSON bool
 	// AgentMode is set by `ot mcp`: installs need a verified signature, and nothing prompts or opens a browser.
 	AgentMode bool
+	// StartWizard asks a person what `ot start` sets up, changing the choices; nil is the huh wizard. Tests replace it.
+	StartWizard func(ctx context.Context, cat *startCatalog, c *startChoices) error
 }
 
 func NewApp() *App {
 	cfg := state.LoadConfig()
+	if cfg.ResultsDir != "" {
+		results.DefaultDir = cfg.ResultsDir
+	}
 	client := api.New(cfg.APIURL, Version)
 	if tok, err := keys.Get(TokenKey); err == nil {
 		client.Token = tok
@@ -126,6 +132,7 @@ func (a *App) Root() *cobra.Command {
 	root.AddCommand(
 		a.initCmd(),
 		a.validateCmd(),
+		a.startCmd(),
 		a.searchCmd(),
 		a.infoCmd(),
 		a.changelogCmd(),

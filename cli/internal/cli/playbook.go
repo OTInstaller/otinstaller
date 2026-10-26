@@ -41,7 +41,7 @@ Flags:
   -y, --yes                 install the playbook's tools that are not installed yet, without asking
       --native              install and run pipx tools on the host instead of in a container
       --parallel int        how many tools run at once (default 4)
-      --results-dir string  where runs are saved (default $OT_RESULTS_DIR, else ./results)
+      --results-dir string  where runs are saved (default $OT_RESULTS_DIR, else results_dir in config.json, else ./results)
       --case string         save under <results-dir>/cases/<case>
 `
 

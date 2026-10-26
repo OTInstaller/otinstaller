@@ -97,4 +97,4 @@ fi
 install -m 0755 "$tmp/ot" "$dir/ot" 2>/dev/null || { cp "$tmp/ot" "$dir/ot" && chmod 0755 "$dir/ot"; }
 say "Installed ot $tag to $dir/ot."
 case ":$PATH:" in *":$dir:"*) ;; *) say "Add $dir to your PATH to run ot." ;; esac
-say "Next: ot doctor"
+say "Next: ot start (pick tools and settings), or ot doctor to check your setup"

@@ -25,7 +25,7 @@ Flags:
       --dry-run             list the tools that would run, without running them
   -f, --format string       summary as table (default) or json
       --parallel int        how many tools run at once (default 4)
-      --results-dir string  where runs are saved (default $OT_RESULTS_DIR, else ./results)
+      --results-dir string  where runs are saved (default $OT_RESULTS_DIR, else results_dir in config.json, else ./results)
       --case string         save under <results-dir>/cases/<case>
 `
 

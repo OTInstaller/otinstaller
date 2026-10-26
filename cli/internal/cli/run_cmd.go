@@ -170,7 +170,7 @@ Flags:
       --out-dir string      host directory mounted at /out for tools that write files
       --native              run pipx tools on the host instead of in a container
   -y, --yes                 install without asking if the tool is not installed
-      --results-dir string  where runs are saved (default $OT_RESULTS_DIR, else ./results)
+      --results-dir string  where runs are saved (default $OT_RESULTS_DIR, else results_dir in config.json, else ./results)
       --case string         save under <results-dir>/cases/<case>
       --no-save             don't save the run
       --max-raw int         leave raw out of the envelope when the output is over this many bytes (default $OT_MAX_RAW)

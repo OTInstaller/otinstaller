@@ -79,6 +79,8 @@ func TestJSONRequested(t *testing.T) {
 		{[]string{"run", "a/b", "-f", "table"}, false},
 		{[]string{"run", "a/b", "--", "--json"}, false},
 		{[]string{"list"}, false},
+		{[]string{"start", "--format", "json"}, false},
+		{[]string{"--json", "start", "--format", "json"}, true},
 	} {
 		if got := jsonRequested(c.args); got != c.want {
 			t.Errorf("%v: got %v", c.args, got)

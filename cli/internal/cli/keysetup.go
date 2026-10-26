@@ -153,70 +153,76 @@ func (a *App) keysSetupCmd() *cobra.Command {
 			if !a.interactive() {
 				return errNeedsTerminal
 			}
-			guides, err := a.keyGuides(cmd.Context(), args)
-			if err != nil {
-				return err
-			}
-			if len(guides) == 0 {
-				fmt.Fprintln(a.Out, "None of these tools needs an API key.")
-				return nil
-			}
-			in := bufio.NewReader(a.In)
-			saved, skipped := 0, 0
-			for _, g := range guides {
-				fmt.Fprintf(a.Out, "\n%s", g.Name)
-				if len(g.RequiredBy) > 0 {
-					fmt.Fprintf(a.Out, " (needed by %s)", strings.Join(g.RequiredBy, ", "))
-				} else {
-					fmt.Fprintf(a.Out, " (optional, used by %s)", strings.Join(g.OptionalFor, ", "))
-				}
-				fmt.Fprintln(a.Out)
-				if g.Description != "" {
-					fmt.Fprintf(a.Out, "  %s\n", g.Description)
-				}
-				if g.Pricing != "" {
-					fmt.Fprintf(a.Out, "  Cost: %s\n", strings.ReplaceAll(g.Pricing, "_", " "))
-				}
-				if g.Set && !all {
-					fmt.Fprintf(a.Out, "  Already set (%s); skipped.\n", g.Source)
-					continue
-				}
-				if g.Source == "env" {
-					fmt.Fprintf(a.Out, "  Note: %s is set in the environment, which wins over the keychain.\n", g.Name)
-				}
-				if g.URL != "" {
-					fmt.Fprintf(a.Out, "  Get one at %s\n", g.URL)
-					ans, err := a.readLine(in, "  Open it in your browser? [y/N] ")
-					if err != nil {
-						return err
-					}
-					if strings.EqualFold(ans, "y") || strings.EqualFold(ans, "yes") {
-						if err := a.OpenURL(g.URL); err != nil {
-							fmt.Fprintf(a.Err, "warning: couldn't open the browser: %v\n", err)
-						}
-					}
-				}
-				val, err := a.readSecret(in, "  Paste the key (typing is hidden; Enter to skip): ")
-				if err != nil && !errors.Is(err, io.EOF) {
-					return err
-				}
-				if val == "" {
-					skipped++
-					fmt.Fprintln(a.Out, "  Skipped.")
-					continue
-				}
-				if err := keys.Set(g.Name, val); err != nil {
-					return fmt.Errorf("saving %s to the keychain failed: %w; without a keychain, set %s in the environment instead", g.Name, err, g.Name)
-				}
-				saved++
-				fmt.Fprintf(a.Out, "  Saved %s to the keychain.\n", g.Name)
-			}
-			fmt.Fprintf(a.Out, "\nDone: %d saved, %d skipped. `ot keys list` shows what is set.\n", saved, skipped)
-			return nil
+			return a.setupKeys(cmd.Context(), args, all)
 		},
 	}
 	cmd.Flags().BoolVar(&all, "all", false, "also ask for keys that are already set, to replace them")
 	return cmd
+}
+
+// setupKeys walks a person at a terminal through the keys refs declare (every installed tool's when refs is empty),
+// for `ot keys setup` and `ot start --keys`. With all, keys already set are asked for again.
+func (a *App) setupKeys(ctx context.Context, refs []string, all bool) error {
+	guides, err := a.keyGuides(ctx, refs)
+	if err != nil {
+		return err
+	}
+	if len(guides) == 0 {
+		fmt.Fprintln(a.Out, "None of these tools needs an API key.")
+		return nil
+	}
+	in := bufio.NewReader(a.In)
+	saved, skipped := 0, 0
+	for _, g := range guides {
+		fmt.Fprintf(a.Out, "\n%s", g.Name)
+		if len(g.RequiredBy) > 0 {
+			fmt.Fprintf(a.Out, " (needed by %s)", strings.Join(g.RequiredBy, ", "))
+		} else {
+			fmt.Fprintf(a.Out, " (optional, used by %s)", strings.Join(g.OptionalFor, ", "))
+		}
+		fmt.Fprintln(a.Out)
+		if g.Description != "" {
+			fmt.Fprintf(a.Out, "  %s\n", g.Description)
+		}
+		if g.Pricing != "" {
+			fmt.Fprintf(a.Out, "  Cost: %s\n", strings.ReplaceAll(g.Pricing, "_", " "))
+		}
+		if g.Set && !all {
+			fmt.Fprintf(a.Out, "  Already set (%s); skipped.\n", g.Source)
+			continue
+		}
+		if g.Source == "env" {
+			fmt.Fprintf(a.Out, "  Note: %s is set in the environment, which wins over the keychain.\n", g.Name)
+		}
+		if g.URL != "" {
+			fmt.Fprintf(a.Out, "  Get one at %s\n", g.URL)
+			ans, err := a.readLine(in, "  Open it in your browser? [y/N] ")
+			if err != nil {
+				return err
+			}
+			if strings.EqualFold(ans, "y") || strings.EqualFold(ans, "yes") {
+				if err := a.OpenURL(g.URL); err != nil {
+					fmt.Fprintf(a.Err, "warning: couldn't open the browser: %v\n", err)
+				}
+			}
+		}
+		val, err := a.readSecret(in, "  Paste the key (typing is hidden; Enter to skip): ")
+		if err != nil && !errors.Is(err, io.EOF) {
+			return err
+		}
+		if val == "" {
+			skipped++
+			fmt.Fprintln(a.Out, "  Skipped.")
+			continue
+		}
+		if err := keys.Set(g.Name, val); err != nil {
+			return fmt.Errorf("saving %s to the keychain failed: %w; without a keychain, set %s in the environment instead", g.Name, err, g.Name)
+		}
+		saved++
+		fmt.Fprintf(a.Out, "  Saved %s to the keychain.\n", g.Name)
+	}
+	fmt.Fprintf(a.Out, "\nDone: %d saved, %d skipped. `ot keys list` shows what is set.\n", saved, skipped)
+	return nil
 }
 
 // readLine prints prompt on stderr and reads one line from r.

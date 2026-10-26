@@ -4,6 +4,7 @@ package state
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -95,12 +96,14 @@ func (s *State) Sorted() []*Installed {
 	return out
 }
 
-// Config is ~/.ot/config.json. Environment variables override it.
+// Config is ~/.ot/config.json. Environment variables override it. Only `ot start` writes it (SetConfig).
 type Config struct {
 	APIURL    string `json:"api_url,omitempty"`
 	SiteURL   string `json:"site_url,omitempty"`
 	Telemetry *bool  `json:"telemetry,omitempty"`
 	Format    string `json:"format,omitempty"`
+	// ResultsDir is where runs are saved when neither --results-dir nor $OT_RESULTS_DIR says.
+	ResultsDir string `json:"results_dir,omitempty"`
 }
 
 const (
@@ -108,11 +111,53 @@ const (
 	DefaultSiteURL = "https://otinstaller.com"
 )
 
-func LoadConfig() *Config {
+// FileConfig is config.json as written, without environment overrides or defaults: what `ot start` shows and changes.
+func FileConfig() *Config {
 	c := &Config{}
 	if b, err := os.ReadFile(Path("config.json")); err == nil {
 		_ = json.Unmarshal(b, c)
 	}
+	return c
+}
+
+// SetConfig changes keys of config.json and keeps the rest, unknown keys included; a nil value removes its key. It
+// never writes LoadConfig's result, which has environment overrides and defaults folded in.
+func SetConfig(changes map[string]any) error {
+	doc := map[string]any{}
+	b, err := os.ReadFile(Path("config.json"))
+	switch {
+	case err == nil:
+		if len(b) > 0 {
+			if err := json.Unmarshal(b, &doc); err != nil {
+				return fmt.Errorf("%s is not valid JSON (%v); fix or remove it first", Path("config.json"), err)
+			}
+		}
+	case !errors.Is(err, os.ErrNotExist):
+		return err
+	}
+	for k, v := range changes {
+		if v == nil {
+			delete(doc, k)
+		} else {
+			doc[k] = v
+		}
+	}
+	if err := os.MkdirAll(Home(), 0o700); err != nil {
+		return err
+	}
+	out, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := Path("config.json.tmp")
+	if err := os.WriteFile(tmp, append(out, '\n'), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, Path("config.json"))
+}
+
+func LoadConfig() *Config {
+	c := FileConfig()
 	if v := os.Getenv("OT_API_URL"); v != "" {
 		c.APIURL = v
 	}
