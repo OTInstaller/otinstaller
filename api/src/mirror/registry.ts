@@ -12,8 +12,9 @@
 //   repos/<name>/tags/<tag>           the digest the tag points to
 //   uploads/<id>.json                 a blob upload in progress
 //   hidden/<name>, hidden/<name>@<digest> taken-down images: not served to the public while they wait for deletion
-//   pending/<name>@<digest>           a publisher's image that no published version uses yet: only the scanner and
-//                                     the repository's publishers may read it (releaseImage clears it on publishing)
+//   pending/<name>@<digest>           a publisher's image, or a pipx sandbox image the scanner pushed (sandbox-* tags),
+//                                     that no published version uses yet: only the scanner and the repository's
+//                                     publishers may read it (releaseImage clears it on publishing)
 //
 // The referrers API is not implemented, so cosign and other clients use the tag schema (sha256-<hex>.sig,
 // sha256-<hex>); the scanner copies those tags, so signatures keep verifying on the mirror.
@@ -34,6 +35,8 @@ const TAG = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$/;
 const PUBLISHER_REPO = /^([a-z0-9][a-z0-9-]{1,38}[a-z0-9])\/([a-z0-9][a-z0-9-]{1,38}[a-z0-9])$/;
 // Tags cosign and other tools hang off an image: signatures, attestations, SBOMs.
 const ATTACHED_TAG = /^sha256-([a-f0-9]{64})(\..+)?$/;
+// The tag the scanner pushes a pipx release's sandbox image under (sandbox-<version>; see scans.ts dispatchScan).
+const SANDBOX_TAG = /^sandbox-/;
 const MAX_MANIFEST = 4 * 1024 * 1024;
 const TOKEN_TTL = 300;
 const DAY = 86_400_000;
@@ -724,6 +727,13 @@ async function putManifest(req: Request, env: MirrorEnv, name: string, ref: stri
   }
   await env.MIRROR.put(keys.manifest(name, digest), bytes, { httpMetadata: { contentType } });
   if (!DIGEST.test(ref)) await env.MIRROR.put(keys.tag(name, ref), digest);
+  if (who.admin && SANDBOX_TAG.test(ref)) {
+    // The image the scanner built and scanned for a pipx release: withheld like a publisher's until the version is
+    // published (releaseImage), and recorded so the nightly sweep removes it if the release never is.
+    await env.MIRROR.put(keys.pending(name, digest), String(Date.now()));
+    await env.DB?.prepare(`INSERT INTO mirror_pushes (id, repo, digest, tag, user_id, token_id, size_bytes, created_at) VALUES (?, ?, ?, ?, NULL, NULL, ?, ?)`)
+      .bind(crypto.randomUUID(), name, digest, ref, bytes.byteLength, Date.now()).run();
+  }
   if (publisher) {
     // Not served to the public until a published version uses it (releaseImage). Signatures and attestations are
     // metadata about an image, so they stay readable.

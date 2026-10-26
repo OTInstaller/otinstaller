@@ -128,7 +128,7 @@ export function communityRoutes(app: App) {
     });
   });
 
-  // How a package is doing: the health check and its history, confirmations and open issues, in one line.
+  // How a package is doing: what people said about the latest version and open issues, in one line.
   app.get("/tools/:ns/:name/status", async (c) => {
     const t = await tool(c);
     const status = await communityStatus(c.env, t);

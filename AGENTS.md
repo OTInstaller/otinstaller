@@ -12,7 +12,7 @@ This file is the entry point. The deep reference lives in [docs/dev/](docs/dev/R
 | [api.md](docs/dev/api.md) | Every API route with auth and caching, middleware order, rate limits, queue messages, crons, the mirror's OCI routes, every error code |
 | [database.md](docs/dev/database.md) | Every migration, the final D1 schema by table, status state machines, seed contents |
 | [cli.md](docs/dev/cli.md) | Every `ot` command and flag, exit codes per command, env vars, files under the data dir, packages and tests |
-| [ops-payloads.md](docs/dev/ops-payloads.md) | Scan, backup, drill and health payloads and callbacks; verdict rules; registry-ops workflows; token lifetimes |
+| [ops-payloads.md](docs/dev/ops-payloads.md) | Scan, backup and drill payloads and callbacks; verdict rules; registry-ops workflows; token lifetimes |
 | [config.md](docs/dev/config.md) | Bindings, vars and secrets per Worker, registry-ops and the CLI release; values that must match across them |
 | [local-setup.md](docs/dev/local-setup.md) | From a clean Windows, macOS or Linux machine to running every part locally |
 | [troubleshooting.md](docs/dev/troubleshooting.md) | Recipes: stuck jobs, scans, backups, edge-cache staleness, D1 limits, CORS, email, GitLab, `ot` failures |
@@ -57,7 +57,7 @@ Production:
 | Install scripts | `get.otinstaller.com/ot` and `/ot.ps1` (the latest `ot` release's scripts), `get.otinstaller.com/otlite` (`otlite/scripts/install.sh` from `main`), `/ot/latest` (the latest `ot` version, for `ot` itself); all from `ops/get/` |
 | Manifest schema | `https://otinstaller.com/schema/v1.json` (served from `spec/schema/v1.json`); also `/schema/envelope-v1.json`, `run-all-v1.json`, `error-v1.json` |
 | API reference | `https://api.otinstaller.com/v1/openapi.json` (served from `spec/openapi/v1.json`) |
-| Scanner, backups, drills, health checks | GitHub Actions in the private repo `OTInstaller/registry-ops` (copied from `ops/`) |
+| Scanner, backups, drills | GitHub Actions in the private repo `OTInstaller/registry-ops` (copied from `ops/`) |
 | `ot` releases | the public repo `OTInstaller/ot` (built from `cli/` by GoReleaser, with `.mcpb` bundles and `server.json`) |
 | `otlite` releases | PyPI projects `otlite` and `otinstaller` (the shim), from `release-otlite.yml`; GitHub releases `otlite-vX.Y.Z` on this repo |
 | Agent plugin | the public repo `OTInstaller/agent-plugin` (copied from `integrations/agent-plugin/`) |
@@ -73,8 +73,8 @@ spec/        Manifest JSON Schema, valid/invalid fixtures, release workflow temp
              error schemas, types.json, pivots.json, openapi/v1.json and dockerfile-templates.ts (the source of truth)
 cli/         The `ot` CLI (Go 1.25+, cobra); cmd/ot is the binary, cmd/mcpb packs the release's MCP bundles
 api/         Registry API and image mirror (TypeScript, Hono on Cloudflare Workers, D1, Queues, R2)
-ops/         scanner/ (scan.py, backup.py, health.py, tests, Dockerfile), workflows/ (scan.yml, health.yml) copied
-             into registry-ops, get/ (worker.js, wrangler.jsonc: the get.otinstaller.com Worker)
+ops/         scanner/ (scan.py, backup.py, tests, Dockerfile), workflows/ (scan.yml) copied into registry-ops,
+             get/ (worker.js, wrangler.jsonc: the get.otinstaller.com Worker)
 otlite/      otlite, the no-Docker edition (Python; formerly otinstaller; has its own AGENTS.md); web-catalog.json is
              what the website's /otlite pages read
 seed/        Launch seed: 26 first-party tools, 119 community wrappers, 10 guides
@@ -158,9 +158,9 @@ heavy work (pulling, scanning and copying images). Step-by-step flows with file 
       +-------- status -------|  queue otinstaller-publish|
                               +---------------------------+
                                  | repository_dispatch      ^ POST /internal/scans, /backups/:run,
-                                 v (otinstaller-scan,       |      /drills/:id, /health
+                                 v (otinstaller-scan,       |      /drills/:id
                      OTInstaller/registry-ops Actions ------+
-                     scan.py, backup.py, health.py  --crane push--> mirror.otinstaller.com (otinstaller-mirror,
+                     scan.py, backup.py             --crane push--> mirror.otinstaller.com (otinstaller-mirror,
                                                                     OCI registry on R2 MIRROR)
   ot (cli/) ---- pulls image by digest from GHCR (or the mirror), wheel by hash from PyPI (or BACKUPS via the API)
   MCP client --stdio--> ot mcp (same install/run path, plus consent and the audit log)
@@ -208,7 +208,7 @@ breach-data, web-archive, documents-metadata, utilities). Optional: `kind` (`too
 - `secrets[]`: `{name (^[A-Z][A-Z0-9_]{2,63}$), required, description?, url?, pricing?}`.
 - `network`: `{egress, domains}`. `ethics`: `{touches_target, auth_required, collects_personal_data}` (all required),
   plus optional `notifies_target` and `notes`, which agents' consent prompts show.
-- `test`: `{input, expect_exit_code (default 0)}`, used by the scanner's smoke test and the nightly health check.
+- `test`: `{input, expect_exit_code (default 0)}`, used by `ot validate --smoke` and the scanner's smoke test.
 - `docs`: `{root: "docs/", nav: ["page.md", ...]}` for tool docs.
 
 The optional fields marked `?` above that came after `ot` v0.12 (`example`, output `description`/`attrs`,
@@ -413,14 +413,22 @@ on stderr (`spec/schema/error-v1.json`, shared with the API); its `code` is the 
 ### Security model when installing and running tools (don't weaken it)
 
 - Docker images must be pinned by digest. If the registry returns a signer identity, `cosign verify` must pass
-  (missing cosign only warns). Wheels are matched by `wheel_sha256` from PyPI and re-hashed after download.
+  (missing cosign only warns); the pull and the check run at the same time (`pullVerified`), and an agent's install that
+  can't be checked is refused before anything is pulled. Wheels are matched by `wheel_sha256` from PyPI and re-hashed
+  after download.
+- pipx tools: when the manifest response has `sandbox_image` (the image the scanner built from the wheel and the
+  `python_lock`, scanned, pushed to the mirror and signed by the scan workflow) and ot runs on amd64, ot pulls it by
+  digest and `cosign verify`s `sandbox_signer_identity` (a failed check refuses the install; a failed pull, another
+  platform, or an agent without cosign builds locally instead). The local build installs `python_lock` with
+  `--require-hashes --no-deps` (`pythonLock` refuses any line that isn't `name==version --hash=sha256:...`); without a
+  lock, pip resolves the dependencies as before. Tests are in `runner/runner_test.go`.
 - Backup fallbacks: when the original registry refuses the image (401/403/404, denied, manifest unknown...), `ot` pulls
   the same digest from `mirror_image` and verifies the same signature; when PyPI answers 403/404/410 or lacks the wheel,
   it downloads `wheel_url` and checks the same SHA-256. Network errors never trigger a fallback. Tests are in
   `runner/backup_test.go`.
 - Under `ot mcp` (`AgentMode`) the rules are stricter: a Docker image needs a recorded signer and cosign present
-  (`RequireSignature`); local manifests, yanked versions, versions that failed their scan and possibly broken tools
-  are refused (`trust_refused`, exit 4); nothing prompts or opens a browser.
+  (`RequireSignature`); local manifests, yanked versions and versions that failed their scan are refused
+  (`trust_refused`, exit 4); a possibly broken tool only warns, as for a person; nothing prompts or opens a browser.
 - Containers run with `--rm --read-only --tmpfs /tmp:rw,size=256m --cap-drop ALL --security-opt no-new-privileges
   --pids-limit 256 --memory 1g --cpus 2 --user 65534:65534 -e HOME=/tmp`, plus `-v <out dir>:/out:rw` when there is
   an output folder and `--entrypoint` from the manifest's `command` (`ContainerArgs` in `runner/runner.go`), and
@@ -429,10 +437,11 @@ on stderr (`spec/schema/error-v1.json`, shared with the API); its `code` is the 
 - Secrets are passed as `-e NAME` with the value only in the child process environment, so they never appear in argv,
   in `.meta.json` or in logs. Containers get only `HOME` and the declared secrets; `--native` pipx tools inherit ot's
   whole environment.
-- Sandboxed pipx tools are built into `ot-local/<ns>-<name>:<version>` on `python:3.12-slim` with `WORKDIR /tmp` (the only
-  writable folder); `--native` uses ot's own `PIPX_HOME`/`PIPX_BIN_DIR`. The scanner's smoke test and health check run
-  pipx tools in the same image (`PYTHON_DOCKERFILE` in `ops/scanner/scan.py`, which `test_scan.py` keeps equal to
-  `pythonDockerfile`), so a change to one goes into the other.
+- Locally built pipx images are `ot-local/<ns>-<name>:<version>` on `python:3.12-slim` pinned by digest (no
+  `--pull`), with `WORKDIR /tmp` (the only writable folder); `--native` uses ot's own `PIPX_HOME`/`PIPX_BIN_DIR` and
+  still resolves dependencies. The scanner builds, smoke-tests and pushes the same image (`PYTHON_DOCKERFILE` in
+  `ops/scanner/scan.py`, which `test_scan.py` keeps equal to `pythonDockerfile`), so a change to one goes into the
+  other. Bumping the base digest means changing both.
 - Removed packages (`tool_removed`) are refused with exit 4; `cache/removed.json` drives warnings.
 
 ### Environment variables
@@ -525,7 +534,7 @@ and beta work, so `R2_*`, `ISSUES_REPO`/`ISSUES_TOKEN` and `EDGE_CACHE` are only
 | `trusted.ts` | Trusted publishing: a namespace's trusted publishers (add, list, remove), `matchPublisher` (repository, pinned ids, workflow, environment, package, risky events), `exchangeIdToken` (the hour-long restricted CI token), `purgeCiTokens` |
 | `trust.ts` / `transfers.ts` | Yank, deprecate, removal, reports, transparency, rate limits; claims and transfers |
 | `notify.ts` | Resend email with idempotency keys (`notifications` table); skipped when `RESEND_API_KEY` is unset |
-| `ops.ts` | Health targets/results, stuck-job alerts, daily digest, rate-limit purge, Sentry `reportError` |
+| `ops.ts` | Stuck-job alerts, daily digest, rate-limit purge, Sentry `reportError` |
 | `changelog.ts` | Release notes: captured from the host's release or the version's `CHANGELOG.md` section at publish, cleaned and rendered |
 | `activity.ts` | `GET /activity`: registry events from the audit log, and with `events=community` confirmed/fixed issues and accepted/published requests, worded from fields |
 | `community.ts` | Issues, comments, confirmations, flags, moderation, roles (`triager`, `reviewer`; tool maintainers), screening (`screen`, `holdReason`), `renderPost`, failed-run reports, the status line, system issues (`fileSystemIssue`, `closeSystemIssue`) |
@@ -573,7 +582,8 @@ nothing cached before a takedown is served again. On a hit the original `Cache-C
   (follows `spec/pivots.json`), `/removed`, guide pages, tool docs, readmes, `/assets/:sha256.ext`; `POST /installs`
   (counted once per address, version and day through a salted hash in `rate_limits`; only per-version and
   per-client-kind daily counts are kept), `POST /feedback`. The manifest response includes
-  `mirror_image` / `wheel_url` install fallbacks for public backups. `GET /tools/:ns/:name` carries `sample`: what the
+  `mirror_image` / `wheel_url` install fallbacks for public backups and, for pipx versions, `python_lock` and (once
+  published) `sandbox_image` with `sandbox_signer_identity`/`_issuer` (`backups.ts:pipxInstall`). `GET /tools/:ns/:name` carries `sample`: what the
   scanner's smoke test of the latest version produced (first five entities, or the start of stdout), which the tool
   page shows as its sample output.
 - Auth: `/auth/:provider/login|callback` (github, gitlab, osintverse), `/auth/logout`, `/auth/device/start|token`,
@@ -599,10 +609,9 @@ nothing cached before a takedown is served again. On a hit the original `Cache-C
   drills, `POST /admin/email-test` (checks the Resend key).
 - Internal: `POST /internal/scans` (scanner callback; on a pass it answers with a backup plan),
   `/internal/backups/objects/*` (signed PUT/GET when R2 credentials aren't set), `POST /internal/backups/:run`,
-  `POST /internal/drills/:id`, `/internal/health[/targets]`. Scans, backup runs and drills each use their own
-  single-use token (scan 1 h, run 3 h or 12 h weekly, drill 6 h); the health endpoints use the static shared
-  `HEALTH_TOKEN`.
-- The full route table (204 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
+  `POST /internal/drills/:id`. Scans, backup runs and drills each use their own single-use token (scan 1 h, run 3 h
+  or 12 h weekly, drill 6 h).
+- The full route table (202 routes, with auth, scope and caching for each) is in [docs/dev/api.md](docs/dev/api.md).
   `spec/openapi/v1.json` describes the public and owner routes, each with its token scope as `x-scope`; a test in
   `api.test.ts` fails when a route and the document disagree, so add new routes to both.
 - 429s carry `Retry-After`, `RateLimit-Policy` and `retry_after_s` (`rateLimited` in `lib/errors.ts`).
@@ -642,7 +651,8 @@ nothing cached before a takedown is served again. On a hit the original `Cache-C
 6. Every 15 minutes: expire stale scans (1 h), poll due sources, alert on jobs stuck > 30 min, expire backup runs and
    drills, backfill up to 5 versions with no backup, email inbox items due now, send queued pages to IndexNow. `scheduled()` runs this block on
    **every** trigger, including the nightly, weekly and monthly ones. Nightly also: guide link rechecks (> 20% dead →
-   needs update), the reviewer digest, rate-limit purge, backup purge, locking stale closed threads, daily inbox
+   needs update), the reviewer digest, rate-limit purge, backup purge, locking stale closed threads, recomputing every
+   package's health (`refreshAllHealth`, so reports older than 30 days stop counting), daily inbox
    digests and the inbox purge, the `contributor_stats` recount, queuing every community wrapper's upstream check and every community-namespace build's dependency and base-image check,
    `installs_30d` recompute.
 
@@ -701,8 +711,12 @@ publishing (`trusted_publishers`, the CI token columns `api_tokens.namespace_id`
 (`notifications.body`/`attempts`/`sent_at`, 0033), search following a namespace rename (a trigger, 0034), the edge
 cache's epoch (`settings`, 0035), people's profiles and notification settings (`users` profile fields and
 `handle_changed_at`, `handle_aliases`, `package_follows.level`, `email_prefs` `lifecycle`/`security`/`inbox_muted_json`/
-`email_provider`, 0036) and the IndexNow queue (`indexnow_queue`, 0037); 0040 drops the never-written `stars` table and `tools.stars_count`
-(responses keep `stars: 0`). That is 65 tables plus `tools_fts`; every
+`email_provider`, 0036) and the IndexNow queue (`indexnow_queue`, 0037). 0039 drops `health_checks` and
+`tools.health_fail_streak`: health comes from community reports. 0041 adds `versions.python_lock` and
+`versions.sandbox_image` (pipx sandbox images); 0042 copies the manifest fields search filters on onto `tools`
+(`title`, `level`, `format`, `language`, the four ethics flags, `egress`; `SEARCH_FIELDS` in `catalog.ts`, written by
+`latestMetadata`). 0040 drops the never-written `stars` table and `tools.stars_count` (responses keep `stars: 0`).
+That is 64 tables plus `tools_fts`; every
 table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
 
@@ -826,8 +840,14 @@ Phase 1 of the community plan is built. User docs: the site's `docs/community.md
   established account, or three flags, hides a post at once. Triage (status, locks, hiding) is for the package's
   maintainers, triagers and staff; only staff redact. Daily limits per person (`dailyLimit`). The registry files
   system issues itself (`fileSystemIssue`, deduplicated by key).
-- **Status line** (`GET /tools/:ns/:name/status`): the nightly health check and its history, confirmations from the
-  last 30 days by platform, open broken issues, in one sentence with counts, never a score.
+- **Status line** (`GET /tools/:ns/:name/status`): confirmations of the latest version from the last 30 days by
+  platform (in its first week, since it came out) and open broken issues, in one sentence with counts, never a score.
+- **Health** (`tools.health_status`, `healthSet` in `community.ts`): `broken` (Possibly broken) while the package has an
+  open broken issue (including the "unconfirmed" ones anonymous reports open), or while at least two signed-in "broken
+  for me" on the latest version in the last 30 days outnumber the "works for me"; `healthy` once someone said the
+  latest version works; else `unknown`. `health_checked_at` is the latest "works for me" in that window.
+  `refreshCounts` recomputes it on every confirmation, issue change and new latest version; `refreshAllHealth` nightly.
+  Nothing runs the tools to check them (0039 removed the nightly health check).
 - **`ot` hooks**: the failure prompt (`report_prompt.go`) sends `run-reports` only after a yes; anonymous reports only
   count (once per address a day; three in a week open an "unconfirmed" issue), signed-in ones join the version's broken
   issue.
@@ -976,18 +996,22 @@ section 10, "MCP bundles and the MCP Registry".
   `{"job": ...}` wrapper, a backup payload or a drill payload.
   - Scans: Docker images are pulled, `cosign verify`ed against the expected signer (plus a loose verify to tell "signed by
     someone else" from "unsigned"), Trivy vuln+secret scanned, SBOM'd. pipx wheels are downloaded by hash, checked for
-    PEP 740 provenance against the source (or upstream) repo, Trivy scanned on python:3.12-slim, and run through
-    GuardDog. Then a sandboxed smoke test with `test.input` (network only if egress is declared) passes when the exit
-    code equals `test.expect_exit_code`. Results POST to `callback_url`; if the answer has a `backup` plan, it runs.
+    PEP 740 provenance against the source (or upstream) repo, their dependencies pinned with every file's hash
+    (`resolve_lock`: `pip install --dry-run --report` in the pinned base, then PyPI's hashes per version), built into
+    `ot`'s sandbox image from that lock, Trivy scanned, and run through GuardDog. Then a sandboxed smoke test with
+    `test.input` (network only if egress is declared) passes when the exit code equals `test.expect_exit_code`. A pipx
+    image that didn't fail is pushed to the request's `sandbox` target (`<mirror>/<ns>/<name>:sandbox-<version>`, held
+    back by the mirror until the version is published) and signed keyless (`push_sandbox`; the workflow needs
+    `id-token: write`). Results POST to `callback_url`; if the answer has a `backup` plan, it runs.
+  - `ops/workflows/scan.yml` caches Trivy's database per six-hour window (skipping the update on an exact hit) and pip's
+    downloads (`ops/scanner/requirements.txt`), so a scan doesn't download either again.
 - `ops/scanner/backup.py`: image copies with `crane` (signature, attestation and SBOM tags included; big layers chunked),
   wheel and git-bundle uploads to signed URLs, and restore drills.
-- `ops/scanner/health.py`: the nightly health check (each tool's test input, with network); 3 failures in a row mark a tool
-  Possibly broken.
 - `ops/scanner/Dockerfile`: pinned Docker CLI, Trivy, cosign, crane, GuardDog for local runs. Tests: `test_scan.py`,
   `test_backup.py`.
 - `ops/workflows/scan.yml` (dispatch types `otinstaller-scan`, `otinstaller-backup`, `otinstaller-drill`; needs
-  `MIRROR_PUSH_TOKEN`) and `health.yml`: copied into `OTInstaller/registry-ops`, not run from this repo. After a change
-  to `ops/scanner` or `ops/workflows` reaches `main`, the `copies` workflow fails until someone publishes the copy
+  `MIRROR_PUSH_TOKEN`): copied into `OTInstaller/registry-ops`, not run from this repo. After a change to
+  `ops/scanner` or `ops/workflows` reaches `main`, the `copies` workflow fails until someone publishes the copy
   (Actions → copies → Run workflow → `registry-ops`; `scripts/copies.sh` compares and copies). `setup.ps1` in the
   local workspace warns when either copy is out of step.
 - The payload formats are defined by `dispatchOps`/`dispatchScan` in `api/src/scans.ts` and `backups.ts`, and parsed by
@@ -995,8 +1019,8 @@ section 10, "MCP bundles and the MCP Registry".
   items; drill reports aren't shape-checked); change both sides together. Every field, with JSON examples, is in
   [docs/dev/ops-payloads.md](docs/dev/ops-payloads.md).
 - `dispatchOps` authenticates with `OPS_DISPATCH_TOKEN`, or else a GitHub App installation token for
-  `OPS_INSTALLATION_ID`. Secrets on the registry-ops side: `MIRROR_PUSH_TOKEN` and `HEALTH_TOKEN` (must match the
-  mirror's and the API's), variables `MIRROR_HOST` and `REGISTRY_API`; see [docs/dev/config.md](docs/dev/config.md).
+  `OPS_INSTALLATION_ID`. Registry-ops needs the secret `MIRROR_PUSH_TOKEN` (must match the mirror's) and the variable
+  `MIRROR_HOST`; see [docs/dev/config.md](docs/dev/config.md).
 - `ops/get/`: the `otinstaller-get` Worker for `get.otinstaller.com`. It maps `/ot`, `/ot.sh`, `/install.sh` and
   `/ot.ps1`, `/install.ps1` to the latest release's scripts on `OTInstaller/ot` (`RELEASE_REPO`), and `/otlite`,
   `/otlite.sh` to `otlite/scripts/install.sh` on this repo's `main` (`OTLITE_REPO`; it installs from PyPI, so it needs
@@ -1112,12 +1136,12 @@ read and the first run copies settings from `~/.otinstaller`. Users of both edit
 | `cli-install.yml` | PRs and pushes to main touching `cli/**`, `scripts/install/**`, `cli-install.yml` or `release-cli.yml`; `workflow_dispatch` | GoReleaser snapshot with the real config, archive contents check, the MCP bundles built and checked with `mcpb validate`, then installs with `install.sh` / `install.ps1` on Linux (x64, arm), macOS and Windows and runs `ot --version`, `search`, `info`, `doctor`, and on Linux (x64 and arm) a real install/run |
 | `release-cli.yml` | `v*.*.*` tags | Releases `ot` with its `.mcpb` bundles and `server.json` (see above) |
 | `otlite-ci.yml` | pushes and PRs touching `otlite/**` | ruff and pytest on Ubuntu × Python 3.10–3.14, Debian, Arch and macOS 14; a Kali `.deb` build and install; wheel build, pipx install and the `otinstaller` shim; the one-line installer on Debian and macOS; a Playwright browser tool check |
-| `otlite-nightly.yml` | 02:00 UTC daily; `workflow_dispatch` | ruff, otlite pipeline verify (20 candidates), an installed-tool contract test and the full otlite test suite |
 | `release-otlite.yml` | `otlite-v*.*.*` tags; `workflow_dispatch` (`testpypi` or `pypi`) | Tests, builds otlite and the shim, publishes each with PyPI trusted publishing from its own environment (otlite first), creates a GitHub release |
 | `issue-severity.yml` | issues opened/edited | Sets one `sev-N` label from the bug form's Severity field |
 | `copies.yml` | PRs and pushes to main touching `integrations/agent-plugin/**`, `ops/scanner/**`, `ops/workflows/**`; `workflow_dispatch` | Checks `OTInstaller/agent-plugin` (PRs fail on a plugin change without a version bump) and `OTInstaller/registry-ops` (pushes fail while it runs an older copy; needs `REGISTRY_OPS_TOKEN`). Run by hand from `main`, it publishes one of them (`AGENT_PLUGIN_TOKEN` / `REGISTRY_OPS_TOKEN`) |
 
-Nothing in CI runs `go test`, the API tests, the scanner tests or the e2e scripts.
+Nothing in CI runs `go test`, the API tests, the scanner tests, the e2e scripts or otlite's candidate verification
+(`python -m pipeline.verify`, run by hand).
 
 ---
 
@@ -1249,8 +1273,8 @@ change. Keep this list current when you fix one or find another.
 - Namespaces that already exist with a reserved name (`api/src/lib/reserved.ts` only affects new ones) keep it; none
   did in production as of 23 Oct 2026.
 - Community: `contributor_stats` is only as fresh as the last nightly run.
-- Profiles can't be flagged or reported yet: staff clear one by handle from the moderation panel. Health status
-  ("possibly broken") and new issues don't reach a package's followers, only its maintainers.
+- Profiles can't be flagged or reported yet: staff clear one by handle from the moderation panel. A package turning
+  Possibly broken emails nobody, and new issues don't reach a package's followers, only its maintainers.
 - Change proposals cover `otinstaller.yaml`, the Dockerfile and the README only (not docs pages or other files). A
   proposal merged or closed on GitHub directly stays open in the registry (nothing reads `pull_request` webhooks; a
   bump closed there is only noticed by auto mode), and a merged proposal whose release fails its scan still shows as
@@ -1292,8 +1316,8 @@ change. Keep this list current when you fix one or find another.
 | Source | A repository linked to a package (`sources`); polled every 6 h as a webhook backstop |
 | Import | The wizard that turns a repository into a draft manifest and finishes as a PR/MR, a registry-held manifest or a wrapper |
 | Scan / verdict | The registry-ops job (`scan.py`) and its outcome: pass, warn (fixable critical/high vulns) or fail |
-| Smoke test | The scan's sandboxed run of the manifest's `test.input`; the nightly health check runs it again |
-| Possibly broken | Three failed health checks in a row (`tools.health_status = 'broken'`) |
+| Smoke test | The scan's sandboxed run of the manifest's `test.input`; `ot validate --smoke` runs it locally |
+| Possibly broken | An open broken issue, or 2+ recent "broken for me" outnumbering "works for me" on the latest version (`tools.health_status = 'broken'`) |
 | Issue | A public report on a package (broken, outdated, wrong_info, feature, question), with replies; system issues are filed by the registry itself (`author_kind = 'system'`) |
 | Confirmation | "Works for me" or "broken for me" on a version and platform; counts, never ratings |
 | Handle | The public name on someone's posts and profile (`users.handle`) |
@@ -1314,7 +1338,7 @@ change. Keep this list current when you fix one or find another.
 | Backup kinds | image (mirror), wheel (R2 copy served by the API), git (bundle in R2) |
 | Mirror | `mirror.otinstaller.com`, the registry's own OCI registry; `private/` for non-OSI licenses |
 | Restore drill | The monthly job that proves a random bundle restores and a random mirrored image pulls |
-| registry-ops | The private repo `OTInstaller/registry-ops` whose Actions run scans, backups, drills and health checks |
+| registry-ops | The private repo `OTInstaller/registry-ops` whose Actions run scans, backups and drills |
 | Edge cache | `caches.default` in front of anonymous API reads (`edge-cache.ts`) |
 | Envelope | The normalised result `ot run` prints (`envelope.Version = 1`) |
 | Typed input | A positional like `d:example.com` that maps to an input by type |

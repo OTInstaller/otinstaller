@@ -50,6 +50,6 @@ ethics:
   notifies_target: false
   notes: "Returns the people named in the company's register entry, such as its managing directors."
 test:
-  # Scans and health checks run without secrets, so the CLI reports the missing key with exit code 1.
+  # The publish scan runs the test without secrets, so the CLI reports the missing key with exit code 1.
   expect_exit_code: 1
   input: { company: "Siemens AG" }

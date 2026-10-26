@@ -22,7 +22,6 @@ import { importRoutes } from "./routes/imports";
 import { guideRoutes } from "./routes/guides";
 import { trustRoutes } from "./routes/trust";
 import { transferRoutes } from "./routes/transfers";
-import { opsRoutes } from "./routes/ops";
 import { betaRoutes } from "./routes/beta";
 import { backupRoutes } from "./routes/backups";
 import { profileRoutes } from "./routes/profiles";
@@ -43,7 +42,7 @@ import { trustedRoutes } from "./routes/trusted";
 import { purgeIdleNamespaces } from "./direct";
 import { purgeCiTokens } from "./trusted";
 import { refreshDueProfiles } from "./profiles";
-import { backfillBackups, expireDrills, expireRuns, installFallbacks, purgeBackups, queueMirrorSweeps, RESTORE_DRILL_CRON, startDrill, WEEKLY_BACKUP_CRON, weeklyBackups } from "./backups";
+import { backfillBackups, expireDrills, expireRuns, installFallbacks, pipxInstall, purgeBackups, queueMirrorSweeps, RESTORE_DRILL_CRON, startDrill, WEEKLY_BACKUP_CRON, weeklyBackups } from "./backups";
 import { alertStuckJobs, dailyDigest, purgeRateLimits, reportError } from "./ops";
 import { flushIndexNow } from "./indexnow";
 import { queueNightlyLinkChecks } from "./guides";
@@ -58,7 +57,7 @@ import { renderNotes } from "./changelog";
 import { siteActivity } from "./activity";
 import { firstWeekCounts } from "./first-week";
 import { mcpEndpoint } from "./mcp";
-import { lockStaleThreads } from "./community";
+import { lockStaleThreads, refreshAllHealth } from "./community";
 
 export type { Env } from "./env";
 
@@ -94,7 +93,6 @@ importRoutes(app);
 guideRoutes(app);
 trustRoutes(app);
 transferRoutes(app);
-opsRoutes(app);
 betaRoutes(app);
 backupRoutes(app);
 profileRoutes(app);
@@ -233,20 +231,19 @@ app.get("/tools", async (c) => {
     where.push(`t.kind = ?`);
     params.push(kind);
   }
+  // These read the latest version's manifest fields that latestMetadata copies onto tools (SEARCH_FIELDS).
   for (const [field, value] of [["level", level], ["format", format]] as const) {
     if (!value) continue;
-    where.push(`t.kind = 'guide' AND json_extract(v.manifest_json, '$.${field}') = ?`);
+    where.push(`t.kind = 'guide' AND t.${field} = ?`);
     params.push(value);
   }
   if (lang) {
-    where.push(`t.kind = 'guide' AND COALESCE(json_extract(v.manifest_json, '$.language'), 'en') = ?`);
+    where.push(`t.kind = 'guide' AND COALESCE(t.language, 'en') = ?`);
     params.push(lang);
   }
   if (noKeys) where.push(`NOT EXISTS (SELECT 1 FROM tool_secrets WHERE tool_id = t.id AND required = 1)`);
   if (passiveOnly) {
-    where.push(`t.kind = 'tool' AND COALESCE(json_extract(v.manifest_json, '$.ethics.touches_target'), 1) = 0
-      AND COALESCE(json_extract(v.manifest_json, '$.ethics.collects_personal_data'), 1) = 0
-      AND COALESCE(json_extract(v.manifest_json, '$.network.egress'), 0) = 0`);
+    where.push(`t.kind = 'tool' AND COALESCE(t.touches_target, 1) = 0 AND COALESCE(t.collects_personal_data, 1) = 0 AND COALESCE(t.egress, 0) = 0`);
   }
 
   const match = ftsQuery(q);
@@ -276,7 +273,7 @@ app.get("/tools", async (c) => {
     relevance: (a, b) => Number(b.exact) - Number(a.exact) || b.score - a.score,
     installs: (a, b) => b.r.installs_30d - a.r.installs_30d,
     updated: (a, b) => ((b.r as any).updated_at ?? 0) - ((a.r as any).updated_at ?? 0),
-    // "Recently verified working": healthy tools by the time of their last passing nightly check, then the rest.
+    // "Recently reported working": healthy tools by when someone last said the latest version works, then the rest.
     health: (a, b) => {
       const h = (x: typeof a) => (x.r.health_status === "healthy" ? 2 : x.r.health_status === "broken" ? 0 : 1);
       return h(b) - h(a) || (b.r.health_checked_at ?? 0) - (a.r.health_checked_at ?? 0) || b.score - a.score;
@@ -425,6 +422,9 @@ app.get("/tools/:ns/:name/:version/manifest", async (c) => {
     // Where ot retries when the original registry refuses (403, 404, denied): the same digest on the mirror,
     // and the registry's copy of the wheel. Only for OSI-approved licenses.
     ...(removed ? {} : await installFallbacks(c.env, v.id, row.namespace, row.name, v.version)),
+    // pipx: the dependencies the scanner pinned (a local build installs exactly these), and the image it built and
+    // scanned, which ot pulls instead of building when the signature checks out.
+    ...(removed ? {} : await pipxInstall(c.env, v.id)),
   });
 });
 
@@ -633,13 +633,14 @@ export default {
     if (event.cron === WEEKLY_BACKUP_CRON) await weeklyBackups(env);
     // Monthly: restore a random bundle into an empty repository and pull a mirrored image by digest.
     if (event.cron === RESTORE_DRILL_CRON) await startDrill(env);
-    // Nightly: recompute 30-day install totals that ranking uses, and re-check guides' links.
+    // Nightly: recompute 30-day install totals and package statuses that ranking uses, and re-check guides' links.
     if (event.cron === "17 3 * * *") {
       await queueNightlyLinkChecks(env);
       await dailyDigest(env);
       await purgeRateLimits(env);
       await purgeBackups(env);
       await lockStaleThreads(env);
+      await refreshAllHealth(env);
       await deliverInbox(env, "daily");
       await purgeInbox(env);
       await refreshContributorStats(env);

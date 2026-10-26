@@ -121,7 +121,7 @@ func (a *App) checkUpdate(ctx context.Context, row *updateRow) {
 		row.flag("deprecated", w)
 	}
 	if t.Health == "broken" {
-		row.flag("possibly_broken", row.Ref+" is marked possibly broken by recent health checks")
+		row.flag("possibly_broken", row.Ref+" is marked possibly broken by people who use it")
 	}
 	if t.SourceGone {
 		row.flag("source_unavailable", "the source repository of "+row.Ref+" is no longer available; it will get no new versions")

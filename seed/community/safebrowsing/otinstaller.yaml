@@ -41,6 +41,6 @@ ethics:
   collects_personal_data: false
   notifies_target: false
 test:
-  # Scans and health checks run without secrets, so the wrapper reports the missing key with exit code 3.
+  # The publish scan runs the test without secrets, so the wrapper reports the missing key with exit code 3.
   expect_exit_code: 3
   input: { url: "https://example.com/" }

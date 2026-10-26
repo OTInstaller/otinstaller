@@ -353,12 +353,12 @@ describe("change proposals", () => {
 describe("a new version's first week", () => {
   it("says when the latest version came out and what people said since", () => {
     const now = Date.now();
-    const base = { health: "healthy", checked_at: now, works: 0, broken: 0, platforms: [], open_broken: 0, version: "1.3.0" };
-    expect(statusLine({ ...base, released_at: now - 2 * DAY }, now).text).toBe("Passed the registry's health check today; 1.3.0 came out 2 days ago; nobody has said yet whether it works.");
+    const base = { works: 0, broken: 0, platforms: [], open_broken: 0, version: "1.3.0" };
+    expect(statusLine({ ...base, released_at: now - 2 * DAY }, now).text).toBe("1.3.0 came out 2 days ago; nobody has said yet whether it works.");
     expect(statusLine({ ...base, works: 2, broken: 1, platforms: ["linux/amd64"], released_at: now - DAY }, now).text)
-      .toBe("Passed the registry's health check today; 1.3.0 came out yesterday: works for 2 people, broken for 1 person (linux/amd64).");
+      .toBe("1.3.0 came out yesterday: works for 2 people, broken for 1 person (linux/amd64).");
     // After the first week the line goes back to the last 30 days.
-    expect(statusLine({ ...base, works: 2, released_at: now - 8 * DAY }, now).text).toBe("Passed the registry's health check today; 1.3.0 works for 2 people in the last 30 days.");
+    expect(statusLine({ ...base, works: 2, released_at: now - 8 * DAY }, now).text).toBe("1.3.0 works for 2 people in the last 30 days.");
   });
 
   it("shows the counts beside the version before it, in the versions list and in the activity feed", async () => {

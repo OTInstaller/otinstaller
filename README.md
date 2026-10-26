@@ -102,13 +102,16 @@ link- and content-checked, then published; a new publisher's first release waits
 ## Security model
 
 - Docker images are pinned by digest and their cosign signature is checked against the publisher's identity; wheels
-  are pinned by SHA-256 and checked again after download.
+  are pinned by SHA-256 and checked again after download. A pipx tool runs in the image the registry built from its
+  wheel and scanned, pulled by digest and signed by the registry's scanner, or one `ot` builds from the same
+  hash-locked dependencies.
 - Tools run with a read-only root, no capabilities, no new privileges, an unprivileged user, memory, CPU and process
   limits, and no network unless the manifest declares it. They see only an output folder and the API keys they declare
   (a pipx tool you choose to run with `--native` runs outside the container instead).
 - If the original host refuses an artifact, `ot` installs the same digest or hash from the registry's mirror and
   checks it the same way. Network errors never trigger that fallback.
-- Every published tool is run again every night; three failures in a row mark it as possibly broken.
+- A tool is marked possibly broken while it has an open broken issue, or while at least two signed-in people said in
+  the last 30 days that its latest version is broken and they outnumber those who said it works.
 
 Details: [security](https://otinstaller.com/docs/security) and the
 [acceptable use policy](https://otinstaller.com/policy/acceptable-use).
@@ -133,7 +136,7 @@ follow [docs/publishing-setup.md](docs/publishing-setup.md).
 | `spec/` | The manifest JSON Schema (`schema/v1.json`), the envelope, run-all and error schemas, valid and invalid example manifests, the release workflow templates, and the import wizard's Dockerfile templates |
 | `cli/` | `ot` (Go): installing and running tools, typed inputs, playbooks, saved runs, keys, publishing, `ot mcp`, self-update |
 | `api/` | The registry API (Cloudflare Workers, Hono, D1, Queues, R2): search and reads, sign-in, publishing and review, scans, backups, the community features and the remote MCP server; plus the image mirror Worker (`src/mirror/`) |
-| `ops/` | The scanner, backup and health-check jobs (`scanner/`), the workflows that run them in a separate repository, and the Worker behind get.otinstaller.com (`get/`) |
+| `ops/` | The scanner and backup jobs (`scanner/`), the workflows that run them in a separate repository, and the Worker behind get.otinstaller.com (`get/`) |
 | `otlite/` | otlite, the no-Docker edition (Python), with its own [README](otlite/README.md), [rules](otlite/AGENTS.md), tests, Debian packaging and release workflow |
 | `seed/` | The launch seed: first-party tools, community wrappers of third-party tools, and guides, each its own repository under `osintverse-community` ([seed/README.md](seed/README.md)) |
 | `integrations/` | The agent plugin and the remote MCP server's MCP Registry entry |
@@ -172,8 +175,11 @@ their own licenses.
 - Guide manifests use `topics:` (not `inputs:`) for what a guide helps investigate, so `inputs` always means tool inputs.
 - `ot` drives the `docker` (or `podman`) CLI rather than the Engine API, which keeps it working with Docker Desktop,
   OrbStack, Colima and Podman.
-- Sandboxed pipx tools are built into a local image (`ot-local/<namespace>-<name>:<version>`) from a verified wheel on
-  `python:3.12-slim`.
+- The scanner resolves a pipx tool's dependencies once, pins each with the SHA-256 of every file PyPI has for it (so
+  the lock installs on amd64 and arm64), builds the sandbox image from that lock on `python:3.12-slim` pinned by digest,
+  scans and smoke-tests it, and pushes it to the mirror signed by its workflow. `ot` pulls that image on amd64;
+  elsewhere, or when it can't, it builds `ot-local/<namespace>-<name>:<version>` from the verified wheel and the same
+  lock, so nothing is resolved again at install time.
 - Smoke tests run offline unless the manifest declares `network.egress: true`; then they keep the network, on a
   disposable runner with no secrets in the container. Fully offline smoke tests would fail most OSINT tools.
 - Wheels are scanned for vulnerabilities in their Python packages only; the base image the scanner wraps them in is not

@@ -10,7 +10,7 @@ detail it links to.
 | [api.md](api.md) | Every API route with auth and caching, middleware order, rate limits, queue messages, crons, the mirror's OCI routes, every error code |
 | [database.md](database.md) | Every migration, the final D1 schema by table, status state machines, seed contents |
 | [cli.md](cli.md) | Every `ot` command and flag, exit codes per command, env vars, files under the data dir, packages and tests |
-| [ops-payloads.md](ops-payloads.md) | Scan, backup, drill and health payloads and callbacks; verdict rules; registry-ops workflows; token lifetimes |
+| [ops-payloads.md](ops-payloads.md) | Scan, backup and drill payloads and callbacks; verdict rules; registry-ops workflows; token lifetimes |
 | [config.md](config.md) | Bindings, vars and secrets per Worker, registry-ops and the CLI release; values that must match across them |
 | [local-setup.md](local-setup.md) | From a clean Windows, macOS or Linux machine to running every part locally |
 | [troubleshooting.md](troubleshooting.md) | Recipes: stuck jobs, scans, backups, edge-cache staleness, D1 limits, CORS, email, GitLab, `ot` failures |

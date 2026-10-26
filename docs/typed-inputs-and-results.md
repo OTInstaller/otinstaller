@@ -213,7 +213,7 @@ output was written.
 Packages installed from a local manifest show as "not in registry".
 
 Beside the status, each row carries lifecycle `flags`: `deprecated` (with the publisher's `replacement` when there is
-one), `possibly_broken` (failed recent health checks), `yanked` (the installed version, even when it is the latest),
+one), `possibly_broken` (people report it broken), `yanked` (the installed version, even when it is the latest),
 `source_unavailable` (no new versions will come) and `moved` (the package has a new name, which `replacement` gives).
 Each flag is also one `warning:` line on stderr saying what to do. An update that is under a week old also gets a
 `note:` line with what people said about it so far (works and broken counts), and `latest_first_week` in JSON, so a

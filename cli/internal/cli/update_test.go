@@ -116,7 +116,7 @@ func TestOutdatedFlags(t *testing.T) {
 	}
 	for _, want := range []string{
 		"warning: dheeraj/flagged is deprecated: No longer maintained; its publisher suggests dheeraj/better (`ot install dheeraj/better`)",
-		"warning: dheeraj/flagged is marked possibly broken by recent health checks",
+		"warning: dheeraj/flagged is marked possibly broken by people who use it",
 		"warning: the source repository of dheeraj/flagged is no longer available",
 		"warning: dheeraj/flagged has moved to dheeraj/fresh",
 		"warning: dheeraj/holehe-lite@1.2.0 was yanked by its publisher; `ot update dheeraj/holehe-lite` installs 1.3.0",

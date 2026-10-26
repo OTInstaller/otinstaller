@@ -25,7 +25,6 @@ are also described in `spec/openapi/v1.json`, served at `/v1/openapi.json`, with
 | backup run token | Bearer; `sha256` matched to `backup_runs.token_hash`, not expired, status `pending`/`dispatched`; single use (cleared on completion). TTL 3 h for releases (`RELEASE_TTL`), 12 h weekly (`WEEKLY_TTL`) |
 | drill token | Bearer; `sha256` matched to `restore_drills.token_hash`, status `dispatched`, not expired (`DRILL_TTL` = 6 h); single use |
 | signed URL | Query `method`, `expires` (Unix seconds), `sig` = `objectSignature(TOKEN_ENC_KEY, method, key, expires)`; key must start with `git/` or `wheels/` and contain no `..` |
-| HEALTH_TOKEN | Bearer equal to `env.HEALTH_TOKEN` (compared as SHA-256 digests); 503 `not_configured` if unset |
 | HMAC | GitHub: `x-hub-signature-256` = `sha256=` + HMAC-SHA256(`GITHUB_WEBHOOK_SECRET`, raw body) |
 | GitLab token | `x-gitlab-token` whose SHA-256 equals the matching source's `webhook_secret_hash` (one secret per project) |
 
@@ -48,7 +47,7 @@ anonymous GET.
 
 ## 1. Routes
 
-Total: **204 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
+Total: **202 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
 call; the `for` loops in `routes/trust.ts` (`yank`, `unyank`), `routes/community.ts` (a thread's subscription) and
 `routes/requests.ts` (a vote, a request's subscription) register two each. The mirror Worker's OCI routes are in
 section 6 and are not in this count. There is no route for stars (0040 dropped the never-written table; summaries keep
@@ -69,11 +68,11 @@ in code; a Cloudflare rate-limiting rule on the zone covers `/mcp`, `/v1/tools*`
 | GET | `/health` | none | - | index.ts | `{ok: true}` |
 | GET | `/openapi.json` | none | `cached(c, 3600)` | index.ts | `spec/openapi/v1.json` (OpenAPI 3.1) |
 | GET | `/types` | none | `cached(c, 86400)` | index.ts | Input, output and category enums from `spec/schema/v1.json`, `pivots` (`spec/pivots.json`) and `descriptions` (`spec/types.json`) |
-| GET | `/tools` | none | `cached(c, 60)` | index.ts | Search. Params `q`, `input`, `output`, `category`, `runtime`, `kind`, `level`, `format`, `lang`, `sort` (relevance, installs, updated, health: healthy tools by their last passing nightly check first; `stars` is still accepted and sorts by relevance), `no_keys`, `passive_only` (`1`/`true`: no target contact, personal data or egress), `limit` (1–100, default 25), `cursor` (offset). FTS path caps at 200 rows, non-FTS at 1000; `total_capped: true` says the total hit the cap. Summaries carry ethics and egress, and `published_at`: when the latest version was published (ms), which the sitemap's `<lastmod>` uses. A bad enum value is 400 `invalid_parameter` with the allowed values |
+| GET | `/tools` | none | `cached(c, 60)` | index.ts | Search. Params `q`, `input`, `output`, `category`, `runtime`, `kind`, `level`, `format`, `lang`, `sort` (relevance, installs, updated, health: healthy tools first, by when someone last said the latest version works, then unknown, then possibly broken; `stars` is still accepted and sorts by relevance), `no_keys`, `passive_only` (`1`/`true`: no target contact, personal data or egress), `limit` (1–100, default 25), `cursor` (offset). FTS path caps at 200 rows, non-FTS at 1000; `total_capped: true` says the total hit the cap. Summaries carry ethics and egress, and `published_at`: when the latest version was published (ms), which the sitemap's `<lastmod>` uses. A bad enum value is 400 `invalid_parameter` with the allowed values |
 | GET | `/guides` | none | 60 (inherited) | index.ts | Re-dispatches internally to `/v1/tools?kind=guide` with `app.fetch`, so the `/tools` response (and its `max-age=60`) is returned |
 | GET | `/tools/:ns/:name` | none | `cached(c, 60)` | index.ts | Follows aliases (`moved_to`); not found goes through `notFound()`: 410 `tool_removed` or 404 `tool_not_found`. `sample` is the latest version's passing `smoke` scan row's `sample` (entities or stdout from the test input) with `version` and `recorded_at`, when the scanner sent one |
 | GET | `/tools/:ns/:name/versions` | none | `cached(c, 60)` | index.ts | Published, yanked and removed versions, semver-sorted, each with `changelog`, `changelog_html` (rendered by `changelog.ts:renderNotes`) and `changelog_source`; versions under a week old also carry `first_week` (`{works, broken, ends_at}`, `first-week.ts:firstWeekCounts`), which `ot outdated` reads |
-| GET | `/tools/:ns/:name/:version/manifest` | none | `cached(c, version === "latest" ? 60 : 3600)` | index.ts | Removed versions return status and `removed_reason` with `manifest: null`; otherwise adds `installFallbacks()` (`mirror_image` / `wheel_url`). A deprecated package adds `deprecated`, `deprecated_message` and `deprecated_replacement`, which `ot install` warns with. `manifest` is `compatManifest()` (`lib/manifest.ts`): without the optional fields added after ot v0.12, whose install-time validation rejects them; `manifest_full` carries them when anything was left out |
+| GET | `/tools/:ns/:name/:version/manifest` | none | `cached(c, version === "latest" ? 60 : 3600)` | index.ts | Removed versions return status and `removed_reason` with `manifest: null`; otherwise adds `installFallbacks()` (`mirror_image` / `wheel_url`) and, for pipx versions, `pipxInstall()`: `python_lock`, and `sandbox_image` with `sandbox_signer_identity` / `sandbox_signer_issuer` once the image's hosted backup row is stored and public. A deprecated package adds `deprecated`, `deprecated_message` and `deprecated_replacement`, which `ot install` warns with. `manifest` is `compatManifest()` (`lib/manifest.ts`): without the optional fields added after ot v0.12, whose install-time validation rejects them; `manifest_full` carries them when anything was left out |
 | GET | `/tools/:ns/:name/:version/scans` | none | `cached(c, 300)` | index.ts | PII scan summaries reduced to `{hits: <count>}` |
 | GET | `/tools/:ns/:name/:version` | none | `cached(c, 3600)` | index.ts | Also 3600 for `latest` (unlike `/manifest`, which uses 60 for `latest`); carries the same release-notes fields |
 | GET | `/namespaces` | none | `cached(c, 600)` | routes/profiles.ts | Publishers with a visible package (at most 500), most installed first, for the sitemap and llms.txt |
@@ -232,7 +231,7 @@ people (`feedback` scope) go through `poster()`: a timed-out account gets 403 `p
 | --- | --- | --- | --- | --- | --- |
 | GET | `/tools/:ns/:name/issues` | none | `cached(c, 60)` | routes/community.ts | `status` open (open+confirmed) / closed / all, `kind`, `before`; 30 a page; `counts`; visible posts only |
 | GET | `/tools/:ns/:name/issues/:number` | none | `cached(c, 60)` | routes/community.ts | The issue and its visible comments (`renderPost`: no raw HTML or images, links `nofollow ugc`, links as text for authors under a week old); `indexable` once a maintainer replied or it was confirmed or fixed |
-| GET | `/tools/:ns/:name/status` | none | `cached(c, 300)` | routes/community.ts | `communityStatus`: the one-line `statusLine`, the last 30 health checks (failure class, never the excerpt), the latest version's confirmations by platform (30 days), open broken and outdated counts; in the latest version's first week (`first-week.ts`), the line says when it came out and `new_version` has its counts by platform beside the previous version's |
+| GET | `/tools/:ns/:name/status` | none | `cached(c, 300)` | routes/community.ts | `communityStatus`: the one-line `statusLine`, `health` (`{status, checked_at}`: the package's health from community reports, `checked_at` the latest "works for me" on the latest version in 30 days), the latest version's confirmations by platform (30 days), open broken and outdated counts; in the latest version's first week (`first-week.ts`), the line says when it came out and `new_version` has its counts by platform beside the previous version's |
 | GET | `/issues` | none | `cached(c, 120)` | routes/community.ts | The board: open broken, outdated and wrong_info issues across visible packages; `kind`, `needs=confirmation`, `before` |
 | GET | `/tools/:ns/:name/issues/:number/viewer` | user | no-store | routes/community.ts | `can_triage`, `is_author`, `can_edit_issue`, `editable_comments`, `subscribed`, the viewer's own held comments |
 | POST | `/tools/:ns/:name/issues` | user, feedback | no-store | routes/community.ts | `issueInput()`; 5 a day (2 under a week old); 201 with `number` and `moderation` |
@@ -491,7 +490,7 @@ over the author indexes from 0019.
 | POST | `/admin/tools/:ns/:name/legal-hold` | admin | - | routes/backups.ts | `{hold: boolean, reason}` (reason required to set) |
 | POST | `/admin/tools/:ns/:name/:version/backup` | admin | - | routes/backups.ts | `releasePlan(..., "manual")`; `{dispatch: false}` returns the job instead of sending it |
 
-### 1.11 Internal (7)
+### 1.11 Internal (5)
 
 | Method | Path | Auth | Caching | Defined in | Notes |
 | --- | --- | --- | --- | --- | --- |
@@ -500,11 +499,9 @@ over the author indexes from 0019.
 | GET | `/internal/backups/objects/*` | signed URL (`method=GET`) | - | routes/backups.ts | Download (restores, drills) |
 | POST | `/internal/backups/:run` | backup run token | - | routes/backups.ts | `{items: [...]}` at most 10, status `stored|too_large|failed`; `completeRun` |
 | POST | `/internal/drills/:id` | drill token | - | routes/backups.ts | `{result, detail, checks}`; `completeDrill` |
-| GET | `/internal/health/targets` | HEALTH_TOKEN | - | routes/ops.ts | `healthTargets()` for the nightly health workflow |
-| POST | `/internal/health` | HEALTH_TOKEN | - | routes/ops.ts | `{results: [...]}` at most 500; `applyHealth()` |
 
-Per-area sums: 12 + 12 + 8 + 8 + 2 + 10 + 5 + 10 + 1 + 24 + 7 = **99**. (There is no separate "ops/health" public route; the
-health endpoints are the two internal ones above.)
+Per-area sums: 12 + 12 + 8 + 8 + 2 + 10 + 5 + 10 + 1 + 24 + 5 = **97**. A package's health has no routes of its own:
+`refreshCounts` and the nightly `refreshAllHealth` (`community.ts`) compute it from issues and confirmations.
 
 ## 2. Middleware and handler order (`index.ts`)
 
@@ -520,7 +517,7 @@ handler that returns ends the chain):
    `deviceRoutes(app)` and all `/auth/*` and `/me*` routes of `auth.ts`. `authenticate` never rejects: a
    `Bearer ot_...` token is looked up by SHA-256 in `api_tokens` (not revoked, not expired, user not banned;
    `last_used_at` updated via `waitUntil`; `lib/tokens.ts:findToken`, shared with the mirror) and sets `c.var.token` (`id`, `scopes`, `scoped`, `restriction`); otherwise the `ot_session` cookie is looked up in `sessions`. Non-`ot_` bearer tokens (scan, backup,
-   health) leave `user` null. A CI token (a row with `namespace_id`, minted by `POST /auth/oidc/token`) counts only on
+   drill) leave `user` null. A CI token (a row with `namespace_id`, minted by `POST /auth/oidc/token`) counts only on
    `POST /publish` and `GET /me/publish-jobs/:id` (`restrictedRouteAllowed`); anywhere else the request is anonymous.
    Its writes are audited with `actor_kind` `github` or `gitlab`. `enforceScopes` is described under [Conventions](#conventions-used-in-the-table).
 3. **Write rate limit** (`app.use("*")`, lines 45–52): when there is a user who is neither `is_reviewer` nor
@@ -595,7 +592,6 @@ count is greater than `limit`. Windows older than a day are deleted nightly by `
 | Trusted publishers | 20 per namespace (`MAX_PUBLISHERS`) | | 403 `trusted_publisher_limit` | trusted.ts |
 | Webhook bodies | 5 MB (`MAX_BODY`) | | 413 `payload_too_large` | routes/webhooks.ts |
 | Scan results | 256 KB by `Content-Length` (`MAX_RESULTS`) | | 413 `payload_too_large` | routes/review.ts |
-| Health results | at most 500 per call | | 400 `invalid_body` | routes/ops.ts |
 | Backup report items | at most 10 per call | | 400 `invalid_body` | routes/backups.ts |
 | Signed backup uploads | by key prefix: `MAX_BUNDLE_BYTES` (`git/`), `MAX_WHEEL_BYTES` (`wheels/`) | | 413 `too_large` | routes/backups.ts |
 | Sync polling | at most 3 tags queued per poll (`MAX_TAGS_PER_POLL`), 50 sources per cron run, every 6 h per source (`POLL_INTERVAL`) | | | sync.ts |
@@ -656,7 +652,7 @@ Then, by `event.cron`:
 | `*/15 * * * *` | | none beyond the block above |
 | `41 4 * * 1` (Mondays 04:41 UTC) | `WEEKLY_BACKUP_CRON` (backups.ts) | `weeklyBackups(env)`: a git backup of every active source, dispatched 20 per call (`WEEKLY_PER_DISPATCH`) |
 | `23 5 1 * *` (1st of the month 05:23 UTC) | `RESTORE_DRILL_CRON` (backups.ts) | `startDrill(env)`: restore a random git bundle and pull a random public mirrored image |
-| `17 3 * * *` (daily 03:17 UTC) | literal string in index.ts | `queueNightlyLinkChecks(env)`, `dailyDigest(env)` (namespaces waiting > 2 business days, reports > 48 h), `purgeRateLimits(env)` (windows older than a day), `purgeBackups(env)` (due deletions, except legal holds), `purgeIdleNamespaces(env)` (direct.ts: registry namespaces still pending with no package 30 days after creation, 50 a night), `purgeCiTokens(env)` (trusted.ts: CI tokens expired more than two days, `CI_TOKEN_RETENTION`), `lockStaleThreads(env)` (closed issues quiet for 30 days), `deliverInbox(env, "daily")` (digests), `purgeInbox(env)` (read items after 90 days, all after a year), `refreshContributorStats(env)`, `queueUpstreamChecks(env)` (`{upstreamCheckToolId}` per community wrapper), `queueMirrorSweeps(env)` (backups.ts: `{mirrorSweepRepo}` for up to 50 mirror repositories with publisher pushes older than a week, and `purgeUploads` for blob uploads idle a day), then the SQL `UPDATE tools SET installs_30d = ...` over the last 30 days of `install_counts` |
+| `17 3 * * *` (daily 03:17 UTC) | literal string in index.ts | `queueNightlyLinkChecks(env)`, `dailyDigest(env)` (namespaces waiting > 2 business days, reports > 48 h), `purgeRateLimits(env)` (windows older than a day), `purgeBackups(env)` (due deletions, except legal holds), `purgeIdleNamespaces(env)` (direct.ts: registry namespaces still pending with no package 30 days after creation, 50 a night), `purgeCiTokens(env)` (trusted.ts: CI tokens expired more than two days, `CI_TOKEN_RETENTION`), `lockStaleThreads(env)` (closed issues quiet for 30 days), `refreshAllHealth(env)` (community.ts: every package's health again, so reports older than 30 days stop counting), `deliverInbox(env, "daily")` (digests), `purgeInbox(env)` (read items after 90 days, all after a year), `refreshContributorStats(env)`, `queueUpstreamChecks(env)` (`{upstreamCheckToolId}` per community wrapper), `queueMirrorSweeps(env)` (backups.ts: `{mirrorSweepRepo}` for up to 50 mirror repositories with publisher pushes older than a week, and `purgeUploads` for blob uploads idle a day), then the SQL `UPDATE tools SET installs_30d = ...` over the last 30 days of `install_counts` |
 
 ## 6. Mirror Worker (`otinstaller-mirror`)
 
@@ -737,6 +733,10 @@ publisher of that namespace, which is not `rejected` or `suspended`, and there i
   sizes).
 
 The PUT writes a `pending/` marker (except for `sha256-*` tags) and a `mirror_pushes` row.
+
+**The scanner's manifest PUT of a `sandbox-*` tag** (a pipx release's sandbox image) writes the same `pending/` marker
+and a `mirror_pushes` row (no user or token), so it is withheld until `publishVersion` releases it and swept if the
+release never is.
 
 **Uploads.**
 - An upload session holds at most 2 GiB (`MAX_UPLOAD_BYTES`; 413 `SIZE_INVALID`).

@@ -105,7 +105,7 @@ Not converted (the script prints the same reasons):
 | No typed input to map onto manifest inputs | ivre, yark, openosint, crosslinked, dnsgen, osint-brazuca-regex, pywerview |
 | Prompts for input or runs until stopped | fsociety, instagram-monitor, sitedorks |
 | A passive scan runs for more than an hour, past ot's longest timeout | spiderfoot |
-| Instagram blocks anonymous requests from cloud servers, so its health check can't pass | instaloader |
+| Instagram blocks anonymous requests from cloud servers, so the scan's smoke test can't pass | instaloader |
 | Installs system packages with sudo when it runs, which ot's sandbox (no root) refuses | bbot |
 | Writes into its own install folder at startup, which ot's read-only sandbox refuses | mailaccess |
 | Writes its results only to a file, not to stdout | edgar-tool |
@@ -270,7 +270,7 @@ All 25 were published on 24 Oct 2026, at the owner's request without the outreac
   - The client is pinned in `requirements.txt`, so the build watcher follows its releases.
   - The tool prints typed entities like the other first-party tools, and has unit tests with the client mocked.
   - A missing key exits with code 3, as `shodan-host` does.
-- Scans and health checks run without secrets, so a tool that needs a key has a test that expects its exit code
+- The publish scan runs the test without secrets, so a tool that needs a key has a test that expects its exit code
   without one.
 - Providers that need a paid plan are included, with the key marked `pricing: paid` (`fofa`, `handelsregister`,
   `hibp-breaches`).
@@ -290,7 +290,7 @@ release:
 | `cdx-toolkit` | `cdxt` crashes without `--cc`, `--crawl` or `--ia`, and Common Crawl's index answered 502 and 504 when asked about a year of crawls | Searches the latest crawl (`--crawl 1`) unless `crawls` says more |
 | `ia-search`, `cdx-toolkit`, `gleif` | The scanner's smoke command leaves out input defaults, so an argument such as `rows:{limit}` would lose its value | The test inputs give those inputs explicitly |
 | `joe-sandbox` | Without a key the API answers error 4, so the CLI exits 104 (100 plus the code) | `expect_exit_code: 104` |
-| `savepagenow` | Save Page Now answered HTTP 429 to a second anonymous capture within minutes | No `test`, so the smoke test is skipped and the health check leaves it out; every run would also leave a public capture |
+| `savepagenow` | Save Page Now answered HTTP 429 to a second anonymous capture within minutes | No `test`, so the smoke test is skipped; every run would also leave a public capture |
 | `hashlookup` | On Windows the CLI builds its URLs with backslashes | None: containers run Linux. The README warns about `ot run --native` on Windows |
 | `ipinfo`, `companies-house` | A script named like its client library (`ipinfo.py`, `companies_house.py`) would import itself | Scripts named `ipinfo_lookup.py` and `companies_house_lookup.py` |
 
@@ -362,12 +362,12 @@ Health risks for these:
 
 | Package | Risk |
 | --- | --- |
-| `onyphe`, `polyswarm`, `joe-sandbox`, `fofa`, `handelsregister`, `malwarebazaar`, `ipdata`, `safebrowsing` | Need a key, so the test expects the exit code without one (2, 2, 104, 1, 1, 3, 3 and 3, seen in the local runs); the health check can't tell whether lookups still work |
+| `onyphe`, `polyswarm`, `joe-sandbox`, `fofa`, `handelsregister`, `malwarebazaar`, `ipdata`, `safebrowsing` | Need a key, so the test expects the exit code without one (2, 2, 104, 1, 1, 3, 3 and 3, seen in the local runs); the smoke test can't tell whether lookups still work |
 | `virustotal`, `censys-host`, `hunter-domain-search`, `hibp-breaches`, `companies-house`, `sec-edgar` | The same, with exit code 3 |
 | `lookyloo`, `phishtank-lookup`, `bgpranking`, `hashlookup` | CIRCL's public services; when Lookyloo's instance is down the CLI prints a message and still exits 0 |
 | `cdx-toolkit` | Common Crawl's index is often overloaded and can block an address for a day after heavy use |
 | `urlscan-search`, `otx-indicators`, `ipinfo`, `ia-search` | Anonymous rate limits, shared by everything on a CI runner's address |
-| `savepagenow` | No smoke test or health check |
+| `savepagenow` | No smoke test |
 | `fofa`, `handelsregister`, `hibp-breaches` | Need a paid plan |
 | `gleif` | Its scan warns about 4 fixable high-severity vulnerabilities in the image |
 
@@ -459,7 +459,7 @@ Health risks for these:
 
 | Package | Risk |
 | --- | --- |
-| `abuseipdb`, `urlhaus`, `opensanctions` | Need a key, so the test expects exit code 3; the health check can't tell whether lookups still work |
+| `abuseipdb`, `urlhaus`, `opensanctions` | Need a key, so the test expects exit code 3; the smoke test can't tell whether lookups still work |
 | `hackertarget`, `pulsedive`, `shodan-internetdb` | Anonymous limits, shared by everything on a CI runner's address: about 20 HackerTarget host searches a day (a run uses one, plus a DNS lookup), about 10 Pulsedive lookups a day, and InternetDB's undocumented rate limit |
 | `opensanctions` | Needs a paid plan, or a free key for journalists, NGOs and researchers |
 
@@ -502,16 +502,17 @@ Not checked here (no Docker on the machine this was prepared on): building the D
 ## Dropped
 
 `instaloader-profile` is not published and its repository is archived: Instagram redirects anonymous requests from
-cloud servers to its login page, so the scan's smoke test and the nightly health check can never pass.
+cloud servers to its login page, so the scan's smoke test can never pass.
 
 ## Health risks to watch after publishing
 
-The exit criterion is that every seeded package is healthy in the nightly check, which runs each tool's
-`test.input` from GitHub Actions runners. Expect trouble from:
+The exit criterion is that every seeded package passes its scan's smoke test, which runs each tool's `test.input`
+from GitHub Actions runners, and that nobody reports it broken (a package's health comes from what people report).
+Expect trouble from:
 
 | Package | Risk | If it fails |
 | --- | --- | --- |
-| `osintverse-community/shodan-host` | Needs `SHODAN_API_KEY`; the health job passes no secrets | Give the health job a key, or count it as not checkable |
+| `osintverse-community/shodan-host` | Needs `SHODAN_API_KEY`; the scan passes no secrets | The test expects exit code 3 without a key, so only people's reports show whether lookups work |
 | `osintverse-community/yt-dlp` | YouTube blocks cloud IPs ("Sign in to confirm") | The test input is an Internet Archive video; YouTube URLs still work for most users |
 | `osintverse-community/crtsh-subdomains` | crt.sh is often down | Falls back to Cert Spotter (limited to a few lookups an hour without a key) |
 | `osintverse-community/maigret`, `naminter`, `mailcat` | Not run end to end here | Run `ot validate --smoke` after the first release |

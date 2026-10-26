@@ -174,7 +174,7 @@ func printInfo(w io.Writer, m *manifest.Manifest, t *api.ToolDetail) {
 		if t.CommunityWrap {
 			trust = append(trust, "community-packaged")
 		}
-		trust = append(trust, "health: "+orDefault(t.Health, "not checked"))
+		trust = append(trust, "health: "+orDefault(t.Health, "no reports yet"))
 		fmt.Fprintf(w, "Trust:   %s\n", strings.Join(trust, ", "))
 		if t.DeprecatedMsg != "" {
 			fmt.Fprintf(w, "Deprecated: %s\n", t.DeprecatedMsg)
@@ -430,6 +430,8 @@ func (a *App) install(ctx context.Context, ref pkgRef, native bool) (*state.Inst
 		}
 		opt.SignerIdentity, opt.SignerIssuer = resp.SignerIdentity, resp.SignerIssuer
 		opt.MirrorImage, opt.WheelBackupURL = resp.MirrorImage, resp.WheelURL
+		opt.SandboxImage, opt.SandboxSignerIdentity, opt.SandboxSignerIssuer = resp.SandboxImage, resp.SandboxSignerIdentity, resp.SandboxSignerIssuer
+		opt.PythonLock = resp.PythonLock
 		// An agent gets no "warning:" it can scroll past: what a person would be warned about, it is refused.
 		if a.AgentMode {
 			opt.RequireSignature = true
@@ -438,8 +440,6 @@ func (a *App) install(ctx context.Context, ref pkgRef, native bool) (*state.Inst
 				return nil, &ExitError{Code: ExitTrust, Reason: "trust_refused", Err: fmt.Errorf("%s@%s is yanked; agents may only install current versions", ref.Ref(), resp.Version)}
 			case resp.ScanStatus == "fail":
 				return nil, &ExitError{Code: ExitTrust, Reason: "trust_refused", Err: fmt.Errorf("%s@%s failed its security scan", ref.Ref(), resp.Version)}
-			case resp.Health == "broken":
-				return nil, &ExitError{Code: ExitTrust, Reason: "trust_refused", Err: fmt.Errorf("%s is marked possibly broken by recent health checks", ref.Ref())}
 			}
 		}
 		for _, w := range trustWarnings(resp) {
@@ -493,7 +493,7 @@ func trustWarnings(r *api.ManifestResponse) []string {
 		w = append(w, r.Ref+" has scan warnings (see its security page)")
 	}
 	if r.Health == "broken" {
-		w = append(w, r.Ref+" is marked possibly broken by recent health checks")
+		w = append(w, r.Ref+" is marked possibly broken by people who use it")
 	}
 	if !r.Verified {
 		w = append(w, "the publisher of "+r.Ref+" is not verified")

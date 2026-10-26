@@ -228,3 +228,11 @@ func TestTrustWarningsNameDeprecation(t *testing.T) {
 		t.Errorf("warnings without a message: %q", w)
 	}
 }
+
+// A tool people report broken is a warning, for agents too: a few reports must not block an install.
+func TestTrustWarningsNamePossiblyBroken(t *testing.T) {
+	r := &api.ManifestResponse{Ref: "dheeraj/flaky", SignerIdentity: "x", Verified: true, Health: "broken"}
+	if w := trustWarnings(r); len(w) != 1 || w[0] != "dheeraj/flaky is marked possibly broken by people who use it" {
+		t.Errorf("warnings: %q", w)
+	}
+}

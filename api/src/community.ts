@@ -1,7 +1,7 @@
 // Community issues and discussion on packages: who may post and triage, how posts are screened, rendered and
-// moderated, "works for me" confirmations, flags, problems reported without a sign-in, and the system issues the
-// registry files itself (the upstream watcher, many failed or out-of-date reports). Routes live in
-// routes/community.ts; the tables are in migrations 0016 and 0032.
+// moderated, "works for me" confirmations and the package status they make, flags, problems reported without a
+// sign-in, and the system issues the registry files itself (the upstream watcher, many failed or out-of-date reports).
+// Routes live in routes/community.ts; the tables are in migrations 0016 and 0032.
 import type { Env, User } from "./env";
 import { ulid } from "./lib/crypto";
 import { apiError, rateLimited, windowRetry } from "./lib/errors";
@@ -183,11 +183,37 @@ export function issueInput(b: Record<string, unknown>): IssueInput {
   return { kind, title: title.slice(0, MAX_TITLE), body, version: short(b.version, 40), platform: short(b.platform, 40), engine, exit_code: exit };
 }
 
-/** Keeps a package's open broken and outdated counts in step with its visible issues. */
-export function refreshCounts(db: D1Database, toolId: string): D1PreparedStatement {
+/** What people said about a version counts toward its package's status for this long. */
+export const REPORT_WINDOW = 30 * 86_400_000;
+
+/**
+ * The SET clause for a package's status from what people report (`since`: the parameter holding the start of
+ * REPORT_WINDOW). Possibly broken while it has an open broken issue, or while two or more people said its latest
+ * version is broken and outnumber those who said it works; healthy once someone said the latest version works; unknown
+ * until then. health_checked_at is when someone last said the latest version works. Reads the tables, not the cached
+ * counts, so it is right in the same statement that refreshes them. statusLine says the same in words.
+ */
+function healthSet(since: string) {
+  const said = (result: string) =>
+    `(SELECT COUNT(*) FROM confirmations WHERE version_id = tools.latest_version_id AND result = '${result}' AND created_at > ${since})`;
+  const openBroken =
+    `EXISTS (SELECT 1 FROM issues WHERE tool_id = tools.id AND kind = 'broken' AND status IN ('open', 'confirmed') AND moderation = 'visible' AND deleted_at IS NULL)`;
+  return `health_status = CASE WHEN ${openBroken} OR (${said("broken")} >= 2 AND ${said("broken")} > ${said("works")}) THEN 'broken'
+      WHEN ${said("works")} > 0 THEN 'healthy' ELSE 'unknown' END,
+    health_checked_at = (SELECT MAX(created_at) FROM confirmations WHERE version_id = tools.latest_version_id AND result = 'works' AND created_at > ${since})`;
+}
+
+/** Keeps a package's open broken and outdated counts, and the status they make, in step with its visible issues and reports. */
+export function refreshCounts(db: D1Database, toolId: string, now = Date.now()): D1PreparedStatement {
   const count = (kind: string) =>
     `(SELECT COUNT(*) FROM issues WHERE tool_id = ?1 AND kind = '${kind}' AND status IN ('open', 'confirmed') AND moderation = 'visible' AND deleted_at IS NULL)`;
-  return db.prepare(`UPDATE tools SET open_broken = ${count("broken")}, open_outdated = ${count("outdated")} WHERE id = ?1`).bind(toolId);
+  return db.prepare(`UPDATE tools SET open_broken = ${count("broken")}, open_outdated = ${count("outdated")}, ${healthSet("?2")} WHERE id = ?1`)
+    .bind(toolId, now - REPORT_WINDOW);
+}
+
+/** Recomputes every package's status (nightly), so what people said more than REPORT_WINDOW ago stops counting. */
+export async function refreshAllHealth(env: Env, now = Date.now()) {
+  await env.DB.prepare(`UPDATE tools SET ${healthSet("?1")}`).bind(now - REPORT_WINDOW).run();
 }
 
 /** Opens an issue for a person. Held issues are kept from the public until a moderator approves them. */
@@ -390,6 +416,7 @@ export async function confirm(env: Env, t: ToolRef, user: User, input: { result:
       db.prepare(`INSERT INTO issue_subscriptions (issue_id, user_id, reason, created_at) VALUES (?, ?, 'confirmed', ?) ON CONFLICT DO NOTHING`).bind(input.issue.id, user.id, now),
     );
   }
+  stmts.push(refreshCounts(db, t.id, now));
   await db.batch(stmts);
   return { version: v.version, ...(await versionConfirmations(env, v.id)) };
 }
@@ -398,7 +425,7 @@ export async function confirm(env: Env, t: ToolRef, user: User, input: { result:
 export async function versionConfirmations(env: Env, versionId: string, now = Date.now()) {
   const rows = (await env.DB.prepare(
     `SELECT platform, result, COUNT(*) AS n FROM confirmations WHERE version_id = ? AND created_at > ? GROUP BY platform, result`,
-  ).bind(versionId, now - 30 * 86_400_000).all<{ platform: string; result: "works" | "broken"; n: number }>()).results;
+  ).bind(versionId, now - REPORT_WINDOW).all<{ platform: string; result: "works" | "broken"; n: number }>()).results;
   const platforms: Record<string, { works: number; broken: number }> = {};
   let works = 0;
   let broken = 0;
@@ -594,18 +621,14 @@ const ago = (ms: number, now: number) => {
 };
 
 /**
- * How a package is doing, in one honest line: the registry's nightly health check first, then what signed-in people
- * said about the latest version in the last 30 days (in its first week, since it came out), then open broken issues.
- * Facts with counts, never a score.
+ * How a package is doing, in one honest line: what signed-in people said about the latest version in the last 30
+ * days (in its first week, since it came out), then open broken issues. Facts with counts, never a score. The state
+ * follows the same rule as the package's health (healthSet): failing is what the site and ot call Possibly broken.
  */
 export function statusLine(input: {
-  health: string; checked_at: number | null; works: number; broken: number; platforms: string[]; open_broken: number; version: string;
-  released_at?: number | null;
+  works: number; broken: number; platforms: string[]; open_broken: number; version: string; released_at?: number | null;
 }, now = Date.now()): { state: StatusState; text: string } {
   const parts: string[] = [];
-  if (input.health === "healthy") parts.push(`Passed the registry's health check${input.checked_at ? ` ${ago(input.checked_at, now)}` : ""}`);
-  else if (input.health === "broken") parts.push("Failing the registry's health check");
-  else parts.push("Not health-checked yet");
   const people = (n: number) => `${n} ${n === 1 ? "person" : "people"}`;
   const said = [input.works ? `works for ${people(input.works)}` : null, input.broken ? `broken for ${people(input.broken)}` : null].filter(Boolean).join(", ");
   const where = input.platforms.length ? ` (${input.platforms.slice(0, 3).join(", ")})` : "";
@@ -614,30 +637,29 @@ export function statusLine(input: {
     parts.push(said ? `${out}: ${said}${where}` : `${out}; nobody has said yet whether it works`);
   } else if (said) {
     parts.push(`${input.version} ${said}${where} in the last 30 days`);
+  } else {
+    parts.push(`Nobody has said in the last 30 days whether ${input.version || "it"} works`);
   }
   if (input.open_broken) parts.push(`${input.open_broken} open broken ${input.open_broken === 1 ? "issue" : "issues"}`);
   const state: StatusState =
-    input.health === "broken" || (input.broken >= 2 && input.broken > input.works) ? "failing"
-      : input.open_broken > 0 || input.broken > 0 ? "mixed"
-        : input.health === "healthy" || input.works > 0 ? "working" : "unknown";
+    input.open_broken > 0 || (input.broken >= 2 && input.broken > input.works) ? "failing"
+      : input.broken > 0 ? "mixed"
+        : input.works > 0 ? "working" : "unknown";
   return { state, text: `${parts.join("; ")}.` };
 }
 
-/** Everything the status line is made of, for GET /tools/:ns/:name/status. The error excerpts stay private. */
+/** Everything the status line is made of, for GET /tools/:ns/:name/status. */
 export async function communityStatus(env: Env, t: ToolRef, now = Date.now()) {
   const db = env.DB;
-  const [tool, history, version] = await Promise.all([
+  const [tool, version] = await Promise.all([
     db.prepare(`SELECT health_status, health_checked_at, open_broken, open_outdated FROM tools WHERE id = ?`).bind(t.id)
       .first<{ health_status: string; health_checked_at: number | null; open_broken: number; open_outdated: number }>(),
-    db.prepare(
-      `SELECT h.ran_at, v.version, h.result, h.duration_ms, h.failure_class FROM health_checks h JOIN versions v ON v.id = h.version_id WHERE h.tool_id = ? ORDER BY h.ran_at DESC LIMIT 30`,
-    ).bind(t.id).all<{ ran_at: number; version: string; result: string; duration_ms: number | null; failure_class: string | null }>(),
     db.prepare(`SELECT id, version, published_at FROM versions WHERE id = ?`).bind(t.latest_version_id).first<{ id: string; version: string; published_at: number | null }>(),
   ]);
   const counts = version ? await versionConfirmations(env, version.id, now) : { works: 0, broken: 0, platforms: {} };
   const platforms = Object.entries(counts.platforms).filter(([p, c]) => p !== "unknown" && c.works > 0).sort((a, b) => b[1].works - a[1].works).map(([p]) => p);
   const line = statusLine({
-    health: tool?.health_status ?? "unknown", checked_at: tool?.health_checked_at ?? null, works: counts.works, broken: counts.broken, platforms,
+    works: counts.works, broken: counts.broken, platforms,
     open_broken: tool?.open_broken ?? 0, version: version?.version ?? "", released_at: version?.published_at ?? null,
   }, now);
   // In its first week, the latest version's counts are shown beside the version before it, so a regression stands out.
@@ -657,10 +679,7 @@ export async function communityStatus(env: Env, t: ToolRef, now = Date.now()) {
         previous: before && previous ? { version: before.version, works: previous.works, broken: previous.broken } : null,
       }
       : null,
-    health: {
-      status: tool?.health_status ?? "unknown", checked_at: tool?.health_checked_at ?? null,
-      history: history.results.map((h) => ({ at: h.ran_at, version: h.version, result: h.result, duration_ms: h.duration_ms, failure: h.failure_class })),
-    },
+    health: { status: tool?.health_status ?? "unknown", checked_at: tool?.health_checked_at ?? null },
     confirmations: { version: version?.version ?? null, ...counts },
     issues: { open_broken: tool?.open_broken ?? 0, open_outdated: tool?.open_outdated ?? 0 },
   };

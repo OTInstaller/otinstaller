@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { sha256Hex, ulid } from "../src/lib/crypto";
 import { d1RetryAfter } from "../src/lib/errors";
 import { recomputeLatest } from "../src/trust";
-import { alertStuckJobs, applyHealth, businessDays, dailyDigest } from "../src/ops";
+import { alertStuckJobs, businessDays, dailyDigest } from "../src/ops";
 import { call, fakeHosts, testEnv } from "./helpers";
 
 const DB = () => env.DB;
@@ -304,36 +304,6 @@ describe("transfers", () => {
 });
 
 // ---------- operations ----------
-
-describe("health checks", () => {
-  it("lists tools with a test input and marks them broken after 3 failures in a row", async () => {
-    const owner = await person();
-    const ns = await namespace(owner);
-    const p = await pkg(ns, ["1.0.0"]);
-    const untested = await pkg(ns, ["1.0.0"], { over: { test: undefined } });
-    const e = { ...(await testEnv()), HEALTH_TOKEN: "health-secret" };
-    expect((await call("/internal/health/targets", {}, e)).status).toBe(401);
-    const targets = ((await (await call("/internal/health/targets", { headers: { authorization: "Bearer health-secret" } }, e)).json()) as any).targets;
-    expect(targets.map((t: any) => t.ref)).toContain(p.ref);
-    expect(targets.map((t: any) => t.ref)).not.toContain(untested.ref);
-    expect(targets.find((t: any) => t.ref === p.ref).expect_exit_code).toBe(0);
-    expect(((await (await call(`/tools/${untested.ref}`)).json()) as any).health).toBe("not_checked");
-
-    const vid = targets.find((t: any) => t.ref === p.ref).version_id;
-    const report = (result: string) => call("/internal/health", { method: "POST", headers: { authorization: "Bearer health-secret", "content-type": "application/json" }, body: JSON.stringify({ results: [{ version_id: vid, result, error_excerpt: "site changed" }] }) }, e);
-    await report("fail");
-    expect(emails.filter((m) => m.subject.includes("failed its health check"))).toHaveLength(1);
-    await report("fail");
-    expect(((await (await call(`/tools/${p.ref}`)).json()) as any).health).not.toBe("broken");
-    await report("fail");
-    expect(((await (await call(`/tools/${p.ref}`)).json()) as any).health).toBe("broken");
-    // One email per run of failures, not every night.
-    expect(emails.filter((m) => m.subject.includes("failed its health check"))).toHaveLength(1);
-    await report("pass");
-    expect(((await (await call(`/tools/${p.ref}`)).json()) as any).health).toBe("healthy");
-    expect(await applyHealth(e, [{ version_id: "nope", result: "pass" }])).toBe(0);
-  });
-});
 
 describe("monitoring", () => {
   it("alerts admins to stuck publish jobs once, and sends the reviewers' digest", async () => {

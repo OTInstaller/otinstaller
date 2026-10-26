@@ -23,7 +23,9 @@ type registryExec struct {
 }
 
 func (f *registryExec) Run(ctx context.Context, name string, args, env []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
+	f.mu.Lock()
 	f.calls = append(f.calls, append([]string{name}, args...))
+	f.mu.Unlock()
 	switch {
 	case name == "docker" && args[0] == "pull":
 		if msg, ok := f.refused[args[1]]; ok {
@@ -66,9 +68,8 @@ func TestRefusedImageInstallsFromTheMirrorWithTheSameSignature(t *testing.T) {
 		if inst.LocalImage != mirror || !inst.FromBackup || inst.Artifact != m.Runtime.Image {
 			t.Fatalf("%q: expected the mirror image, got %+v", msg, inst)
 		}
-		verify := fx.calls[len(fx.calls)-1]
-		if verify[0] != "cosign" || verify[len(verify)-1] != mirror || !strings.Contains(strings.Join(verify, " "), signer) {
-			t.Fatalf("%q: expected cosign to verify the same signer on the mirror, got %v", msg, verify)
+		if !fx.called("cosign", "verify", "--certificate-identity", signer, "--certificate-oidc-issuer", "https://token.actions.githubusercontent.com", mirror) {
+			t.Fatalf("%q: expected cosign to verify the same signer on the mirror, got %v", msg, fx.calls)
 		}
 		if !strings.Contains(errOut.String(), "OTInstaller mirror") {
 			t.Fatalf("%q: expected a note about the mirror, got %q", msg, errOut.String())
