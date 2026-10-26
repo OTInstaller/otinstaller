@@ -50,7 +50,7 @@ describe("search", () => {
   });
 
   it("ranks a registry-held manifest below an otherwise identical tool", async () => {
-    // Same installs, stars and health; email-header-parser is verified (+0.2), whois-lite is registry-held (-0.15).
+    // Same installs and health; email-header-parser is verified (+0.2), whois-lite is registry-held (-0.15).
     const { body } = await get("/tools?limit=100");
     const order = refs(body);
     expect(order.indexOf("osintverse/email-header-parser")).toBeLessThan(order.indexOf("dheeraj/whois-lite"));
@@ -300,7 +300,7 @@ describe("helpers", () => {
   });
 
   it("applies the plan's ranking weights", () => {
-    const baseline = { installs30d: 0, stars: 0, healthy: false, broken: false, verified: false, manifestHeld: false };
+    const baseline = { installs30d: 0, healthy: false, broken: false, verified: false, manifestHeld: false };
     expect(rank({ ...baseline, healthy: true })).toBeCloseTo(0.4);
     expect(rank({ ...baseline, broken: true })).toBeCloseTo(-0.8);
     expect(rank({ ...baseline, manifestHeld: true })).toBeCloseTo(-0.15);

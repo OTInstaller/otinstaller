@@ -275,7 +275,6 @@ app.get("/tools", async (c) => {
   const by: Record<string, (a: (typeof scored)[0], b: (typeof scored)[0]) => number> = {
     relevance: (a, b) => Number(b.exact) - Number(a.exact) || b.score - a.score,
     installs: (a, b) => b.r.installs_30d - a.r.installs_30d,
-    stars: (a, b) => b.r.stars_count - a.r.stars_count,
     updated: (a, b) => ((b.r as any).updated_at ?? 0) - ((a.r as any).updated_at ?? 0),
     // "Recently verified working": healthy tools by the time of their last passing nightly check, then the rest.
     health: (a, b) => {
@@ -283,7 +282,8 @@ app.get("/tools", async (c) => {
       return h(b) - h(a) || (b.r.health_checked_at ?? 0) - (a.r.health_checked_at ?? 0) || b.score - a.score;
     },
   };
-  scored.sort(by[sort]);
+  // Nothing records stars, so sort=stars (still accepted) is relevance.
+  scored.sort(by[sort === "stars" ? "relevance" : sort]);
   const page = scored.slice(offset, offset + limit);
   cached(c, 60);
   return c.json({

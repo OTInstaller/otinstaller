@@ -1,6 +1,21 @@
 package runner
 
-import "testing"
+import (
+	"bytes"
+	"os"
+	"testing"
+)
+
+func TestTLDCopyMatchesSpec(t *testing.T) {
+	norm := func(b []byte) []byte { return bytes.ReplaceAll(b, []byte("\r\n"), []byte("\n")) }
+	spec, err := os.ReadFile("../../../spec/tlds.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(norm(spec), norm([]byte(tldList))) {
+		t.Error("cli/internal/runner/tlds.txt is out of date; run `go generate ./...` in cli/")
+	}
+}
 
 func TestDetectType(t *testing.T) {
 	for target, want := range map[string]string{

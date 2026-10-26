@@ -1,0 +1,85 @@
+# OTInstaller/agent-plugin and OTInstaller/registry-ops are copies of integrations/agent-plugin/ and ops/. This checks
+# they match this repository and, when run by hand from main, publishes one of them (scripts/copies.sh compares and
+# copies; this workflow pushes).
+#
+# - agent-plugin: pull requests fail when the plugin's files change without a version bump. Publishing commits
+#   "Release X.Y.Z" and pushes the tag vX.Y.Z.
+# - registry-ops: pushes to main fail while registry-ops runs an older copy, until it is published. Pull requests
+#   aren't checked (there is nothing to publish until they merge).
+#
+# Secrets: fine-grained tokens with Contents: Read and write on that one repository.
+#   AGENT_PLUGIN_TOKEN   only for publishing (the check reads the public repository)
+#   REGISTRY_OPS_TOKEN   for the check too (the repository is private); without it the check is skipped
+name: copies
+on:
+  pull_request:
+    paths: ["integrations/agent-plugin/**", "ops/scanner/**", "ops/workflows/**", "scripts/copies.sh", ".github/workflows/copies.yml"]
+  push:
+    branches: [main]
+    paths: ["integrations/agent-plugin/**", "ops/scanner/**", "ops/workflows/**", "scripts/copies.sh", ".github/workflows/copies.yml"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: The copy to publish from main
+        type: choice
+        options: [registry-ops, agent-plugin]
+permissions:
+  contents: read
+concurrency:
+  group: copies-${{ github.ref }}-${{ inputs.publish || 'check' }}
+  cancel-in-progress: false
+
+jobs:
+  agent-plugin:
+    if: github.event_name != 'workflow_dispatch' || inputs.publish == 'agent-plugin'
+    runs-on: ubuntu-latest
+    env:
+      TOKEN: ${{ secrets.AGENT_PLUGIN_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Clone OTInstaller/agent-plugin
+        run: |
+          url=https://github.com/OTInstaller/agent-plugin
+          [ -n "$TOKEN" ] && url="https://x-access-token:${TOKEN}@github.com/OTInstaller/agent-plugin"
+          git clone -q "$url" "$RUNNER_TEMP/copy"
+      - name: Check
+        if: github.event_name != 'workflow_dispatch'
+        run: bash scripts/copies.sh check agent-plugin "$RUNNER_TEMP/copy"
+      - name: Publish
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          [ "$GITHUB_REF" = refs/heads/main ] || { echo "::error::publish from main only"; exit 1; }
+          [ -n "$TOKEN" ] || { echo "::error::set the AGENT_PLUGIN_TOKEN secret to publish"; exit 1; }
+          git -C "$RUNNER_TEMP/copy" config user.name "github-actions[bot]"
+          git -C "$RUNNER_TEMP/copy" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          bash scripts/copies.sh publish agent-plugin "$RUNNER_TEMP/copy"
+          git -C "$RUNNER_TEMP/copy" push --follow-tags origin HEAD
+
+  registry-ops:
+    if: github.event_name == 'push' || inputs.publish == 'registry-ops'
+    runs-on: ubuntu-latest
+    env:
+      TOKEN: ${{ secrets.REGISTRY_OPS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Clone OTInstaller/registry-ops
+        id: clone
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::notice::REGISTRY_OPS_TOKEN is not set, so registry-ops can't be read; skipped"
+            exit 0
+          fi
+          git clone -q "https://x-access-token:${TOKEN}@github.com/OTInstaller/registry-ops" "$RUNNER_TEMP/copy"
+          echo "cloned=true" >> "$GITHUB_OUTPUT"
+      - name: Check
+        if: steps.clone.outputs.cloned == 'true' && github.event_name != 'workflow_dispatch'
+        run: bash scripts/copies.sh check registry-ops "$RUNNER_TEMP/copy"
+      - name: Publish
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          [ "$GITHUB_REF" = refs/heads/main ] || { echo "::error::publish from main only"; exit 1; }
+          [ -n "$TOKEN" ] || { echo "::error::set the REGISTRY_OPS_TOKEN secret to publish"; exit 1; }
+          git -C "$RUNNER_TEMP/copy" config user.name "github-actions[bot]"
+          git -C "$RUNNER_TEMP/copy" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          bash scripts/copies.sh publish registry-ops "$RUNNER_TEMP/copy"
+          git -C "$RUNNER_TEMP/copy" push origin HEAD

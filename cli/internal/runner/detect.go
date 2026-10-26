@@ -7,8 +7,9 @@ import (
 	"strings"
 )
 
-// tlds.txt is IANA's list of top-level domains, the same file otinstaller used.
+// tlds.txt is IANA's list of top-level domains, a copy of spec/tlds.txt (otlite ships the same list).
 //
+//go:generate go run sync_tlds.go
 //go:embed tlds.txt
 var tldList string
 

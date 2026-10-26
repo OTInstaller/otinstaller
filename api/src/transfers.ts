@@ -1,7 +1,7 @@
 // Claims and transfers. A claim is the upstream owner of a community wrapper taking it over: they prove
 // ownership (admin or Maintainer on the upstream repository through a linked account, or a one-time token in
 // a .otinstaller-claim file there), then an admin completes it. A transfer is an owner offering a package to
-// another namespace, whose owners accept it. Completing either moves the package with its versions, stars and
+// another namespace, whose owners accept it. Completing either moves the package with its versions and
 // installs, and its old address becomes a permanent alias.
 import { deps, type Env } from "./env";
 import { randomToken, sha256Hex, ulid } from "./lib/crypto";

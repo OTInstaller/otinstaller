@@ -79,9 +79,12 @@ GitLab.com → Edit profile (or the group) → Applications → Add new applicat
 
 Security scans run as a GitHub Actions workflow in a private repository the registry dispatches to.
 
-1. Create `OTInstaller/registry-ops` (private) and copy into it: `ops/scanner/scan.py` and `ops/scanner/backup.py` →
-   `ops/scanner/`, and `ops/workflows/scan.yml` → `.github/workflows/scan.yml`. The same workflow runs backups and
-   restore drills (section 11).
+1. Create `OTInstaller/registry-ops` (private) with a README, then publish `ops/scanner/` → `ops/scanner/` and
+   `ops/workflows/` → `.github/workflows/` with the `copies` workflow in this repository: give it the secret
+   `REGISTRY_OPS_TOKEN` (a fine-grained token with **Contents: Read and write** on registry-ops only), then Actions →
+   copies → Run workflow → `registry-ops`. Run it again whenever `ops/` changes; until then the workflow's check on
+   `main` fails. Without the token, `bash scripts/copies.sh publish registry-ops <clone>` makes the same commit in a
+   local clone for you to push. The same workflow runs backups and restore drills (section 11).
 2. Starting a scan (`repository_dispatch`) needs **Contents: Read and write** on registry-ops. Pick one:
    - Recommended: a fine-grained personal access token with access to `OTInstaller/registry-ops` only and
      **Contents: Read and write** → `OPS_DISPATCH_TOKEN`. The App stays read-only on publishers' repositories.
@@ -246,7 +249,7 @@ completing claims) on a user in D1. The console is at `/admin` on the site.
 
 **Health checks.** Generate a long random `HEALTH_TOKEN` and set it on the Worker (`wrangler secret put HEALTH_TOKEN`) and as
 the secret `HEALTH_TOKEN` in registry-ops, with the repository variable `REGISTRY_API` (`https://api.otinstaller.com`).
-Copy `ops/workflows/health.yml` and `ops/scanner/health.py` (with `scan.py`) into registry-ops. Every night at 02:00 UTC it
+`ops/workflows/health.yml` and `ops/scanner/health.py` reach registry-ops with the rest of `ops/` (section 4). Every night at 02:00 UTC it
 runs each tool's test input with network access; 3 failures in a row mark a tool Possibly broken, one pass clears it.
 
 **Monitoring.** Stuck publish jobs (over 30 minutes) are emailed to admins every 15 minutes, and reviewers get a daily
@@ -404,12 +407,15 @@ must exist in `ot mcp`.
 
 1. Once: create the public repository `OTInstaller/agent-plugin` (Apache 2.0), empty. Done 21 Oct 2026; v0.1.0 is
    published there.
-2. To publish a version: bump `version` in both `.claude-plugin/plugin.json` and `.cursor-plugin/plugin.json`, then
-   copy the folder's contents to the repository's root and push:
+2. To publish a version: bump `version` in both `.claude-plugin/plugin.json` and `.cursor-plugin/plugin.json` (the
+   `copies` check fails a pull request that changes the plugin without it), merge, then Actions → copies → Run
+   workflow → `agent-plugin`. It copies the folder to the repository's root, commits `Release X.Y.Z` and pushes the
+   tag `vX.Y.Z`; it needs the secret `AGENT_PLUGIN_TOKEN` (**Contents: Read and write** on agent-plugin only). By
+   hand, the same in a local clone:
    ```bash
    git clone https://github.com/OTInstaller/agent-plugin /tmp/agent-plugin
-   rsync -a --delete --exclude .git integrations/agent-plugin/ /tmp/agent-plugin/
-   cd /tmp/agent-plugin && git add -A && git commit -m "Release 0.1.0" && git tag v0.1.0 && git push --follow-tags
+   bash scripts/copies.sh publish agent-plugin /tmp/agent-plugin
+   git -C /tmp/agent-plugin push --follow-tags origin HEAD
    ```
 3. Check it on a machine with Claude Code: `claude plugin validate --strict /tmp/agent-plugin`, then
    `claude plugin marketplace add OTInstaller/agent-plugin` and `claude plugin install otinstaller@otinstaller`.

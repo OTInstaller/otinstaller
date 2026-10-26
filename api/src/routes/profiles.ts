@@ -157,7 +157,8 @@ export function profileRoutes(app: App) {
         guides: list.length - onlyTools.length,
         installs_30d: list.reduce((s, t) => s + t.installs_30d, 0),
         installs_total: total?.n ?? 0,
-        stars: list.reduce((s, t) => s + t.stars, 0),
+        // Nothing records stars; kept at 0 for older clients.
+        stars: 0,
         healthy: onlyTools.filter((t) => t.health === "healthy").length,
         broken: onlyTools.filter((t) => t.health === "broken").length,
         last_published_at: list.reduce<number | null>((m, t) => (t.published_at && (!m || t.published_at > m) ? t.published_at : m), null),

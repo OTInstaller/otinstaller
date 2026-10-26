@@ -1,6 +1,21 @@
 """Target type detection tests."""
 
+from pathlib import Path
+
+import pytest
+
 from otlite.detect import detect_target_type
+
+
+def test_tld_list_matches_spec():
+    """The packaged list is a copy of spec/tlds.txt, which ot embeds too."""
+    spec = Path(__file__).resolve().parents[2] / "spec" / "tlds.txt"
+    if not spec.exists():
+        pytest.skip("spec/tlds.txt is only in a full checkout")
+    packaged = Path(__file__).resolve().parents[1] / "src" / "otlite" / "data" / "tlds.txt"
+    assert packaged.read_text() == spec.read_text(), (
+        "copy spec/tlds.txt to otlite/src/otlite/data/tlds.txt"
+    )
 
 
 def test_detect_url():

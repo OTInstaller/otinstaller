@@ -245,6 +245,8 @@ invalid ones. Digests and hashes in fixtures are fake. Separately, `cli/internal
 | `spec/pivots.json`, `spec/types.json`, `spec/openapi/v1.json` | imported directly by `api/src/index.ts` (`/pivots`, `/types`, `/openapi.json`) | nothing to do | `api.test.ts` checks every enum value has a description and that the OpenAPI document lists every public and owner route |
 | `spec/schema/{envelope,run-all,error}-v1.json` | served by the website through its submodule (`/schema/<name>.json`) | nothing to do | — |
 | `spec/dockerfile-templates.ts` | imported directly by `api/test/week7.test.ts` and the website's import wizard | nothing to do | `week7.test.ts` checks every template passes `dockerfileChecks` |
+| `spec/tlds.txt` (IANA's top-level domains, for typed-input detection) | `cli/internal/runner/tlds.txt` (embedded) | `cd cli && go generate ./...` | `TestTLDCopyMatchesSpec` |
+| `spec/tlds.txt` | `otlite/src/otlite/data/tlds.txt` (shipped in the wheel) | `cp spec/tlds.txt otlite/src/otlite/data/tlds.txt` | `test_tld_list_matches_spec` (`otlite/tests/test_detect.py`; skipped outside a full checkout) |
 | `otlite/src/otlite/data/registry.yaml`, `seed/candidates.md` | `api/src/known-repos.ts` (generated: what otlite installs and why the seed survey dropped a repository, for tool requests) | `cd api && npm run sync:known-repos` | `requests.test.ts` |
 
 Never edit a generated copy by hand. Edit `spec/`, then regenerate. `TestWorkflowsAreValidYAML` (`scaffold_test.go`)
@@ -512,7 +514,7 @@ and beta work, so `R2_*`, `ISSUES_REPO`/`ISSUES_TOKEN` and `EDGE_CACHE` are only
 | `scopes.ts` | API token scopes: `requiredScope(method, path)`, `enforceScopes` (403 `insufficient_scope`, and an audit row for every write a token makes) |
 | `env.ts` | `Env`, `PublishMessage`, `User`, `deps.fetch` (all outbound HTTP), `requireSecret` |
 | `catalog.ts` | Shared public-read SQL (`VISIBLE`, `LISTED`, `summary()`, `findTool()` with aliases, `cached()`) |
-| `ranking.ts` | Search score (bm25 + installs + stars + health + verified − broken − registry-held) |
+| `ranking.ts` | Search score (bm25 + installs + health + verified − broken − registry-held) |
 | `publish.ts` | Queue consumer `handleBatch` and the release validation pipeline `processJob` |
 | `scans.ts` | `dispatchOps` / `dispatchScan` to registry-ops, `verdict`, `applyScanResults`, `publishVersion`, commit statuses, scan timeouts |
 | `backups.ts` | Backup plans, runs and items, signed upload/download URLs, weekly runs, backfill, takedown deletion and legal holds, restore links, restore drills |
@@ -679,7 +681,7 @@ it dispatches `otinstaller-backup` jobs to registry-ops with signed upload URLs 
 
 `0001_initial.sql` creates the core tables (users, accounts, sessions, api_tokens, namespaces, namespace_members,
 installations, tools, versions, tool_io, tool_secrets, sources, sync_events, imports, publish_jobs, scans, health_checks,
-pages, tool_guides, stars, install_counts, reports, transfers, aliases, audit_log) and the FTS5 table `tools_fts`. Later
+pages, tool_guides, stars (dropped in 0040), install_counts, reports, transfers, aliases, audit_log) and the FTS5 table `tools_fts`. Later
 migrations add publish intake (0002), scans/review and `notifications` (0003), sync (0004, 0006), imports (0005), guides and
 `page_links` (0007, 0008), trust/takedowns/claims/health and `rate_limits` (0009), OSINTverse login plus `device_logins`
 (0010), backups (`backup_runs`, `backups`, `restore_drills`, tool `git_backups`/`legal_hold`/`legal_hold_reason`, 0011),
@@ -699,7 +701,8 @@ publishing (`trusted_publishers`, the CI token columns `api_tokens.namespace_id`
 (`notifications.body`/`attempts`/`sent_at`, 0033), search following a namespace rename (a trigger, 0034), the edge
 cache's epoch (`settings`, 0035), people's profiles and notification settings (`users` profile fields and
 `handle_changed_at`, `handle_aliases`, `package_follows.level`, `email_prefs` `lifecycle`/`security`/`inbox_muted_json`/
-`email_provider`, 0036) and the IndexNow queue (`indexnow_queue`, 0037). That is 66 tables plus `tools_fts`; every
+`email_provider`, 0036) and the IndexNow queue (`indexnow_queue`, 0037); 0040 drops the never-written `stars` table and `tools.stars_count`
+(responses keep `stars: 0`). That is 65 tables plus `tools_fts`; every
 table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
 
@@ -953,8 +956,10 @@ copy of `cli/internal/agent/consent.go` (`PERSONAL_INPUTS`); keep the two in ste
 
 **Agent plugin** (`integrations/agent-plugin/`): a Claude Code and Cursor plugin with skills
 (`osint-investigation`, `publish-osint-tool`, `write-osint-guide`), a Cursor rule, hooks and the MCP configuration.
-It is published by copying the folder to the public repo `OTInstaller/agent-plugin` and tagging there
-([publishing-setup.md](docs/publishing-setup.md) section 12).
+It is published to the public repo `OTInstaller/agent-plugin` by the `copies` workflow (`scripts/copies.sh`), run by
+hand: it copies the folder, commits `Release X.Y.Z` and pushes the tag `vX.Y.Z`
+([publishing-setup.md](docs/publishing-setup.md) section 12). Pull requests that change the plugin without bumping
+`version` in both `plugin.json` files fail its check.
 
 **MCP Registry.** `com.otinstaller/ot` is listed from each `ot` release's `server.json` (written by `cli/cmd/mcpb`;
 descriptions must stay within the registry's 100 characters), `com.otinstaller/registry` from
@@ -981,8 +986,10 @@ section 10, "MCP bundles and the MCP Registry".
 - `ops/scanner/Dockerfile`: pinned Docker CLI, Trivy, cosign, crane, GuardDog for local runs. Tests: `test_scan.py`,
   `test_backup.py`.
 - `ops/workflows/scan.yml` (dispatch types `otinstaller-scan`, `otinstaller-backup`, `otinstaller-drill`; needs
-  `MIRROR_PUSH_TOKEN`) and `health.yml`: copied into `OTInstaller/registry-ops`, not run from this repo. If you change
-  `ops/scanner` or `ops/workflows`, the copies there have to be updated separately.
+  `MIRROR_PUSH_TOKEN`) and `health.yml`: copied into `OTInstaller/registry-ops`, not run from this repo. After a change
+  to `ops/scanner` or `ops/workflows` reaches `main`, the `copies` workflow fails until someone publishes the copy
+  (Actions → copies → Run workflow → `registry-ops`; `scripts/copies.sh` compares and copies). `setup.ps1` in the
+  local workspace warns when either copy is out of step.
 - The payload formats are defined by `dispatchOps`/`dispatchScan` in `api/src/scans.ts` and `backups.ts`, and parsed by
   `parseResults` in `api/src/routes/review.ts` (scans) and inline in `routes/backups.ts` (backup reports, at most 10
   items; drill reports aren't shape-checked); change both sides together. Every field, with JSON examples, is in
@@ -1108,6 +1115,7 @@ read and the first run copies settings from `~/.otinstaller`. Users of both edit
 | `otlite-nightly.yml` | 02:00 UTC daily; `workflow_dispatch` | ruff, otlite pipeline verify (20 candidates), an installed-tool contract test and the full otlite test suite |
 | `release-otlite.yml` | `otlite-v*.*.*` tags; `workflow_dispatch` (`testpypi` or `pypi`) | Tests, builds otlite and the shim, publishes each with PyPI trusted publishing from its own environment (otlite first), creates a GitHub release |
 | `issue-severity.yml` | issues opened/edited | Sets one `sev-N` label from the bug form's Severity field |
+| `copies.yml` | PRs and pushes to main touching `integrations/agent-plugin/**`, `ops/scanner/**`, `ops/workflows/**`; `workflow_dispatch` | Checks `OTInstaller/agent-plugin` (PRs fail on a plugin change without a version bump) and `OTInstaller/registry-ops` (pushes fail while it runs an older copy; needs `REGISTRY_OPS_TOKEN`). Run by hand from `main`, it publishes one of them (`AGENT_PLUGIN_TOKEN` / `REGISTRY_OPS_TOKEN`) |
 
 Nothing in CI runs `go test`, the API tests, the scanner tests or the e2e scripts.
 
@@ -1184,7 +1192,8 @@ effect goes through `agent.Session.DecideRun` and the audit log. If the remote s
 These affect production or other people, so do them only when asked: `wrangler deploy` (api, mirror or `ops/get`),
 `wrangler d1 ... --remote`, `wrangler secret put`, pushing `v*` tags on this repo (releases `ot`),
 pushing tags or running workflows on seed repositories (publishes packages), publishing `otlite/` to PyPI (pushing
-`otlite-v*` tags or running `release-otlite.yml`), pushing to `OTInstaller/agent-plugin`, `publisher publish` to
+`otlite-v*` tags or running `release-otlite.yml`), pushing to `OTInstaller/agent-plugin` or `OTInstaller/registry-ops`
+(including running the `copies` workflow by hand), `publisher publish` to
 the MCP Registry, submitting to directories or marketplaces (Anthropic, Cursor), posting outreach issues or PRs,
 triggering backups or drills on production, changing the Cloudflare rate-limiting rule, changing GitHub App, OAuth, R2 or registry-ops settings (including creating the community bot's
 App and setting `COMMUNITY_APP_*`), moving `UPSTREAM_WATCH` past `report`, and granting community roles in
@@ -1239,7 +1248,6 @@ change. Keep this list current when you fix one or find another.
   does.
 - Namespaces that already exist with a reserved name (`api/src/lib/reserved.ts` only affects new ones) keep it; none
   did in production as of 23 Oct 2026.
-- Stars are still never written (no route records one), though ranking and `stars` columns read them.
 - Community: `contributor_stats` is only as fresh as the last nightly run.
 - Profiles can't be flagged or reported yet: staff clear one by handle from the moderation panel. Health status
   ("possibly broken") and new issues don't reach a package's followers, only its maintainers.
@@ -1260,7 +1268,11 @@ change. Keep this list current when you fix one or find another.
 
 - CI runs no Go, API or scanner tests; there is no `engines` field for Node; `cli/internal/api`, `keys`,
   `state` and `selfupdate` have no test files of their own.
-- Schema: `versions.status` allows `received`/`validating`, which nothing writes; `tools.latest_version_id` and
+- Schema: `versions.status` allows `received`/`validating`, which nothing writes. They stay on purpose: dropping them
+  means rebuilding `versions`, and the `DROP TABLE` of a rebuild deletes the old rows first, which cascades into
+  `scans`, `pages`, `page_links`, `confirmations`, `run_signals` and `problem_signals` (and trips the foreign keys of
+  `publish_jobs`, `backups`, `install_counts`, `health_checks` and `reports`). Fold it into the next migration that has
+  to rebuild `versions` anyway, and test there that every child table keeps its rows. `tools.latest_version_id` and
   `audit_log.actor_id` have no foreign key.
 
 ## Glossary
