@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.3.0] - 2026-10-24
+## [1.4.0] - 2026-10-27
+
+### Added
+- `otlite start` sets otlite up in one go: checkbox lists of the starter packs (the bundled playbooks) and every tool, a review with the same command to run again, then the notice, the key file and the installs. `--playbooks` and `--tools` take comma-separated names and pre-select them; `--yes` installs them without questions and accepts the notice as `init --yes` does; `--dry-run` (with `--json`) shows what would be installed; `--keys` asks for the tools' API keys afterwards, at a terminal only. Already installed tools are listed but can't be ticked. otinstaller.com/otlite/start builds the command
+
+### Changed
+- New dependency: `questionary`, for the checkbox lists (`python3-questionary` in the Debian package)
+
 
 ### Added
 - Registry entries can carry `notes`, short caveats such as why a tool needs a particular Python or how to sign in first; `otlite info` lists them

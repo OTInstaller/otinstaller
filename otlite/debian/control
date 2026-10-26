@@ -11,6 +11,7 @@ Build-Depends:
  python3-click,
  python3-pytest <!nocheck>,
  python3-pytest-asyncio <!nocheck>,
+python3-questionary,
  python3-requests <!nocheck>,
  python3-rich,
  python3-sentry-sdk,
