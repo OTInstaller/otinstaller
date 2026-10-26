@@ -166,7 +166,7 @@ func (a *App) claimCmd() *cobra.Command {
 		Short: "Claim a community-packaged wrapper of your own tool",
 		Long: "Starts a claim on a package in osintverse-community. You prove you maintain the upstream repository through your\n" +
 			"linked GitHub or GitLab account, or by committing a .otinstaller-claim file with the token printed here. An admin then\n" +
-			"moves the package, with its history, stars and installs, to your namespace.",
+			"moves the package, with its history and installs, to your namespace.",
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if a.API.Token == "" {

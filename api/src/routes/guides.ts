@@ -140,7 +140,7 @@ export function guideRoutes(app: App) {
     const row = await toolRow(c);
     const guides = await c.env.DB.prepare(
       `SELECT ${SUMMARY_COLUMNS} FROM tool_guides g JOIN tools t ON t.id = g.guide_id JOIN namespaces n ON n.id = t.namespace_id
-       JOIN versions v ON v.id = t.latest_version_id WHERE g.tool_id = ? AND ${VISIBLE} AND ${LISTED} ORDER BY t.stars_count DESC, t.name`,
+       JOIN versions v ON v.id = t.latest_version_id WHERE g.tool_id = ? AND ${VISIBLE} AND ${LISTED} ORDER BY t.name`,
     ).bind(row.id).all<SummaryRow>();
     cached(c, 600);
     return c.json({ guides: guides.results.map(summary) });

@@ -50,8 +50,8 @@ anonymous GET.
 Total: **202 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
 call; the `for` loops in `routes/trust.ts` (`yank`, `unyank`), `routes/community.ts` (a thread's subscription) and
 `routes/requests.ts` (a vote, a request's subscription) register two each. The mirror Worker's OCI routes are in
-section 6 and are not in this count. There is no route for stars, although the rate-limit comment in `index.ts`
-mentions stars. Every route under a removed package answers 410 `tool_removed`.
+section 6 and are not in this count. There is no route for stars (0040 dropped the never-written table; summaries keep
+`stars: 0`). Every route under a removed package answers 410 `tool_removed`.
 
 Outside `/v1` and the Hono app, the Worker's `fetch` also answers `/mcp`: the read-only remote MCP server
 (`src/mcp.ts`, sessionless Streamable HTTP; POST JSON-RPC, GET 405, `Access-Control-Allow-Origin: *`, `no-store`). Its
@@ -68,7 +68,7 @@ in code; a Cloudflare rate-limiting rule on the zone covers `/mcp`, `/v1/tools*`
 | GET | `/health` | none | - | index.ts | `{ok: true}` |
 | GET | `/openapi.json` | none | `cached(c, 3600)` | index.ts | `spec/openapi/v1.json` (OpenAPI 3.1) |
 | GET | `/types` | none | `cached(c, 86400)` | index.ts | Input, output and category enums from `spec/schema/v1.json`, `pivots` (`spec/pivots.json`) and `descriptions` (`spec/types.json`) |
-| GET | `/tools` | none | `cached(c, 60)` | index.ts | Search. Params `q`, `input`, `output`, `category`, `runtime`, `kind`, `level`, `format`, `lang`, `sort` (relevance, installs, stars, updated, health: healthy tools first, by when someone last said the latest version works, then unknown, then possibly broken), `no_keys`, `passive_only` (`1`/`true`: no target contact, personal data or egress), `limit` (1–100, default 25), `cursor` (offset). FTS path caps at 200 rows, non-FTS at 1000; `total_capped: true` says the total hit the cap. Summaries carry ethics and egress, and `published_at`: when the latest version was published (ms), which the sitemap's `<lastmod>` uses. A bad enum value is 400 `invalid_parameter` with the allowed values |
+| GET | `/tools` | none | `cached(c, 60)` | index.ts | Search. Params `q`, `input`, `output`, `category`, `runtime`, `kind`, `level`, `format`, `lang`, `sort` (relevance, installs, updated, health: healthy tools first, by when someone last said the latest version works, then unknown, then possibly broken; `stars` is still accepted and sorts by relevance), `no_keys`, `passive_only` (`1`/`true`: no target contact, personal data or egress), `limit` (1–100, default 25), `cursor` (offset). FTS path caps at 200 rows, non-FTS at 1000; `total_capped: true` says the total hit the cap. Summaries carry ethics and egress, and `published_at`: when the latest version was published (ms), which the sitemap's `<lastmod>` uses. A bad enum value is 400 `invalid_parameter` with the allowed values |
 | GET | `/guides` | none | 60 (inherited) | index.ts | Re-dispatches internally to `/v1/tools?kind=guide` with `app.fetch`, so the `/tools` response (and its `max-age=60`) is returned |
 | GET | `/tools/:ns/:name` | none | `cached(c, 60)` | index.ts | Follows aliases (`moved_to`); not found goes through `notFound()`: 410 `tool_removed` or 404 `tool_not_found`. `sample` is the latest version's passing `smoke` scan row's `sample` (entities or stdout from the test input) with `version` and `recorded_at`, when the scanner sent one |
 | GET | `/tools/:ns/:name/versions` | none | `cached(c, 60)` | index.ts | Published, yanked and removed versions, semver-sorted, each with `changelog`, `changelog_html` (rendered by `changelog.ts:renderNotes`) and `changelog_source`; versions under a week old also carry `first_week` (`{works, broken, ends_at}`, `first-week.ts:firstWeekCounts`), which `ot outdated` reads |

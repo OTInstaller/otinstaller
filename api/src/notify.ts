@@ -151,7 +151,7 @@ export const templates = {
   }),
   transferOffered: (env: Env, ref: string, from: string, to: string, id: string) => ({
     subject: `${from} offers ${ref} to ${to}`,
-    text: `${from} wants to transfer ${ref} to your namespace ${to}. Its versions, stars and installs move with it, and the old address keeps working.\n\n` +
+    text: `${from} wants to transfer ${ref} to your namespace ${to}. Its versions and installs move with it, and the old address keeps working.\n\n` +
       `Accept or decline: ${env.SITE_URL}/transfers/${id}` + footer(env),
   }),
   transferCompleted: (env: Env, oldRef: string, newRef: string) => ({

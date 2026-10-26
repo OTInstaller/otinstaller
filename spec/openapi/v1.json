@@ -9849,7 +9849,7 @@
                 "health"
               ]
             },
-            "description": "relevance (default), installs, stars, updated, or health (healthy tools first, most recently reported working first; possibly broken ones last)"
+            "description": "relevance (default), installs, updated, or health (healthy tools first, most recently reported working first; possibly broken ones last). stars is still accepted and sorts by relevance"
           },
           {
             "name": "no_keys",
@@ -11700,7 +11700,10 @@
             ]
           },
           "stars": {
-            "type": "integer"
+            "type": "integer",
+            "const": 0,
+            "deprecated": true,
+            "description": "Always 0: nothing records stars. Kept so older clients keep working"
           },
           "installs_30d": {
             "type": "integer"

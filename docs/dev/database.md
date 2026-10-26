@@ -4,8 +4,8 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 `api/migrations/*.sql` and the code in `api/src/`, `api/test/` and `api/scripts/`.
 
 - Binding: `DB`, database name `otinstaller`, `migrations_dir: "migrations"` (`api/wrangler.jsonc`).
-- 41 migrations, `0001` to `0042` (no `0040` yet).
-- Final schema: **65 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 66. FTS5 also creates its own shadow
+- 42 migrations, `0001` to `0042`.
+- Final schema: **64 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 65. FTS5 also creates its own shadow
   tables, which aren't listed here.
 
 ---
@@ -53,6 +53,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0037 | `0037_indexnow.sql` | New table `indexnow_queue` (`path` PK, `queued_at`) and index `idx_indexnow_queue_queued`: site pages waiting to be sent to IndexNow. Apply before an API that writes it is deployed. |
 | 0038 | `0038_versions_artifact_from_manifest.sql` | Data only: sets `versions.runtime_kind` and `artifact_ref` from `manifest_json` where they differ (versions re-released after a rejection kept the rejected release's; naminter 1.0.9 and octosuite 5.1.0 in production). |
 | 0039 | `0039_community_health.sql` | Drops table `health_checks` and column `tools.health_fail_streak` (the nightly health check is gone); recomputes `tools.health_status` and `health_checked_at` for every tool from issues and confirmations, which also clears `not_checked`. |
+| 0040 | `0040_drop_stars.sql` | **Drops table `stars` and column `tools.stars_count`**: nothing ever recorded a star. Summaries keep `stars: 0` and `sort=stars` sorts by relevance. |
 | 0041 | `0041_pipx_sandbox.sql` | `versions` + `python_lock` (the dependencies the scanner pinned, one `name==version --hash=sha256:...` line each) and `sandbox_image` (`<mirror host>/<ns>/<name>@sha256:...`, the signed image it built and scanned). |
 | 0042 | `0042_search_fields.sql` | `tools` + `title`, `level`, `format`, `language`, `touches_target`, `auth_required`, `collects_personal_data`, `notifies_target`, `egress`: the latest version's manifest fields search filters on and summaries show, filled for every tool with `SEARCH_FIELDS`. |
 
@@ -217,7 +218,7 @@ Purpose: a package (`kind` tool or guide) at `<namespace>/<name>`.
 - `status` TEXT NN default `'active'` CHECK `('active', 'deprecated', 'removed')`
 - `deprecated_message` TEXT · `deprecated_replacement` TEXT (0009)
 - `community_packaged` INTEGER NN default 0
-- `stars_count` INTEGER NN default 0 · `installs_30d` INTEGER NN default 0
+- `installs_30d` INTEGER NN default 0 (`stars_count` was dropped in 0040)
 - `health_status` TEXT NN default `'unknown'` CHECK `('unknown', 'healthy', 'broken', 'not_checked')`; from community
   reports since 0039 (see 3.9), and `not_checked` is no longer set
 - `health_checked_at` INTEGER (0009): since 0039, the latest "works for me" on the latest version in the last 30 days;
@@ -270,10 +271,6 @@ Purpose: API keys a tool declares (drives the "no API keys needed" filter).
 Purpose: links a guide to its `related_tools`.
 - PK `(guide_id, tool_id)`; both → `tools(id)` ON DELETE CASCADE
 - Index `tool_guides_tool (tool_id)` (0007)
-
-#### `stars`
-Purpose: a user's star on a package.
-- PK `(user_id, tool_id)`; `user_id` → `users(id)`, `tool_id` → `tools(id)`, both ON DELETE CASCADE · `created_at` INTEGER NN
 
 #### `install_counts`
 Purpose: daily install counts per version (from `POST /installs`).
@@ -683,7 +680,8 @@ Note: namespace `request-changes` and `reject` (`routes/review.ts`) set the wait
 ### 3.2 `versions.status`
 CHECK: `received`, `validating`, `scanning`, `awaiting_review`, `published`, `rejected`, `yanked`, `removed`.
 **`received` and `validating` are never written by `api/src`.** A version row is first inserted (or upserted, which
-reuses a rejected row) by `publish.ts:record` as `scanning` or `rejected`.
+reuses a rejected row) by `publish.ts:record` as `scanning` or `rejected`. They stay in the CHECK because removing them
+means rebuilding `versions` (see "Known gaps and tech debt" in AGENTS.md).
 
 | Transition | Where |
 | --- | --- |
@@ -847,7 +845,7 @@ Exceptions:
   `sources.baseline_tags`.
 - **Comma lists, not JSON**: `api_tokens.scopes` (`'read,publish,manage,feedback'`), `accounts.scopes`,
   `notifications.to_email`.
-- **Non-ULID keys**: composite PKs on `namespace_members`, `tool_io`, `tool_secrets`, `tool_guides`, `stars`,
+- **Non-ULID keys**: composite PKs on `namespace_members`, `tool_io`, `tool_secrets`, `tool_guides`,
   `install_counts`, `install_clients` (day + client), `aliases` (name-based), `rate_limits` (hash + window).
 - **Seed IDs are deterministic, not ULIDs**: `ns_dheeraj`, `tool_<ns>_<name>`, `ver_<ns>_<name>_<version>`, `src_<name>`.
   Tests also insert `ot_test_<id>` tokens.

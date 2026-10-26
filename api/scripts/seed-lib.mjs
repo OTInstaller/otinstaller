@@ -38,10 +38,10 @@ const base = (over) => ({
 
 // [manifest, extra facts about the package in the registry]
 const packages = [
-  [fixture("docker-tool.yaml"), { installs: 1200, stars: 40, health: "healthy", signed: true, repo: "https://github.com/dheeraj/holehe-lite",
+  [fixture("docker-tool.yaml"), { installs: 1200, health: "healthy", signed: true, repo: "https://github.com/dheeraj/holehe-lite",
     history: [["1.0.0", "removed", "Malicious dependency found in 1.0.0"], ["1.1.0", "published"]] }],
-  [fixture("pipx-tool.yaml"), { installs: 300, stars: 12, health: "healthy", signed: true }],
-  [fixture("guide.yaml"), { installs: 0, stars: 25, health: "unknown", related: ["dheeraj/holehe-lite"] }],
+  [fixture("pipx-tool.yaml"), { installs: 300, health: "healthy", signed: true }],
+  [fixture("guide.yaml"), { installs: 0, health: "unknown", related: ["dheeraj/holehe-lite"] }],
   [base({
     name: "sherlock", namespace: "osintverse-community", version: "0.15.0",
     summary: "Finds accounts by username across 400+ social networks",
@@ -50,7 +50,7 @@ const packages = [
     runtime: { kind: "docker", image: `ghcr.io/osintverse-community/sherlock@sha256:${digest("a")}`, platforms: ["linux/amd64"],
       command: ["sherlock", "--json", "{username}"], output_format: "json" },
     test: { input: { username: "example" } },
-  }), { installs: 5000, stars: 300, health: "healthy", signed: true, community: true }],
+  }), { installs: 5000, health: "healthy", signed: true, community: true }],
   [base({
     name: "email-header-parser", namespace: "osintverse", version: "1.0.0",
     summary: "Parses raw email headers into hops, IP addresses and authentication results",
@@ -60,7 +60,7 @@ const packages = [
     runtime: { kind: "docker", image: `ghcr.io/osintverse/email-header-parser@sha256:${digest("b")}`, platforms: ["linux/amd64", "linux/arm64"],
       command: ["parse-headers", "{headers}"], output_format: "json" },
     ethics: { touches_target: false, auth_required: false, collects_personal_data: false },
-  }), { installs: 900, stars: 60, health: "healthy", signed: true }],
+  }), { installs: 900, health: "healthy", signed: true }],
   [base({
     name: "whois-lite", namespace: "dheeraj", version: "2.0.0",
     summary: "WHOIS and RDAP lookups for a domain with registrar and dates",
@@ -69,7 +69,7 @@ const packages = [
     outputs: [{ type: "organization" }, { type: "email" }],
     runtime: { kind: "docker", image: `ghcr.io/dheeraj/whois-lite@sha256:${digest("c")}`, platforms: ["linux/amd64"],
       command: ["whois-lite", "{domain}"], output_format: "json" },
-  }), { installs: 900, stars: 60, health: "healthy", manifestHeld: true }],
+  }), { installs: 900, health: "healthy", manifestHeld: true }],
   [base({
     name: "old-username-scraper", namespace: "dheeraj", version: "0.9.0",
     summary: "Scrapes username availability from a dozen forums (unmaintained)",
@@ -78,12 +78,12 @@ const packages = [
     runtime: { kind: "docker", image: `ghcr.io/dheeraj/old-username-scraper@sha256:${digest("d")}`, platforms: ["linux/amd64"],
       command: ["scrape", "{username}"], output_format: "json" },
     secrets: [{ name: "FORUM_API_KEY", required: true }],
-  }), { installs: 900, stars: 60, health: "broken" }],
-  [example("tldextract"), { installs: 700, stars: 90, health: "healthy", community: true }],
-  [example("cosign"), { installs: 50, stars: 5, health: "healthy", signer: COSIGN_SIGNER }],
+  }), { installs: 900, health: "broken" }],
+  [example("tldextract"), { installs: 700, health: "healthy", community: true }],
+  [example("cosign"), { installs: 50, health: "healthy", signer: COSIGN_SIGNER }],
   // Same image, but the registry recorded a different signer: ot must refuse to install it.
   [{ ...example("cosign"), name: "cosign-wrong-signer", summary: "Test fixture whose recorded signer does not match the image" },
-    { installs: 0, stars: 0, health: "healthy", signer: { identity: "attacker@example.com", issuer: "https://accounts.google.com" } }],
+    { installs: 0, health: "healthy", signer: { identity: "attacker@example.com", issuer: "https://accounts.google.com" } }],
   [base({
     name: "secret-tool", namespace: "newbie", version: "0.1.0",
     summary: "A tool from a namespace that is still waiting for review",
@@ -91,7 +91,7 @@ const packages = [
     inputs: [{ name: "username", type: "username", required: true }],
     runtime: { kind: "docker", image: `ghcr.io/newbie/secret-tool@sha256:${digest("e")}`, platforms: ["linux/amd64"],
       command: ["x", "{username}"], output_format: "json" },
-  }), { installs: 0, stars: 0, health: "unknown" }],
+  }), { installs: 0, health: "unknown" }],
 ];
 
 const namespaces = [
@@ -128,7 +128,7 @@ export function buildSeedStatements(now = Date.UTC(2026, 9, 1)) {
     out.push(insert("tools", {
       id: toolId, namespace_id: nsId[m.namespace], kind: m.kind ?? "tool", name: m.name, summary: m.summary,
       categories: JSON.stringify(m.categories), tags: JSON.stringify(m.tags ?? []), repo_url: facts.repo ?? null,
-      latest_version_id: latestId, community_packaged: facts.community ? 1 : 0, stars_count: facts.stars,
+      latest_version_id: latestId, community_packaged: facts.community ? 1 : 0,
       installs_30d: facts.installs, health_status: facts.health, readme_text: readme, created_at: now, updated_at: now,
     }));
     const signer = facts.signer?.identity ?? (facts.signed ? `https://github.com/${m.namespace}/${m.name}/.github/workflows/otinstaller-release.yml@refs/tags/v${m.version}` : null);
