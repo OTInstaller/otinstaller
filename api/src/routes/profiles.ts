@@ -98,15 +98,19 @@ export function profileRoutes(app: App) {
   // Publishers with at least one visible package, most installed first (for the site's sitemap and llms.txt).
   app.get("/namespaces", async (c) => {
     const rows = await c.env.DB.prepare(
-      `SELECT n.name, n.kind, n.verified, n.display_name, p.host_name, p.custom_json, COUNT(*) AS packages, SUM(t.installs_30d) AS installs_30d
+      `SELECT n.name, n.kind, n.verified, n.display_name, p.host_name, p.custom_json, COUNT(*) AS packages, SUM(t.installs_30d) AS installs_30d,
+         SUM(t.runs_30d) AS runs_30d
        FROM tools t JOIN namespaces n ON n.id = t.namespace_id LEFT JOIN namespace_profiles p ON p.namespace_id = n.id
        WHERE ${VISIBLE} AND ${LISTED} GROUP BY n.id ORDER BY installs_30d DESC, n.name LIMIT 500`,
-    ).all<{ name: string; kind: string; verified: number; display_name: string | null; host_name: string | null; custom_json: string | null; packages: number; installs_30d: number }>();
+    ).all<{ name: string; kind: string; verified: number; display_name: string | null; host_name: string | null; custom_json: string | null; packages: number; installs_30d: number; runs_30d: number }>();
     cached(c, 600);
     return c.json({
       namespaces: rows.results.map((r) => {
         const custom = JSON.parse(r.custom_json ?? "{}") as { display_name?: string };
-        return { name: r.name, kind: r.kind, verified: r.verified === 1, display_name: custom.display_name || r.host_name || r.display_name || r.name, packages: r.packages, installs_30d: r.installs_30d ?? 0 };
+        return {
+          name: r.name, kind: r.kind, verified: r.verified === 1, display_name: custom.display_name || r.host_name || r.display_name || r.name,
+          packages: r.packages, installs_30d: r.installs_30d ?? 0, runs_30d: r.runs_30d ?? 0,
+        };
       }),
     });
   });
@@ -123,7 +127,7 @@ export function profileRoutes(app: App) {
       return c.json({
         ...base, display_name: ns.name, avatar_url: null, verified: false, tools: [],
         profile: { hosts: publicHosts(ns, p, hosts), bio: null, location: null, website: null, company: null, socials: [], members: [], about_html: null, pins: [], details_hidden: false, host_since: null },
-        stats: { packages: 0, tools: 0, guides: 0, installs_30d: 0, installs_total: 0, stars: 0, healthy: 0, broken: 0, last_published_at: null },
+        stats: { packages: 0, tools: 0, guides: 0, installs_30d: 0, installs_total: 0, runs_30d: 0, runs_total: 0, stars: 0, healthy: 0, broken: 0, last_published_at: null },
       });
     }
     const [tools, total] = await Promise.all([
@@ -131,10 +135,11 @@ export function profileRoutes(app: App) {
         `SELECT ${SUMMARY_COLUMNS} FROM tools t JOIN namespaces n ON n.id = t.namespace_id
          JOIN versions v ON v.id = t.latest_version_id WHERE n.id = ? AND ${VISIBLE} ORDER BY t.installs_30d DESC, t.name`,
       ).bind(ns.id).all<SummaryRow>(),
+      // All-time totals from the nightly refreshUsage (src/usage.ts), instead of summing every day ever counted.
       c.env.DB.prepare(
-        `SELECT COALESCE(SUM(ic.count), 0) AS n FROM install_counts ic JOIN tools t ON t.id = ic.tool_id
-         WHERE t.namespace_id = ? AND t.status != 'removed' AND t.latest_version_id IS NOT NULL`,
-      ).bind(ns.id).first<{ n: number }>(),
+        `SELECT COALESCE(SUM(installs_total), 0) AS installs, COALESCE(SUM(runs_total), 0) AS runs FROM tools
+         WHERE namespace_id = ? AND status != 'removed' AND latest_version_id IS NOT NULL`,
+      ).bind(ns.id).first<{ installs: number; runs: number }>(),
     ]);
     const list = tools.results.map(summary);
     const prof = effectiveProfile(ns, p, hosts);
@@ -156,7 +161,9 @@ export function profileRoutes(app: App) {
         tools: onlyTools.length,
         guides: list.length - onlyTools.length,
         installs_30d: list.reduce((s, t) => s + t.installs_30d, 0),
-        installs_total: total?.n ?? 0,
+        installs_total: total?.installs ?? 0,
+        runs_30d: list.reduce((s, t) => s + t.runs_30d, 0),
+        runs_total: total?.runs ?? 0,
         // Nothing records stars; kept at 0 for older clients.
         stars: 0,
         healthy: onlyTools.filter((t) => t.health === "healthy").length,

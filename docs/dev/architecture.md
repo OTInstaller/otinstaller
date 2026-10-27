@@ -83,7 +83,7 @@ What each cron does (`api/src/index.ts` `scheduled`), in order:
 | Every 15 min (all four crons run this part) | `scans.ts:expireStaleScans`, `sync.ts:pollDueSources` (50 sources not polled for 6 h), `ops.ts:alertStuckJobs`, `backups.ts:expireRuns`, `backups.ts:expireDrills`, `backups.ts:backfillBackups` (5 versions), `indexnow.ts:flushIndexNow` |
 | Mondays 04:41 UTC | + `backups.ts:weeklyBackups` |
 | 1st of month 05:23 UTC | + `backups.ts:startDrill` |
-| Nightly 03:17 UTC | + `guides.ts:queueNightlyLinkChecks`, `ops.ts:dailyDigest`, `ops.ts:purgeRateLimits`, `backups.ts:purgeBackups`, `community.ts:refreshAllHealth`, `installs_30d` recompute (SQL inline) |
+| Nightly 03:17 UTC | + each through `ops.ts:nightly` (a failing step is reported, the rest still run): `usage.ts:refreshUsage` first (`installs_30d`, `runs_30d`, `installs_total`, `runs_total`), then `guides.ts:queueNightlyLinkChecks`, `ops.ts:dailyDigest`, `ops.ts:purgeRateLimits`, `backups.ts:purgeBackups`, `community.ts:refreshAllHealth` and the rest of the nightly list in [api.md](api.md#5-scheduled-and-crons) |
 
 Queue messages (`PublishMessage` in `env.ts`) and who handles them in `publish.ts:handleBatch`:
 
@@ -572,9 +572,12 @@ answers `already_received`, so a repository with both doesn't fail one of them.
      together, and the image is the install (`LocalImage`), with no wheel download.
 4. `state.Load` / `(*State).Save` (`cli/internal/state/state.go`; data dir `OT_HOME` → `%APPDATA%\ot` → `~/.ot`).
 5. Install ping: `api.(*Client).InstallPing` (anonymous, through `anon()`) → `POST /v1/installs` `{tool, version,
-   client}` (counted once per address, version and day; per-day counters in `install_counts` and `install_clients`;
-   204 even when nothing matched) unless `Config.TelemetryEnabled()` is false (`OT_NO_TELEMETRY` set, or `telemetry: false`
-   in `config.json`). Local manifests never ping and skip signature checks.
+   client}` (`usage.ts:recordInstall`: counted once per address, version and day into `install_counts` with the
+   client kind; a request with an `Origin` header is refused; 204 even when nothing matched) unless
+   `Config.TelemetryEnabled()` is false (`OT_NO_TELEMETRY` set, or `telemetry: false` in `config.json`). Local manifests
+   never ping and skip signature checks. Runs are counted the same way through `POST /v1/runs`
+   (`usage.ts:recordRuns`, daily totals in `run_counts`); the nightly `refreshUsage` turns both into each package's
+   30-day and all-time totals.
 6. Run: `cli/run_cmd.go` parses its own args; `cli/run.go:(*App).ensureInstalled` refuses a removed installed
    version (`removedList(ctx, time.Hour)` from `GET /v1/removed`, cached in `<ot home>/cache/removed.json`;
    `removal()` matches a whole-package entry with an empty version) and offers to install a missing package.

@@ -125,12 +125,26 @@ export function buildSeedStatements(now = Date.UTC(2026, 9, 1)) {
     toolIds[`${m.namespace}/${m.name}`] = toolId;
     const latestId = `ver_${m.namespace}_${m.name}_${m.version}`;
     const readme = `${m.title ?? m.name}. ${m.summary}`;
+    // Demo usage: three runs per install for tools, most of a possibly broken one's failing.
+    const runs = m.kind === "guide" ? 0 : facts.installs * 3;
+    const failed = Math.round(runs * (facts.health === "broken" ? 0.6 : 0.05));
     out.push(insert("tools", {
       id: toolId, namespace_id: nsId[m.namespace], kind: m.kind ?? "tool", name: m.name, summary: m.summary,
       categories: JSON.stringify(m.categories), tags: JSON.stringify(m.tags ?? []), repo_url: facts.repo ?? null,
       latest_version_id: latestId, community_packaged: facts.community ? 1 : 0,
-      installs_30d: facts.installs, health_status: facts.health, readme_text: readme, created_at: now, updated_at: now,
+      installs_30d: facts.installs, installs_total: facts.installs, runs_30d: runs, runs_total: runs,
+      health_status: facts.health, readme_text: readme, created_at: now, updated_at: now,
     }));
+    // The rows the nightly refreshUsage sums, dated the day the seed is loaded so they stay in its 30-day window
+    // for a while; without them a refresh would zero the numbers above.
+    if (facts.installs) {
+      out.push(`INSERT INTO install_counts (tool_id, version_id, day, client, count) VALUES (${q(toolId)}, ${q(latestId)}, date('now'), 'cli', ${facts.installs});`);
+    }
+    for (const [outcome, count] of [["ok", runs - failed], ["error", failed]]) {
+      if (count) {
+        out.push(`INSERT INTO run_counts (tool_id, version_id, day, client, outcome, count, duration_ms) VALUES (${q(toolId)}, ${q(latestId)}, date('now'), 'cli', '${outcome}', ${count}, ${count * 20000});`);
+      }
+    }
     const signer = facts.signer?.identity ?? (facts.signed ? `https://github.com/${m.namespace}/${m.name}/.github/workflows/otinstaller-release.yml@refs/tags/v${m.version}` : null);
     const issuer = facts.signer?.issuer ?? "https://token.actions.githubusercontent.com";
     const versions = [...(facts.history ?? []), [m.version, "published"]];

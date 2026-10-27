@@ -979,11 +979,15 @@
           "Registry"
         ],
         "summary": "Anonymous install count (one per address, version and day)",
+        "description": "Sent by ot after each install, without a token. Taken only from programs: a request with an Origin header (any web page) is refused with foreign_origin. Unknown packages and versions are ignored.",
         "responses": {
           "204": {
             "description": "No content"
           },
           "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -1009,7 +1013,170 @@
                       "cli",
                       "mcp",
                       "ci"
+                    ],
+                    "description": "Anything else counts as other"
+                  },
+                  "from_backup": {
+                    "type": "boolean",
+                    "description": "The install came from the registry's mirror or wheel copy"
+                  },
+                  "first": {
+                    "type": "boolean",
+                    "description": "The machine's first install"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/runs": {
+      "post": {
+        "operationId": "count_runs",
+        "tags": [
+          "Registry"
+        ],
+        "summary": "Anonymous run counts: how each run of a package ended, never its inputs or results",
+        "description": "Sent by ot with the runs of a command, without a token. Taken only from programs: a request with an Origin header is refused with foreign_origin. Rows naming a package, version, outcome or reason the registry doesn't know are dropped, and unknown engines, systems and clients count as other. An address counts at most 200 runs of a package and 2,000 rows a day, and as a runner of each package once a day; only daily totals are kept.",
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "client": {
+                    "enum": [
+                      "cli",
+                      "mcp",
+                      "ci"
                     ]
+                  },
+                  "ot_version": {
+                    "type": "string"
+                  },
+                  "os": {
+                    "type": "string",
+                    "description": "Go's GOOS, such as linux, darwin or windows"
+                  },
+                  "arch": {
+                    "type": "string",
+                    "description": "Go's GOARCH, such as amd64 or arm64"
+                  },
+                  "mcp_client": {
+                    "type": "string",
+                    "description": "Under ot mcp: the AI client, such as claude_code, claude_desktop, cursor, vscode, codex or gemini"
+                  },
+                  "runs": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "tool",
+                        "version",
+                        "outcome"
+                      ],
+                      "properties": {
+                        "tool": {
+                          "type": "string",
+                          "description": "namespace/name"
+                        },
+                        "version": {
+                          "type": "string"
+                        },
+                        "outcome": {
+                          "enum": [
+                            "ok",
+                            "empty",
+                            "error",
+                            "timeout",
+                            "interrupted",
+                            "engine_error",
+                            "no_engine",
+                            "not_started",
+                            "missing_key"
+                          ],
+                          "description": "ok and empty: exit 0 with and without findings; error: a non-zero exit; timeout and interrupted; the rest never ran the tool (the container engine failed or is missing, another error, a missing API key)"
+                        },
+                        "duration_ms": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "engine": {
+                          "enum": [
+                            "docker",
+                            "podman",
+                            "native",
+                            "none"
+                          ]
+                        },
+                        "via": {
+                          "enum": [
+                            "run",
+                            "all",
+                            "playbook",
+                            "auto",
+                            "mcp"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "install_failures": {
+                    "type": "array",
+                    "maxItems": 50,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "tool",
+                        "version",
+                        "reason"
+                      ],
+                      "properties": {
+                        "tool": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "enum": [
+                            "no_engine",
+                            "pull_failed",
+                            "verify_failed",
+                            "build_failed",
+                            "refused",
+                            "interrupted",
+                            "error"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "milestones": {
+                    "type": "array",
+                    "items": {
+                      "enum": [
+                        "first_install",
+                        "first_run",
+                        "first_ok_run"
+                      ]
+                    },
+                    "description": "Each sent once per machine"
                   }
                 }
               }
@@ -9844,12 +10011,13 @@
               "enum": [
                 "relevance",
                 "installs",
+                "runs",
                 "stars",
                 "updated",
                 "health"
               ]
             },
-            "description": "relevance (default), installs, updated, or health (healthy tools first, most recently reported working first; possibly broken ones last). stars is still accepted and sorts by relevance"
+            "description": "relevance (default), installs, runs (runs in the last 30 days), updated, or health (healthy tools first, most recently reported working first; possibly broken ones last). stars is still accepted and sorts by relevance"
           },
           {
             "name": "no_keys",
@@ -12006,6 +12174,10 @@
           },
           "installs_30d": {
             "type": "integer"
+          },
+          "runs_30d": {
+            "type": "integer",
+            "description": "Runs that started in the last 30 days, as ot counts them (POST /runs); 0 for guides"
           },
           "health": {
             "type": "string",
