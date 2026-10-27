@@ -1273,10 +1273,20 @@ production. The operator runbook for all of these is
 ## Troubleshooting quick reference
 
 Full recipes, with the SQL to run and what the crons already fix on their own, are in
-[docs/dev/troubleshooting.md](docs/dev/troubleshooting.md). Read production with
-`npx wrangler d1 execute otinstaller --remote --file q.sql` (always with `LIMIT`; every read counts against D1's
-allowance) and watch it with `npx wrangler tail otinstaller-registry-api --format pretty`. Any write to production
-needs the owner's go-ahead.
+[docs/dev/troubleshooting.md](docs/dev/troubleshooting.md). Watch production with
+`npx wrangler tail otinstaller-registry-api --format pretty`. Any write to production needs the owner's go-ahead.
+
+Reading production's D1, from `api/` (the reasons and the details are in the conventions at the top of
+[docs/dev/troubleshooting.md](docs/dev/troubleshooting.md)):
+
+- `npx wrangler d1 execute otinstaller --remote --command "SELECT ... LIMIT 20" --json`: one `SELECT` per call,
+  always with `LIMIT` (every read counts against D1's allowance), and `--json` for output a script can read.
+- Quoting under Windows and Git Bash: keep the statement on one line with only single quotes inside it. If `npx`
+  still mangles it, call `node node_modules/wrangler/bin/wrangler.js d1 execute ...` directly.
+- Never `--remote --file` for a read. On the pinned wrangler (4.151.1) it goes through D1's import API: the
+  database "will be unavailable to serve queries" while it runs, and only totals come back, never the rows of a
+  `SELECT`. Use it only for a write that must be all-or-nothing (several statements, not safe to run twice), and
+  accept that cost.
 
 | Symptom | First thing to check | Recipe |
 | --- | --- | --- |
