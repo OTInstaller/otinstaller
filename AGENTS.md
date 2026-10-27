@@ -564,6 +564,7 @@ and beta work, so `R2_*`, `ISSUES_REPO`/`ISSUES_TOKEN` and `EDGE_CACHE` are only
 | `ops.ts` | Stuck-job alerts, daily digest, rate-limit purge, Sentry `reportError`, `nightly` (runs one nightly step and reports it if it throws) |
 | `changelog.ts` | Release notes: captured from the host's release or the version's `CHANGELOG.md` section at publish, cleaned and rendered |
 | `activity.ts` | `GET /activity`: registry events from the audit log, and with `events=community` confirmed/fixed issues and accepted/published requests, worded from fields |
+| `audit-log.ts` | The staff audit log (`GET /admin/audit-log`): what each entry is about in words (`TARGETS`: the package, version, person or link), and the action, actor and target filters, in SQL through the log's target index |
 | `community.ts` | Issues, comments, confirmations, flags, moderation, roles (`triager`, `reviewer`; tool maintainers), screening (`screen`, `holdReason`), `renderPost`, failed-run reports, the status line, system issues (`fileSystemIssue`, `closeSystemIssue`) |
 | `inbox.ts` | Inbox items written with each event, release notifications for a package's followers (`notifyFollowers`), email delivery (immediate every 15 minutes, daily digests), signed unsubscribe links |
 | `requests.ts` | Tool requests: checks (`readUpstream`, `packagedFrom`, `knownRepo`), votes, triagers' decisions, `linkPublished` |
@@ -637,7 +638,8 @@ nothing cached before a takedown is served again. On a hit the original `Cache-C
   `/packages/:ns/:name/bump`, `/packages/:ns/:name/pulls/:n/release`; `/proposals`, `/packages/:ns/:name/files`,
   `/packages/:ns/:name/proposals[/:n[/review|/viewer]]`; `/activity` (`events=registry|community|all`).
 - Staff (`/admin/...`): review queue, namespace approve/request-changes/reject/verify/suspend, version approve/reject,
-  reports, removals, legal holds, audit log, transfers, bans, feedback triage, beta metrics, usage (`GET /admin/usage`:
+  reports, removals, legal holds, audit log (`GET /admin/audit-log`: each entry's target in words, and filters by
+  action, actor and target), transfers, bans, feedback triage, beta metrics, usage (`GET /admin/usage`:
   installs and runs per package against the period before, outcomes, clients and daily series), manual backups,
   restore drills, `POST /admin/email-test` (checks the Resend key).
 - Internal: `POST /internal/scans` (scanner callback; on a pass it answers with a backup plan),
