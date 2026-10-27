@@ -239,6 +239,18 @@ from its `attrs`. For each pivot `ot pivot` lists the installed tools that take 
 for each. `--registry` adds tools that aren't installed, and `--json` prints the same as the MCP server's
 `suggest_pivots`. The map is embedded in `ot` (`cli/internal/specfiles`, copied by `go generate`).
 
+## `ot share`
+
+`ot share <run-id | saved file>...` (or `--case <name>` for every run in a case) uploads saved runs for a page at
+`otinstaller.com/r/<id>` that anyone with the link can open for 24 hours; then the registry deletes them. Each run
+goes as its envelope, rebuilt from the sidecar and the saved output, with the inputs and everything found but without
+the run id, the case name, the command line or any file path (`spec/schema/share-v1.json`). The page never says who
+shared it. Signed in, the share is linked to the account, which only its owner sees, so `ot shares` and
+otinstaller.com/settings/shares list it; `--anonymous` leaves the account out. Either way the delete token goes into
+`<ot home>/shares.json`, and `ot shares rm <id>` deletes the link early. It asks first at a terminal and needs
+`--yes` without one; `--dry-run` prints exactly what would be uploaded. MCP's `share_runs` does the same for an agent,
+always after asking the person. otlite has the same command, always anonymous.
+
 ## Runs without a terminal
 
 `ot run`, `run --all`, playbooks and `auto` without a terminal (CI, scripts, agents using a shell) follow the same

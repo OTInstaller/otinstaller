@@ -20,7 +20,7 @@ import (
 type Entry struct {
 	Time   time.Time `json:"time"`
 	Client string    `json:"client"`           // the MCP client's name and version, or cli / ci
-	Action string    `json:"action"`           // run, install or uninstall
+	Action string    `json:"action"`           // run, install, uninstall or share
 	Tool   string    `json:"tool"`             // namespace/name@version
 	Digest string    `json:"digest,omitempty"` // the image digest or wheel hash
 	// Inputs are the input values, unless redact_targets_in_audit; InputsHash is always set.
@@ -30,9 +30,10 @@ type Entry struct {
 	// Consent is how the action was allowed: policy, elicitation, session, token, flag (--yes) or sandbox; or why
 	// it wasn't: declined, refused.
 	Consent  string `json:"consent"`
-	Outcome  string `json:"outcome"` // complete, failed, timeout, interrupted, error, refused, declined, installed, uninstalled
+	Outcome  string `json:"outcome"` // complete, failed, timeout, interrupted, error, refused, declined, installed, uninstalled, shared
 	ExitCode *int   `json:"exit_code,omitempty"`
-	RunID    string `json:"run_id,omitempty"`
+	RunID    string `json:"run_id,omitempty"` // for a share, the run ids it took, comma-separated
+	Share    string `json:"share,omitempty"`  // the share's id
 	Duration int64  `json:"duration_ms,omitempty"`
 	Error    string `json:"error,omitempty"`
 }
