@@ -8,11 +8,25 @@ Anything that writes to production (SQL `UPDATE`s, `wrangler secret put`, deploy
 
 Conventions:
 
-- Reads against production: `cd api && npx wrangler d1 execute otinstaller --remote --command "SELECT ..."`. Use
-  `--file query.sql` for anything multi-line or with quotes (PowerShell and Git Bash quoting is painful with
-  `--command`; `--file` also takes several statements). Every remote read counts against D1's read allowance, so add
-  `LIMIT`.
-- Writes to production (`UPDATE ...`) change production: do them only when the owner asks.
+- Reads against production, from `api/`:
+  `npx wrangler d1 execute otinstaller --remote --command "SELECT ... LIMIT 20" --json`. One `SELECT` per call.
+  Every remote read counts against D1's read allowance, so always add `LIMIT`. `--json` prints only the result, as
+  an array with one object per statement: the rows are in `results`, and `meta.rows_read` says what the read cost.
+- Quoting that command under Windows and Git Bash: keep the statement on one line, wrap it in double quotes and use
+  only single quotes inside it (double quotes inside it break the argument in Windows PowerShell). The multi-line
+  `SELECT`s in the recipes below run once joined onto one line. If `npx` still mangles the quoting (on Windows it
+  cuts a statement at its first line break), call wrangler directly:
+  `node node_modules/wrangler/bin/wrangler.js d1 execute otinstaller --remote --command "..." --json`.
+- Not `--remote --file` for reads. On wrangler 4.151.1 (the version in `api/package-lock.json`; the code is
+  `executeRemotely` in `wrangler-dist/cli.js`, worth re-reading after an upgrade) a remote `--file` is not a query:
+  it goes through D1's import API. wrangler warns that the database "will be unavailable to serve queries" while
+  that runs, and it prints only totals (queries executed, rows read and written, the bookmark), never the rows of
+  a `SELECT`. `--remote --command` uses the query API: the rows come back and nothing is blocked. (`--local --file`
+  is a plain local run and does return rows.)
+- Writes to production (`UPDATE ...`) change production: do them only when the owner asks. `--remote --file` is for
+  a write that must be all-or-nothing, several statements that are not safe to run twice: wrangler notes that if
+  the import fails to complete, the database returns to its original state, so a retry is safe. The cost is that D1
+  is unavailable to every query, the API's included, until it finishes (wrangler says it "may take some time").
 - Live logs: `npx wrangler tail otinstaller-registry-api --format pretty` (add `--status error`, or
   `--search "queued work failed"`); the mirror is `npx wrangler tail otinstaller-mirror`. `console.error` lines from
   the queue consumer, cron and `onError` (`request <id>: ...`) appear there; `onError` also sends to Sentry via
