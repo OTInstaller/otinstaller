@@ -1,3 +1,11 @@
+otlite (1.5.0-1) unstable; urgency=medium
+
+  * Add otlite share and otlite shares: put saved runs on a link on
+    otinstaller.com that works for 24 hours, list those links and delete one
+    early.
+
+ -- Sushant Koul <sushant@osintverse.com>  Tue, 27 Oct 2026 12:00:00 +0530
+
 otlite (1.4.0-1) unstable; urgency=medium
 
   * Add otlite start: pick starter packs and tools from checkbox lists, then

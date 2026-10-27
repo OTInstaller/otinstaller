@@ -3,7 +3,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { buildSeedStatements } from "./seed-lib.mjs";
 
 const reset = [
-  "aliases", "tool_guides", "tool_secrets", "sources", "tool_io", "install_counts", "versions", "tools", "namespaces",
+  "aliases", "tool_guides", "tool_secrets", "sources", "tool_io", "install_counts", "install_outcomes", "run_counts", "run_runners",
+  "usage_daily", "versions", "tools", "namespaces",
 ].map((t) => `DELETE FROM ${t};`);
 mkdirSync(".wrangler", { recursive: true });
 writeFileSync(".wrangler/seed.sql", [...reset, ...buildSeedStatements()].join("\n") + "\n");

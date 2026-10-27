@@ -45,7 +45,9 @@ import { purgeIdleNamespaces } from "./direct";
 import { purgeCiTokens } from "./trusted";
 import { refreshDueProfiles } from "./profiles";
 import { backfillBackups, expireDrills, expireRuns, installFallbacks, pipxInstall, purgeBackups, queueMirrorSweeps, RESTORE_DRILL_CRON, startDrill, WEEKLY_BACKUP_CRON, weeklyBackups } from "./backups";
-import { alertStuckJobs, dailyDigest, purgeRateLimits, reportError } from "./ops";
+import { alertStuckJobs, dailyDigest, nightly, purgeRateLimits, reportError } from "./ops";
+import { refreshUsage } from "./usage";
+import { usageRoutes } from "./routes/usage";
 import { flushIndexNow } from "./indexnow";
 import { queueNightlyLinkChecks } from "./guides";
 import { ulid } from "./lib/crypto";
@@ -96,6 +98,7 @@ guideRoutes(app);
 trustRoutes(app);
 transferRoutes(app);
 betaRoutes(app);
+usageRoutes(app);
 backupRoutes(app);
 profileRoutes(app);
 communityRoutes(app);
@@ -204,7 +207,7 @@ app.get("/tools", async (c) => {
   const format = oneOf(c.req.query("format"), ["guide", "reference"], "format");
   const lang = c.req.query("lang")?.trim() || undefined;
   if (lang && !/^[a-z]{2}(-[A-Z]{2})?$/.test(lang)) apiError(400, "invalid_parameter", "lang must be a language code such as en or pt-BR");
-  const sort = oneOf(c.req.query("sort"), ["relevance", "installs", "stars", "updated", "health"], "sort") ?? "relevance";
+  const sort = oneOf(c.req.query("sort"), ["relevance", "installs", "runs", "stars", "updated", "health"], "sort") ?? "relevance";
   const noKeys = c.req.query("no_keys") === "1" || c.req.query("no_keys") === "true";
   // Tools that run offline, touch no target and collect no personal data: what agents may run without asking.
   const passiveOnly = c.req.query("passive_only") === "1" || c.req.query("passive_only") === "true";
@@ -275,6 +278,7 @@ app.get("/tools", async (c) => {
   const by: Record<string, (a: (typeof scored)[0], b: (typeof scored)[0]) => number> = {
     relevance: (a, b) => Number(b.exact) - Number(a.exact) || b.score - a.score,
     installs: (a, b) => b.r.installs_30d - a.r.installs_30d,
+    runs: (a, b) => b.r.runs_30d - a.r.runs_30d,
     updated: (a, b) => ((b.r as any).updated_at ?? 0) - ((a.r as any).updated_at ?? 0),
     // "Recently reported working": healthy tools by when someone last said the latest version works, then the rest.
     health: (a, b) => {
@@ -560,36 +564,6 @@ app.get("/pivots", async (c) => {
   return c.json({ pivots, inputs, unmapped });
 });
 
-// Anonymous install counts: no IP, user or token is stored, only a per-day counter.
-app.post("/installs", async (c) => {
-  const body = await c.req.json<{ tool?: string; version?: string; client?: string }>().catch(() => ({}) as { tool?: string; version?: string; client?: string });
-  const [ns, name] = (body.tool ?? "").split("/");
-  if (!ns || !name || !body.version) apiError(400, "invalid_body", "send {tool: 'namespace/name', version}");
-  const v = await c.env.DB.prepare(
-    `SELECT t.id AS tool_id, v.id AS version_id FROM tools t JOIN namespaces n ON n.id = t.namespace_id
-     JOIN versions v ON v.tool_id = t.id WHERE n.name = ? AND t.name = ? AND v.version = ? AND v.status = 'published'`,
-  )
-    .bind(ns, name, body.version)
-    .first<{ tool_id: string; version_id: string }>();
-  if (!v) return c.body(null, 204);
-  // One count per address, package version and day, so a looping script or agent can't inflate ranking. The
-  // address is only hashed into the rate-limit key and never stored.
-  const ip = c.req.header("cf-connecting-ip");
-  if (ip && (await overLimit(c.env, "install", `${ip}|${v.version_id}`, 1, 86_400_000))) return c.body(null, 204);
-  const day = new Date().toISOString().slice(0, 10);
-  const client = ["cli", "mcp", "ci"].includes(body.client ?? "") ? body.client! : "other";
-  await c.env.DB.batch([
-    c.env.DB.prepare(
-      `INSERT INTO install_counts (tool_id, version_id, day, count) VALUES (?, ?, ?, 1)
-       ON CONFLICT (tool_id, version_id, day) DO UPDATE SET count = count + 1`,
-    ).bind(v.tool_id, v.version_id, day),
-    c.env.DB.prepare(
-      `INSERT INTO install_clients (day, client, count) VALUES (?, ?, 1) ON CONFLICT (day, client) DO UPDATE SET count = count + 1`,
-    ).bind(day, client),
-  ]);
-  return c.body(null, 204);
-});
-
 // The remote MCP server (src/mcp.ts). Its tools read the public API as an anonymous visitor would, through the
 // edge cache, with none of the caller's headers.
 async function remoteMcp(req: Request, url: URL, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -638,27 +612,25 @@ export default {
     if (event.cron === WEEKLY_BACKUP_CRON) await weeklyBackups(env);
     // Monthly: restore a random bundle into an empty repository and pull a mirrored image by digest.
     if (event.cron === RESTORE_DRILL_CRON) await startDrill(env);
-    // Nightly: recompute 30-day install totals and package statuses that ranking uses, and re-check guides' links.
+    // Nightly: recompute the install and run totals and package statuses that ranking uses, and re-check guides'
+    // links. Each step is reported on its own, so one that fails doesn't stop the rest.
     if (event.cron === "17 3 * * *") {
-      await queueNightlyLinkChecks(env);
-      await dailyDigest(env);
-      await purgeRateLimits(env);
-      await purgeBackups(env);
-      await lockStaleThreads(env);
-      await refreshAllHealth(env);
-      await deliverInbox(env, "daily");
-      await purgeInbox(env);
-      await refreshContributorStats(env);
-      await queueUpstreamChecks(env);
-      await queueBuildChecks(env);
-      await purgeIdleNamespaces(env);
-      await purgeCiTokens(env);
+      await nightly(env, "refreshUsage", () => refreshUsage(env));
+      await nightly(env, "queueNightlyLinkChecks", () => queueNightlyLinkChecks(env));
+      await nightly(env, "dailyDigest", () => dailyDigest(env));
+      await nightly(env, "purgeRateLimits", () => purgeRateLimits(env));
+      await nightly(env, "purgeBackups", () => purgeBackups(env));
+      await nightly(env, "lockStaleThreads", () => lockStaleThreads(env));
+      await nightly(env, "refreshAllHealth", () => refreshAllHealth(env));
+      await nightly(env, "deliverInbox", () => deliverInbox(env, "daily"));
+      await nightly(env, "purgeInbox", () => purgeInbox(env));
+      await nightly(env, "refreshContributorStats", () => refreshContributorStats(env));
+      await nightly(env, "queueUpstreamChecks", () => queueUpstreamChecks(env));
+      await nightly(env, "queueBuildChecks", () => queueBuildChecks(env));
+      await nightly(env, "purgeIdleNamespaces", () => purgeIdleNamespaces(env));
+      await nightly(env, "purgeCiTokens", () => purgeCiTokens(env));
       // Images publishers pushed to the mirror that no version uses, and unfinished uploads.
-      await queueMirrorSweeps(env);
-      await env.DB.prepare(
-        `UPDATE tools SET installs_30d = COALESCE((SELECT SUM(count) FROM install_counts
-           WHERE tool_id = tools.id AND day >= date('now', '-30 days')), 0)`,
-      ).run();
+      await nightly(env, "queueMirrorSweeps", () => queueMirrorSweeps(env));
     }
   },
 } satisfies ExportedHandler<Env, PublishMessage>;

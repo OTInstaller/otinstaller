@@ -162,14 +162,22 @@ export async function removeVersion(env: Env, actorId: string, t: ToolRef, versi
   return { ok: true as const };
 }
 
+/** The rate_limits key for a scope and who (an address, a user id, ...), hashed with a server secret. */
+export async function rateKey(env: Env, scope: string, who: string): Promise<string> {
+  return (await sha256Hex(`${env.TOKEN_ENC_KEY ?? "ot"}|${scope}|${who}`)).slice(0, 32);
+}
+
+/** Adds `by` hits to a key's fixed window. The statement returns the window's new count, so several fit in one batch. */
+export function hitStatement(db: D1Database, key: string, windowMs: number, by = 1, now = Date.now()): D1PreparedStatement {
+  return db.prepare(
+    `INSERT INTO rate_limits (key, window_start, count) VALUES (?, ?, ?)
+     ON CONFLICT (key, window_start) DO UPDATE SET count = count + excluded.count RETURNING count`,
+  ).bind(key, Math.floor(now / windowMs) * windowMs, by);
+}
+
 /** Counts a hit in a fixed window; true when the limit is exceeded. Keys are hashed with a server secret. */
 export async function overLimit(env: Env, scope: string, who: string, limit: number, windowMs: number, now = Date.now()): Promise<boolean> {
-  const key = (await sha256Hex(`${env.TOKEN_ENC_KEY ?? "ot"}|${scope}|${who}`)).slice(0, 32);
-  const start = Math.floor(now / windowMs) * windowMs;
-  const row = await env.DB.prepare(
-    `INSERT INTO rate_limits (key, window_start, count) VALUES (?, ?, 1)
-     ON CONFLICT (key, window_start) DO UPDATE SET count = count + 1 RETURNING count`,
-  ).bind(key, start).first<{ count: number }>();
+  const row = await hitStatement(env.DB, await rateKey(env, scope, who), windowMs, 1, now).first<{ count: number }>();
   return (row?.count ?? 1) > limit;
 }
 

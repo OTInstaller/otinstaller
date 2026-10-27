@@ -144,7 +144,7 @@ const TOOLS: Tool[] = [
         typical_seconds: m.runtime?.typical_seconds,
         consent_class: consentClass(m),
         effects: effects(m),
-        registry: { signed: t.signed, verified_publisher: t.verified, health: t.health, installs_30d: t.installs_30d, status: t.status, deprecated: t.deprecated_message, replacement: t.deprecated_replacement },
+        registry: { signed: t.signed, verified_publisher: t.verified, health: t.health, installs_30d: t.installs_30d, runs_30d: t.runs_30d, status: t.status, deprecated: t.deprecated_message, replacement: t.deprecated_replacement },
         moved_to: t.moved_to,
         install: `ot install ${full}`,
         run_with: "ot mcp (run_tool), or `ot run` in a terminal; this server cannot run tools",

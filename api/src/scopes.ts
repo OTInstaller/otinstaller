@@ -39,7 +39,7 @@ export function parseScopes(input: unknown): string[] {
 /** The scope a request needs when it is made with a token, or null when tokens don't apply. */
 export function requiredScope(method: string, path: string): string | null {
   const p = path.replace(/^\/v1/, "");
-  if (/^\/(auth|internal|webhooks)\//.test(p) || p === "/installs" || p === "/health" || p === "/unsubscribe") return null;
+  if (/^\/(auth|internal|webhooks)\//.test(p) || p === "/installs" || p === "/runs" || p === "/health" || p === "/unsubscribe") return null;
   // Sharing results needs no account; a token only makes the sharer its owner.
   if (method === "POST" && p === "/shares") return null;
   if (p.startsWith("/admin")) return "staff";

@@ -205,14 +205,15 @@ describe("namespaces, pivots, types, installs", () => {
   });
 
   it("counts installs anonymously and ignores unknown packages", async () => {
+    const { env } = await import("cloudflare:test");
+    const total = async () => (await env.DB.prepare("SELECT COALESCE(SUM(count), 0) AS n FROM install_counts").first<{ n: number }>())!.n;
+    const before = await total();
     const send = (tool: string, version: string) =>
       SELF.fetch("https://api.otinstaller.com/v1/installs", { method: "POST", body: JSON.stringify({ tool, version }) });
     expect((await send("dheeraj/holehe-lite", "1.2.0")).status).toBe(204);
     expect((await send("dheeraj/holehe-lite", "1.2.0")).status).toBe(204);
     expect((await send("nobody/nothing", "1.0.0")).status).toBe(204);
-    const { env } = await import("cloudflare:test");
-    const row = await env.DB.prepare("SELECT SUM(count) AS n FROM install_counts").first<{ n: number }>();
-    expect(row?.n).toBe(2);
+    expect((await total()) - before).toBe(2);
   });
 
   it("counts an address once per version and day, and records the kind of client", async () => {
@@ -227,7 +228,9 @@ describe("namespaces, pivots, types, installs", () => {
     await send("203.0.113.8", "agent-of-chaos");
     const after = (await env.DB.prepare("SELECT SUM(count) AS n FROM install_counts").first<{ n: number }>())!.n;
     expect(after - before).toBe(2);
-    const clients = await env.DB.prepare("SELECT client, SUM(count) AS n FROM install_clients GROUP BY client ORDER BY client").all();
+    const clients = await env.DB.prepare(
+      "SELECT client, SUM(count) AS n FROM install_counts WHERE tool_id = 'tool_dheeraj_holehe-lite' AND client IN ('mcp', 'other') GROUP BY client ORDER BY client",
+    ).all();
     expect(clients.results).toContainEqual({ client: "mcp", n: 1 });
     expect(clients.results).toContainEqual({ client: "other", n: expect.any(Number) });
   });
