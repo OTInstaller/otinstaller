@@ -84,6 +84,8 @@ type App struct {
 	AgentMode bool
 	// StartWizard asks a person what `ot start` sets up, changing the choices; nil is the huh wizard. Tests replace it.
 	StartWizard func(ctx context.Context, cat *startCatalog, c *startChoices) error
+	// usage holds install and run counts until they are sent (usage.go); sink() makes it.
+	usage *usageSink
 }
 
 func NewApp() *App {
@@ -120,6 +122,7 @@ func (a *App) Root() *cobra.Command {
 			if a.CheckRemovals && cmd.Name() != "help" && cmd.Name() != "uninstall" && !strings.HasPrefix(cmd.Name(), "__complete") {
 				a.warnRemoved(cmd.Context())
 			}
+			a.prepareCounts(cmd, args)
 			a.startDailyNote(cmd, args)
 		},
 		PersistentPostRun: func(cmd *cobra.Command, args []string) {
@@ -174,6 +177,7 @@ func (a *App) Root() *cobra.Command {
 		a.pivotCmd(),
 		a.tokenCmd(),
 		a.profileCmd(),
+		a.telemetryCmd(),
 	)
 	return root
 }
@@ -192,6 +196,8 @@ func (a *App) Execute(ctx context.Context, args []string) int {
 	root := a.Root()
 	root.SetArgs(args)
 	err := root.ExecuteContext(ctx)
+	// After the error is printed, give the command's counts a moment to be sent.
+	defer a.waitForCounts(ctx)
 	if err == nil {
 		return ExitOK
 	}

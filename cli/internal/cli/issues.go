@@ -66,18 +66,17 @@ func orDash(s string) string {
 // `ot report <tool> --works | --broken`. Broken goes through the same path as the failure prompt, so it joins or
 // opens the version's broken issue.
 func (a *App) confirmVersion(cmd *cobra.Command, ref pkgRef, version string, works bool) error {
-	if version == "" {
-		if st, err := state.Load(); err == nil {
-			if inst, ok := st.Installed[ref.Ref()]; ok {
-				version = inst.Version
-			}
+	native := false
+	if st, err := state.Load(); err == nil {
+		if inst, ok := st.Installed[ref.Ref()]; ok && (version == "" || version == inst.Version) {
+			version, native = inst.Version, inst.Native
 		}
 	}
 	if works {
 		if a.API.Token == "" {
 			return exitErr(ExitUsage, "saying a version works needs a sign-in: run `ot login`")
 		}
-		c, err := a.API.Confirm(cmd.Context(), ref.NS, ref.Name, "works", version, runtime.GOOS+"/"+runtime.GOARCH, a.engineName(), Version)
+		c, err := a.API.Confirm(cmd.Context(), ref.NS, ref.Name, "works", version, runtime.GOOS+"/"+runtime.GOARCH, a.engineName(native), Version)
 		if err != nil {
 			return a.requestError(err)
 		}
@@ -90,7 +89,7 @@ func (a *App) confirmVersion(cmd *cobra.Command, ref pkgRef, version string, wor
 	if version == "" {
 		return exitErr(ExitUsage, "say which version is broken with --version, or install it first")
 	}
-	res, err := a.sendRunReport(cmd.Context(), failedRun{ref: ref, version: version, exitCode: 1})
+	res, err := a.sendRunReport(cmd.Context(), failedRun{ref: ref, version: version, native: native, exitCode: 1})
 	if err != nil {
 		return a.requestError(err)
 	}

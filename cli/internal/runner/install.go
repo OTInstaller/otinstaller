@@ -134,6 +134,39 @@ func commandFailed(what string, code int, err error, output string) error {
 	return fmt.Errorf("%s failed (exit %d)", what, code)
 }
 
+// FailureReason is why an install failed, in the words install counts use: no_engine, pull_failed (the image or wheel
+// couldn't be downloaded), verify_failed (a signature or hash didn't match), build_failed (the sandbox image or the
+// pipx install), refused (an image not pinned by digest, or one an agent can't verify) or error. It reads the errors
+// this file makes, so a new one belongs here too.
+func FailureReason(err error) string {
+	var missing *RuntimeMissingError
+	var trust *TrustError
+	var status *statusError
+	switch {
+	case errors.As(err, &missing):
+		return "no_engine"
+	case errors.As(err, &trust):
+		for _, p := range []string{"signature verification failed", "no wheel for", "downloaded wheel hash"} {
+			if strings.HasPrefix(trust.Msg, p) {
+				return "verify_failed"
+			}
+		}
+		return "refused"
+	case errors.As(err, &status):
+		return "pull_failed"
+	case err == nil:
+		return "error"
+	}
+	msg := err.Error()
+	switch {
+	case strings.HasPrefix(msg, "pulling "), strings.HasPrefix(msg, "looking up "):
+		return "pull_failed"
+	case strings.HasPrefix(msg, "building the sandbox image"), strings.HasPrefix(msg, "pipx install"):
+		return "build_failed"
+	}
+	return "error"
+}
+
 // sameDigest reports whether the mirror reference pins the same digest as the original.
 func sameDigest(original, mirror string) bool {
 	_, a, ok1 := strings.Cut(original, "@")

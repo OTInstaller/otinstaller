@@ -16,7 +16,7 @@ import (
 const profileJSON = `{"name":"acme","kind":"org","provider":"github","status":"active","display_name":"Acme OSINT","verified":true,"created_at":1790000000000,
 "profile":{"bio":"Tools for newsrooms.","location":"Leeds","website":"https://acme.example/","company":null,"socials":[{"provider":"mastodon","url":"https://infosec.exchange/@acme"}],
 "hosts":[{"provider":"github","login":"acme","url":"https://github.com/acme","primary":true}],"members":[],"about_html":null,"pins":["whois-plus"],"details_hidden":false,"host_since":null},
-"stats":{"packages":2,"tools":1,"guides":1,"installs_30d":120,"installs_total":900,"stars":4,"healthy":1,"broken":0,"last_published_at":1792000000000},
+"stats":{"packages":2,"tools":1,"guides":1,"installs_30d":120,"installs_total":900,"runs_30d":45,"runs_total":310,"stars":4,"healthy":1,"broken":0,"last_published_at":1792000000000},
 "tools":[{"namespace":"acme","name":"whois-plus","kind":"tool","summary":"WHOIS lookups","latest_version":"1.2.0","installs_30d":120}]}`
 
 func TestProfile(t *testing.T) {
@@ -61,7 +61,8 @@ func TestProfile(t *testing.T) {
 		t.Fatalf("show exit %d: %s", code, errb)
 	}
 	for _, want := range []string{"Acme OSINT (acme)", "Organization, verified publisher", "Tools for newsrooms.", "Website:", "https://acme.example/",
-		"Mastodon:", "https://github.com/acme", "2 (1 tools, 1 guides)", "120 in 30 days, 900 in all", "Pinned:", "acme/whois-plus"} {
+		"Mastodon:", "https://github.com/acme", "2 (1 tools, 1 guides)", "120 in 30 days, 900 in all", "Runs:", "45 in 30 days, 310 in all",
+		"Pinned:", "acme/whois-plus"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("profile lacks %q:\n%s", want, out)
 		}

@@ -142,6 +142,7 @@ func TestDailyUpdateNote(t *testing.T) {
 	}{
 		{"CI", []string{"list"}, "CI", false},
 		{"switched off", []string{"list"}, "OT_NO_UPDATE_CHECK", false},
+		{"do not track", []string{"list"}, "DO_NOT_TRACK", false},
 		{"JSON", []string{"list", "--json"}, "", false},
 		{"JSON from the environment", []string{"list"}, "OT_OUTPUT", false},
 		{"ot run's own --json", []string{"run", "dheeraj/nope", "--json"}, "", false},

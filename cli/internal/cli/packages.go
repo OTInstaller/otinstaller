@@ -435,10 +435,13 @@ func (a *App) install(ctx context.Context, ref pkgRef, native bool) (*state.Inst
 		// An agent gets no "warning:" it can scroll past: what a person would be warned about, it is refused.
 		if a.AgentMode {
 			opt.RequireSignature = true
+			refused := &state.Installed{Ref: ref.Ref(), Version: resp.Version}
 			switch {
 			case resp.Status == "yanked":
+				a.countInstallFailure(ctx, refused, "refused")
 				return nil, &ExitError{Code: ExitTrust, Reason: "trust_refused", Err: fmt.Errorf("%s@%s is yanked; agents may only install current versions", ref.Ref(), resp.Version)}
 			case resp.ScanStatus == "fail":
+				a.countInstallFailure(ctx, refused, "refused")
 				return nil, &ExitError{Code: ExitTrust, Reason: "trust_refused", Err: fmt.Errorf("%s@%s failed its security scan", ref.Ref(), resp.Version)}
 			}
 		}
@@ -446,14 +449,23 @@ func (a *App) install(ctx context.Context, ref pkgRef, native bool) (*state.Inst
 			fmt.Fprintln(a.Err, "warning:", w)
 		}
 	}
+	// What would be counted if this install fails: never a local manifest.
+	tried := &state.Installed{Ref: m.Ref(), Version: m.Version, Local: ref.LocalPath != ""}
 	if ps := manifest.Validate(doc, m, manifest.Options{}); len(ps) > 0 {
+		a.countInstallFailure(ctx, tried, "refused")
 		return nil, exitErr(ExitTrust, "manifest for %s is invalid: %s", m.Ref(), ps[0].Error())
 	}
 	fmt.Fprintf(a.Err, "Installing %s %s (%s)…\n", m.Ref(), m.Version, describeKind(m))
 	inst, err := a.Runner.Install(ctx, m, raw, opt)
 	if err != nil {
+		var ue *runner.UsageError
+		if !errors.As(err, &ue) {
+			// A guide (a usage error) isn't a failed install.
+			a.countInstallFailure(ctx, tried, runner.FailureReason(err))
+		}
 		return nil, err
 	}
+	inst.Local = ref.LocalPath != ""
 	st, err := state.Load()
 	if err != nil {
 		return nil, err
@@ -475,11 +487,7 @@ func (a *App) install(ctx context.Context, ref pkgRef, native bool) (*state.Inst
 	case !inst.Held && prev != nil && prev.Held && !a.AgentMode:
 		fmt.Fprintf(a.Err, "note: %s is no longer held; `ot update --all` keeps it current\n", inst.Ref)
 	}
-	if ref.LocalPath == "" && a.Config.TelemetryEnabled() {
-		pctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-		_ = a.API.InstallPing(pctx, inst.Ref, inst.Version, a.clientKind())
-		cancel()
-	}
+	a.countInstall(ctx, inst)
 	fmt.Fprintf(a.Err, "Installed %s %s.\n", inst.Ref, inst.Version)
 	return inst, nil
 }

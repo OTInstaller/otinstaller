@@ -455,3 +455,29 @@ func (f *blockingPull) Run(ctx context.Context, name string, args, env []string,
 	}
 	return f.fakeExec.Run(ctx, name, args, env, stdin, stdout, stderr)
 }
+
+// Install errors map to the reasons install counts use.
+func TestFailureReason(t *testing.T) {
+	for _, c := range []struct {
+		err  error
+		want string
+	}{
+		{&RuntimeMissingError{"no docker"}, "no_engine"},
+		{commandFailed("pulling ghcr.io/x/y@sha256:ab", 1, nil, "Cannot connect to the Docker daemon at unix:///var/run/docker.sock"), "no_engine"},
+		{commandFailed("pulling ghcr.io/x/y@sha256:ab", 1, nil, "manifest unknown"), "pull_failed"},
+		{fmt.Errorf("looking up x 1.0 on PyPI: %w", &statusError{"https://pypi.org/pypi/x/1.0/json", 503}), "pull_failed"},
+		{&statusError{"https://files.example/x.whl", 404}, "pull_failed"},
+		{commandFailed("building the sandbox image", 1, nil, "pip failed"), "build_failed"},
+		{commandFailed("pipx install", 1, nil, ""), "build_failed"},
+		{&TrustError{"signature verification failed for ghcr.io/x/y@sha256:ab; refusing to install"}, "verify_failed"},
+		{&TrustError{"no wheel for x 1.0 matches the manifest's sha256; refusing to install"}, "verify_failed"},
+		{&TrustError{"downloaded wheel hash ab does not match the manifest (cd)"}, "verify_failed"},
+		{&TrustError{"image ghcr.io/x/y:latest is not pinned by digest"}, "refused"},
+		{&TrustError{"ghcr.io/x/y@sha256:ab is not signed, and agents may only install signed images"}, "refused"},
+		{fmt.Errorf("unknown runtime %q", "wasm"), "error"},
+	} {
+		if got := FailureReason(c.err); got != c.want {
+			t.Errorf("%v: %s, want %s", c.err, got, c.want)
+		}
+	}
+}

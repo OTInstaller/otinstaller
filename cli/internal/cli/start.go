@@ -67,7 +67,7 @@ func (a *App) startCmd() *cobra.Command {
 		Short: "Set ot up: pick tools, AI agents and settings, then install them",
 		Long: "Sets ot up in one go. At a terminal it asks, with the flags as its starting point: starter packs (the bundled\n" +
 			"playbooks) and tools from the registry, AI clients to add ot's MCP server to, the output format, where results\n" +
-			"are saved, API keys, and optionally the registry and telemetry. Nothing changes until you confirm.\n\n" +
+			"are saved, API keys, telemetry, and optionally the registry. Nothing changes until you confirm.\n\n" +
 			"With --yes it does what the flags say without asking; --dry-run shows what that would be. Settings go to\n" +
 			"config.json in ot's data folder, and only the ones you change. https://otinstaller.com/start builds these flags.",
 		Example: "  ot start\n" +
@@ -136,7 +136,7 @@ func (a *App) startCmd() *cobra.Command {
 	f.StringSliceVar(&c.Agents, "agents", nil, "AI clients to add ot's MCP server to ("+strings.Join(mcpClients, ", ")+")")
 	f.StringVar(&c.Format, "format", "", "default output format of ot run ("+strings.Join(startFormats, ", ")+")")
 	f.StringVar(&c.ResultsDir, "results-dir", "", "where runs are saved from now on (default ./results in the folder ot runs in)")
-	f.StringVar(&c.Telemetry, "telemetry", "", "on or off: install counts, and the offer to report a failed run")
+	f.StringVar(&c.Telemetry, "telemetry", "", "on or off: install and run counts, and the offer to report a failed run")
 	f.StringVar(&c.Registry, "registry", "", "registry API URL, for a self-hosted or local registry (default "+state.DefaultAPIURL+")")
 	f.BoolVar(&c.Keys, "keys", false, "walk through the tools' API keys after installing (needs a terminal)")
 	f.BoolVar(&c.Native, "native", false, "install pipx tools on the host instead of in a container")
@@ -445,6 +445,10 @@ func (a *App) startReport(c *startChoices, p *startPlan) *startReport {
 func (a *App) applyStart(ctx context.Context, c *startChoices, p *startPlan) error {
 	rep := a.startReport(c, p)
 	text := !a.jsonMode()
+	if c.Telemetry != "" {
+		// The wizard's telemetry step, or --telemetry, said what is counted: no need for the one-time notice.
+		a.noticeShown()
+	}
 	if len(p.Changes) > 0 {
 		if err := state.SetConfig(p.Changes); err != nil {
 			return err
@@ -452,16 +456,19 @@ func (a *App) applyStart(ctx context.Context, c *startChoices, p *startPlan) err
 		if text {
 			fmt.Fprintf(a.Out, "Saved %s to %s.\n", describeChanges(p.Changes), state.Path("config.json"))
 		}
-		for key, env := range map[string]string{"api_url": "OT_API_URL", "results_dir": "OT_RESULTS_DIR", "telemetry": "OT_NO_TELEMETRY"} {
+		for key, env := range map[string]string{"api_url": "OT_API_URL", "results_dir": "OT_RESULTS_DIR"} {
 			if _, changed := p.Changes[key]; changed && os.Getenv(env) != "" {
 				fmt.Fprintf(a.Err, "note: %s is set in your environment and wins over config.json's %s\n", env, key)
 			}
 		}
+		if off, env := state.TelemetryOffByEnv(); off {
+			if _, changed := p.Changes["telemetry"]; changed {
+				fmt.Fprintf(a.Err, "note: %s is set in your environment and wins over config.json's telemetry\n", env)
+			}
+		}
 	}
-	if c.Telemetry == "off" {
-		off := false
-		a.Config.Telemetry = &off
-	}
+	// The installs below are counted, or not, as just chosen.
+	a.Config.Telemetry = state.LoadConfig().Telemetry
 
 	var agentErr error
 	if len(c.Agents) > 0 {
@@ -782,7 +789,7 @@ func (a *App) runStartWizard(ctx context.Context, cat *startCatalog, c *startCho
 		}
 		return false
 	}
-	advanced := c.Registry != "" || c.Telemetry != ""
+	advanced := c.Registry != ""
 	registry := orDefault(c.Registry, orDefault(strings.TrimRight(cat.File.APIURL, "/"), state.DefaultAPIURL))
 	registryChoice, registryOther := state.DefaultAPIURL, ""
 	if registry != state.DefaultAPIURL {
@@ -822,16 +829,18 @@ func (a *App) runStartWizard(ctx context.Context, cat *startCatalog, c *startCho
 			Description("Some tools you picked need one. You'll see what each key is for, where to get it and what it costs.").
 			Value(&keys)).
 			WithHideFunc(func() bool { return !anyNeedsKeys() }),
-		huh.NewGroup(huh.NewConfirm().Title("Change the registry or telemetry?").Description("Most people don't need to.").
+		huh.NewGroup(huh.NewConfirm().Title("Telemetry").
+			Description("ot counts installs and runs: the tool, its version and how each run ended, never your inputs, targets or\n"+
+				"results, so the registry can show which tools work. It also offers to report a run that failed as broken.\n"+
+				"`ot telemetry` shows exactly what is sent and turns it on or off later: "+privacyURL(a)+telemetryOffNote()).
+			Affirmative("On").Negative("Off").Value(&telemetry)),
+		huh.NewGroup(huh.NewConfirm().Title("Use another registry?").Description("A self-hosted or local one. Most people don't need to.").
 			Affirmative("Yes").Negative("No").Value(&advanced)),
 		huh.NewGroup(
 			huh.NewSelect[string]().Title("Registry").Options(
 				huh.NewOption("OTInstaller ("+state.DefaultAPIURL+")", state.DefaultAPIURL),
 				huh.NewOption("Another registry (self-hosted or local)...", otherRegistry),
 			).Value(&registryChoice),
-			huh.NewConfirm().Title("Telemetry").
-				Description("Count each install (tool, version and client), and offer to report a run that failed as broken.").
-				Affirmative("On").Negative("Off").Value(&telemetry),
 		).WithHideFunc(func() bool { return !advanced }),
 		huh.NewGroup(huh.NewInput().Title("Registry API URL").Placeholder("http://127.0.0.1:8787/v1").Value(&registryOther).
 			Validate(func(s string) error { _, err := registryURL(s); return err })).
@@ -846,13 +855,12 @@ func (a *App) runStartWizard(ctx context.Context, cat *startCatalog, c *startCho
 	if folderChoice == otherFolder {
 		c.ResultsDir = folderOther
 	}
-	c.Registry, c.Telemetry = "", ""
+	c.Registry, c.Telemetry = "", onOff(telemetry)
 	if advanced {
 		c.Registry = registryChoice
 		if registryChoice == otherRegistry {
 			c.Registry = registryOther
 		}
-		c.Telemetry = map[bool]string{true: "on", false: "off"}[telemetry]
 	}
 	if err := c.check(cat.Playbooks); err != nil {
 		return err

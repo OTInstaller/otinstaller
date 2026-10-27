@@ -23,6 +23,7 @@ const promptEvery = 7 * 24 * time.Hour
 type failedRun struct {
 	ref      pkgRef
 	version  string
+	native   bool
 	exitCode int
 	timedOut bool
 	entities int
@@ -30,8 +31,9 @@ type failedRun struct {
 
 // offerFailureReport asks, at a terminal, whether to report a run that looks like the tool's own failure, and
 // sends only the tool, version, exit code, OS and ot version when the person says yes. It never asks agents,
-// scripts, CI or JSON callers, never for local manifests, and never when telemetry is off (OT_NO_TELEMETRY or
-// "telemetry": false), and at most once a week per tool and version. It never changes the run's exit code.
+// scripts, CI or JSON callers, never for local manifests, and never when telemetry is off (`ot telemetry off`,
+// OT_NO_TELEMETRY, DO_NOT_TRACK or "telemetry": false), and at most once a week per tool and version. It never changes
+// the run's exit code.
 func (a *App) offerFailureReport(ctx context.Context, ra *runArgs, f failedRun) {
 	if !a.mayAskToReport(ra, f) {
 		return
@@ -75,7 +77,7 @@ func (a *App) mayAskToReport(ra *runArgs, f failedRun) bool {
 func (a *App) sendRunReport(ctx context.Context, f failedRun) (*api.RunReportResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	r := api.RunReport{Version: f.version, TimedOut: f.timedOut, OS: runtime.GOOS, Arch: runtime.GOARCH, Engine: a.engineName(), OTVersion: Version}
+	r := api.RunReport{Version: f.version, TimedOut: f.timedOut, OS: runtime.GOOS, Arch: runtime.GOARCH, Engine: a.engineName(f.native), OTVersion: Version}
 	if !f.timedOut {
 		code := f.exitCode
 		r.ExitCode = &code
@@ -103,8 +105,12 @@ func reportOutcome(a *App, f failedRun, res *api.RunReportResult) string {
 	}
 }
 
-// engineName is what the run used: docker, podman, or native for pipx tools run without a container.
-func (a *App) engineName() string {
+// engineName is what a run uses: native for pipx tools run without a container, else docker or podman; "" when
+// neither is installed.
+func (a *App) engineName(native bool) string {
+	if native {
+		return "native"
+	}
 	if a.Runner != nil && a.Runner.Engine != "" {
 		return a.Runner.Engine
 	}

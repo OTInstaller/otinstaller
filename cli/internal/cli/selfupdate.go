@@ -74,11 +74,11 @@ type otLatestCache struct {
 	Version   string    `json:"version"`
 }
 
-// latestOT returns the newest ot release, looked up at most once a day, or "" when unknown. Dev builds, `ot mcp`, CI
-// and OT_NO_UPDATE_CHECK=1 never look. A failed lookup is not retried until the next day, so an offline machine
-// doesn't wait on it every time.
+// latestOT returns the newest ot release, looked up at most once a day, or "" when unknown. Dev builds, `ot mcp`, CI,
+// OT_NO_UPDATE_CHECK=1 and DO_NOT_TRACK never look. A failed lookup is not retried until the next day, so an offline
+// machine doesn't wait on it every time.
 func (a *App) latestOT(ctx context.Context) string {
-	if Version == "dev" || a.AgentMode || os.Getenv("CI") != "" || os.Getenv("OT_NO_UPDATE_CHECK") == "1" {
+	if Version == "dev" || a.AgentMode || os.Getenv("CI") != "" || noUpdateCheck() {
 		return ""
 	}
 	path := state.Path("cache", "ot-latest.json")

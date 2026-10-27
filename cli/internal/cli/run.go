@@ -50,6 +50,8 @@ func (a *App) ensureInstalled(cmd *cobra.Command, ref pkgRef, ra *runArgs) (*sta
 	if resp, err := a.API.Manifest(cmd.Context(), ref.NS, ref.Name, ref.Version); err == nil && resp.Manifest != nil {
 		if _, m, err := manifest.ParseJSON(resp.Manifest); err == nil {
 			if _, err := loadSecrets(m); err != nil {
+				native := ra.Native && m.Runtime != nil && m.Runtime.Kind == "pipx"
+				a.countRun(cmd.Context(), &state.Installed{Ref: m.Ref(), Version: m.Version, Native: native}, "missing_key", 0, ra.via)
 				return nil, err
 			}
 		}

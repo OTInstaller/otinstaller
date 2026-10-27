@@ -41,6 +41,8 @@ func newTestApp(t *testing.T, fx *fakeExec, stdin string) (*App, *bytes.Buffer, 
 	t.Helper()
 	t.Setenv("OT_HOME", t.TempDir())
 	t.Setenv("OT_NO_TELEMETRY", "1")
+	t.Setenv("DO_NOT_TRACK", "")
+	t.Setenv("OT_TELEMETRY_DEBUG", "")
 	t.Setenv("OT_OUTPUT", "")
 	t.Setenv("OT_NONINTERACTIVE", "")
 	t.Setenv("OT_MAX_RAW", "")
