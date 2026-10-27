@@ -281,14 +281,14 @@ stderr and returns `ExitCodeFor(err)`. `cli/README.md` ships in the release arch
 | `cli` | Every command. `root.go` has the `App` struct (`Out`, `Err`, `In`, `Config`, `API`, `Runner`, `OpenURL`, `CheckRemovals`, `CheckUpdates`, `Updater`, `SelfPath`, `JSON`, `AgentMode`), exit codes, `ExitError`/`exitErr` (with `Reason`, the JSON error code) and command registration; `machine.go` has JSON errors and the no-prompt rule; `mcp_*.go` the MCP server |
 | `agent` | What an agent (or any run without a terminal) may do: consent classes (`Classify`: passive, networked, target, personal), the policy file, session approvals and limits, signed single-use consent tokens, the audit log. Shared by `ot mcp` and unattended `ot run` |
 | `specfiles` | Embedded copies of `spec/`'s envelope, run-all and error schemas, `pivots.json` and `types.json` (`go generate`) |
-| `api` | Registry HTTP client. Decodes `{"error":{...}}` into `*api.Error` (`Status`, `Code`, `Message`, `Hint`, `Docs`, `Problems`, `RequestID`) |
+| `api` | Registry HTTP client. Decodes `{"error":{...}}` into `*api.Error` (`Status`, `Code`, `Message`, `Hint`, `Docs`, `Problems`, `RequestID`). `usage.go` holds the install and run count bodies, which are everything a count can send |
 | `manifest` | Typed `Manifest`, `Parse`/`LoadFile`, `Validate(doc, m, Options{Tag, Dir})`, content rules, embedded schema |
 | `runner` | Install and run: engine detection (docker, then podman), `Install` (with backup fallbacks), `Run`, `ContainerArgs`, input resolution, typed inputs, command building, target type detection (`detect.go` + embedded IANA `tlds.txt`) |
 | `playbook` | Named tool sets: bundled `domain-recon`, `username-investigation`, `email-investigation`, `phone-investigation` and `ip-investigation` (none needs a key), plus `<ot home>/playbooks` and `./playbooks` (later wins). `inputs` says which input types a playbook is for; `Starter(type)` picks the bundled one to offer when nothing installed takes a type |
 | `envelope` | The normalized result envelope (`Version = 1`) and `ParseOutput` / `Write` (json, raw, csv, table) |
 | `results` | Saving each run's raw output plus `.meta.json` (and lazy `.stderr.txt`); `saved.go` reads them back for `extract` and `diff` |
 | `keys` | OS keychain (service `osintverse-ot`); an env var of the same name wins; names indexed in `keys.json` |
-| `state` | Data dir (`OT_HOME` → `%APPDATA%\ot` → `~/.ot`), `state.json` (atomic write, 0600, records `from_backup`), `config.json` (read by every command, written only by `ot start` through `SetConfig`) |
+| `state` | Data dir (`OT_HOME` → `%APPDATA%\ot` → `~/.ot`), `state.json` (atomic write, 0600, records `from_backup`, and `local` for local manifests), `config.json` (read by every command, written only by `ot start` and `ot telemetry on\|off` through `SetConfig`; `TelemetryOffByEnv` folds in `OT_NO_TELEMETRY` and `DO_NOT_TRACK`), `telemetry.json` (`LoadTelemetry`: the notice, reachability and milestones of usage counts) |
 | `scaffold` | Files written by `ot init` (manifest, Dockerfile, starter tool, READMEs, guide pages) and embedded templates; uses `<<`/`>>` template delimiters |
 | `selfupdate` | `ot self-update`: release lookup (`get.otinstaller.com/ot/latest`, else the GitHub API), Ed25519-signed `checksums.txt`, archive SHA-256, atomic replace |
 | `oci` | `ot publish --image`: reads an OCI layout or docker-archive tar and pushes it to the mirror in 50 MiB chunks (the Worker's 100 MB request limit), standard library only |
@@ -301,11 +301,12 @@ Guides: `guide search|read|open|get|tools`, `docs`. Publishing: `init`, `validat
 `namespace create`, `sync`, `release`,
 `login` (`--gitlab`, `--osintverse`, `--scope`, `--print-token`), `logout`, `whoami`, `token create|list|revoke`, `profile`.
 Trust: `report` (`--works`/`--broken` too), `claim`, `transfer`, `yank`, `deprecate`. Community: `issues`, `request`.
-Other: `feedback`, `self-update`. Cobra adds `help`,
+Other: `feedback`, `self-update`, `telemetry [status|on|off]`. Cobra adds `help`,
 `completion` and `--version`. The root's one persistent flag is `--json` (JSON output, and errors as one JSON line on
 stderr; `OT_OUTPUT=json` turns it on for a session). Its `PersistentPreRun` refreshes `cache/removed.json` (daily) and
-warns about installed versions that were removed; it and the root `PersistentPostRun` also run the daily update note
-(`updatecheck.go`, below). Every flag of every command, with its exit codes, is in
+warns about installed versions that were removed, and prints the one-time notice about usage counts (`usage.go`,
+below); it and the root `PersistentPostRun` also run the daily update note (`updatecheck.go`, below). `Execute` waits
+briefly for the command's counts after printing its error. Every flag of every command, with its exit codes, is in
 [docs/dev/cli.md](docs/dev/cli.md).
 
 Each is an `(a *App) xxxCmd() *cobra.Command` method. Files: `packages.go` (search/info/install/list/uninstall),
@@ -315,7 +316,8 @@ install when nothing takes a target), `runs.go` (runs), `share.go` (share/shares
 `import.go`, `publish.go`, `namespace.go`, `sync.go`, `release.go`, `login.go`, `token.go`, `trust.go`
 (report/claim/transfer/yank/deprecate), `issues.go` (issues, and `report --works|--broken`), `request.go` (request),
 `changelog.go` (changelog, and `info`'s "What's new"), `report_prompt.go` (the failure prompt), `feedback.go`,
-`selfupdate.go`, `mcp_cmd.go` (mcp and its subcommands), `consent.go` (unattended runs), `start.go` (start).
+`selfupdate.go`, `mcp_cmd.go` (mcp and its subcommands), `consent.go` (unattended runs), `start.go` (start),
+`usage.go` (install and run counts), `telemetry.go` (telemetry).
 
 - `ot run` disables cobra flag parsing and parses its own args (`run_cmd.go`): ot flags (`-f/--format`, `--json`, `-o`,
   `--out-dir`, `--native`, `-y`, `--results-dir`, `--case`, `--no-save`, `--max-raw`, `--all`, `--parallel`,
@@ -366,8 +368,8 @@ install when nothing takes a target), `runs.go` (runs), `share.go` (share/shares
   releases the hold. Under `AgentMode` an install keeps the hold as it was, and MCP `install_tool` refuses to change a
   held version (`version_held`). User docs: the site's `docs/updates.md`.
 - The daily update note (`updatecheck.go`): at a terminal, at most once a day, never in CI, under `ot mcp`, with JSON
-  output, for quiet commands (`help`, completion, `uninstall`, `outdated`, `update`, `self-update`, `mcp`) or with
-  `OT_NO_UPDATE_CHECK=1`. The root `PersistentPreRun` starts `GET /v1/latest` (every package's latest version, the same
+  output, for quiet commands (`help`, completion, `uninstall`, `outdated`, `update`, `self-update`, `mcp`, `start`,
+  `telemetry`) or with `OT_NO_UPDATE_CHECK=1` or `DO_NOT_TRACK`. The root `PersistentPreRun` starts `GET /v1/latest` (every package's latest version, the same
   for everyone, into `cache/latest.json`) and the newer-`ot` lookup; the `PersistentPostRun` prints, after the command's
   output, how many installed packages have newer versions (held ones counted apart) and a newer `ot`. Tests turn it on
   with `App.CheckUpdates`. MCP `list_installed` reads the same list.
@@ -376,6 +378,21 @@ install when nothing takes a target), `runs.go` (runs), `share.go` (share/shares
   engine and ot version only. Never under `ot mcp`, in CI, without a terminal, with `--json`/`-f json`, for local
   manifests or with telemetry off; at most once a week per tool and version (`cache/report-prompts.json`). The run's
   exit code doesn't change.
+- Usage counts (`usage.go`, [docs/dev/cli.md](docs/dev/cli.md#usage-counts)): `ot` counts installs (`POST /installs`)
+  and runs (`POST /runs`) of registry packages, anonymously through `anon()`. The structs in `api/usage.go` are the
+  allow-list: tool and version, outcome, duration, engine, `via` (`run`, `all`, `playbook`, `auto`, `mcp`), client and
+  MCP host slug, OS, arch, `ot` version, install-failure reason and first-time milestones. Never inputs, targets,
+  results, paths, run ids, case names, command lines, keys or tokens: `usage_test.go` checks the bodies.
+  - `execute` counts every run with `runOutcome`; a missing key is `missing_key` for single runs only.
+  - `mayCount` gates everything: telemetry on, not `Installed.Local`, and not a dev build talking to the public
+    registry.
+  - A background sender posts up to 100 rows at a time, and `Execute` waits at most 1.5 s for it (none for an hour
+    after the registry was out of reach). Under `ot mcp` rows wait 2 s for more, and `config.json` is read again
+    before each POST.
+  - `<ot home>/telemetry.json` keeps the one-time notice, reachability and milestones. `ot telemetry` shows and
+    switches the setting, and `OT_TELEMETRY_DEBUG=1` prints each count instead of sending it.
+  - Any new field means changing the allow-list structs, `usage_test.go`, the API's `usage.ts` and the site's privacy
+    page together.
 - `ot issues <tool>` lists a package's issues; `ot request <repo-url> [--note] [--vote]` asks for a tool to be packaged
   (or votes for the existing request); `ot changelog <tool>` prints release notes newer than the installed version
   (through `stripControl`), and `ot info` shows the latest version's "What's new". `ot import --community` finishes
@@ -455,16 +472,18 @@ on stderr (`spec/schema/error-v1.json`, shared with the API); its `code` is the 
 
 `OT_HOME`, `OT_API_URL`, `OT_SITE_URL` (`guide open`, `report`, `feedback`), `OT_MIRROR_URL` (where `ot publish --image`
 pushes; default `https://mirror.otinstaller.com`), `OT_NO_TELEMETRY` (any non-empty value
-disables the install ping; the ping, like search, tool and manifest reads, goes through `api.Client.anon()` and never
-carries the token), `OT_RESULTS_DIR` (legacy
+turns off install and run counts and the failure prompt; the counts, like search, tool and manifest reads, go through
+`api.Client.anon()` and never carry the token), `DO_NOT_TRACK` (set and not `0`/`false`: as `OT_NO_TELEMETRY`, and no
+daily update lookups either; the removal check stays on), `OT_TELEMETRY_DEBUG=1` (print each count on stderr instead
+of sending it), `OT_RESULTS_DIR` (legacy
 `OTINSTALLER_RESULTS_DIR`; results default to `./results`, not the data dir), `OTINSTALLER_TOKEN` (overrides the
 keychain token; like every key, an env var of the same name wins), `OTINSTALLER_ID_TOKEN` (a GitLab CI job's ID token
 for `ot publish --oidc`; GitHub's comes from `ACTIONS_ID_TOKEN_REQUEST_URL`/`_TOKEN`), `OT_OUTPUT=json` (as `--json`),
 `OT_NONINTERACTIVE=1` (never prompt), `OT_CONSENT=off` (no `--yes` needed unattended; still audited), `OT_MAX_RAW`
 (leave `raw` out of large envelopes), `OT_NO_UPDATE_CHECK=1` (no daily update note, and `ot outdated` doesn't look up the latest `ot`), `CI`
-(the envelope's `client` becomes `ci`, and there is no daily note or newer-`ot` check). `config.json` (`api_url`,
-`site_url`, `telemetry`, `format`, `results_dir`) is read by every command and written only by `ot start`, which
-changes just the keys the person chose. Install scripts:
+(the envelope's and the counts' `client` becomes `ci`, and there is no daily note, newer-`ot` check or usage notice).
+`config.json` (`api_url`, `site_url`, `telemetry`, `format`, `results_dir`) is read by every command and written only
+by `ot start` and `ot telemetry on|off`, which change just their own keys. Install scripts:
 `OT_VERSION`, `OT_RELEASE_REPO`, `OT_INSTALL_DIR`, `OT_DOWNLOAD_BASE` (serve a release from another URL; checks still
 apply), `OT_NO_MODIFY_PATH=1` (Windows). Build-time only: `OT_RELEASE_PUBLIC_KEY`, `OT_RELEASE_KEY_FILE`,
 `RELEASE_OWNER`, `RELEASE_NAME`, `TAP_GITHUB_TOKEN`.
@@ -1313,8 +1332,8 @@ change. Keep this list current when you fix one or find another.
 
 **Hygiene**
 
-- CI runs no Go, API or scanner tests; there is no `engines` field for Node; `cli/internal/api`, `keys`,
-  `state` and `selfupdate` have no test files of their own.
+- CI runs no Go, API or scanner tests; there is no `engines` field for Node; `cli/internal/api` and `keys` have no
+  test files of their own (`api` is exercised through the commands' fake registries).
 - Schema: `versions.status` allows `received`/`validating`, which nothing writes. They stay on purpose: dropping them
   means rebuilding `versions`, and the `DROP TABLE` of a rebuild deletes the old rows first, which cascades into
   `scans`, `pages`, `page_links`, `confirmations`, `run_signals` and `problem_signals` (and trips the foreign keys of
