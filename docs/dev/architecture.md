@@ -171,7 +171,8 @@ Step by step:
    `gitlabToken` refreshing the connecting user's OAuth token).
 4. **Commit status.** `host.tagCommit(tag)` → `publish_jobs.commit_sha`; `host.setStatus(sha, "pending",
    "Validating otinstaller.yaml", <SITE_URL>/dashboard/publish/<jobId>)`. Context is `otinstaller/publish` on both
-   hosts (`hosts/github.ts`, `hosts/repo.ts`; GitLab maps pending → `running`, failure/error → `failed`).
+   hosts (`hosts/github.ts`, `hosts/repo.ts`; GitLab maps pending → `running`, failure/error → `failed`). An archived
+   GitHub repository refuses every status (403 "Repository was archived so is read-only."); `setCommitStatus` skips it.
 5. **Manifest.** `host.fileAt("otinstaller.yaml", sha)`. If absent and the source is `manifest_mode = 'registry'`,
    `imports.ts:heldManifestFor`; if absent otherwise, `manifest_file_missing`. Else `lib/manifest.ts:parseManifest`.
 6. **Release rules.** `publish.ts:releaseProblems`: `namespace_not_allowed` (namespace `rejected`/`suspended`),
@@ -388,6 +389,9 @@ answers `already_received`, so a repository with both doesn't fail one of them.
    `latestMetadata` rewrites `tools` summary/categories/tags/readme_text, `tool_io`, `tool_secrets`,
    `tool_guides`; `commitStatus(success, "Published <ref>@<v>")`; when not `backupInline`, queues
    `{ backupVersionId }`; email `templates.published` (mentions fixable vulns when `scan_status = 'warn'`).
+   `commitStatus` always runs after the decision is saved (here, in review and in `failJob`), so it never throws: a
+   status the host refuses is logged and reported to Sentry as a warning (fingerprint `commit-status`), and the steps
+   and email after it still run.
 9. The callback answers `{ status, verdict, backup? }`; `backup` comes from `backups.ts:releasePlan` only when the
    status is `published`. `scan.py:main` then calls `backup.run_job(answer["backup"], work)` (see flow d).
 

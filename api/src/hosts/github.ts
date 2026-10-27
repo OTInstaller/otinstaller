@@ -157,14 +157,15 @@ export async function fileBytes(f: Fetch, token: string, repo: string, path: str
 export type CommitState = "pending" | "success" | "failure" | "error";
 
 export async function setCommitStatus(f: Fetch, token: string, repo: string, sha: string, state: CommitState, description: string, targetUrl: string) {
-  await check(
-    await f(`${GITHUB_API}/repos/${repo}/statuses/${sha}`, {
-      method: "POST",
-      headers: { ...apiHeaders(token), "Content-Type": "application/json" },
-      body: JSON.stringify({ state, context: "otinstaller/publish", description: description.slice(0, 140), target_url: targetUrl }),
-    }),
-    "setting commit status",
-  );
+  const res = await f(`${GITHUB_API}/repos/${repo}/statuses/${sha}`, {
+    method: "POST",
+    headers: { ...apiHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ state, context: "otinstaller/publish", description: description.slice(0, 140), target_url: targetUrl }),
+  });
+  // An archived repository is read-only and refuses every status ("Repository was archived so is read-only."). Its
+  // releases are still imported and decided, and the publisher hears by email.
+  if (res.status === 403 && (await res.clone().text()).includes("Repository was archived")) return;
+  await check(res, "setting commit status");
 }
 
 // ---------- import wizard ----------
