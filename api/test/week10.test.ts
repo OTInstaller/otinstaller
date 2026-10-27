@@ -211,6 +211,163 @@ describe("bans", () => {
   });
 });
 
+describe("audit log", () => {
+  const entry = (action: string, kind: string, id: string, at = Date.now(), actor: { id: string } | null = null) =>
+    DB().prepare(`INSERT INTO audit_log (id, actor_id, actor_kind, action, target_kind, target_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .bind(ulid(), actor?.id ?? null, actor ? "user" : "system", action, kind, id, at);
+  const read = async (query: string, auth: Record<string, string>) => {
+    const res = await call(`/admin/audit-log?${query}`, { headers: auth });
+    return { status: res.status, body: (await res.json()) as any };
+  };
+  const row = (sql: string, ...values: unknown[]) => DB().prepare(sql).bind(...values);
+
+  it("says what each entry is about: its package, person or link, and null once the row is gone", async () => {
+    const reviewer = await person({ reviewer: true });
+    const owner = await person();
+    const [upper, named] = [await person(), await person()];
+    const ns = await namespace(owner);
+    const p = await pkg(ns, ["1.0.0"]);
+    const version = (await DB().prepare(`SELECT id FROM versions WHERE tool_id = ?`).bind(p.id).first<{ id: string }>())!.id;
+    const token = (await DB().prepare(`SELECT id FROM api_tokens WHERE user_id = ?`).bind(owner.id).first<{ id: string }>())!.id;
+    const [handle, wanted, account, installation, now] = [`h${uniq()}`, `https://github.com/someone/wanted-${uniq()}`, `acct${uniq()}`, uniq(), Date.now()];
+    const rows = [
+      row(`UPDATE users SET login = upper(login), handle = login WHERE id = ?`, upper.id),
+      row(`UPDATE users SET handle = ? WHERE id = ?`, handle, named.id),
+      row(`INSERT INTO installations (id, github_installation_id, account_login) VALUES (?, ?, ?)`, ulid(), Number(installation), account),
+    ];
+    // Adds a row with a new id, and returns the id.
+    const add =(sql: string, ...values: unknown[]) => {
+      const id = ulid();
+      rows.push(row(sql, id, ...values));
+      return id;
+    };
+    const report = add(`INSERT INTO reports (id, tool_id, version_id, reason, created_at) VALUES (?, ?, ?, 'broken', ?)`, p.id, version, now);
+    const issue = add(`INSERT INTO issues (id, tool_id, number, kind, title, created_at, last_activity_at) VALUES (?, ?, 7, 'broken', 'x', ?, ?)`, p.id, now, now);
+    const comment = add(`INSERT INTO issue_comments (id, issue_id, body_md, created_at) VALUES (?, ?, 'x', ?)`, issue, now);
+    const transfer = add(`INSERT INTO transfers (id, tool_id, from_namespace_id, requested_by, kind, created_at) VALUES (?, ?, ?, ?, 'transfer', ?)`, p.id, ns.id, owner.id, now);
+    const submission = `INSERT INTO wrapper_submissions (id, number, provider, upstream_path, upstream_key, upstream_url, name, runtime, manifest_json, tool_id, created_at, updated_at)
+      VALUES (?, ?, 'github', 'someone/thing', 'github:someone/thing', 'https://github.com/someone/thing', 'thing', 'docker', '{}', ?, ?, ?)`;
+    const [released, submitted] = [add(submission, Number(uniq()), p.id, now, now), add(submission, Number(uniq()), null, now, now)];
+    const job = add(`INSERT INTO publish_jobs (id, delivery_id, provider, repo, tag, status, tool_id, version_id, created_at) VALUES (?, ?, 'github', ?, 'v1.0.0', 'published', ?, ?, ?)`,
+      `d${uniq()}`, p.ref, p.id, version, now);
+    const upload = add(`INSERT INTO publish_jobs (id, delivery_id, provider, repo, tag, status, created_at) VALUES (?, ?, 'direct', 'someone/thing', 'v2.0.0', 'rejected', ?)`, `d${uniq()}`, now);
+    const source = add(`INSERT INTO sources (id, tool_id, provider, project_id, url) VALUES (?, ?, 'github', ?, ?)`, p.id, uniq(), `https://github.com/${p.ref}`);
+    const request = add(`INSERT INTO tool_requests (id, number, provider, repo_path, repo_key, url, created_at, updated_at) VALUES (?, ?, 'github', 'x', ?, ?, ?, ?)`,
+      Number(uniq()), `github:${wanted}`, wanted, now, now);
+    const reply = add(`INSERT INTO request_comments (id, request_id, body_md, created_at) VALUES (?, ?, 'x', ?)`, request, now);
+    const imported = add(`INSERT INTO imports (id, user_id, provider, path, created_at, updated_at) VALUES (?, ?, 'github', 'someone/imported', ?, ?)`, owner.id, now, now);
+    const feedback = add(`INSERT INTO feedback (id, kind, message, source, created_at) VALUES (?, 'idea', 'x', 'web', ?)`, now);
+    await DB().batch(rows);
+    const cases: [kind: string, id: string, target: string | null][] = [
+      ["namespace", ns.id, ns.name],
+      ["tool", p.id, p.ref],
+      ["version", version, `${p.ref} 1.0.0`],
+      // The handle only when it says more than the login.
+      ["user", owner.id, owner.login],
+      ["user", upper.id, upper.login.toUpperCase()],
+      ["user", named.id, `${named.login} (@${handle})`],
+      ["report", report, `${p.ref} 1.0.0`],
+      ["issue", issue, `${p.ref}#7`],
+      ["comment", comment, `${p.ref}#7`],
+      ["transfer", transfer, p.ref],
+      ["submission", released, p.ref],
+      ["submission", submitted, "https://github.com/someone/thing"],
+      // A share's row is deleted by the takedown that audits it; its link is its id.
+      ["share", "Sh4redRuns", "https://otinstaller.com/r/Sh4redRuns"],
+      ["publish_job", job, `${p.ref} 1.0.0`],
+      ["publish_job", upload, "someone/thing v2.0.0"],
+      ["source", source, p.ref],
+      ["request", request, wanted],
+      ["request_comment", reply, wanted],
+      ["token", token, `test (${owner.login})`],
+      ["import", imported, "github:someone/imported"],
+      ["installation", installation, account],
+      ["feedback", feedback, null],
+      ["tool", ulid(), null],
+      ["user", ulid(), null],
+    ];
+    await DB().batch(cases.map(([kind, id]) => entry("check.target", kind, id)));
+    const log = await read("action=check.target&limit=500", reviewer.auth);
+    expect(log.status).toBe(200);
+    const got = log.body.entries.map((e: any) => [e.target_kind, e.target_id, e.target]);
+    expect(got).toEqual(expect.arrayContaining(cases));
+    expect(got).toHaveLength(cases.length);
+  });
+
+  it("filters by action, actor and target in SQL, and pages through the matches only", async () => {
+    const reviewer = await person({ reviewer: true });
+    const actor = await person();
+    const a = await namespace(await person());
+    const b = await namespace(await person());
+    const [one, two, other] = [await pkg(a, ["1.0.0"]), await pkg(a, ["1.0.0"]), await pkg(b, ["1.0.0"])];
+    const version = (await DB().prepare(`SELECT id FROM versions WHERE tool_id = ?`).bind(one.id).first<{ id: string }>())!.id;
+    const [issue, comment, report, job, t0] = [ulid(), ulid(), ulid(), ulid(), Date.now() - 60_000];
+    const moved = `old${uniq()}/gone${uniq()}`;
+    await DB().batch([
+      row(`INSERT INTO issues (id, tool_id, number, kind, title, created_at, last_activity_at) VALUES (?, ?, 1, 'broken', 'x', ?, ?)`, issue, one.id, t0, t0),
+      row(`INSERT INTO issue_comments (id, issue_id, body_md, created_at) VALUES (?, ?, 'x', ?)`, comment, issue, t0),
+      row(`INSERT INTO reports (id, tool_id, reason, created_at) VALUES (?, ?, 'other', ?)`, report, two.id, t0),
+      row(`INSERT INTO publish_jobs (id, delivery_id, provider, repo, tag, status, tool_id, created_at) VALUES (?, ?, 'github', ?, 'v1.0.0', 'published', ?, ?)`, job, `d${job}`, two.ref, two.id, t0),
+      row(`INSERT INTO aliases (old_namespace, old_name, tool_id, created_at) VALUES (?, ?, ?, ?)`, ...moved.split("/"), one.id, t0),
+      entry("namespace.approve", "namespace", a.id, t0 + 1, reviewer),
+      entry("trusted_publisher.add", "namespace", a.id, t0 + 2, actor),
+      // Under LIKE, the _ in trusted_publisher. would match this one too.
+      entry("trustedxpublisher.add", "namespace", a.id, t0 + 3),
+      entry("tool.deprecate", "tool", one.id, t0 + 4, actor),
+      entry("version.yank", "version", version, t0 + 5, actor),
+      entry("issue.status", "issue", issue, t0 + 6),
+      entry("comment.hide", "comment", comment, t0 + 7, reviewer),
+      entry("report.dismissed", "report", report, t0 + 8, reviewer),
+      entry("publish.published", "publish_job", job, t0 + 9),
+      entry("tool.deprecate", "tool", other.id, t0 + 10, actor),
+      entry("namespace.approve", "namespace", b.id, t0 + 11, reviewer),
+    ]);
+    const lines = async (query: string) => {
+      const log = await read(query, reviewer.auth);
+      expect(log.status).toBe(200);
+      return log.body.entries.map((e: any) => `${e.action} ${e.target}`);
+    };
+
+    // A namespace: itself, its packages, their versions and what belongs to them, newest first.
+    const inA = [
+      `publish.published ${two.ref}`, `report.dismissed ${two.ref}`, `comment.hide ${one.ref}#1`, `issue.status ${one.ref}#1`, `version.yank ${one.ref} 1.0.0`,
+      `tool.deprecate ${one.ref}`, `trustedxpublisher.add ${a.name}`, `trusted_publisher.add ${a.name}`, `namespace.approve ${a.name}`,
+    ];
+    expect(await lines(`target=${a.name}`)).toEqual(inA);
+    // One package, also at an address it moved from.
+    expect(await lines(`target=${one.ref}`)).toEqual(inA.slice(2, 6));
+    expect(await lines(`target=${moved.toUpperCase()}`)).toEqual(inA.slice(2, 6));
+    // An action, or every action under a prefix ending in "." (where _ is only an underscore).
+    expect(await lines(`target=${a.name}&action=trusted_publisher.`)).toEqual([`trusted_publisher.add ${a.name}`]);
+    expect(await lines(`target=${a.name}&action=namespace.approve`)).toEqual([`namespace.approve ${a.name}`]);
+    expect(await lines(`target=${a.name}&action=namespace`)).toEqual([]);
+    // The person who acted, by login in any case, on its own or with the others.
+    expect(await lines(`actor=${actor.login.toUpperCase()}`)).toEqual([`tool.deprecate ${other.ref}`, `version.yank ${one.ref} 1.0.0`, `tool.deprecate ${one.ref}`, `trusted_publisher.add ${a.name}`]);
+    expect(await lines(`actor=${actor.login}&target=${a.name}&action=tool.`)).toEqual([`tool.deprecate ${one.ref}`]);
+
+    // Paging keeps the filters: next_before leads to the next matching entries, and the last page has none.
+    const pages: string[][] = [];
+    let before: number | undefined;
+    do {
+      const log = await read(`target=${a.name}&limit=4${before ? `&before=${before}` : ""}`, reviewer.auth);
+      pages.push(log.body.entries.map((e: any) => `${e.action} ${e.target}`));
+      before = log.body.next_before;
+    } while (before);
+    expect(pages).toEqual([inA.slice(0, 4), inA.slice(4, 8), inA.slice(8)]);
+
+    // Names that don't exist are 404s rather than empty pages, a malformed target is a 400, and it is for staff only.
+    const code = async (query: string, auth = reviewer.auth) => {
+      const log = await read(query, auth);
+      return `${log.status} ${log.body.error?.code}`;
+    };
+    expect(await code(`target=nobody-${uniq()}`)).toBe("404 namespace_not_found");
+    expect(await code(`target=${a.name}/nothing`)).toBe("404 tool_not_found");
+    expect(await code(`actor=nobody${uniq()}`)).toBe("404 user_not_found");
+    expect(await code("target=a/b/c")).toBe("400 invalid_parameter");
+    expect(await code(`target=${a.name}`, actor.auth)).toBe("403 forbidden");
+  });
+});
+
 // ---------- claims and transfers ----------
 
 describe("claims", () => {

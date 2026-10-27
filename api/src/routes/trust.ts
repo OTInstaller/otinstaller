@@ -7,6 +7,7 @@ import { audit, requireUser } from "./auth";
 import { requireMember } from "./sources";
 import { requireAdmin, requireReviewer } from "./review";
 import { cached } from "../catalog";
+import { auditLog } from "../audit-log";
 import {
   clearDeprecated, fileReport, overLimit, REMOVAL_CATEGORIES, REPORT_REASONS, removeVersion, setDeprecated, setYanked, toolByRef, transparency, type ToolRef,
 } from "../trust";
@@ -159,16 +160,15 @@ export function trustRoutes(app: App) {
     return c.json({ id: u.id, banned: true });
   });
 
+  // The filters are applied in SQL, so next_before pages through the matching entries only.
   app.get("/admin/audit-log", async (c) => {
     requireReviewer(c);
     const before = Number(c.req.query("before") ?? Date.now() + 1);
     const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 100) || 100, 1), 500);
-    const rows = await c.env.DB.prepare(
-      `SELECT a.id, a.actor_kind, u.login AS actor, a.action, a.target_kind, a.target_id, a.metadata_json, a.created_at
-       FROM audit_log a LEFT JOIN users u ON u.id = a.actor_id WHERE a.created_at < ? ORDER BY a.created_at DESC LIMIT ?`,
-    ).bind(before, limit).all<any>();
-    const entries = rows.results.map((r) => ({ ...r, metadata: r.metadata_json ? JSON.parse(r.metadata_json) : null, metadata_json: undefined }));
-    return c.json({ entries, next_before: entries.length === limit ? entries.at(-1)!.created_at : undefined });
+    const param = (name: string) => c.req.query(name)?.trim() || undefined;
+    const target = param("target")?.toLowerCase();
+    if (target && !/^[a-z0-9-]+(\/[a-z0-9-]+)?$/.test(target)) apiError(400, "invalid_parameter", "target must be a namespace or namespace/name");
+    return c.json(await auditLog(c.env, { before, limit, action: param("action")?.toLowerCase(), actor: param("actor"), target }));
   });
 
   // ---------- transparency ----------

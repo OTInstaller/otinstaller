@@ -492,7 +492,7 @@ over the author indexes from 0019.
 | POST | `/admin/tools/:ns/:name/:version/remove` | reviewer | - | routes/trust.ts | `{category, reason, suspend_namespace?}`; remove one version |
 | POST | `/admin/tools/:ns/:name/remove` | reviewer | - | routes/trust.ts | Remove the whole package |
 | POST | `/admin/users/:login/ban` | admin | - | routes/trust.ts | `{reason}`; deletes sessions, revokes tokens; refuses admins (409 `cannot_ban_admin`) |
-| GET | `/admin/audit-log` | reviewer | - | routes/trust.ts | `?before` (ms), `?limit` (1–500, default 100) |
+| GET | `/admin/audit-log` | reviewer | - | routes/trust.ts → audit-log.ts:auditLog | Newest first: `?before` (ms), `?limit` (1–500, default 100), and `next_before` while there are more. Filters, applied in SQL so paging keeps them: `?action` (exact, or a prefix ending in `.` such as `namespace.`), `?actor` (a login, any case) and `?target` (a namespace, or `namespace/name`, also at an address it moved from: entries about the namespace, its packages as they are now, and their versions, reports, issues and replies, transfers, submissions, publish jobs and sources). Each entry keeps `target_kind` and `target_id` and adds `target`, what it is about: a namespace's name; `ns/name` for a tool, transfer or source (a source without a package: its URL); `ns/name version` for a version, a report on one, or a publish job (one without a package: `repo tag`); `ns/name#n` for an issue and its replies; a submission's package, else its upstream URL; a user's login, plus ` (@handle)` when the handle isn't the login; a share's link; a request's (and its replies') repository URL; a token's `name (owner)`; an import's URL; an installation's account. Null when the row is gone, and for feedback. 400 `invalid_parameter` for a malformed target; 404 `namespace_not_found`, `tool_not_found` or `user_not_found` for names that don't exist |
 | GET | `/admin/transfers` | admin | - | routes/transfers.ts | `?status` (default `verified`, or `all`); ≤200 |
 | POST | `/admin/transfers/:id/complete` | admin | - | routes/transfers.ts | Completes a transfer |
 | GET | `/admin/feedback` | reviewer | `private, no-store` | routes/beta.ts | `?status=open|done|dismissed|all`; bugs first; ≤200 |
@@ -869,7 +869,7 @@ route wrappers, so they reach clients the same way.
 | namespace_in_review | 409 | routes/review.ts | yes |
 | namespace_limit | 403 | direct.ts | yes |
 | namespace_not_allowed | 409 (transfers.ts); 403 (direct.ts) | transfers.ts, direct.ts | yes (same code with two statuses) |
-| namespace_not_found | 404 | index.ts, routes/review.ts, transfers.ts | yes |
+| namespace_not_found | 404 | index.ts, routes/review.ts, transfers.ts, audit-log.ts | yes |
 | namespace_reserved | 400 | direct.ts | yes |
 | namespace_taken | 409 | direct.ts | yes |
 | namespace_unknown | 404 | direct.ts | yes |
@@ -914,7 +914,7 @@ route wrappers, so they reach clients the same way.
 | too_many_reports | 429 | routes/trust.ts | yes |
 | too_many_repos | 400 | routes/imports.ts | yes |
 | too_many_requests | 429 | index.ts (30/min writes), routes/beta.ts (10/h feedback), routes/shares.ts (20/h or 60/h shares), direct.ts (5 namespace attempts a day) | yes, but the doc only describes the 30-a-minute write limit |
-| tool_not_found | 404 | catalog.ts, index.ts, routes/guides.ts, sources.ts, trust.ts, transfers.ts, backups.ts; backups.ts (`BackupError`) | yes |
+| tool_not_found | 404 | catalog.ts, index.ts, routes/guides.ts, sources.ts, trust.ts, transfers.ts, backups.ts, audit-log.ts; backups.ts (`BackupError`) | yes |
 | tool_removed | 410 (catalog.ts, routes/trust.ts); 409 (routes/sources.ts, backups.ts) | catalog.ts, routes/trust.ts, routes/sources.ts, backups.ts | yes (same code with two statuses) |
 | transfer_not_found | 404 | routes/transfers.ts | yes |
 | unauthenticated | 401 | routes/auth.ts, review.ts, ops.ts, backups.ts | yes |
@@ -922,7 +922,7 @@ route wrappers, so they reach clients the same way.
 | upstream_has_manifest | 409 | imports.ts | yes |
 | upstream_unknown | 409 | transfers.ts | yes |
 | url_expired | 403 | routes/backups.ts | yes |
-| user_not_found | 404 | routes/trust.ts | yes |
+| user_not_found | 404 | routes/trust.ts, audit-log.ts | yes |
 | version_not_found | 404 | index.ts, routes/guides.ts, review.ts, backups.ts | yes |
 | wrapper_not_community | 409 | imports.ts | yes |
 | wrapper_required | 400 | imports.ts | yes |

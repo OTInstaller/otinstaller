@@ -699,7 +699,8 @@ Purpose: an append-only record of every state change, written in the same `db.ba
 - `actor_id` TEXT (no FK) · `actor_kind` TEXT NN CHECK `('user', 'system', 'github', 'gitlab')`
 - `action` TEXT NN (for example `publish.scanning`, `namespace.approve`, `transfer.complete`)
 - `target_kind` TEXT NN · `target_id` TEXT NN · `metadata_json` TEXT · `created_at` INTEGER NN
-- Index `audit_log_created (created_at DESC)` (0009)
+- Indexes `audit_log_created (created_at DESC)` (0009) and `audit_log_target (target_id, target_kind)` (0014: a
+  publisher's activity feed, and the staff audit log's `target` filter)
 
 ### 2.15 Search (FTS)
 
