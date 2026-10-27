@@ -69,7 +69,7 @@ export async function reportError(
     const event = {
       event_id: eventId, timestamp: Date.now() / 1000, platform: "javascript", level: ctx.level ?? "error", environment: env.SENTRY_ENVIRONMENT ?? "production",
       server_name: "otinstaller-registry-api", tags: { request_id: ctx.requestId }, fingerprint: ctx.fingerprint,
-      transaction: ctx.path ? `${ctx.method ?? "GET"} ${ctx.path.replace(/\/[0-9A-Z]{26}(?=\/|$)/g, "/:id")}` : undefined,
+      transaction: ctx.path ? `${ctx.method ?? "GET"} ${ctx.path.replace(/\/[0-9A-Z]{26}(?=\/|$)/g, "/:id").replace(/\/shares\/[^/]+/, "/shares/:id")}` : undefined,
       exception: { values: [{ type: e.name, value: e.message, stacktrace: e.stack ? { frames: e.stack.split("\n").slice(1, 30).reverse().map((l) => ({ function: l.trim() })) } : undefined }] },
     };
     const body = `${JSON.stringify({ event_id: eventId, dsn: env.SENTRY_DSN, sent_at: new Date().toISOString() })}\n${JSON.stringify({ type: "event" })}\n${JSON.stringify(event)}\n`;

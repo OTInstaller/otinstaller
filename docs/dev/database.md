@@ -4,8 +4,8 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 `api/migrations/*.sql` and the code in `api/src/`, `api/test/` and `api/scripts/`.
 
 - Binding: `DB`, database name `otinstaller`, `migrations_dir: "migrations"` (`api/wrangler.jsonc`).
-- 42 migrations, `0001` to `0042`.
-- Final schema: **64 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 65. FTS5 also creates its own shadow
+- 43 migrations, `0001` to `0043`.
+- Final schema: **65 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 66. FTS5 also creates its own shadow
   tables, which aren't listed here.
 
 ---
@@ -56,6 +56,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0040 | `0040_drop_stars.sql` | **Drops table `stars` and column `tools.stars_count`**: nothing ever recorded a star. Summaries keep `stars: 0` and `sort=stars` sorts by relevance. |
 | 0041 | `0041_pipx_sandbox.sql` | `versions` + `python_lock` (the dependencies the scanner pinned, one `name==version --hash=sha256:...` line each) and `sandbox_image` (`<mirror host>/<ns>/<name>@sha256:...`, the signed image it built and scanned). |
 | 0042 | `0042_search_fields.sql` | `tools` + `title`, `level`, `format`, `language`, `touches_target`, `auth_required`, `collects_personal_data`, `notifies_target`, `egress`: the latest version's manifest fields search filters on and summaries show, filled for every tool with `SEARCH_FIELDS`. |
+| 0043 | `0043_shares.sql` | New table `shares` (shared results: `ot share`, `otlite share`) with indexes `idx_shares_expires` and `idx_shares_owner`. |
 
 ---
 
@@ -635,6 +636,20 @@ IndexNow (`indexnow.ts`). One row per path, so a page changed twice between runs
   only while `INDEXNOW_KEY` is set and `SITE_URL` is a public https origin.
 - Emptied by `indexnow.ts:flushIndexNow` on every cron run: up to 500 rows a run; rows sent (200/202) or refused for
   good (400/422) are deleted unless re-queued since; rows older than 7 days are dropped.
+
+### 2.13b Shared results (0043)
+
+#### `shares`
+Purpose: saved runs shared for a link that works for 24 hours (`shares.ts`). The runs are in R2 `CONTENT` at
+`shares/<id>.json`; the row says when the link stops working and who may delete it.
+- PK `id` TEXT (`randomToken(16)`, unguessable: the link is the only access control)
+- `owner_id` TEXT → `users(id)` ON DELETE CASCADE: the signed-in sharer, never shown to viewers; NULL when anonymous
+- `delete_hash` TEXT NN: SHA-256 of the delete token handed to the sharer
+- `source` TEXT NN CHECK `('ot', 'otlite')` · `run_count` INTEGER NN · `tools_json` TEXT NN (the tools, in order)
+- `bytes` INTEGER NN · `created_at` INTEGER NN · `expires_at` INTEGER NN (`created_at` + 24 h)
+- Indexes `idx_shares_expires (expires_at)`, `idx_shares_owner (owner_id, expires_at)`
+- Written by `createShare`; deleted with its object by `deleteShare`, the staff takedown and `purgeExpiredShares`
+  (every cron run, 200 at a time).
 
 ### 2.14 Audit
 

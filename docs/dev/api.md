@@ -31,7 +31,7 @@ are also described in `spec/openapi/v1.json`, served at `/v1/openapi.json`, with
 **Token scopes** (`scopes.ts`, migration 0013). A request made with an `ot_` token whose `scoped = 1` must hold the
 scope `requiredScope(method, path)` names, or `enforceScopes` answers 403 `insufficient_scope` (with
 `required_scope` and a `WWW-Authenticate: Bearer error="insufficient_scope"` header). The rule, by path: `/auth/*`,
-`/internal/*`, `/webhooks/*`, `/installs` and `/health` need none; `/admin*` needs `staff`; any other GET, HEAD or
+`/internal/*`, `/webhooks/*`, `/installs`, `/health` and `POST /shares` need none; `/admin*` needs `staff`; any other GET, HEAD or
 OPTIONS needs `read`; `POST /feedback` and `POST /tools/:ns/:name/reports`, `run-reports` and `problem-reports` need
 `feedback`; `POST /publish`,
 `/imports*`, `/sources*` and `/packages/:ns/:name/manifest|sync|source*` need `publish`; every other write (including
@@ -47,7 +47,7 @@ anonymous GET.
 
 ## 1. Routes
 
-Total: **202 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
+Total: **207 routes** on the registry API (`otinstaller-registry-api`), counted from every `app.get/post/put/patch/delete`
 call; the `for` loops in `routes/trust.ts` (`yank`, `unyank`), `routes/community.ts` (a thread's subscription) and
 `routes/requests.ts` (a vote, a request's subscription) register two each. The mirror Worker's OCI routes are in
 section 6 and are not in this count. There is no route for stars (0040 dropped the never-written table; summaries keep
@@ -114,7 +114,7 @@ in code; a Cloudflare rate-limiting rule on the zone covers `/mcp`, `/v1/tools*`
 | POST | `/auth/osintverse/device` | none (user code) | - | routes/device.ts | Form `code`; valid pending code redirects to OSINTverse sign-in (400 HTML page otherwise) |
 | POST | `/auth/osintverse/device/confirm` | one-time confirm token (form) | - | routes/device.ts | Form `id`, `confirm`, `decision`; approve or deny; 410 HTML page if expired |
 
-### 1.4 Me (9)
+### 1.4 Me (10)
 
 | Method | Path | Auth | Caching | Defined in | Notes |
 | --- | --- | --- | --- | --- | --- |
@@ -127,6 +127,7 @@ in code; a Cloudflare rate-limiting rule on the zone covers `/mcp`, `/v1/tools*`
 | GET | `/me/repos` | user | - | routes/imports.ts | `?provider=github|gitlab`, `?q`; GitHub admin or GitLab Maintainer+ public repos, with `published_as` |
 | GET | `/me/transfers` | user | - | routes/transfers.ts | Pending, verified and accepted transfers the user is party to |
 | GET | `/me/backups` | user | - | routes/backups.ts | Backup summary for up to 200 packages in the user's namespaces |
+| GET | `/me/shares` | user | `private, no-store` | routes/shares.ts | The user's shared results that still work, newest first, ≤100: `{id, url, source, run_count, tools, bytes, created_at, expires_at}`. Anonymous shares are never listed |
 
 ### 1.5 Webhooks (2)
 
@@ -219,6 +220,18 @@ Logic in `trusted.ts` and `lib/oidc.ts`; see [architecture.md, flow a3](architec
 | POST | `/feedback` | none (user optional) | - | routes/beta.ts | `{kind: bug|idea|question|other, message (3–5000), email?, page?, source: cli|web, client?}`; 201; rate limited (section 3) |
 
 The beta's staff endpoints (`/admin/feedback`, `/admin/beta-metrics`, `/admin/email-test`) are in 1.10.
+
+### 1.9b Shared results (`routes/shares.ts`, logic in `shares.ts`, 3)
+
+Saved runs `ot share` and `otlite share` upload (`spec/schema/share-v1.json`), readable by anyone with the link for 24
+hours (`SHARE_TTL_MS`). The runs go to R2 `CONTENT` at `shares/<id>.json`, the row to `shares` (0043). Viewers never
+see who shared: `owner_id` is only used for `/me/shares` and deleting. `/me/shares` is in 1.4 and the staff takedown in 1.10.
+
+| Method | Path | Auth | Caching | Defined in | Notes |
+| --- | --- | --- | --- | --- | --- |
+| POST | `/shares` | none (user optional; no scope) | `private, no-store` | routes/shares.ts | `{share: 1, source: ot|otlite, runs: [1–50]}`, each run with `tool`, `runtime`, `input` (strings) and `entities` (`{type, value}`); `run_id`, `case`, `command`, `target`, `stderr_path`, `meta_path`, `output_path`, `output.path` and `output.meta_path` are dropped. 5 MiB by `Content-Length` and by the body read (413 `share_too_large`); 400 `invalid_body`; rate limited (section 3). The id is `randomToken(16)` (22 characters), the delete token `randomToken(32)`, kept as its SHA-256. 201 `{id, url: <SITE_URL>/r/<id>, created_at, expires_at, delete_token, owned, runs, tools}`; `owned` when signed in |
+| GET | `/shares/:id` | none | `private, no-store`; `X-Robots-Tag: noindex` | routes/shares.ts | `{id, source, created_at, expires_at, runs}`, nothing about the sharer. 404 `share_not_found` (unknown, malformed or deleted), 410 `share_expired` from `expires_at` on, before the purge removes it |
+| DELETE | `/shares/:id` | its owner (scope `manage`), or `{delete_token}` | - | routes/shares.ts | 204; 403 `share_forbidden`; 404 `share_not_found`. Deletes the row and the object |
 
 ### 1.9a Community: issues, confirmations, flags, moderation (`routes/community.ts`, 24)
 
@@ -460,7 +473,7 @@ People's profiles (`routes/people.ts`, logic in `people.ts`, 6 routes):
 `refreshContributorStats` recounts everyone who took part on the nightly cron, with one `INSERT OR REPLACE ... SELECT`
 over the author indexes from 0019.
 
-### 1.10 Admin and staff (24)
+### 1.10 Admin and staff (25)
 
 | Method | Path | Auth | Caching | Defined in | Notes |
 | --- | --- | --- | --- | --- | --- |
@@ -489,6 +502,7 @@ over the author indexes from 0019.
 | GET | `/admin/backups/drills` | admin | - | routes/backups.ts | Last 20 drills |
 | POST | `/admin/tools/:ns/:name/legal-hold` | admin | - | routes/backups.ts | `{hold: boolean, reason}` (reason required to set) |
 | POST | `/admin/tools/:ns/:name/:version/backup` | admin | - | routes/backups.ts | `releasePlan(..., "manual")`; `{dispatch: false}` returns the job instead of sending it |
+| DELETE | `/admin/shares/:id` | reviewer | - | routes/shares.ts | Takes down a shared result someone reported; 204, 404 `share_not_found`; audited `share.remove` |
 
 ### 1.11 Internal (5)
 
@@ -580,6 +594,9 @@ count is greater than `limit`. Windows older than a day are deleted nightly by `
 | Install pings | 1 per day per address and version (extra pings answer 204 and are not counted) | `install` / `cf-connecting-ip` + version id | none (204) | index.ts |
 | Feedback, signed in | 10 per hour | `feedback-user` / user id | 429 `too_many_requests` | routes/beta.ts |
 | Feedback, anonymous | 10 per hour | `feedback-ip` / `cf-connecting-ip` | 429 `too_many_requests` | routes/beta.ts |
+| Shared results, signed in | 60 per hour | `share-user` / user id | 429 `too_many_requests` | routes/shares.ts |
+| Shared results, anonymous | 20 per hour | `share-ip` / `cf-connecting-ip` (or `"unknown"`) | 429 `too_many_requests` | routes/shares.ts |
+| Shared result size | 5 MiB (`MAX_SHARE_BYTES`) by `Content-Length` and by the body read; 50 runs (`MAX_SHARE_RUNS`) | | 413 `share_too_large`; 400 `invalid_body` | routes/shares.ts, shares.ts |
 | Manual sync | 10 per rolling hour per source (`MANUAL_SYNC_PER_HOUR`), counted from `sync_events` with `kind = 'manual'` | source | 429 `sync_rate_limited` | routes/sources.ts |
 | OSINTverse device poll | `interval` 5 s; a poll less than 4 s (`(INTERVAL - 1) * 1000`) after the last answers `slow_down` (not an error) | device login | `{status: "slow_down"}` | routes/device.ts |
 | OSINTverse device code | TTL 10 min; rows expired more than 24 h are deleted on each start | | | routes/device.ts |
@@ -642,6 +659,7 @@ GitHub 403 rate-limit bodies).
    asked for them at once (at most 12 community emails a day).
 8. `flushIndexNow(env)` (indexnow.ts): up to 500 queued site paths sent to `https://api.indexnow.org/indexnow` in one
    POST (`host`, `key`, `keyLocation`, `urlList`); a no-op without `INDEXNOW_KEY` or with nothing queued.
+9. `purgeExpiredShares(env)` (shares.ts): up to 200 shared results past `expires_at`, their rows and R2 objects.
 
 `refreshDueProfiles(env)` (profiles.ts) also runs in this block, between the source poll and the stuck-job alert.
 
@@ -884,12 +902,16 @@ route wrappers, so they reach clients the same way.
 | same_source | 409 | routes/sources.ts | yes |
 | source_in_use | 409 | routes/sources.ts | yes |
 | source_not_found | 404 | routes/sources.ts | yes |
+| share_expired | 410 | shares.ts | yes |
+| share_forbidden | 403 | shares.ts | yes |
+| share_not_found | 404 | shares.ts, routes/shares.ts | yes |
+| share_too_large | 413 | routes/shares.ts | yes |
 | sync_rate_limited | 429 | routes/sources.ts | yes |
 | token_not_found | 404 | routes/auth.ts | yes |
 | too_large | 413 | routes/backups.ts | yes |
 | too_many_reports | 429 | routes/trust.ts | yes |
 | too_many_repos | 400 | routes/imports.ts | yes |
-| too_many_requests | 429 | index.ts (30/min writes), routes/beta.ts (10/h feedback), direct.ts (5 namespace attempts a day) | yes, but the doc only describes the 30-a-minute write limit |
+| too_many_requests | 429 | index.ts (30/min writes), routes/beta.ts (10/h feedback), routes/shares.ts (20/h or 60/h shares), direct.ts (5 namespace attempts a day) | yes, but the doc only describes the 30-a-minute write limit |
 | tool_not_found | 404 | catalog.ts, index.ts, routes/guides.ts, sources.ts, trust.ts, transfers.ts, backups.ts; backups.ts (`BackupError`) | yes |
 | tool_removed | 410 (catalog.ts, routes/trust.ts); 409 (routes/sources.ts, backups.ts) | catalog.ts, routes/trust.ts, routes/sources.ts, backups.ts | yes (same code with two statuses) |
 | transfer_not_found | 404 | routes/transfers.ts | yes |
