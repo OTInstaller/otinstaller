@@ -103,8 +103,8 @@ Common causes: the workflow file in registry-ops is out of date with `ops/workfl
 than an hour (the callback then gets 401 `invalid_scan_token`); the callback URL (`API_URL` + `/v1/internal/scans`)
 was unreachable; malformed results (400 `invalid_scan_results`).
 
-`expireStaleScans` does not change the commit status or send an email, so the author still sees "Valid; security
-scans running" on GitHub/GitLab. Tell them to push the tag again. To reproduce a scan locally, take the
+`expireStaleScans` then sets the commit status to `error` ("scan_timeout: ..." with how to release again) and emails
+the author, as for any rejection. To reproduce a scan locally, take the
 `client_payload` (see `scans.ts:dispatchScan`) and run `python ops/scanner/scan.py request.json` without `--post`
 (prints the results), or in the scanner image as in `docs/publishing-setup.md` section 4.
 
