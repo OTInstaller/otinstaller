@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `otlite share` puts saved runs (files, `--case`, or `--tool` with `--target`) on a page on otinstaller.com that anyone with the link can open for 24 hours. The page never says who shared it; the case name, command line and file paths stay on the machine. It asks first, needs `--yes` without a terminal, and `--dry-run` prints what would be uploaded. `otlite shares` lists the links and `otlite shares rm` deletes one early. `OTLITE_API_URL` points it at another registry
 
+## [1.4.0] - 2026-10-27
+
+### Added
+- `otlite start` sets otlite up in one go: checkbox lists of the starter packs (the bundled playbooks) and every tool, a review with the same command to run again, then the notice, the key file and the installs. `--playbooks` and `--tools` take comma-separated names and pre-select them; `--yes` installs them without questions and accepts the notice as `init --yes` does; `--dry-run` (with `--json`) shows what would be installed; `--keys` asks for the tools' API keys afterwards, at a terminal only. Already installed tools are listed but can't be ticked. otinstaller.com/otlite/start builds the command
+
+### Changed
+- New dependency: `questionary`, for the checkbox lists (`python3-questionary` in the Debian package)
+
 ## [1.3.0] - 2026-10-24
 
 ### Added

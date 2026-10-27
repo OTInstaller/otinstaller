@@ -47,6 +47,7 @@ only pipx packages run, with `--native`.
 | otlite | ot | Notes |
 | --- | --- | --- |
 | `otlite init` | nothing to do | There is no global notice to accept: `ot info` and `ot install` show each tool's ethics flags. `ot init` is something else: it scaffolds a manifest for publishing your own tool |
+| `otlite start` | `ot start` | Both pick starter packs and tools from checkbox lists and install them. `ot start` also adds `ot`'s MCP server to AI clients and saves settings; its packs and tools are `namespace/name` packages from the registry (`--tools osintverse-community/sherlock`) |
 | `otlite list` | `ot search <query>` | Filters: `--input username`, `--no-keys`, `--runtime`, `--kind tool` |
 | `otlite list --installed` | `ot list` | |
 | `otlite search <query>` | `ot search <query>` | Searches the whole registry, not a bundled list |

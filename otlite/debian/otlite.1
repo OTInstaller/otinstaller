@@ -1,4 +1,4 @@
-.TH OTLITE 1 "October 2026" "otlite 1.2.0" "User Commands"
+.TH OTLITE 1 "October 2026" "otlite 1.4.0" "User Commands"
 .SH NAME
 otlite \- install, run and update OSINT command line tools by name
 .SH SYNOPSIS
@@ -34,6 +34,13 @@ the first run copies API keys and settings from ~/.otinstaller.
 .B init
 Create ~/.otlite, show the responsible-use notice and ask to accept it.
 Use \fB\-\-yes\fR in scripts.
+.TP
+.B start
+Pick starter packs (the bundled playbooks) and tools from checkbox lists, then accept the
+notice, create the key file and install them in one go. \fB\-\-playbooks\fR and
+\fB\-\-tools\fR take comma-separated names and pre-select them; \fB\-\-yes\fR installs
+them without questions, \fB\-\-dry\-run\fR shows what would be installed, and
+\fB\-\-keys\fR asks for the tools' API keys afterwards.
 .TP
 .BI install " tool" ...
 Install tools. \fB\-\-all\fR installs every tool that needs no setup.

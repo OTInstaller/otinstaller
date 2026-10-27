@@ -90,7 +90,7 @@ jobs:
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             build-essential debhelper dh-python pybuild-plugin-pyproject python3-all \
             python3-hatchling python3-click python3-rich python3-sentry-sdk python3-typer \
-            python3-yaml python3-pytest python3-pytest-asyncio python3-requests git python3-venv
+            python3-yaml python3-questionary python3-pytest python3-pytest-asyncio python3-requests git python3-venv
           python3 --version
           dpkg -l python3-typer python3-click python3-rich python3-sentry-sdk | tail -4
       - name: Build the package (runs the tests)

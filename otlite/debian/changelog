@@ -1,3 +1,11 @@
+otlite (1.4.0-1) unstable; urgency=medium
+
+  * Add otlite start: pick starter packs and tools from checkbox lists, then
+    accept the notice, create the key file and install them in one go.
+  * Depend on python3-questionary for the checkbox lists.
+
+ -- Sushant Koul <sushant@osintverse.com>  Tue, 27 Oct 2026 12:00:00 +0530
+
 otlite (1.3.0-1) unstable; urgency=medium
 
   * Say when a newer otlite is out, with the upgrade command for how it was
