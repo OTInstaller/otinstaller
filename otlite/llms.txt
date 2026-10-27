@@ -47,6 +47,15 @@ Use these instead of tool-specific flags:
 otlite init --yes
 ```
 
+### Set up and install in one go
+```bash
+otlite start --playbooks username-investigation --tools holehe --yes
+otlite start --tools sherlock --dry-run --json
+```
+`otlite start` accepts the notice (with `--yes`, as `init --yes` does), creates the key file and installs the
+starter packs' tools (`--playbooks`, the bundled playbooks) and `--tools`. Without `--yes` it asks with checkbox
+lists, and only at a terminal. `--keys` asks for API keys afterwards, so leave it to the person.
+
 ### Install tools
 ```bash
 otlite install sherlock maigret --yes

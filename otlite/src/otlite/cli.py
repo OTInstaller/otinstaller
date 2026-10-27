@@ -25,6 +25,7 @@ from otlite.config import (
     get_home,
     get_logs_dir,
     get_results_dir,
+    get_state_path,
     get_tools_dir,
     migrate_old_home,
 )
@@ -56,6 +57,18 @@ from otlite.registry import (
 )
 from otlite.results import ResultsDirError, RunMeta, results_paths, write_meta
 from otlite.runner import is_secret_flag, run_tool, run_tools_parallel
+from otlite.start import (
+    Choices,
+    Pack,
+    bundled_packs,
+    command_line,
+    fold,
+    keys_to_set,
+    sample_target,
+    split_names,
+    to_install,
+)
+from otlite.start import check as check_choices
 from otlite.state import get_installed, list_installed
 
 
@@ -2426,6 +2439,246 @@ def init(
         typer.echo(f"Tools directory: {get_tools_dir()}")
         typer.echo(f"Env file: {env_file}")
         _print_about()
+
+
+def _at_terminal() -> bool:
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def _installed_names() -> set[str]:
+    # Reading the state creates ~/.otlite, which a dry run must not do.
+    if not get_state_path().exists():
+        return set()
+    return {t.name for t in list_installed()}
+
+
+def _start_wizard(
+    choices: Choices, tools: list[Tool], packs: list[Pack], installed: set[str]
+) -> Choices | None:
+    """Ask what to install, starting from the options. None means no at the review."""
+    import shutil
+
+    import questionary
+    from questionary import Choice
+
+    from otlite.keys import load_env_file
+
+    width = max(shutil.get_terminal_size().columns - 36, 20)
+
+    def short(text: str) -> str:
+        return text if len(text) <= width else text[: width - 3] + "..."
+
+    picked_packs = questionary.checkbox(
+        "Starter packs (space picks, enter goes on)",
+        choices=[
+            Choice(
+                f"{p.name:<24} {short(p.description)}",
+                value=p.name,
+                checked=p.name in choices.playbooks,
+            )
+            for p in packs
+        ],
+    ).unsafe_ask()
+
+    want = set(choices.tools) | {t for p in packs if p.name in picked_packs for t in p.tools}
+    tool_choices = []
+    for tool in sorted(tools, key=lambda t: t.name):
+        notes = []
+        if tool.api_keys.required or tool.needs_config:
+            notes.append("needs a key")
+        if "dual-use" in tool.capabilities:
+            notes.append("dual-use")
+        title = f"{tool.name:<24} {short(tool.description)}"
+        if notes:
+            title += f" [{', '.join(notes)}]"
+        if tool.name in installed:
+            tool_choices.append(Choice(title, value=tool.name, disabled="installed"))
+        else:
+            tool_choices.append(Choice(title, value=tool.name, checked=tool.name in want))
+    picked = questionary.checkbox("Tools", choices=tool_choices).unsafe_ask()
+
+    chosen = fold(picked, picked_packs, packs, installed)
+    names = to_install(chosen, packs)
+    if keys_to_set(names, tools, load_env_file()):
+        chosen.keys = questionary.confirm(
+            "Set up the API keys these tools use after installing?", default=choices.keys
+        ).unsafe_ask()
+
+    new = [n for n in names if n not in installed]
+    typer.echo("")
+    typer.echo(f"install: {', '.join(new) or 'nothing new'}")
+    if len(new) < len(names):
+        typer.echo(f"already installed: {', '.join(n for n in names if n in installed)}")
+    typer.echo(f"to do this again without questions: {command_line(chosen, yes=True)}")
+    if not questionary.confirm("Go ahead?", default=True).unsafe_ask():
+        return None
+    return chosen
+
+
+def _ask_keys(names: list[str], tools: list[Tool]) -> None:
+    from otlite.keys import load_env_file, set_key
+
+    wanted = keys_to_set(names, tools, load_env_file())
+    if not wanted:
+        typer.echo("the API keys these tools use are already set")
+        return
+    for key, required, used_by in wanted:
+        kind = "needed by" if required else "optional, used by"
+        typer.echo(f"{key} ({kind} {', '.join(used_by)})")
+        value = typer.prompt(
+            "  value, typing hidden (enter skips)", default="", hide_input=True, show_default=False
+        )
+        if value:
+            set_key(key, value)
+            typer.echo(f"  saved to {get_env_file()}")
+        else:
+            typer.echo("  skipped")
+
+
+@app.command(name="start")
+def start(
+    playbooks: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--playbooks", help="Starter packs (bundled playbooks) to install, comma-separated"
+        ),
+    ] = None,
+    tools: Annotated[
+        list[str] | None, typer.Option("--tools", help="More tools to install, comma-separated")
+    ] = None,
+    keys: Annotated[
+        bool,
+        typer.Option(
+            "--keys", help="Ask for the tools' API keys after installing (needs a terminal)"
+        ),
+    ] = False,
+    yes: Annotated[
+        bool,
+        typer.Option(
+            "--yes",
+            "-y",
+            help="Use the options without questions; accepts the notice like init --yes",
+        ),
+    ] = False,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Show what would be installed and change nothing")
+    ] = False,
+    json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
+    no_color: Annotated[bool, typer.Option("--no-color", help="Disable colored output")] = False,
+):
+    """Pick starter packs and tools, then set up otlite and install them in one go."""
+    _require_supported_platform()
+    registry_tools = _load_registry(False)
+    packs = bundled_packs()
+    choices = Choices(playbooks=split_names(playbooks), tools=split_names(tools), keys=keys)
+    errors = check_choices(choices, registry_tools, packs)
+    if errors:
+        if json_output:
+            typer.echo(json.dumps({"errors": errors}))
+        else:
+            for err in errors:
+                typer.echo(f"error: {err}", err=True)
+        raise typer.Exit(code=2)
+    choices.tools = [find_tool(registry_tools, n).name for n in choices.tools]
+    installed = _installed_names()
+
+    wizard = not yes and not dry_run
+    if wizard and json_output:
+        typer.echo("error: --json needs --yes or --dry-run", err=True)
+        raise typer.Exit(code=2)
+    if wizard and not _at_terminal():
+        typer.echo(
+            "error: confirmation needed, run with --yes (or --dry-run to see the plan)", err=True
+        )
+        raise typer.Exit(code=1)
+    if wizard:
+        if banner_enabled(json_output):
+            render_banner(_make_console(no_color), color=not no_color)
+        _require_notice(no_color, json_output)
+        try:
+            picked = _start_wizard(choices, registry_tools, packs, installed)
+        except KeyboardInterrupt:
+            typer.echo("cancelled; nothing was changed", err=True)
+            raise typer.Exit(code=130) from None
+        if picked is None:
+            typer.echo("nothing was changed")
+            return
+        choices = picked
+
+    names = to_install(choices, packs)
+    if dry_run:
+        plan = {
+            "command": command_line(choices, yes=True),
+            "playbooks": choices.playbooks,
+            "tools": choices.tools,
+            "install": [n for n in names if n not in installed],
+            "already_installed": [n for n in names if n in installed],
+            "keys": choices.keys,
+        }
+        if json_output:
+            typer.echo(json.dumps(plan))
+        else:
+            typer.echo(f"install: {', '.join(plan['install']) or 'nothing new'}")
+            if plan["already_installed"]:
+                typer.echo(f"already installed: {', '.join(plan['already_installed'])}")
+            typer.echo(f"command: {plan['command']}")
+        return
+
+    if not has_accepted():
+        # --yes accepts the notice, as `otlite init --yes` does; the wizard has asked already.
+        ensure_dir(get_home())
+        ensure_dir(get_tools_dir())
+        ensure_dir(get_logs_dir())
+        if not json_output:
+            _make_console(no_color).print(NOTICE_TEXT)
+        record_acceptance()
+    _ensure_env_file(json_output)
+
+    failed = 0
+    if names:
+        try:
+            install(
+                names=names,
+                all_tools=False,
+                include_credentialed=False,
+                force=False,
+                yes=True,
+                verbose=False,
+                no_color=no_color,
+                json_output=json_output,
+            )
+        except typer.Exit as exc:
+            failed = exc.exit_code
+    elif not json_output:
+        typer.echo("nothing to install")
+
+    if choices.keys:
+        if _at_terminal() and not json_output:
+            _ask_keys(names, registry_tools)
+        else:
+            from otlite.keys import load_env_file
+
+            missing = [k for k, _, _ in keys_to_set(names, registry_tools, load_env_file())]
+            if missing:
+                typer.echo(
+                    f"note: set {', '.join(missing)} with 'otlite keys set NAME' at a terminal",
+                    err=True,
+                )
+
+    if not json_output:
+        ready = _installed_names()
+        packs_by_name = {p.name: p for p in packs}
+        lines = [
+            f"otlite playbook {p} {sample_target(p)}"
+            for p in choices.playbooks
+            if all(t in ready for t in packs_by_name[p].tools)
+        ]
+        if lines:
+            typer.echo("next:")
+            for line in lines:
+                typer.echo(f"  {line}")
+    if failed:
+        raise typer.Exit(code=failed)
 
 
 keys_app = typer.Typer(no_args_is_help=True, help="Manage API keys.")

@@ -108,6 +108,11 @@ your home directory, without sudo. Newer tool versions come with newer otlite re
 says when one is out. Upgrade with `pipx upgrade otlite` or `uv tool upgrade otlite`, whichever the installer used.
 If you already have pipx, `pipx install otlite` does the same.
 
+To set up several tools at once, run `otlite start`. It shows checkbox lists of the starter packs (the bundled
+playbooks) and every tool, then accepts the notice, creates the key file and installs what you picked, after one
+review. `otlite start --tools sherlock,holehe --yes` does the same without questions, and
+[otinstaller.com/otlite/start](https://otinstaller.com/otlite/start) builds the command for you.
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/OTInstaller/otinstaller/main/otlite/docs/images/otlite-demo.png" alt="Installing and running a tool with otlite" width="820">
 </p>
@@ -269,6 +274,7 @@ otlite run --all --live e:john@example.com
 | Command | What it does |
 | --- | --- |
 | `otlite init` | Create config and directories, accept the notice |
+| `otlite start` / `--playbooks` / `--tools` / `--keys` / `--yes` / `--dry-run` | Pick starter packs and tools from checkbox lists, then set up and install them in one go |
 | `otlite list` / `--installed` | List tools |
 | `otlite search <query>` | Search tools |
 | `otlite info <tool>` or `otlite <tool>` | Show tool details |
