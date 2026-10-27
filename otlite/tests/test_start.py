@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 
 import otlite.cli as cli
 from otlite.cli import app
+from otlite.compat import incompatibility
 from otlite.notice import has_accepted, record_acceptance
 from otlite.registry import default_registry_path, load_registry
 from otlite.start import (
@@ -176,7 +177,12 @@ def _accept(tmp_path):
 
 
 def test_keys_without_a_terminal_are_left_for_later(supported, installs):
-    keyed = next(t for t in _tools() if t.api_keys.required or t.api_keys.optional)
+    # One this Python can install: some keyed tools refuse newer Pythons.
+    keyed = next(
+        t
+        for t in _tools()
+        if (t.api_keys.required or t.api_keys.optional) and incompatibility(t) is None
+    )
     result = runner.invoke(app, ["start", "--tools", keyed.name, "--keys", "--yes"])
     assert result.exit_code == 0, result.output
     assert "otlite keys set" in result.output
