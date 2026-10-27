@@ -542,7 +542,7 @@ and beta work, so `R2_*`, `ISSUES_REPO`/`ISSUES_TOKEN` and `EDGE_CACHE` are only
 | `trusted.ts` | Trusted publishing: a namespace's trusted publishers (add, list, remove), `matchPublisher` (repository, pinned ids, workflow, environment, package, risky events), `exchangeIdToken` (the hour-long restricted CI token), `purgeCiTokens` |
 | `trust.ts` / `transfers.ts` | Yank, deprecate, removal, reports, transparency, rate limits; claims and transfers |
 | `notify.ts` | Resend email with idempotency keys (`notifications` table); skipped when `RESEND_API_KEY` is unset |
-| `ops.ts` | Stuck-job alerts, daily digest, rate-limit purge, Sentry `reportError` |
+| `ops.ts` | Stuck-job alerts, daily digest, rate-limit purge, Sentry `reportError`, `nightly` (runs one nightly step and reports it if it throws) |
 | `changelog.ts` | Release notes: captured from the host's release or the version's `CHANGELOG.md` section at publish, cleaned and rendered |
 | `activity.ts` | `GET /activity`: registry events from the audit log, and with `events=community` confirmed/fixed issues and accepted/published requests, worded from fields |
 | `community.ts` | Issues, comments, confirmations, flags, moderation, roles (`triager`, `reviewer`; tool maintainers), screening (`screen`, `holdReason`), `renderPost`, failed-run reports, the status line, system issues (`fileSystemIssue`, `closeSystemIssue`) |
@@ -552,6 +552,7 @@ and beta work, so `R2_*`, `ISSUES_REPO`/`ISSUES_TOKEN` and `EDGE_CACHE` are only
 | `submissions.ts` | Community wrapper submissions: checks, `dockerfileChecks`, the community bot (`COMMUNITY_*`), the first-release review gate |
 | `upstream-pin.ts` / `upstream.ts` / `bumps.ts` | Reading a wrapper's upstream pin from its Dockerfile; the nightly upstream watcher (`UPSTREAM_WATCH`); bump pull requests, "merge and release", following each release to released or failed (`settleBump`, `sweepBumps`) and releasing on its own in auto mode |
 | `shares.ts` | Shared results (`ot share`, `otlite share`): `cleanShare` checks share-v1 and drops local details, `createShare` (R2 `shares/<id>.json` plus a `shares` row; the owner is never served), `readShare` (410 after 24 hours), `deleteShare` (owner or delete token), `listShares`, `purgeExpiredShares` (every cron run) |
+| `usage.ts` | Usage counts from `ot` (no address, user or token kept): `installInput` and `runsInput` (what may be sent; unknown values dropped or `other`), `recordInstall` and `recordRuns` (refs resolved with aliases, yanked versions counted; per-address caps and once-a-day runners through salted keys in `rate_limits`), `refreshUsage` (nightly `installs_30d`, `runs_30d`, `installs_total`, `runs_total` on `tools`) and `usageReport` (`GET /admin/usage`) |
 | `proposals.ts` | Change proposals: a wrapper's maintainers change its manifest, Dockerfile or README beyond the pin (`checkProposal`), the community bot opens the pull request, a reviewer who isn't the proposer approves it and the bot merges and releases it |
 | `build-watch.ts` | The build watcher: first-party tools' requirements.txt pins against PyPI (issues, dependency update pull requests, auto releases under `UPSTREAM_WATCH`), and each community-namespace build's base image on Docker Hub (rebuilds under `REBUILD_WATCH`) |
 | `first-week.ts` | A new version's first week: its works/broken counts (`firstWeekCounts`) for the status line, the versions list and the activity feed |
@@ -559,7 +560,7 @@ and beta work, so `R2_*`, `ISSUES_REPO`/`ISSUES_TOKEN` and `EDGE_CACHE` are only
 | `mirror/` | The mirror Worker: `index.ts` (entry) and `registry.ts` (OCI API, `imageExists`, `hideImage`, `deleteImage`) |
 | `hosts/` | External services: `github.ts`, `gitlab.ts`, `osintverse.ts` (OIDC), `repo.ts` (`RepoHost` over both), `artifacts.ts` (OCI digest and PyPI wheel checks) |
 | `lib/` | `errors.ts` (`apiError`), `crypto.ts` (hashing, AES-GCM, RS256 JWT, `ulid()`), `manifest.ts` (validator), `images.ts` (metadata stripping, SVG sanitizing), `presign.ts` (R2 SigV4 URLs), `reserved.ts` (namespace names the site's sections take, and the few more a registry namespace can't), `tokens.ts` (the `ot_` token lookup the API and the mirror share, and what a restricted CI token may do), `oidc.ts` (OIDC discovery and keys cached per issuer, EdDSA and RS256 checks, `verifyCiToken` for GitHub Actions and GitLab CI) |
-| `routes/` | One `xxxRoutes(app)` registrar per area: auth, device, webhooks, review, sources, imports, guides, trust, transfers, backups, beta, ops, profiles, community, inbox, requests, people, submissions, upstream, direct, trusted, proposals, shares |
+| `routes/` | One `xxxRoutes(app)` registrar per area: auth, device, webhooks, review, sources, imports, guides, trust, transfers, backups, beta, ops, profiles, community, inbox, requests, people, submissions, upstream, direct, trusted, proposals, shares, usage |
 | `release-templates.ts` | **Generated** from `spec/templates`; don't edit |
 
 Routes only parse input, check permissions and shape responses; domain logic lives in the top-level modules. Route
@@ -589,8 +590,10 @@ nothing cached before a takedown is served again. On a hit the original `Cache-C
   `/guides`, `/tools/:ns/:name[/versions|/:version[/manifest|/scans|/wheel/:file]]`,
   `/namespaces[/:ns[/activity]]` (publisher profiles), `/pivots`
   (follows `spec/pivots.json`), `/removed`, guide pages, tool docs, readmes, `/assets/:sha256.ext`; `POST /installs`
-  (counted once per address, version and day through a salted hash in `rate_limits`; only per-version and
-  per-client-kind daily counts are kept), `POST /feedback`, and shared results (`POST /shares`, `GET` and
+  and `POST /runs` (`usage.ts`: anonymous counts from `ot`, refused with any `Origin`. An install counts once per
+  address, version and day; an address adds at most 200 runs of a package and 2,000 rows a day, and is a package's
+  runner once a day; all through salted hashes in `rate_limits`. Only daily totals per version, client and outcome are
+  kept), `POST /feedback`, and shared results (`POST /shares`, `GET` and
   `DELETE /shares/:id`; `shares.ts`, 24 hours, R2 `shares/<id>.json`). The manifest response includes
   `mirror_image` / `wheel_url` install fallbacks for public backups and, for pipx versions, `python_lock` and (once
   published) `sandbox_image` with `sandbox_signer_identity`/`_issuer` (`backups.ts:pipxInstall`). `GET /tools/:ns/:name` carries `sample`: what the
@@ -615,8 +618,9 @@ nothing cached before a takedown is served again. On a hit the original `Cache-C
   `/packages/:ns/:name/bump`, `/packages/:ns/:name/pulls/:n/release`; `/proposals`, `/packages/:ns/:name/files`,
   `/packages/:ns/:name/proposals[/:n[/review|/viewer]]`; `/activity` (`events=registry|community|all`).
 - Staff (`/admin/...`): review queue, namespace approve/request-changes/reject/verify/suspend, version approve/reject,
-  reports, removals, legal holds, audit log, transfers, bans, feedback triage, beta metrics, manual backups, restore
-  drills, `POST /admin/email-test` (checks the Resend key).
+  reports, removals, legal holds, audit log, transfers, bans, feedback triage, beta metrics, usage (`GET /admin/usage`:
+  installs and runs per package against the period before, outcomes, clients and daily series), manual backups,
+  restore drills, `POST /admin/email-test` (checks the Resend key).
 - Internal: `POST /internal/scans` (scanner callback; on a pass it answers with a backup plan),
   `/internal/backups/objects/*` (signed PUT/GET when R2 credentials aren't set), `POST /internal/backups/:run`,
   `POST /internal/drills/:id`. Scans, backup runs and drills each use their own single-use token (scan 1 h, run 3 h
@@ -660,11 +664,14 @@ nothing cached before a takedown is served again. On a hit the original `Cache-C
    (namespace approval, guides) queue `{ backupVersionId }`. See below.
 6. Every 15 minutes: expire stale scans (1 h), poll due sources, alert on jobs stuck > 30 min, expire backup runs and
    drills, backfill up to 5 versions with no backup, email inbox items due now, send queued pages to IndexNow. `scheduled()` runs this block on
-   **every** trigger, including the nightly, weekly and monthly ones. Nightly also: guide link rechecks (> 20% dead →
-   needs update), the reviewer digest, rate-limit purge, backup purge, locking stale closed threads, recomputing every
+   **every** trigger, including the nightly, weekly and monthly ones. Nightly also, each step through `nightly()`
+   (`ops.ts`: a step that throws is reported to Sentry and the rest still run): first `refreshUsage` (each package's
+   `installs_30d`, `runs_30d`, `installs_total` and `runs_total`), then guide link rechecks (> 20% dead → needs
+   update), the reviewer digest, rate-limit purge, backup purge, locking stale closed threads, recomputing every
    package's health (`refreshAllHealth`, so reports older than 30 days stop counting), daily inbox
-   digests and the inbox purge, the `contributor_stats` recount, queuing every community wrapper's upstream check and every community-namespace build's dependency and base-image check,
-   `installs_30d` recompute.
+   digests and the inbox purge, the `contributor_stats` recount, queuing every community wrapper's upstream check and
+   every community-namespace build's dependency and base-image check, purging idle namespaces and expired CI tokens,
+   and queuing mirror sweeps.
 
 Queue messages (`PublishMessage` in `env.ts`): `{ jobId }`, `{ importId }`, `{ checkVersionId, attempt? }`,
 `{ linkCheckToolId }`, `{ publishVersionId }`, `{ backupVersionId }`, `{ profileNamespaceId }`, `{ upstreamCheckToolId }`,
@@ -726,7 +733,10 @@ cache's epoch (`settings`, 0035), people's profiles and notification settings (`
 `versions.sandbox_image` (pipx sandbox images); 0042 copies the manifest fields search filters on onto `tools`
 (`title`, `level`, `format`, `language`, the four ethics flags, `egress`; `SEARCH_FIELDS` in `catalog.ts`, written by
 `latestMetadata`). 0040 drops the never-written `stars` table and `tools.stars_count` (responses keep `stars: 0`).
-0043 adds `shares` (shared results). That is 65 tables plus `tools_fts`; every
+0043 adds `shares` (shared results). 0044 adds usage counts (`run_counts`, `run_runners`, `install_outcomes`,
+`usage_daily`, and `tools.runs_30d`, `installs_total`, `runs_total`) and rebuilds `install_counts` with a `client`
+column and no foreign key to `versions` (`install_clients` is kept but no longer written). That is 69 tables plus
+`tools_fts`; every
 table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
 
@@ -813,7 +823,9 @@ being wrong.
 inline packages, with
 deterministic IDs like `tool_<ns>_<name>`) for `npm run db:seed` and the tests. It is for **local D1 only**. Never seed
 production from it, from `spec/fixtures`, or with SQL: production packages come only through the real pipeline. It
-inserts 5 namespaces, 11 tools, 13 versions, a source, a guide link and an alias, and no users.
+inserts 5 namespaces, 11 tools, 13 versions, a source, a guide link and an alias, and no users. Each tool's
+`install_counts` and `run_counts` rows are dated the day the seed is loaded (`date('now')`), so the nightly
+`refreshUsage` keeps the seeded numbers for 30 days instead of zeroing them.
 
 ---
 
@@ -1306,7 +1318,7 @@ change. Keep this list current when you fix one or find another.
 - Schema: `versions.status` allows `received`/`validating`, which nothing writes. They stay on purpose: dropping them
   means rebuilding `versions`, and the `DROP TABLE` of a rebuild deletes the old rows first, which cascades into
   `scans`, `pages`, `page_links`, `confirmations`, `run_signals` and `problem_signals` (and trips the foreign keys of
-  `publish_jobs`, `backups`, `install_counts`, `health_checks` and `reports`). Fold it into the next migration that has
+  `publish_jobs`, `backups`, `health_checks` and `reports`). Fold it into the next migration that has
   to rebuild `versions` anyway, and test there that every child table keeps its rows. `tools.latest_version_id` and
   `audit_log.actor_id` have no foreign key.
 

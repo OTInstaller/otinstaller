@@ -4,8 +4,8 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 `api/migrations/*.sql` and the code in `api/src/`, `api/test/` and `api/scripts/`.
 
 - Binding: `DB`, database name `otinstaller`, `migrations_dir: "migrations"` (`api/wrangler.jsonc`).
-- 43 migrations, `0001` to `0043`.
-- Final schema: **65 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 66. FTS5 also creates its own shadow
+- 44 migrations, `0001` to `0044`.
+- Final schema: **69 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 70. FTS5 also creates its own shadow
   tables, which aren't listed here.
 
 ---
@@ -57,6 +57,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0041 | `0041_pipx_sandbox.sql` | `versions` + `python_lock` (the dependencies the scanner pinned, one `name==version --hash=sha256:...` line each) and `sandbox_image` (`<mirror host>/<ns>/<name>@sha256:...`, the signed image it built and scanned). |
 | 0042 | `0042_search_fields.sql` | `tools` + `title`, `level`, `format`, `language`, `touches_target`, `auth_required`, `collects_personal_data`, `notifies_target`, `egress`: the latest version's manifest fields search filters on and summaries show, filled for every tool with `SEARCH_FIELDS`. |
 | 0043 | `0043_shares.sql` | New table `shares` (shared results: `ot share`, `otlite share`) with indexes `idx_shares_expires` and `idx_shares_owner`. |
+| 0044 | `0044_usage.sql` | Usage counts (`usage.ts`): new tables `run_counts`, `run_runners`, `install_outcomes` and `usage_daily`; **rebuilds `install_counts`** with a `client` column (rows before it become `'unknown'`), PK `(tool_id, day, version_id, client)`, no FK to `versions` and index `install_counts_day`; `tools` + `runs_30d`, `installs_total` (filled from `install_counts`) and `runs_total`. `install_clients` stays but is no longer written. Must be applied before an API that reads `runs_30d` is deployed: `SUMMARY_COLUMNS` selects it on every catalog read. |
 
 ---
 
@@ -220,6 +221,9 @@ Purpose: a package (`kind` tool or guide) at `<namespace>/<name>`.
 - `deprecated_message` TEXT · `deprecated_replacement` TEXT (0009)
 - `community_packaged` INTEGER NN default 0
 - `installs_30d` INTEGER NN default 0 (`stars_count` was dropped in 0040)
+- `runs_30d`, `installs_total`, `runs_total` INTEGER NN default 0 (0044): runs that started in the last 30 days (today
+  included), and all-time installs and started runs, from `install_counts` and `run_counts` by the nightly
+  `refreshUsage`, which also recomputes `installs_30d` over the same 30 days
 - `health_status` TEXT NN default `'unknown'` CHECK `('unknown', 'healthy', 'broken', 'not_checked')`; from community
   reports since 0039 (see 3.9), and `not_checked` is no longer set
 - `health_checked_at` INTEGER (0009): since 0039, the latest "works for me" on the latest version in the last 30 days;
@@ -273,17 +277,51 @@ Purpose: links a guide to its `related_tools`.
 - PK `(guide_id, tool_id)`; both → `tools(id)` ON DELETE CASCADE
 - Index `tool_guides_tool (tool_id)` (0007)
 
-#### `install_counts`
-Purpose: daily install counts per version (from `POST /installs`).
-- PK `(tool_id, version_id, day)` · `tool_id` → `tools(id)` ON DELETE CASCADE · `version_id` → `versions(id)`
-- `day` TEXT NN (`YYYY-MM-DD`, UTC) · `count` INTEGER NN default 0
+#### `install_counts` (rebuilt in 0044)
+Purpose: daily install counts per version and kind of client (from `POST /installs`, `usage.ts:recordInstall`), once
+per address, version and day.
+- PK `(tool_id, day, version_id, client)` · `tool_id` → `tools(id)` ON DELETE CASCADE · `version_id` TEXT NN (no FK)
+- `day` TEXT NN (`YYYY-MM-DD`, UTC) · `client` TEXT NN default `'unknown'` CHECK `('cli', 'ci', 'mcp', 'other',
+  'unknown')`; `unknown` only for rows from before 0044 · `count` INTEGER NN default 0
+- Index `install_counts_day (day)`
 
 #### `install_clients` (0013)
-Purpose: daily install counts by kind of client, with no IP, user, token or package.
+Purpose: daily install counts by kind of client, with no IP, user, token or package. **No longer written** since 0044
+(`install_counts.client` has it per package); kept for the days before.
 - PK `(day, client)` · `day` TEXT NN (`YYYY-MM-DD`, UTC) · `client` TEXT NN CHECK in (`cli`, `mcp`, `ci`, `other`) ·
   `count` INTEGER NN default 0
-- Written by `POST /installs` from the body's `client` (anything unknown counts as `other`), in the same batch as
-  `install_counts`.
+
+#### `install_outcomes` (0044)
+Purpose: installs that came from the registry's mirror or wheel copy (`from_backup` on `POST /installs`, counted with
+the install) and installs that failed, by reason (`install_failures` on `POST /runs`).
+- PK `(tool_id, day, version_id, outcome)` · `tool_id` → `tools(id)` ON DELETE CASCADE · `version_id` TEXT NN (no FK)
+- `day` TEXT NN · `outcome` TEXT NN CHECK `('from_backup', 'no_engine', 'pull_failed', 'verify_failed',
+  'build_failed', 'refused', 'interrupted', 'error')` · `count` INTEGER NN default 0 · index `install_outcomes_day (day)`
+
+#### `run_counts` (0044)
+Purpose: daily run counts per version, kind of client and how the run ended (from `POST /runs`,
+`usage.ts:recordRuns`). Never inputs, targets, results or anything that names who ran it.
+- PK `(tool_id, day, version_id, client, outcome)` · `tool_id` → `tools(id)` ON DELETE CASCADE · `version_id` TEXT NN
+  (no FK, so rebuilding `versions` never trips on it)
+- `day` TEXT NN (`YYYY-MM-DD`, UTC, the day the registry received it) · `client` TEXT NN CHECK `('cli', 'ci', 'mcp',
+  'other')`
+- `outcome` TEXT NN CHECK `('ok', 'empty', 'error', 'timeout', 'interrupted', 'engine_error', 'no_engine',
+  'not_started', 'missing_key')`: the first five started (`STARTED` in `usage.ts`), the rest never ran the tool
+- `count` INTEGER NN default 0 · `duration_ms` INTEGER NN default 0 (the sum over runs that started, for the mean)
+- Index `run_counts_day (day)`
+
+#### `run_runners` (0044)
+Purpose: how many addresses ran a package on a day (runs that started), each once, through the `runner` key in
+`rate_limits`.
+- PK `(tool_id, day)` · `tool_id` → `tools(id)` ON DELETE CASCADE · `runners` INTEGER NN default 0 · index
+  `run_runners_day (day)`
+
+#### `usage_daily` (0044)
+Purpose: registry-wide daily counts, one dimension at a time, values from fixed lists only.
+- PK `(day, dim, value)` · `count` INTEGER NN default 0
+- `dim`: `engine`, `via`, `os`, `arch`, `ot_version`, `mcp_client` (counted runs), `milestone` (`first_install`,
+  `first_run`, `first_ok_run`, each once per address a day) and `addresses` (`ran`, `installed`: addresses that ran or
+  installed anything that day)
 
 #### `aliases`
 Purpose: old addresses of transferred or renamed packages.
@@ -620,10 +658,12 @@ Purpose: beta feedback from the site form and `ot feedback`.
 ### 2.13 Rate limits (0009)
 
 #### `rate_limits`
-Purpose: fixed-window counters, for example anonymous reports (5 per hour per IP) and install pings (one per address,
-version and day, so `install_counts` can't be inflated). The nightly cron purges windows older than a day.
+Purpose: fixed-window counters, for example anonymous reports (5 per hour per IP), install pings (one per address,
+version and day, so `install_counts` can't be inflated) and run counts (per address and day: `runs` and `runner` per
+package, `runs-address`, `ran`, `installed` and one `milestone` key each). The nightly cron purges windows older than a
+day.
 - PK `(key, window_start)` · `key` TEXT NN (a salted hash, never the raw IP) · `window_start` INTEGER NN · `count` INTEGER NN default 0
-- Written by `trust.ts` with `INSERT ... ON CONFLICT`.
+- Written by `trust.ts` with `INSERT ... ON CONFLICT` (`overLimit`, and `rateKey` with `hitStatement` for batches).
 
 ### 2.13a IndexNow queue (0037)
 
@@ -861,10 +901,13 @@ Exceptions:
 - **Comma lists, not JSON**: `api_tokens.scopes` (`'read,publish,manage,feedback'`), `accounts.scopes`,
   `notifications.to_email`.
 - **Non-ULID keys**: composite PKs on `namespace_members`, `tool_io`, `tool_secrets`, `tool_guides`,
-  `install_counts`, `install_clients` (day + client), `aliases` (name-based), `rate_limits` (hash + window).
+  `install_counts`, `install_clients` (day + client), `install_outcomes`, `run_counts`, `run_runners`, `usage_daily`,
+  `aliases` (name-based), `rate_limits` (hash + window).
 - **Seed IDs are deterministic, not ULIDs**: `ns_dheeraj`, `tool_<ns>_<name>`, `ver_<ns>_<name>_<version>`, `src_<name>`.
   Tests also insert `ot_test_<id>` tokens.
-- **Not milliseconds**: `install_counts.day` and `install_clients.day` are TEXT `YYYY-MM-DD`; `rate_limits.window_start` is the window start.
+- **Not milliseconds**: the `day` of `install_counts`, `install_clients`, `install_outcomes`, `run_counts`,
+  `run_runners` and `usage_daily` is TEXT `YYYY-MM-DD`; `rate_limits.window_start` is the window start;
+  `run_counts.duration_ms` is a sum of milliseconds.
 - **Provider IDs stored as INTEGER, without an FK**: `installations.github_installation_id`,
   `publish_jobs.installation_id`, `sources.installation_id`.
 - **Missing FKs**: `tools.latest_version_id` and `audit_log.actor_id` have none.
@@ -881,8 +924,10 @@ Exceptions:
 **Local dev** (`api/package.json`):
 - `npm run db:migrate` runs `wrangler d1 migrations apply otinstaller --local`.
 - `npm run db:seed` runs `node scripts/seed.mjs && wrangler d1 execute otinstaller --local --file=.wrangler/seed.sql`.
-  `seed.mjs` writes `DELETE FROM` for `aliases, tool_guides, tool_secrets, sources, tool_io, install_counts, versions,
-  tools, namespaces` (in that order), then the statements from `buildSeedStatements()`.
+  `seed.mjs` writes `DELETE FROM` for `aliases, tool_guides, tool_secrets, sources, tool_io, install_counts,
+  install_outcomes, run_counts, run_runners, usage_daily, versions, tools, namespaces` (in that order), then the
+  statements from `buildSeedStatements()`. Each seeded tool also gets `install_counts` and `run_counts` rows dated
+  `date('now')`, matching its `installs_30d` and `runs_30d`, so the nightly `refreshUsage` keeps them for 30 days.
 - Production uses `npx wrangler d1 migrations apply otinstaller --remote`, only when asked. Production is never seeded.
 
 **Tests** (`api/vitest.config.ts` + `api/test/setup.ts`):

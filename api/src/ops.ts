@@ -53,6 +53,19 @@ export async function purgeRateLimits(env: Env, now = Date.now()) {
 }
 
 /**
+ * Runs one step of the nightly cron. A step that throws is logged and reported to Sentry under one issue per step, and
+ * the steps after it still run.
+ */
+export async function nightly(env: Env, name: string, step: () => Promise<unknown>, now = Date.now()) {
+  try {
+    await step();
+  } catch (e) {
+    console.error(`nightly ${name} failed`, e);
+    await reportError(env, e, { requestId: `cron-${name}-${new Date(now).toISOString().slice(0, 10)}`, path: `/cron/nightly/${name}`, fingerprint: ["nightly", name] });
+  }
+}
+
+/**
  * Sends an exception to Sentry (when SENTRY_DSN is set) through its envelope endpoint. Request headers,
  * cookies and bodies are never included. A fingerprint groups events into one issue whatever their stack.
  */

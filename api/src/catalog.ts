@@ -15,7 +15,7 @@ export const LISTED = `NOT EXISTS (SELECT 1 FROM sources s WHERE s.tool_id = t.i
 
 export const SUMMARY_COLUMNS = `
   t.id, t.rowid AS rowid, n.name AS namespace, t.name, t.kind, t.summary, t.categories, t.status,
-  t.installs_30d, t.health_status, t.health_checked_at, t.community_packaged, t.needs_update, n.verified,
+  t.installs_30d, t.runs_30d, t.health_status, t.health_checked_at, t.community_packaged, t.needs_update, n.verified,
   v.version AS latest_version, v.runtime_kind, v.signer_identity, v.published_at AS published_at,
   t.title, t.level, t.format, t.language,
   (SELECT s.manifest_mode FROM sources s WHERE s.tool_id = t.id) AS manifest_mode,
@@ -47,6 +47,7 @@ export type SummaryRow = {
   categories: string;
   status: string;
   installs_30d: number;
+  runs_30d: number;
   health_status: string;
   health_checked_at: number | null;
   community_packaged: number;
@@ -89,6 +90,8 @@ export function summary(r: SummaryRow) {
     // Nothing records stars; kept at 0 so older clients that read the field keep working.
     stars: 0,
     installs_30d: r.installs_30d,
+    // Runs that started in the last 30 days, counted by ot (src/usage.ts); 0 for guides.
+    runs_30d: r.runs_30d,
     health: r.health_status,
     // When someone last said the latest version works (ms), so the site can say "reported working yesterday"; null
     // when nobody has in 30 days.
