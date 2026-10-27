@@ -114,6 +114,15 @@ otlite results --tool sherlock --since 7d --sort time --json
 otlite results --status failed --sort duration --limit 0 --json
 ```
 
+### Share runs as a link that works for 24 hours
+```bash
+otlite share results/sherlock/johndoe/<run>.txt --dry-run   # what would be uploaded
+otlite share --case acme --yes --json                       # {"id", "url", "expires_at", "delete_token", ...}
+otlite shares --json                                         # links that still work (no tokens)
+otlite shares rm <id>
+```
+Anyone with the link sees the target and everything found; the sharer, case name, command line and paths are not sent. Only share when the person asks for a link.
+
 ### Check API keys
 ```bash
 otlite keys check --json
