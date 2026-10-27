@@ -11491,6 +11491,209 @@
         ],
         "security": []
       }
+    },
+    "/shares": {
+      "post": {
+        "operationId": "create_share",
+        "tags": [
+          "Registry"
+        ],
+        "summary": "Share saved runs for 24 hours (`ot share`, `otlite share`); anonymous unless signed in",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "https://otinstaller.com/schema/share-v1.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created. Keep delete_token: it is the only way to delete an anonymous share early.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {},
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "description": "No sign-in needed and no scope checked. A signed-in sharer owns the share (GET /me/shares lists it); viewers never see who shared it. Run ids, case names, commands and local file paths are dropped. At most 50 runs and 5 MB; 20 shares an hour per address, 60 per account."
+      }
+    },
+    "/shares/{id}": {
+      "get": {
+        "operationId": "get_share",
+        "tags": [
+          "Registry"
+        ],
+        "summary": "A shared result, while its link works",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (never cached)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Share"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "x-scope": "read",
+        "security": [
+          {},
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "description": "No sign-in. 410 share_expired once the 24 hours are up; 404 once deleted."
+      },
+      "delete": {
+        "operationId": "delete_share",
+        "tags": [
+          "Registry"
+        ],
+        "summary": "Delete a shared result before it expires",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "delete_token": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-scope": "manage",
+        "security": [
+          {},
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "description": "Its owner (the session cookie, or a token with the manage scope), or anyone sending the delete_token the upload answered with."
+      }
+    },
+    "/me/shares": {
+      "get": {
+        "operationId": "list_my_shares",
+        "tags": [
+          "Account"
+        ],
+        "summary": "Your shared results that still work",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "shares": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MyShare"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "304": {
+            "description": "Not modified: the If-None-Match ETag still matches"
+          }
+        },
+        "x-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "description": "Needs a sign-in: the session cookie, or an API token with the read scope. Only shares made while signed in are listed."
+      }
     }
   },
   "components": {
@@ -11542,6 +11745,102 @@
       }
     },
     "schemas": {
+      "Share": {
+        "type": "object",
+        "description": "What anyone with the link sees: nothing about who shared it.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "ot",
+              "otlite"
+            ]
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "expires_at": {
+            "type": "integer"
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "https://otinstaller.com/schema/share-v1.json#/$defs/run"
+            }
+          }
+        }
+      },
+      "ShareCreated": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "description": "The page on otinstaller.com"
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "expires_at": {
+            "type": "integer"
+          },
+          "delete_token": {
+            "type": "string"
+          },
+          "owned": {
+            "type": "boolean",
+            "description": "true when the share was made signed in"
+          },
+          "runs": {
+            "type": "integer"
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "MyShare": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "ot",
+              "otlite"
+            ]
+          },
+          "run_count": {
+            "type": "integer"
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "bytes": {
+            "type": "integer"
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "expires_at": {
+            "type": "integer"
+          }
+        }
+      },
       "Error": {
         "title": "OTInstaller error, version 1",
         "description": "The registry API's error body, and what ot prints on stderr (one line) when JSON output is on. Readers must ignore keys they don't know.",

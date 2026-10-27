@@ -885,3 +885,24 @@ The remote server is separate and runs nothing:
    their confirmations since (works, broken); the status line says when it came out; ot outdated adds a note
 ```
 
+
+### m. Shared results: `ot share`, `otlite share`
+
+```
+ person: ot share <run-id | file>... [--case] / otlite share <file>... [--case | --tool]
+   internal/share.FromSaved (ot) | otlite/share.py share_run: the envelope from the sidecar and saved output, raw only
+   up to 1 MiB, without run_id, case, command, target or paths --> share-v1 JSON (<= 50 runs, 5 MiB)
+   asks "Share N runs (tools) on <inputs> for 24 hours?" (--yes without a terminal; MCP share_runs: DecideShare, always)
+   --> POST /v1/shares (ot: the token when signed in, unless --anonymous; otlite: never)
+         overLimit share-ip 20/h | share-user 60/h --> cleanShare (drops local keys again)
+         --> shares row (id randomToken(16), sha256 of the delete token, owner_id or NULL, expires_at = now + 24 h)
+         --> R2 CONTENT shares/<id>.json --> 201 {id, url: SITE_URL/r/<id>, expires_at, delete_token, owned}
+   <-- the delete token goes into <ot home>/shares.json | ~/.otlite/shares.json (0600)
+
+ anyone with the link: otinstaller.com/r/<id> (SSR, noindex, no-store, no-referrer) --> GET /v1/shares/:id
+   (private, no-store, so never edge cached) --> {runs, created_at, expires_at}, never the owner; 410 share_expired
+   from expires_at on; 404 share_not_found once deleted
+ owner: ot shares / otinstaller.com/settings/shares --> GET /v1/me/shares; DELETE /v1/shares/:id (owner or
+   {delete_token}); staff: DELETE /v1/admin/shares/:id (audited share.remove)
+ every cron run: purgeExpiredShares --> up to 200 expired rows and their R2 objects
+```

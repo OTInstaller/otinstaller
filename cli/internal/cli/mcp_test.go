@@ -137,8 +137,8 @@ func TestMCPListsTools(t *testing.T) {
 			t.Errorf("%s: needs a title, description and output schema", tool.Name)
 		}
 	}
-	if len(res.Tools) != 25 {
-		t.Errorf("want 25 tools, got %d", len(res.Tools))
+	if len(res.Tools) != 26 {
+		t.Errorf("want 26 tools, got %d", len(res.Tools))
 	}
 	for _, name := range []string{"search_tools", "get_tool", "get_run", "suggest_pivots", "validate_manifest", "key_setup"} {
 		if tl := byName[name]; tl == nil || !tl.Annotations.ReadOnlyHint {

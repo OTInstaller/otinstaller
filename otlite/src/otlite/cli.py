@@ -2096,6 +2096,153 @@ def results_cmd(
     typer.echo(f"{len(shown)} run{'s' if len(shown) != 1 else ''}{more}")
 
 
+def _stdin_is_terminal() -> bool:
+    return sys.stdin.isatty()
+
+
+@app.command(name="share")
+def share_cmd(
+    files: Annotated[
+        list[str] | None,
+        typer.Argument(help="Saved runs: the .txt output, its .meta.json or its .envelope.json"),
+    ] = None,
+    case: Annotated[str | None, typer.Option("--case", help="Share every run in this case")] = None,
+    tool: Annotated[
+        str | None, typer.Option("--tool", help="Share this tool's newest run (with --target)")
+    ] = None,
+    target: Annotated[
+        str | None, typer.Option("--target", help="With --tool: its newest run against this target")
+    ] = None,
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Share without asking")] = False,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Print what would be uploaded, and upload nothing")
+    ] = False,
+    json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
+):
+    """Share saved runs as a link on otinstaller.com that works for 24 hours."""
+    from otlite import share
+
+    _require_supported_platform()
+    base = get_results_dir()
+    picked: list[Path] = []
+    try:
+        for name in files or []:
+            picked.append(share.find_run(Path(name)))
+        if case:
+            picked.extend(share.runs_in_case(base, case))
+        if tool:
+            picked.append(share.newest_run(base, tool, target))
+        if not picked:
+            typer.echo("error: name the runs to share: result files, --case, or --tool", err=True)
+            raise typer.Exit(code=2)
+        payload = share.build_payload(list(dict.fromkeys(picked)))
+        body = share.encode(payload)
+    except share.ShareError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=2) from None
+
+    if dry_run:
+        typer.echo(json.dumps(payload, indent=2))
+        return
+    if not yes:
+        if not _stdin_is_terminal():
+            typer.echo(
+                "error: sharing puts results on the web, so it asks first; run with --yes", err=True
+            )
+            raise typer.Exit(code=2)
+        typer.echo(share.question(payload))
+        for line in share.DETAILS:
+            typer.echo(f"  - {line}")
+        answer = typer.prompt("Share? [y/N]", default="n", show_default=False)
+        if answer.strip().lower() not in ("y", "yes"):
+            typer.echo("nothing was shared")
+            return
+
+    try:
+        made = share.upload(body)
+    except share.ShareError as exc:
+        typer.echo(f"error: {exc}" + (f" ({exc.hint})" if exc.hint else ""), err=True)
+        raise typer.Exit(code=1) from None
+    try:
+        share.remember(made)
+    except OSError as exc:
+        typer.echo(
+            f"warning: can't save the delete token ({exc}); the link expires in 24 hours", err=True
+        )
+    if json_output:
+        typer.echo(json.dumps(made, indent=2))
+        return
+    from datetime import datetime, timezone
+
+    until = datetime.fromtimestamp(made["expires_at"] / 1000, timezone.utc).strftime(
+        "%Y-%m-%d %H:%M"
+    )
+    runs = made.get("runs", len(payload["runs"]))
+    typer.echo(f"shared {runs} run{'s' if runs != 1 else ''}: {made['url']}")
+    typer.echo(
+        f"the link works until {until} UTC; delete it sooner with: otlite shares rm {made['id']}"
+    )
+
+
+shares_app = typer.Typer(
+    help="List or delete the links otlite share made.", invoke_without_command=True
+)
+app.add_typer(shares_app, name="shares")
+
+
+@shares_app.callback()
+def shares_list(
+    ctx: typer.Context,
+    json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
+):
+    """List the links made on this machine that still work."""
+    from otlite import share
+
+    if ctx.invoked_subcommand:
+        return
+    rows = [{k: v for k, v in s.items() if k != "delete_token"} for s in share.load_shares()]
+    if json_output:
+        typer.echo(json.dumps({"shares": rows}, indent=2))
+        return
+    if not rows:
+        typer.echo("no shared links that still work; otlite share makes one")
+        return
+    from datetime import datetime, timezone
+
+    table = Table(show_header=True, header_style="bold")
+    for column in ("ID", "Expires (UTC)", "Tools", "Link"):
+        table.add_column(column)
+    for s in rows:
+        until = datetime.fromtimestamp(s["expires_at"] / 1000, timezone.utc)
+        tools = ", ".join(str(t).split("@", 1)[0] for t in s.get("tools") or [])
+        table.add_row(s["id"], until.strftime("%Y-%m-%d %H:%M"), tools, s["url"])
+    _make_console(False).print(table)
+
+
+@shares_app.command(name="rm")
+def shares_rm(
+    share_id: Annotated[str, typer.Argument(help="The share's id, or its link")],
+):
+    """Delete a shared link before it expires."""
+    from otlite import share
+
+    share_id = share_id.strip().rstrip("/").rsplit("/r/", 1)[-1]
+    token = next((s["delete_token"] for s in share.load_shares() if s.get("id") == share_id), None)
+    if not token:
+        typer.echo(f"error: no delete token for {share_id} on this machine", err=True)
+        raise typer.Exit(code=2)
+    try:
+        deleted = share.delete(share_id, token)
+    except share.ShareError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+    share.forget(share_id)
+    if deleted:
+        typer.echo(f"deleted {share_id}; the link no longer works")
+    else:
+        typer.echo(f"{share_id} was already deleted or has expired")
+
+
 @app.command(name="auto")
 def auto(
     target: Annotated[

@@ -39,6 +39,8 @@ import { proposalRoutes } from "./routes/proposals";
 import { deliverInbox, purgeInbox } from "./inbox";
 import { directRoutes } from "./routes/direct";
 import { trustedRoutes } from "./routes/trusted";
+import { shareRoutes } from "./routes/shares";
+import { purgeExpiredShares } from "./shares";
 import { purgeIdleNamespaces } from "./direct";
 import { purgeCiTokens } from "./trusted";
 import { refreshDueProfiles } from "./profiles";
@@ -105,6 +107,7 @@ upstreamRoutes(app);
 directRoutes(app);
 trustedRoutes(app);
 proposalRoutes(app);
+shareRoutes(app);
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
@@ -629,6 +632,8 @@ export default {
     await deliverInbox(env, "immediate");
     // Site pages releases, yanks, takedowns and moves changed, sent to IndexNow's search engines in one request.
     await flushIndexNow(env).catch((e) => console.error("sending IndexNow URLs failed", e));
+    // Shared results whose 24 hours are up (they already answer 410).
+    await purgeExpiredShares(env).catch((e) => console.error("purging expired shares failed", e));
     // Weekly (Mondays): a git backup of every active source, for code pushed between releases.
     if (event.cron === WEEKLY_BACKUP_CRON) await weeklyBackups(env);
     // Monthly: restore a random bundle into an empty repository and pull a mirrored image by digest.

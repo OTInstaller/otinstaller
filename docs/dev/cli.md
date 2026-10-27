@@ -35,11 +35,11 @@ Conventions used here:
 ## 1. Commands
 
 Registered in `Root()` (`cli/root.go`) in this order: init, validate, start, search, info, changelog, install, run, playbook,
-auto, runs, issues, request, extract, diff, list, outdated, update, uninstall, keys, doctor, login, logout, whoami, import,
+auto, runs, share, shares, issues, request, extract, diff, list, outdated, update, uninstall, keys, doctor, login, logout, whoami, import,
 publish, namespace, sync, guide, docs, report, feedback, claim, transfer, yank, deprecate, self-update, release, mcp,
-pivot, token, profile. 42 top-level commands,
+pivot, token, profile. 44 top-level commands,
 plus subcommands `keys set|setup|list|rm`, `guide search|read|open|get|tools`, `mcp install|audit|policy|tools`
-(with `mcp policy reset`), `token create|list|revoke` and `namespace create`.
+(with `mcp policy reset`), `token create|list|revoke`, `shares rm` and `namespace create`.
 
 Commands that print data also print JSON with the global `--json` flag (or `OT_OUTPUT=json`); the per-command
 `--json` rows below are that flag. Nothing prompts without a terminal: see [section 2](#2-global-and-persistent-flags).
@@ -370,6 +370,35 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   time, case, saved path, warnings, the first ten distinct entities and, when it found any, a line suggesting `ot pivot <id>`; JSON is the sidecar.
 - No API. Exit: 0, also when nothing is found; 2 for a bad flag value or an unknown run id (`run_not_found`).
 
+#### `ot share [run-id | saved file]...`
+- File: `cli/share.go` (`shareCmd`, `collectSaved`, `buildShare`); the upload is built by `internal/share`
+  (`FromSaved`, `Encode`). Args: any number.
+- Flags: `--case` (string): every saved run under `<dir>/cases/<case>` of `resultDirs()`; `--anonymous` (bool): send
+  no token, so the share isn't linked to the account; `-y`/`--yes` (bool): don't ask; `--dry-run` (bool): print the
+  share-v1 JSON and upload nothing; `--json`.
+- Runs: each argument is an existing saved file (an output or its `.meta.json`) or a run id (`findSavedRun`), plus
+  the case's runs; each run once, in that order. Each becomes the envelope rebuilt from its sidecar and saved output
+  (`envelope.ParseOutput` by the file's extension), without `run_id`, `case`, `command`, `target` or any path. An
+  output over 1 MiB (`share.MaxRaw`) goes without `raw` (`output.raw_omitted`, and a warning). Over 50 runs or 5 MiB
+  of JSON is refused before the upload (exit 2, `share_too_large`).
+- Asks at a terminal (`Share N runs (tools) on <inputs> for 24 hours?`, with what goes and whether it is linked to the
+  account) unless `--yes`; without a terminal it needs `--yes` (exit 2, `input_required`). A no shares nothing (exit 0).
+- API: `POST /shares` with the token when signed in, else (or with `--anonymous`) without. The answer's delete token
+  is added to `<ot home>/shares.json`. Output: `Shared N runs: <url>` and when the link stops working; JSON is the
+  API's answer (`id`, `url`, `created_at`, `expires_at`, `delete_token`, `owned`, `runs`, `tools`).
+- Sign-in: no. Exit: 0; 2 for no runs named, an unknown run id (`run_not_found`), no `--yes` without a terminal, too
+  much to share or a registry 4xx; 1 when a saved output can't be read or the registry fails.
+
+#### `ot shares` (`shares rm`)
+- File: `cli/share.go` (`sharesCmd`, `listShares`). `ot shares`: `NoArgs`; lists the shares in `<ot home>/shares.json`
+  that still work and, when signed in, `GET /me/shares` (a failure is a `warning:`), merged by id, newest first.
+  Table `ID EXPIRES TOOLS URL`; JSON `{shares: [{id, url, created_at, expires_at, tools, owned, here}]}` (`here`: this
+  machine has its delete token). Delete tokens are never printed.
+- `ot shares rm <id | link>`: `ExactArgs(1)`; takes the id or the link it ends. With this machine's delete token,
+  `DELETE /shares/:id` `{delete_token}` without the token; else, signed in, as the owner; else exit 2
+  (`share_forbidden`). `share_not_found` (already deleted or expired) is not an error. Removes the id from
+  `shares.json`. JSON `{id, deleted}`.
+
 #### `ot issues <namespace/name>`
 - File: `cli/issues.go` (`issuesCmd`). Args: `ExactArgs(1)`; a local path or a bad reference is exit 2.
 - Flags: `--all` (bool): closed issues too; `--json`.
@@ -429,8 +458,9 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 
 #### `ot mcp`
 - File: `cli/mcp_cmd.go` (the command and its subcommands), `mcp_server.go` (server, consent flow), `mcp_tools.go`
-  (read-only tools), `mcp_run.go` (install, uninstall, run, cancel), `mcp_content.go` (resources and prompts); rules
-  in `internal/agent`.
+  (read-only tools), `mcp_run.go` (install, uninstall, run, cancel), `mcp_share.go` (`share_runs`: always asks,
+  `agent.DecideShare`, run ids only, never paths; the agent never sees the delete token), `mcp_content.go`
+  (resources and prompts); rules in `internal/agent`.
 - `ot mcp`: `NoArgs`; flag `--results-dir` (string): where runs are saved, else `$OT_RESULTS_DIR`, else
   `<ot home>/results` (not `./results`, since a client starts the server in an arbitrary folder). Loads the policy (a
   broken policy file → exit 2), sets `AgentMode`, prints one line on stderr and serves MCP over stdio until the client
@@ -953,7 +983,8 @@ Data directory (`state.Home()`): `$OT_HOME` if set; else on Windows `%APPDATA%\o
 | `<home>/guides/<ns>/<name>/<version>/` | `guide get` | every page as Markdown at its nav path, plus `guide.json` (the guide detail); read by `guide read` offline |
 | `<home>/pipx/`, `<home>/bin/` | native pipx installs | ot's own `PIPX_HOME` and `PIPX_BIN_DIR`; native runs execute `<home>/bin/<command>[.exe]` |
 | `<home>/agent-policy.json` | `ot mcp policy reset` (else the user) | the agent policy: `enabled`, `mode`, `allow_tools`, `deny_tools`, `auto_approve`, `consent_ttl_minutes`, `max_runs_per_hour`, `max_parallel`, `max_runs_per_target_per_hour`, `max_output_chars`, `allow_install`, `redact_targets_in_audit`; missing fields keep their defaults, a broken file is an error |
-| `<home>/agent-audit.jsonl` (+ `.1` to `.4`) | `ot mcp`, unattended `ot run`/`--all`/`playbook`/`auto` | one JSON line per install, uninstall or run: time, client, action, tool and digest, inputs (or only their hash), class, consent, outcome, run id; rotated at 10 MiB |
+| `<home>/agent-audit.jsonl` (+ `.1` to `.4`) | `ot mcp`, unattended `ot run`/`--all`/`playbook`/`auto` | one JSON line per install, uninstall, run or share: time, client, action, tool and digest, inputs (or only their hash), class, consent, outcome, run id (a share's run ids, comma-separated, and `share`, its id); rotated at 10 MiB |
+| `<home>/shares.json` | `share`, `shares rm`, MCP `share_runs` | the shares made on this machine that still work: `[{id, url, delete_token, created_at, expires_at, tools, owned}]`; expired ones dropped on each read; written atomically, mode 0600 (the delete tokens are credentials) |
 | `<home>/results/` | `ot mcp` | default results directory under `ot mcp` |
 | `<home>/playbooks/*.yaml|*.yml` | user | user playbooks (read only) |
 | `./playbooks/*.yaml|*.yml` | user | project playbooks (read only; win over home and bundled) |
@@ -1004,8 +1035,8 @@ the wheel plus `requirements.lock`, the registry's `python_lock`, installed with
 
 | Package | One line |
 | --- | --- |
-| `agent` | Consent classes (`Classify`, `Describe`), the policy file (`LoadPolicy`, `DefaultPolicy`), sessions (`DecideRun`, approvals, limits), consent tokens (`CallHash`, `Seal`/`Open`, single use), the audit log (`Record`, `ReadAudit`, rotation) |
-| `api` | Registry HTTP client: `do`, error shape `*api.Error`, search, tool/manifest/versions, install ping, device login, `/me`, tokens, guides and docs, imports, sync, removals, reports, claims and transfers, yank/deprecate, feedback, community issues, run reports, confirmations and tool requests; `Version` carries `changelog` |
+| `agent` | Consent classes (`Classify`, `Describe`), the policy file (`LoadPolicy`, `DefaultPolicy`), sessions (`DecideRun`, `DecideShare`, approvals, limits), consent tokens (`CallHash`, `Seal`/`Open`, single use), the audit log (`Record`, `ReadAudit`, rotation) |
+| `api` | Registry HTTP client: `do`, error shape `*api.Error`, search, tool/manifest/versions, install ping, device login, `/me`, tokens, guides and docs, imports, sync, removals, reports, claims and transfers, yank/deprecate, feedback, community issues, run reports, confirmations, tool requests and shares (`CreateShare`, `MyShares`, `DeleteShare`); `Version` carries `changelog` |
 | `cli` | Every cobra command, the `App` struct, exit codes, `ExitError`, `Main`, `ExitCodeFor`, JSON errors (`machine.go`), the MCP server (`mcp_*.go`) |
 | `envelope` | The result envelope (`Version = 1`), `ParseOutput` for json/jsonl/csv/text, `Write` for json/raw/csv/table |
 | `keys` | Keychain storage (service `osintverse-ot`), env-first `Get`, `keys.json` name index |
@@ -1015,6 +1046,7 @@ the wheel plus `requirements.lock`, the registry's `python_lock`, installed with
 | `runner` | Engine detection, install (docker pull + cosign, mirror and wheel fallbacks, pipx native or sandbox image), run, container args, input resolution, typed inputs, command building, target type detection with embedded `tlds.txt` |
 | `scaffold` | Files `ot init` writes, git remote and kind detection, embedded release templates (`go generate` from `spec/templates`) |
 | `oci` | `ot publish --image`: `Read` unpacks an OCI layout or docker-archive tar (gzipping docker-archive layers, dropping index platforms whose blobs are missing); `Registry.Push` uploads blobs in `ChunkSize` (50 MiB) PATCHes with a token from the registry's `/token`, then platform manifests and the tag. Standard library only |
+| `share` | `ot share`'s upload (`spec/schema/share-v1.json`): `FromSaved` rebuilds a saved run's envelope without local details, `Encode` checks the registry's limits; `Load`/`Remember`/`Forget` keep `shares.json` |
 | `selfupdate` | Release lookup (get.otinstaller.com, else the GitHub API), Ed25519-signed checksums, archive SHA-256, extraction, atomic replace |
 | `specfiles` | Embedded copies of `spec/schema/{envelope,run-all,error}-v1.json`, `spec/pivots.json` and `spec/types.json` (`go generate`) |
 | `state` | Data directory, `state.json` load/atomic save, `config.json` with env overrides (`LoadConfig`), as written (`FileConfig`) and changed by `ot start` (`SetConfig`) |

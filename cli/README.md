@@ -25,6 +25,7 @@ ot search email                                        # tools that take an emai
 ot run osintverse-community/holehe e:someone@example.com
 ot runs                                                # every run is saved under ./results; `ot runs <run-id>` shows one
 ot pivot <run-id>                                      # what to run next on what a run found
+ot share <run-id>                                      # a link to the run's results that works for 24 hours
 ```
 
 Typed inputs fill the matching input of any tool: `u:` username, `e:` email, `d:` domain, `p:` phone, `ip:` IP address

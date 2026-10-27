@@ -5,7 +5,7 @@ export const RESERVED_NAMESPACES = new Set([
   "docs", "policy", "schema", "admin", "category", "input", "settings", "transfers", "guides", "search", "import", "feedback",
   "dashboard", "removed", "publish", "tour", "otlite", "agents", "new", "404", "500", "learn", "community", "unsubscribe",
   "requests", "people", "submissions", "changelog", "blog", "api", "mcp", "feed", "login", "logout", "about", "notifications",
-  "start",
+  "start", "r",
 ]);
 
 // A namespace made on the registry itself (`ot namespace create`, direct.ts) can't take these either: names that pass

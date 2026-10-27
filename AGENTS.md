@@ -296,7 +296,7 @@ stderr and returns `ExitCodeFor(err)`. `cli/README.md` ships in the release arch
 ### Commands
 
 Setup: `start`. Packages: `search`, `info`, `changelog`, `install`, `list`, `uninstall`, `outdated`, `update`. Running: `run`, `auto`, `playbook`,
-`runs`, `extract`, `diff`, `pivot`, `keys set|setup|list|rm`, `doctor`. Agents: `mcp` (`mcp install|audit|policy [reset]|tools`).
+`runs`, `share`, `shares [rm]`, `extract`, `diff`, `pivot`, `keys set|setup|list|rm`, `doctor`. Agents: `mcp` (`mcp install|audit|policy [reset]|tools`).
 Guides: `guide search|read|open|get|tools`, `docs`. Publishing: `init`, `validate`, `import`, `publish`,
 `namespace create`, `sync`, `release`,
 `login` (`--gitlab`, `--osintverse`, `--scope`, `--print-token`), `logout`, `whoami`, `token create|list|revoke`, `profile`.
@@ -310,7 +310,7 @@ warns about installed versions that were removed; it and the root `PersistentPos
 
 Each is an `(a *App) xxxCmd() *cobra.Command` method. Files: `packages.go` (search/info/install/list/uninstall),
 `update.go` (outdated/update), `run_cmd.go` + `run_all.go` (run), `auto.go`, `playbook.go`, `starter.go` (what to
-install when nothing takes a target), `runs.go` (runs), `saved.go` (extract/diff), `pivot.go`, `run.go`
+install when nothing takes a target), `runs.go` (runs), `share.go` (share/shares), `saved.go` (extract/diff), `pivot.go`, `run.go`
 (keys/doctor), `keysetup.go` (keys setup), `guide.go` (guide/docs), `init_validate.go`,
 `import.go`, `publish.go`, `namespace.go`, `sync.go`, `release.go`, `login.go`, `token.go`, `trust.go`
 (report/claim/transfer/yank/deprecate), `issues.go` (issues, and `report --works|--broken`), `request.go` (request),
@@ -351,6 +351,10 @@ install when nothing takes a target), `runs.go` (runs), `saved.go` (extract/diff
 - `ot runs [run-id]` lists saved runs newest first from `resultDirs()` (`listSavedRuns`, shared with MCP's
   `list_runs`), or shows one and points at `ot pivot`. `ot extract` and `ot diff` read saved results (indicators; the
   two latest runs compared).
+- `ot share <run-id | file>...` (or `--case`) uploads saved runs (`internal/share`, `spec/schema/share-v1.json`) for an
+  `otinstaller.com/r/<id>` link that works for 24 hours, without run ids, case names, command lines or paths. It asks
+  first (`--yes` without a terminal), links the share to the signed-in account unless `--anonymous`, and keeps each
+  delete token in `<ot home>/shares.json`; `ot shares [rm <id>]` lists or deletes them.
 - `ot outdated` / `ot update` compare installed packages with the registry (`GET /tools/:ns/:name` and `/versions`,
   four at a time); rows carry lifecycle `flags` (`deprecated`, `possibly_broken`, `yanked`, `source_unavailable`,
   `moved`, `held`) and `replacement`, each with a `warning:` line (`held` gets a `note:`). `update` installs newer
@@ -547,6 +551,7 @@ and beta work, so `R2_*`, `ISSUES_REPO`/`ISSUES_TOKEN` and `EDGE_CACHE` are only
 | `people.ts` | Contributor profiles and the nightly `contributor_stats` recount |
 | `submissions.ts` | Community wrapper submissions: checks, `dockerfileChecks`, the community bot (`COMMUNITY_*`), the first-release review gate |
 | `upstream-pin.ts` / `upstream.ts` / `bumps.ts` | Reading a wrapper's upstream pin from its Dockerfile; the nightly upstream watcher (`UPSTREAM_WATCH`); bump pull requests, "merge and release", following each release to released or failed (`settleBump`, `sweepBumps`) and releasing on its own in auto mode |
+| `shares.ts` | Shared results (`ot share`, `otlite share`): `cleanShare` checks share-v1 and drops local details, `createShare` (R2 `shares/<id>.json` plus a `shares` row; the owner is never served), `readShare` (410 after 24 hours), `deleteShare` (owner or delete token), `listShares`, `purgeExpiredShares` (every cron run) |
 | `proposals.ts` | Change proposals: a wrapper's maintainers change its manifest, Dockerfile or README beyond the pin (`checkProposal`), the community bot opens the pull request, a reviewer who isn't the proposer approves it and the bot merges and releases it |
 | `build-watch.ts` | The build watcher: first-party tools' requirements.txt pins against PyPI (issues, dependency update pull requests, auto releases under `UPSTREAM_WATCH`), and each community-namespace build's base image on Docker Hub (rebuilds under `REBUILD_WATCH`) |
 | `first-week.ts` | A new version's first week: its works/broken counts (`firstWeekCounts`) for the status line, the versions list and the activity feed |
@@ -554,7 +559,7 @@ and beta work, so `R2_*`, `ISSUES_REPO`/`ISSUES_TOKEN` and `EDGE_CACHE` are only
 | `mirror/` | The mirror Worker: `index.ts` (entry) and `registry.ts` (OCI API, `imageExists`, `hideImage`, `deleteImage`) |
 | `hosts/` | External services: `github.ts`, `gitlab.ts`, `osintverse.ts` (OIDC), `repo.ts` (`RepoHost` over both), `artifacts.ts` (OCI digest and PyPI wheel checks) |
 | `lib/` | `errors.ts` (`apiError`), `crypto.ts` (hashing, AES-GCM, RS256 JWT, `ulid()`), `manifest.ts` (validator), `images.ts` (metadata stripping, SVG sanitizing), `presign.ts` (R2 SigV4 URLs), `reserved.ts` (namespace names the site's sections take, and the few more a registry namespace can't), `tokens.ts` (the `ot_` token lookup the API and the mirror share, and what a restricted CI token may do), `oidc.ts` (OIDC discovery and keys cached per issuer, EdDSA and RS256 checks, `verifyCiToken` for GitHub Actions and GitLab CI) |
-| `routes/` | One `xxxRoutes(app)` registrar per area: auth, device, webhooks, review, sources, imports, guides, trust, transfers, backups, beta, ops, profiles, community, inbox, requests, people, submissions, upstream, direct, trusted, proposals |
+| `routes/` | One `xxxRoutes(app)` registrar per area: auth, device, webhooks, review, sources, imports, guides, trust, transfers, backups, beta, ops, profiles, community, inbox, requests, people, submissions, upstream, direct, trusted, proposals, shares |
 | `release-templates.ts` | **Generated** from `spec/templates`; don't edit |
 
 Routes only parse input, check permissions and shape responses; domain logic lives in the top-level modules. Route
@@ -585,14 +590,15 @@ nothing cached before a takedown is served again. On a hit the original `Cache-C
   `/namespaces[/:ns[/activity]]` (publisher profiles), `/pivots`
   (follows `spec/pivots.json`), `/removed`, guide pages, tool docs, readmes, `/assets/:sha256.ext`; `POST /installs`
   (counted once per address, version and day through a salted hash in `rate_limits`; only per-version and
-  per-client-kind daily counts are kept), `POST /feedback`. The manifest response includes
+  per-client-kind daily counts are kept), `POST /feedback`, and shared results (`POST /shares`, `GET` and
+  `DELETE /shares/:id`; `shares.ts`, 24 hours, R2 `shares/<id>.json`). The manifest response includes
   `mirror_image` / `wheel_url` install fallbacks for public backups and, for pipx versions, `python_lock` and (once
   published) `sandbox_image` with `sandbox_signer_identity`/`_issuer` (`backups.ts:pipxInstall`). `GET /tools/:ns/:name` carries `sample`: what the
   scanner's smoke test of the latest version produced (first five entities, or the start of stdout), which the tool
   page shows as its sample output.
 - Auth: `/auth/:provider/login|callback` (github, gitlab, osintverse), `/auth/logout`, `/auth/device/start|token`,
   `POST /auth/oidc/token` (a CI run's ID token for a restricted token: trusted publishing),
-  `/me`, `/me/tokens`, `/me/publish-jobs[/:id]`, `/me/repos`, `/me/transfers`, `/me/backups`,
+  `/me`, `/me/tokens`, `/me/publish-jobs[/:id]`, `/me/repos`, `/me/transfers`, `/me/backups`, `/me/shares`,
   `/me/namespaces/:ns/profile[/preview|/sync|/hosts[/:provider]]` (an owner's profile settings),
   `/me/namespaces/:ns/trusted-publishers[/:id]` (an owner's trusted publishers).
 - Publishing: `POST /webhooks/github` (HMAC), `POST /webhooks/gitlab` (per-source token), `/imports...`,
@@ -720,7 +726,7 @@ cache's epoch (`settings`, 0035), people's profiles and notification settings (`
 `versions.sandbox_image` (pipx sandbox images); 0042 copies the manifest fields search filters on onto `tools`
 (`title`, `level`, `format`, `language`, the four ethics flags, `egress`; `SEARCH_FIELDS` in `catalog.ts`, written by
 `latestMetadata`). 0040 drops the never-written `stars` table and `tools.stars_count` (responses keep `stars: 0`).
-That is 64 tables plus `tools_fts`; every
+0043 adds `shares` (shared results). That is 65 tables plus `tools_fts`; every
 table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
 
@@ -940,7 +946,8 @@ official Go SDK. Tools run on the person's machine in the same sandbox as `ot ru
 - Read-only tools (`mcp_tools.go`): `search_tools`, `get_tool`, `list_installed`, `list_types`, `key_setup`,
   `suggest_pivots`, `detect_type`, `list_playbooks`, `get_playbook`, `list_runs`, `get_run`, `extract_indicators`,
   `diff_runs`, `search_guides`, `read_guide`, `validate_manifest`, `doctor`, `get_consent_status`. Tools with effects
-  (`mcp_run.go`): `install_tool`, `uninstall_tool`, `run_tool`, `run_all`, `run_playbook`, `cancel_run`. Resources
+  (`mcp_run.go`): `install_tool`, `uninstall_tool`, `run_tool`, `run_all`, `run_playbook`, `cancel_run`, and
+  `share_runs` (`mcp_share.go`), which always asks (`agent.DecideShare`) and never hands the agent the delete token. Resources
   (`ot://schema/...`, `ot://types`, `ot://policy/...`, `ot://runs/{run_id}`, `ot://cases/{case}`, tool manifests,
   guide pages) and prompts (`investigate_*`, `pivot_from_run`, `compare_runs`, `write_playbook`, `publish_tool`) are in
   `mcp_content.go`. Every result that carries tool output starts with a note that it is untrusted data, not instructions.

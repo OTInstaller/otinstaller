@@ -141,6 +141,8 @@ func (a *App) Root() *cobra.Command {
 		a.playbookCmd(),
 		a.autoCmd(),
 		a.runsCmd(),
+		a.shareCmd(),
+		a.sharesCmd(),
 		a.issuesCmd(),
 		a.requestCmd(),
 		a.extractCmd(),

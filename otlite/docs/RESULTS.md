@@ -66,6 +66,17 @@ first. `--tool`, `--target`, `--case`, `--status` and `--since` (an age such as 
 `--sort time|tool|target|duration|size` and `--reverse` order them; `--limit` (default 50, `0` for all) caps the list;
 `--json` prints the sidecars with a `meta_path` field. Sidecars that can't be read are skipped.
 
+## Sharing runs
+
+`otlite share` uploads saved runs to the OTInstaller registry for a page at `otinstaller.com/r/<id>` that anyone with
+the link can open for 24 hours; then the registry deletes them. Runs are named by file (`.txt`, `.meta.json` or
+`.envelope.json`), by `--case`, or by `--tool` (with `--target`) for the newest run. Each run goes as its envelope,
+plus the output text as `raw` (left out over 1 MB, with `output.raw_omitted`), without `case` or `output.path`; the
+`.meta.json` itself, with its command line, is never sent. The upload's format is `share-v1`
+(`https://otinstaller.com/schema/share-v1.json`). Shares are anonymous: otlite has no account to link them to. The
+delete token the registry returns is kept in `~/.otlite/shares.json` (mode 600); `otlite shares` lists the links that
+still work and `otlite shares rm <id>` deletes one.
+
 ## Worked example
 
 ```bash

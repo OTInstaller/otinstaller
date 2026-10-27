@@ -52,6 +52,7 @@ func (a *App) newMCPServer(ctx context.Context, p *agent.Policy) *mcpServer {
 		&mcp.ServerOptions{Instructions: mcpInstructions})
 	s.addReadTools()
 	s.addRunTools()
+	s.addShareTool()
 	s.addResources()
 	s.addPrompts()
 	return s

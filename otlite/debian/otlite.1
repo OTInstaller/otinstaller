@@ -67,6 +67,13 @@ Run or list playbooks.
 .B extract\fR, \fBdiff
 Pull indicators out of saved results, or compare two runs.
 .TP
+.B share \fR[\fIfile\fR...] [\fB\-\-case \fIname\fR] [\fB\-\-tool \fIname\fR]
+Share saved runs as a link on otinstaller.com that works for 24 hours. Asks first; \fB\-\-yes\fR skips the
+question and \fB\-\-dry\-run\fR prints what would be uploaded.
+.TP
+.B shares \fR[\fBrm \fIid\fR]
+List the links shared from this machine that still work, or delete one early.
+.TP
 .B keys check
 Show which API keys in ~/.otlite/.env each tool can use.
 .TP
@@ -85,11 +92,17 @@ Use another directory instead of ~/.otlite. OTINSTALLER_HOME is read when it is 
 .B OTLITE_RESULTS_DIR
 Save results there instead of ./results.
 .TP
+.B OTLITE_API_URL
+The registry otlite share uploads to, instead of https://api.otinstaller.com/v1.
+.TP
 .B DO_NOT_TRACK\fR, \fBOTLITE_CRASH_REPORTS=off
 Never send crash reports.
 .SH FILES
 .TP
 .I ~/.otlite/.env
 API keys, one KEY=value per line, mode 600.
+.TP
+.I ~/.otlite/shares.json
+The delete token of each link otlite share made, mode 600.
 .SH SEE ALSO
 https://otinstaller.com/docs/otlite and https://github.com/OTInstaller/otinstaller/tree/main/otlite

@@ -275,6 +275,15 @@ func (s *Session) DecideUninstall(ref string) Decision {
 	return Decision{Verdict: Ask, Reason: "removes the package from this machine"}
 }
 
+// DecideShare always asks: putting results on the web, even for 24 hours, is the person's call. Auto-approval, sandbox
+// mode and the allow and deny lists don't apply, and nothing is remembered for the session.
+func (s *Session) DecideShare() Decision {
+	if d, no := s.refused(); no {
+		return d
+	}
+	return Decision{Verdict: Ask, Reason: "puts the results on a web page anyone with the link can open for 24 hours"}
+}
+
 func (s *Session) approved(key string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()

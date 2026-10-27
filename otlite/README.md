@@ -289,6 +289,8 @@ otlite run --all --live e:john@example.com
 | `otlite results` | List saved runs; filter with `--tool`, `--target`, `--case`, `--status`, `--since`, sort with `--sort` by time, tool, target, duration or size |
 | `otlite extract <target>` | Extract indicators from saved results |
 | `otlite diff <tool> <target>` | Compare the two most recent runs |
+| `otlite share <file>...` / `--case` / `--tool` | Share saved runs as a link that works for 24 hours |
+| `otlite shares` / `rm <id>` | List the links you shared, or delete one early |
 | `otlite update` / `--all` / `--check-only` | Bring tools to the version this release of otlite pins and tested |
 | `otlite check-updates` | Check for updates (read-only) |
 | `otlite remove <tool>...` / `--all` | Remove tools |
@@ -334,6 +336,25 @@ otlite results --status failed --sort duration --json
 ```
 
 Results can contain personal data. Store and share them accordingly.
+
+### Sharing a result
+
+`otlite share` puts saved runs on a page on otinstaller.com that anyone with the link can open for 24 hours, after
+which the registry deletes them. Name the runs by file (the `.txt`, `.meta.json` or `.envelope.json`), share a whole
+case with `--case`, or a tool's newest run with `--tool` (and `--target`). The page shows the target and everything
+the tools found, as saved. It never says who shared it, and the case name, the command line and file paths stay on
+your machine. Outputs over 1 MB go without their raw text; the entities still go.
+
+```
+otlite share results/sherlock/johndoe/20261027-100000_sherlock_johndoe_ab12cd34.txt
+otlite share --case acme --yes
+otlite shares
+otlite shares rm <id>
+```
+
+It asks first, and needs `--yes` when stdin is not a terminal. `--dry-run` prints exactly what would be uploaded. The
+delete token for each link is kept in `~/.otlite/shares.json`, so `otlite shares rm` deletes a link early from the
+machine that shared it. `OTLITE_API_URL` points it at another registry.
 
 ## API keys
 
