@@ -767,7 +767,9 @@ table, column, CHECK value set and status transition is in
   can collide on a number: renumber yours before merging. Some migrations rebuild a table to change a CHECK constraint;
   follow that pattern if you need one.
 - Apply locally with `npm run db:migrate`; remotely `npx wrangler d1 migrations apply otinstaller --remote` (only when
-  asked: it changes production).
+  asked: it changes production). Deploy the API straight after: until then the old Worker runs against the new schema,
+  so its `ON CONFLICT` on a key the migration rebuilt fails (0044 rebuilt `install_counts`; two install counts answered
+  500 in that gap, Sentry OTINSTALLER-E).
 
 ### Auth
 

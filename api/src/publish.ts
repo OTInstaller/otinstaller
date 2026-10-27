@@ -362,7 +362,7 @@ export async function failJob(env: Env, jobId: string, error: string) {
   }
   await db.batch(stmts);
   const v = job.version_id ? await loadVersion(env, "v.id = ?", job.version_id) : null;
-  if (v) await commitStatus(env, v, "error", "The registry could not start the checks; push the tag again").catch(() => {});
+  if (v) await commitStatus(env, v, "error", "The registry could not start the checks; push the tag again");
   await sendEmail(env, {
     to: await staffEmails(env, "admins"), kind: "alert", key: `failed-job:${jobId}`,
     ...templates.failedJob(env, { id: jobId, repo: job.repo, tag: job.tag, error: error.slice(0, 1000) }),

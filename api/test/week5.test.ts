@@ -307,6 +307,45 @@ describe("manual review of new publishers", () => {
   });
 });
 
+describe("commit statuses the host refuses", () => {
+  const archived = new Response(JSON.stringify({ message: "Repository was archived so is read-only.", status: "403" }), { status: 403 });
+
+  it("decides releases from an archived repository, and a rejection still reaches the publisher", async () => {
+    const p = await publisher(false);
+    const res = await webhook("create", tagEvent(p.instId, p.repo, p.repoId, "v1.0.0"));
+    const calls = fakeRelease(p.repo, { "otinstaller.yaml": manifestFor(p.login), "README.md": README }, {
+      extra: { [`POST https://api.github.com/repos/${p.repo}/statuses/abc123`]: archived },
+    });
+    const out = await processJob(await testEnv(), ((await res.json()) as any).jobId);
+    expect(out?.status).toBe("scanning");
+    const scan = JSON.parse(calls.find((c) => c.url.endsWith("/registry-ops/dispatches"))!.body).client_payload.scan;
+    expect(await (await report(scan.callback_token, clean)).json()).toMatchObject({ status: "awaiting_review" });
+
+    // The publisher was approved meanwhile, so the release is decided on its own.
+    await DB().prepare(`UPDATE namespaces SET status = 'active' WHERE name = ?`).bind(p.login).run();
+    const rejected = await call(`/admin/versions/${out!.versionId}/reject`, {
+      method: "POST", headers: await reviewerToken(), body: JSON.stringify({ reason: "The README asks for the target's password." }),
+    });
+    expect(await rejected.json()).toEqual({ status: "rejected" });
+    expect(await DB().prepare(`SELECT status FROM versions WHERE id = ?`).bind(out!.versionId).first()).toMatchObject({ status: "rejected" });
+    expect(statuses(calls).at(-1)).toMatchObject({ state: "failure", description: expect.stringMatching(/^review_rejected/) });
+    expect(emailsTo(calls).at(-1)).toMatchObject({
+      subject: `${p.login}/whois-plus 1.0.0 was not published`, text: expect.stringContaining("The README asks for the target's password."),
+    });
+  });
+
+  it("publishes and emails the publisher when setting the commit status fails", async () => {
+    const p = await publisher(true);
+    const { scan } = await tagAndValidate(p);
+    const calls = fakeRelease(p.repo, { "otinstaller.yaml": manifestFor(p.login), "README.md": README }, {
+      extra: { [`POST https://api.github.com/repos/${p.repo}/statuses/abc123`]: new Response("unavailable", { status: 502 }) },
+    });
+    expect(await (await report(scan.callback_token, clean)).json()).toMatchObject({ status: "published" });
+    expect(statuses(calls)).toHaveLength(1);
+    expect(emailsTo(calls).at(-1)).toMatchObject({ subject: `Published ${p.login}/whois-plus 1.0.0` });
+  });
+});
+
 describe("emails", () => {
   it("never sends the same message twice", async () => {
     const p = await publisher(true);

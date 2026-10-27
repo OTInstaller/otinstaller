@@ -7,6 +7,7 @@ import * as github from "./hosts/github";
 import { githubRepo, gitlabRepo, type CommitState } from "./hosts/repo";
 import { audit } from "./routes/auth";
 import { ownerEmails, sendEmail, templates } from "./notify";
+import { reportError } from "./ops";
 import { notifyFollowers, notifyPackageFollowers, SECURITY_LEVELS } from "./inbox";
 import { updateLinkHealth } from "./guides";
 import { announceVersion, refreshCounts } from "./community";
@@ -225,18 +226,27 @@ const refOf = (v: VersionCtx) => `${v.namespace}/${v.name}`;
 export const retryHint = (v: { provider: string | null; bundle_key?: string | null }) =>
   v.provider === "direct" ? "run `ot publish` again" : v.bundle_key ? "run the release workflow again" : "push a new tag";
 
+/**
+ * Sets the release's commit status. Every caller has already saved its decision, so this never throws: a status the
+ * host refuses (the App uninstalled, the host down) is a Sentry warning, and the email and steps after it still happen.
+ */
 export async function commitStatus(env: Env, v: VersionCtx, state: CommitState, description: string) {
   if (!v.repo || !v.repo_id || !v.commit_sha) return;
-  let host;
-  if (v.provider === "gitlab") {
-    const src = await env.DB.prepare(`SELECT connected_by FROM sources WHERE id = ?`).bind(v.source_id).first<{ connected_by: string | null }>();
-    if (!src?.connected_by) return;
-    host = gitlabRepo(env, v.repo_id, src.connected_by);
-  } else {
-    if (!v.installation_id) return;
-    host = githubRepo(env, v.installation_id, v.repo, v.repo_id);
+  try {
+    let host;
+    if (v.provider === "gitlab") {
+      const src = await env.DB.prepare(`SELECT connected_by FROM sources WHERE id = ?`).bind(v.source_id).first<{ connected_by: string | null }>();
+      if (!src?.connected_by) return;
+      host = gitlabRepo(env, v.repo_id, src.connected_by);
+    } else {
+      if (!v.installation_id) return;
+      host = githubRepo(env, v.installation_id, v.repo, v.repo_id);
+    }
+    await host.setStatus(v.commit_sha, state, description, `${env.SITE_URL}/dashboard/publish/${v.job_id}`);
+  } catch (e) {
+    console.error("the commit status failed", e);
+    await reportError(env, e, { requestId: v.job_id ?? v.id, level: "warning", fingerprint: ["commit-status"] });
   }
-  await host.setStatus(v.commit_sha, state, description, `${env.SITE_URL}/dashboard/publish/${v.job_id}`);
 }
 
 /** A signer identity without the git ref a CI identity ends in, so the same workflow signs every release alike. */
@@ -496,7 +506,7 @@ export async function expireStaleScans(env: Env, now = Date.now()) {
     if (!v) continue;
     // The publisher hears about it like any other rejection: the commit status stops pending, and an email says what to do.
     const message = "the security scan did not report back within an hour";
-    await commitStatus(env, v, "error", `scan_timeout: ${message}; ${retryHint(v)}`).catch((e) => console.error("the commit status failed", e));
+    await commitStatus(env, v, "error", `scan_timeout: ${message}; ${retryHint(v)}`);
     await sendEmail(env, {
       to: await ownerEmails(env, v.namespace_id), kind: "rejected", key: `rejected:${v.id}`,
       ...templates.rejected(env, refOf(v), v.version, "scan_timeout", message, retryHint(v)),

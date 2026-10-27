@@ -118,6 +118,11 @@ Verdict codes (`scans.ts:verdict`): `signature_mismatch`, `signature_dropped`, `
   (`templates.rejected`, key `rejected:<versionId>`);
 - `publish_jobs.error_code` / `error_detail` in `GET /v1/me/publish-jobs`.
 
+The email goes out even when the host refuses the commit status: an archived GitHub repository refuses every status,
+and any other refusal is logged and sent to Sentry as a warning (fingerprint `commit-status`). A refused status used
+to stop the step: a reviewer's rejection of a release from an archived repository (Sentry OTINSTALLER-C, 24 Oct)
+saved the rejection, answered 500 and never sent the publisher its email.
+
 Rejected versions are not served by the public `/scans` route (`findVersion` only returns published, yanked or
 removed). Staff can read the details:
 
@@ -215,8 +220,9 @@ for `D1_ERROR` lines.
 A D1 failure on Cloudflare's side answers 503 `database_unavailable` with `Retry-After`
 instead of 500 (a daily limit says to wait until midnight UTC), and Sentry gets it as a warning in one issue per
 kind (fingerprint `d1-unavailable` + `transient` or `daily-limit`), not a new error issue for each route. The site
-retries such a read once after a second. A burst of `D1_ERROR: internal error; reference = ...` warnings (Sentry
-OTINSTALLER-A and -B, 21 to 23 Oct: twelve in three bursts, all read-only queries D1 had already retried twice) is
+retries such a read once after a second. A burst of `D1_ERROR: internal error; reference = ...` or
+`Network connection lost` warnings (Sentry OTINSTALLER-A and -B, 21 to 23 Oct: twelve in three bursts; OTINSTALLER-D,
+27 Oct 00:55 UTC: four on `GET /v1/tools` within 27 seconds; all read-only queries D1 had already retried twice) is
 Cloudflare's to explain; quote the references to Cloudflare support if it keeps happening.
 
 ### CORS errors from localhost
