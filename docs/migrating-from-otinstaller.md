@@ -76,7 +76,7 @@ only pipx packages run, with `--native`.
 | `otlite keys check` | `ot keys list`, `ot doctor` | `ot keys set NAME` stores a key (value from stdin); `ot run` names a missing required key and exits 3 |
 | `otlite resume` | none | An interrupted `ot run` keeps its partial output and a sidecar with status `interrupted`; run it again. An install is recorded only once it has finished |
 | `otlite doctor` | `ot doctor` | Checks Docker or Podman, pipx, Python, the keychain and the registry |
-| `otlite crash-reports` | none | `ot` sends no crash reports. `OT_NO_TELEMETRY=1` turns off its anonymous install counts |
+| `otlite crash-reports` | `ot telemetry` | `ot` sends no crash reports. It counts installs and, from 0.20, runs, anonymously; `ot telemetry off` (or `OT_NO_TELEMETRY=1`, `DO_NOT_TRACK=1`) turns that off |
 | `otlite about`, `--version` | `ot --version` | `ot self-update` updates it |
 
 ## Exit codes
