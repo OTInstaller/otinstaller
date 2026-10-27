@@ -16,6 +16,9 @@ permissions:
   contents: read
 env:
   VERSION: 0.0.0-ci.${{ github.run_number }}
+  # These are test installs and runs, not anyone's usage. Without this, ot counts them (as client ci) against the
+  # production registry.
+  OT_NO_TELEMETRY: "1"
 
 jobs:
   # The real release config, end to end except publishing and signing: catches what `goreleaser check` can't
