@@ -276,6 +276,9 @@ func (a *App) printProfile(n *api.Namespace) {
 		row("Packages", fmt.Sprintf("%d (%d tools, %d guides)", s.Packages, s.Tools, s.Guides))
 		row("Installs", fmt.Sprintf("%d in 30 days, %d in all", s.Installs30d, s.InstallsTotal))
 		if s.Tools > 0 {
+			row("Runs", fmt.Sprintf("%d in 30 days, %d in all", s.Runs30d, s.RunsTotal))
+		}
+		if s.Tools > 0 {
 			row("Health", fmt.Sprintf("%d passing, %d possibly broken", s.Healthy, s.Broken))
 		}
 		if s.LastPublishedAt > 0 {

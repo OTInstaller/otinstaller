@@ -45,6 +45,23 @@ Tools that need an API key say so; `ot keys setup` walks you through them, and k
 `ot outdated` lists installed tools with newer versions and `ot update --all` installs them. `ot self-update`
 installs a new release of `ot` after checking its signature.
 
+## Telemetry
+
+`ot` counts installs and runs of registry packages, so the registry can show which tools are used and which versions
+fail. A count carries the tool and its version, how a run ended and how long it took, the container engine, what
+started it (a command, CI or an AI agent), and your OS, architecture and `ot` version. It never carries your inputs,
+targets or results, file paths, run ids, case names, keys or tokens, and tools installed from a local manifest are
+never counted. The registry keeps daily totals only.
+
+```sh
+ot telemetry                          # what is sent, and whether it is on
+ot telemetry off                      # or set OT_NO_TELEMETRY=1 or DO_NOT_TRACK=1
+OT_TELEMETRY_DEBUG=1 ot run <tool> …  # print each count instead of sending it
+```
+
+Turning it off also stops the offer to report a failed run; `DO_NOT_TRACK` stops the daily update check too. Details:
+https://otinstaller.com/policy/privacy
+
 ## Links
 
 Docs: https://otinstaller.com/docs/getting-started · CLI reference: https://otinstaller.com/docs/cli ·

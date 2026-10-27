@@ -377,6 +377,7 @@ func (s *mcpServer) planRun(ctx context.Context, in runIn, withKeys bool) (*runP
 	var secrets map[string]string
 	if withKeys {
 		if secrets, err = loadSecrets(m); err != nil {
+			s.a.countRun(ctx, inst, "missing_key", 0, "mcp")
 			return nil, &toolError{Code: "secret_missing", Message: err.Error(),
 				Hint: "call key_setup to explain the key and where to get it, then ask the person to run `ot keys setup " + m.Ref() + "` in their own terminal; never ask for the key's value"}
 		}
@@ -403,6 +404,7 @@ func sandboxValues(m *manifest.Manifest) (map[string]string, error) {
 }
 
 func (s *mcpServer) runTool(ctx context.Context, req *mcp.CallToolRequest, in runIn) (*mcp.CallToolResult, *runOut, error) {
+	s.countAs(req)
 	plan, err := s.planRun(ctx, in, true)
 	if err != nil {
 		return nil, nil, asToolError(err)
@@ -449,7 +451,7 @@ func (s *mcpServer) startRun(req *mcp.CallToolRequest, plan *runPlan, caseName, 
 	runCtx, cancel := context.WithCancel(s.ctx)
 	lr := &liveRun{kind: "run", tool: plan.inst.Ref, started: time.Now(), cancel: cancel, done: make(chan struct{}), consent: consent, caseName: caseName, sandbox: plan.sandbox}
 	ids := make(chan string, 1)
-	ra := &runArgs{Case: caseName, Parallel: 1, onStart: func(id, _ string) { ids <- id }}
+	ra := &runArgs{Case: caseName, Parallel: 1, onStart: func(id, _ string) { ids <- id }, via: "mcp"}
 	go func() {
 		defer close(lr.done)
 		defer cancel()
@@ -628,6 +630,11 @@ func (s *mcpServer) audit(req *mcp.CallToolRequest, action string, inst *state.I
 	}
 }
 
+// countAs says which AI client this session's runs and installs are counted under (mcpClientSlug).
+func (s *mcpServer) countAs(req *mcp.CallToolRequest) {
+	s.a.sink().setMCPClient(mcpClientSlug(mcpClientName(req.Session)))
+}
+
 // auditDeclined records a consent question the person said no to (or dismissed).
 func (s *mcpServer) auditDeclined(req *mcp.CallToolRequest, action string, inst *state.Installed, values map[string]string, class agent.Class, err error) {
 	if te, ok := err.(*toolError); ok && te.Code == "consent_declined" {
@@ -646,6 +653,7 @@ type installOut struct {
 }
 
 func (s *mcpServer) installTool(ctx context.Context, req *mcp.CallToolRequest, in installIn) (*mcp.CallToolResult, *installOut, error) {
+	s.countAs(req)
 	ref, err := parseRef(strings.TrimSpace(in.Tool))
 	if err != nil || ref.LocalPath != "" {
 		return nil, nil, &toolError{Code: "usage", Message: fmt.Sprintf("give a published package as namespace/name, not %q; agents can't install local manifests", in.Tool)}
@@ -864,6 +872,7 @@ func plural(n int, one, many string) string {
 }
 
 func (s *mcpServer) batch(ctx context.Context, req *mcp.CallToolRequest, b batchSpec) (*mcp.CallToolResult, *batchOut, error) {
+	s.countAs(req)
 	p := s.sess.Refresh()
 	b.target = strings.TrimSpace(b.target)
 	typ := b.inputType
@@ -874,7 +883,7 @@ func (s *mcpServer) batch(ctx context.Context, req *mcp.CallToolRequest, b batch
 	if prefix == "" {
 		return nil, nil, &toolError{Code: "usage", Message: fmt.Sprintf("batches take a username, domain, email, phone, ip or url target, not %s; run_tool runs one tool with any input", typ)}
 	}
-	ra := &runArgs{Typed: []runner.TypedInput{{Prefix: prefix, Value: b.target}}, Parallel: min(orInt(b.parallel, p.MaxParallel), p.MaxParallel), Case: b.caseName}
+	ra := &runArgs{Typed: []runner.TypedInput{{Prefix: prefix, Value: b.target}}, Parallel: min(orInt(b.parallel, p.MaxParallel), p.MaxParallel), Case: b.caseName, via: "mcp"}
 	var rows []*allResult
 	var jobs []allJob
 	if len(b.selection) > 0 || b.what == "run_all" {

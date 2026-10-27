@@ -144,6 +144,7 @@ func (a *App) playbookCmd() *cobra.Command {
 			if ra.Case == "" {
 				ra.Case = p.Case
 			}
+			ra.via = "playbook"
 			if orDefault(ra.Format, "table") == "table" {
 				fmt.Fprintf(a.Err, "Playbook %s: %s\n", p.Name, strings.Join(p.Tools, ", "))
 			}

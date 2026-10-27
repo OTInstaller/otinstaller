@@ -8,7 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/otinstaller/otinstaller/cli/internal/manifest"
@@ -44,6 +46,7 @@ type Installed struct {
 	FromBackup  bool               `json:"from_backup,omitempty"` // installed from the registry's mirror or wheel copy
 	Signer      string             `json:"signer,omitempty"`      // the cosign identity the image was verified against
 	Held        bool               `json:"held,omitempty"`        // installed at an exact version: `ot update --all` leaves it
+	Local       bool               `json:"local,omitempty"`       // installed from a local manifest, so its runs are never counted
 	InstalledAt time.Time          `json:"installed_at"`
 	Manifest    *manifest.Manifest `json:"manifest"`
 	ManifestRaw json.RawMessage    `json:"manifest_raw"`
@@ -96,7 +99,8 @@ func (s *State) Sorted() []*Installed {
 	return out
 }
 
-// Config is ~/.ot/config.json. Environment variables override it. Only `ot start` writes it (SetConfig).
+// Config is ~/.ot/config.json. Environment variables override it. `ot start` and `ot telemetry on|off` write it
+// (SetConfig), changing only their own keys.
 type Config struct {
 	APIURL    string `json:"api_url,omitempty"`
 	SiteURL   string `json:"site_url,omitempty"`
@@ -170,7 +174,7 @@ func LoadConfig() *Config {
 	if c.SiteURL == "" {
 		c.SiteURL = DefaultSiteURL
 	}
-	if os.Getenv("OT_NO_TELEMETRY") != "" {
+	if off, _ := TelemetryOffByEnv(); off {
 		f := false
 		c.Telemetry = &f
 	}
@@ -178,3 +182,91 @@ func LoadConfig() *Config {
 }
 
 func (c *Config) TelemetryEnabled() bool { return c.Telemetry == nil || *c.Telemetry }
+
+// DoNotTrack reports whether DO_NOT_TRACK (consoledonottrack.com) is set to anything but 0 or false.
+func DoNotTrack() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("DO_NOT_TRACK")))
+	return v != "" && v != "0" && v != "false"
+}
+
+// TelemetryOffByEnv says whether an environment variable turns telemetry off, and which one: OT_NO_TELEMETRY (any
+// value) or DO_NOT_TRACK. Either wins over config.json.
+func TelemetryOffByEnv() (bool, string) {
+	if os.Getenv("OT_NO_TELEMETRY") != "" {
+		return true, "OT_NO_TELEMETRY"
+	}
+	if DoNotTrack() {
+		return true, "DO_NOT_TRACK"
+	}
+	return false, ""
+}
+
+// Milestones are the first times that usage counts report once per machine.
+var Milestones = []string{"first_install", "first_run", "first_ok_run"}
+
+// Telemetry is <home>/telemetry.json: what ot remembers about counting, apart from the setting itself (config.json's
+// telemetry). It has its own file because state.json's fixed temporary file would race with parallel runs.
+type Telemetry struct {
+	// NoticeShownAt is when the one-time notice about counting was printed (or `ot start` or `ot telemetry` said it).
+	NoticeShownAt time.Time `json:"notice_shown_at,omitzero"`
+	// UnreachableAt is when counts last couldn't reach the registry; for an hour after it, ot doesn't wait for them.
+	UnreachableAt time.Time `json:"unreachable_at,omitzero"`
+	// Milestones are the ones reached, each reported once.
+	Milestones []string `json:"milestones"`
+	// path is where it was read, so it is saved there even if OT_HOME changes meanwhile.
+	path string
+}
+
+// LoadTelemetry reads telemetry.json, creating it when it is missing or broken. A machine that has packages installed
+// when the file is created starts with every milestone reached, so upgrading ot doesn't look like a new person's first
+// install and run.
+func LoadTelemetry() *Telemetry {
+	path := Path("telemetry.json")
+	t := &Telemetry{Milestones: []string{}, path: path}
+	b, err := os.ReadFile(path)
+	if err == nil && json.Unmarshal(b, t) == nil {
+		if t.Milestones == nil {
+			t.Milestones = []string{}
+		}
+		return t
+	}
+	t = &Telemetry{Milestones: []string{}, path: path}
+	if st, err := Load(); err != nil || len(st.Installed) > 0 {
+		t.Milestones = append(t.Milestones, Milestones...)
+	}
+	_ = t.Save()
+	return t
+}
+
+// Reached says whether a milestone was reached.
+func (t *Telemetry) Reached(m string) bool { return slices.Contains(t.Milestones, m) }
+
+// Save writes telemetry.json atomically through a temporary file of its own, so two ot processes never mix halves.
+func (t *Telemetry) Save() error {
+	if t.path == "" {
+		t.path = Path("telemetry.json")
+	}
+	dir := filepath.Dir(t.path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(t, "", "  ")
+	if err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(dir, "telemetry-*.tmp")
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(append(b, '\n'))
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(f.Name(), t.path)
+	}
+	if err != nil {
+		os.Remove(f.Name())
+	}
+	return err
+}

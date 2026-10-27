@@ -9,8 +9,8 @@ Conventions used here:
   calls go through `api.Client.do` (`api/client.go`), which sends `User-Agent: ot/<Version>`, `Accept:
   application/json`, and `Authorization: Bearer <token>` when a token is loaded (keychain or `OTINSTALLER_TOKEN`),
   except for the calls made through `anon()`, which never carry it: search, tool detail, manifest, guide search,
-  guides and guide pages, tool docs, `/removed`, the install ping and the device-login start and poll. So public reads
-  stay anonymous and edge cached even when signed in. HTTP timeout 30 s.
+  guides and guide pages, tool docs, `/removed`, the usage counts (`POST /installs`, `POST /runs`) and the device-login
+  start and poll. So public reads stay anonymous and edge cached even when signed in. HTTP timeout 30 s.
 - "Sign-in" = whether the command itself refuses without a token (client-side check), or only the registry does
   (server answers 401/403, which `requestError` turns into exit 2 where it is used).
 - "Exit codes" lists what the command can return. Every command can also return **1** for an unclassified error
@@ -22,13 +22,18 @@ Conventions used here:
 - The daily update note (`cli/updatecheck.go`): the root `PersistentPreRun` calls `startDailyNote` and the root
   `PersistentPostRun` (after the command's output; skipped when the command fails) calls `finishDailyNote`. It runs only
   when `App.CheckUpdates` is on, `interactive()` holds, output isn't JSON (`--json`, `OT_OUTPUT=json`, or `ot run`'s own
-  `--json`/`-f json` through `jsonRequested`), `CI` is unset, not under `AgentMode` or `OT_NO_UPDATE_CHECK=1`, the
-  top-level command isn't `help`, `completion`, `__complete`, `uninstall`, `outdated`, `update`, `self-update`, `mcp` or `start`,
-  and `cache/latest.json`'s `noted_at` is over 24 h old. It then refreshes `cache/latest.json` (`latestList`: `GET
-  /latest`, 3 s, at most every 24 h by `checked_at`, which every attempt sets) and `cache/ot-latest.json` (`latestOT`)
-  concurrently, and prints at most two `note:` lines: how many installed packages have a newer version or a new
-  address (`updateCounts`, held ones counted apart), and a newer `ot`. `noted_at` is set only when something was
-  printed. This applies to every command row below and is not repeated.
+  `--json`/`-f json` through `jsonRequested`), `CI` is unset, not under `AgentMode`, `OT_NO_UPDATE_CHECK=1` or
+  `DO_NOT_TRACK` (`noUpdateCheck`), the top-level command isn't `help`, `completion`, `__complete`, `uninstall`,
+  `outdated`, `update`, `self-update`, `mcp`, `start` or `telemetry`, and `cache/latest.json`'s `noted_at` is over 24 h
+  old. It then refreshes `cache/latest.json` (`latestList`: `GET /latest`, 3 s, at most every 24 h by `checked_at`,
+  which every attempt sets) and `cache/ot-latest.json` (`latestOT`) concurrently, and prints at most two `note:` lines:
+  how many installed packages have a newer version or a new address (`updateCounts`, held ones counted apart), and a
+  newer `ot`. `noted_at` is set only when something was printed. This applies to every command row below and is not
+  repeated.
+- Usage counts (`cli/usage.go`, [section 5](#usage-counts)): the root `PersistentPreRun` calls `prepareCounts`, which,
+  when counting is on, reads `telemetry.json` (creating it) and prints the one-time notice; `Execute` waits for the
+  command's counts after printing its error (`waitForCounts`, not `PersistentPostRun`, which cobra skips when a command
+  fails). This applies to every command row below and is not repeated.
 
 ---
 
@@ -37,9 +42,9 @@ Conventions used here:
 Registered in `Root()` (`cli/root.go`) in this order: init, validate, start, search, info, changelog, install, run, playbook,
 auto, runs, share, shares, issues, request, extract, diff, list, outdated, update, uninstall, keys, doctor, login, logout, whoami, import,
 publish, namespace, sync, guide, docs, report, feedback, claim, transfer, yank, deprecate, self-update, release, mcp,
-pivot, token, profile. 44 top-level commands,
+pivot, token, profile, telemetry. 45 top-level commands,
 plus subcommands `keys set|setup|list|rm`, `guide search|read|open|get|tools`, `mcp install|audit|policy|tools`
-(with `mcp policy reset`), `token create|list|revoke`, `shares rm` and `namespace create`.
+(with `mcp policy reset`), `token create|list|revoke`, `shares rm`, `namespace create` and `telemetry status|on|off`.
 
 Commands that print data also print JSON with the global `--json` flag (or `OT_OUTPUT=json`); the per-command
 `--json` rows below are that flag. Nothing prompts without a terminal: see [section 2](#2-global-and-persistent-flags).
@@ -115,9 +120,10 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   stderr.
 - JSON: one package prints its install record plus `example` and `missing_keys` (omitted when none); several print
   `[{ref, status (installed, failed, not_tried), version, example, missing_keys, error, exit_code}]`, then the error.
-- API: `GET /tools/{ns}/{name}/{version|latest}/manifest`; then, after a successful install of a registry package and
-  if telemetry is enabled, `POST /installs` `{"tool": ref, "version": v}` (3 s timeout, errors ignored). Local
-  manifests: no API calls, no ping, and a `note:` that signatures are not checked.
+- API: `GET /tools/{ns}/{name}/{version|latest}/manifest`; then the install is counted (`countInstall`: `POST
+  /installs` in the background, see [usage counts](#usage-counts)), or a failed one with its reason
+  (`countInstallFailure`, in `POST /runs`). Local manifests: no API calls, nothing counted (`state.json` records them
+  `local: true`, so their runs aren't either), and a `note:` that signatures are not checked.
 - Behaviour: warns (`warning:`) when unsigned, scan status `warn`, health `broken`, publisher not verified, or source
   gone; notes `moved_to`. Validates the manifest before installing. Docker: `pull` by digest, mirror fallback on
   refusal, `cosign verify` (run alongside the pull) when the registry returned a signer identity (missing cosign only
@@ -264,12 +270,17 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 - Failure prompt (`report_prompt.go`, `offerFailureReport`): after a single run that timed out, or exited non-zero
   with no entities, ot asks on stderr `<ref> <version> failed (exit N). Report it as broken? ... [y/N]`. Only at a
   terminal, never under `ot mcp`, with `CI` set, with `--json`/`OT_OUTPUT=json` or `-f json|jsonl` (`runArgs.Machine`),
-  for local manifests, or with telemetry off (`OT_NO_TELEMETRY`, `"telemetry": false`); at most once per
+  for local manifests, or with telemetry off (`ot telemetry off`, `OT_NO_TELEMETRY`, `DO_NOT_TRACK`, `"telemetry":
+  false`); at most once per
   `tool@version` every 7 days (`cache/report-prompts.json`, written whatever the answer). Yes sends
   `POST /tools/{ns}/{name}/run-reports` `{version, exit_code | timed_out, os, arch, engine, ot_version}` and never
   inputs, output or paths: signed in, the API adds the person to the open broken issue for that version or opens one
   (a token without the `feedback` scope falls back to an anonymous report); anonymous (`anon()`), it only counts.
   The run's exit code is unchanged and a failed send is a `warning:`.
+- Run counts: `execute` (shared by the single run, `runJobs` and MCP) times every run and, after `auditRun`, calls
+  `countRun` with `runOutcome` and `runArgs.via` (`run`, `all`, `playbook`, `auto` or `mcp`). A required key that isn't
+  set counts as `missing_key`, only for single runs (`ensureInstalled`, `runCmd`, MCP `planRun`); tools `--all` skips
+  are not counted. See [usage counts](#usage-counts).
 - `--all` flow (`runAll`): needs at least one typed input; refuses `--<input>`, `-o`, `--out-dir` and `--no-save`;
   considers every installed tool; tools with no matching input are left out, tools with an ambiguous input, a missing
   required input or a missing required key are listed as `skipped`. With the table format it prints `Running N
@@ -463,8 +474,12 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   (resources and prompts); rules in `internal/agent`.
 - `ot mcp`: `NoArgs`; flag `--results-dir` (string): where runs are saved, else `$OT_RESULTS_DIR`, else
   `<ot home>/results` (not `./results`, since a client starts the server in an arbitrary folder). Loads the policy (a
-  broken policy file → exit 2), sets `AgentMode`, prints one line on stderr and serves MCP over stdio until the client
-  goes away; then stops running containers (15 s) and records those runs as interrupted.
+  broken policy file → exit 2), sets `AgentMode`, prints one line on stderr (version, policy path, telemetry on or off)
+  and serves MCP over stdio until the client goes away; then stops running containers (15 s) and records those runs as
+  interrupted. Runs and installs are counted with client `mcp`, `via: mcp` and the client's name as an `mcp_client`
+  slug (`mcpClientSlug`: words of `ClientInfo.Name`, so `claude-code` → `claude_code`, `cursor-vscode` → `cursor`; else
+  `other`). Counts wait 2 s for more before going, and `config.json` is read again before each POST, so `ot telemetry
+  off` applies without a restart.
 - `ot mcp install <claude|claude-desktop|cursor|vscode|codex|gemini>`: `ExactArgs(1)`; `--print` (bool) prints the
   configuration instead of writing it. `claude` runs `claude mcp add --scope user` (printed when `claude` isn't on the
   PATH); the others edit `claude_desktop_config.json`, `~/.cursor/mcp.json`, `.vscode/mcp.json` (current folder),
@@ -579,7 +594,7 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   `{"valid", "problems"}`; `--smoke` (bool): also install the package from the local manifest and run its
   `test.input`.
 - Validates schema, semantics and files (README, docs/content pages) relative to the manifest's folder.
-- API: none, except `--smoke` installs locally (no registry call, no ping).
+- API: none, except `--smoke` installs locally (no registry call, nothing counted).
 - Exit: 0; **2** when problems are found; with `--smoke`: 2 when there is no `test.input`, 1 when the exit code differs
   from `test.expect_exit_code`, plus run codes 3, 4, 5, 124; "Guides have no smoke test." is exit 0.
 
@@ -765,7 +780,8 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
 - Flags: `--sync` (bool), `--set key=value` and `--unset key` (repeatable; keys name, bio, location, website, company,
   avatar, socials, about, pins, hide; `about=@file` or `@-` for stdin; socials and pins are comma lists); `--json`.
 - API: `GET /namespaces/{ns}` (anonymous); edits `PATCH /me/namespaces/{ns}/profile`, then
-  `POST /me/namespaces/{ns}/profile/sync` with `--sync`.
+  `POST /me/namespaces/{ns}/profile/sync` with `--sync`. The numbers include `Installs` and, for publishers with tools,
+  `Runs` (`runs_30d`, `runs_total`).
 - Sign-in: needed for edits and for no namespace (exit 2). Exit: 0; 2 for usage, unknown keys and wrapped registry 4xx
   (including 429 `profile_sync_rate_limited`); 1 otherwise.
 
@@ -799,7 +815,7 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   | `--agents` | string slice | none | AI clients to add ot's MCP server to: `mcpClients` (as `ot mcp install`) |
   | `--format` | string | `""` | `config.json` `format`: `json`, `table`, `csv` or `raw` |
   | `--results-dir` | string | `""` | `config.json` `results_dir` (`~` expanded; `./results`, the default, removes the key) |
-  | `--telemetry` | string | `""` | `on` or `off` (`config.json` `telemetry`) |
+  | `--telemetry` | string | `""` | `on` or `off`: install and run counts and the failure prompt (`config.json` `telemetry`; on removes the key) |
   | `--registry` | string | `""` | `config.json` `api_url` (http(s) only; `/v1` added to a bare host; the default removes the key). Also used for this run, without the sign-in token |
   | `--keys` | bool | false | walk through the installed tools' keys (`setupKeys`, as `ot keys setup`); only at a terminal, even with `--yes` |
   | `--native` | bool | false | as `ot install --native` |
@@ -811,10 +827,11 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   Screens: starter packs; then tools (every `kind=tool` package from `GET /tools?kind=tool&limit=100`, following
   `next_cursor`; installed ones left out; the packs' tools picked except deprecated or possibly broken ones), AI
   clients (labels say "already set up" or "found on this machine"; none picked unless named), output format, results
-  folder, keys (only when a picked tool `needs_keys`), and an optional registry and telemetry screen; then a review
-  showing the equivalent `ot start ... --yes`. `pick` folds the selection back into the flags: a pack stays only when
-  all its tools are picked or installed. Ctrl-C → exit 130 "cancelled; nothing was changed"; Cancel at the review →
-  exit 0 "Nothing was changed.". Tests replace the wizard with `App.StartWizard`.
+  folder, keys (only when a picked tool `needs_keys`), telemetry (its own screen: what is counted and never sent, the
+  privacy link, and a line when `OT_NO_TELEMETRY` or `DO_NOT_TRACK` keeps it off), and "Use another registry?" with
+  its screen; then a review showing the equivalent `ot start ... --yes`. `pick` folds the selection back into the
+  flags: a pack stays only when all its tools are picked or installed. Ctrl-C → exit 130 "cancelled; nothing was
+  changed"; Cancel at the review → exit 0 "Nothing was changed.". Tests replace the wizard with `App.StartWizard`.
 - Without a terminal and without `--yes`/`--dry-run`: exit 2 `input_required`. `--json` needs `--yes` or `--dry-run`
   (exit 2 `input_required`). `--format json` here is the setting, so `jsonRequested` ignores it for `start`.
 - Applying, in this order: `state.SetConfig` with only the keys that differ from the file (`configChanges`: a value,
@@ -822,11 +839,26 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   `already_set_up`, else `addMCPServer`; a failure is reported and the rest go on); the tools not yet installed
   (`installMany`, so a missing engine stops only the installs), with `printInstallHints`; keys; and "Next:" lines (an
   `ot playbook <pack> <example>` per pack, `ot mcp policy` when a client was added). A note says when `OT_API_URL`,
-  `OT_RESULTS_DIR` or `OT_NO_TELEMETRY` overrides a key it just saved.
+  `OT_RESULTS_DIR`, `OT_NO_TELEMETRY` or `DO_NOT_TRACK` overrides a key it just saved. After saving, `App.Config`'s
+  telemetry is read again, so the installs follow the choice; a telemetry choice (the wizard's screen or
+  `--telemetry`) also records the one-time notice as shown.
 - `--json`: `{dry_run?, command, config_path, config_changes, install, already_installed?, installed?: [installResult],
   agents: [{client, status: planned|added|already_set_up|failed, path?, error?}], missing_keys?}`.
 - Exit: 0; 2 for bad flags or no terminal; `installMany`'s code (1, or 5 without Docker or Podman); 1 when an AI
   client's configuration couldn't be written (Claude Code missing from PATH only prints the command); 130 cancelled.
+
+#### `ot telemetry` (`telemetry status|on|off`)
+- File: `cli/telemetry.go`; the counting is `cli/usage.go`. `ot telemetry` alone is `status`. Args: `NoArgs` (an
+  unknown subcommand exits 2).
+- `status`: whether counting is on and why (`source`: `default`, `config`, `OT_NO_TELEMETRY` or `DO_NOT_TRACK`), every
+  field a count can carry and what is never sent, `OT_TELEMETRY_DEBUG`, a dev build talking to the public registry
+  (which counts nothing), and the privacy policy. `--json`: `{enabled, source, config_path, counting, debug, registry,
+  sends, never, policy}`. Read in text at a terminal, it records the one-time notice as shown.
+- `on` / `off`: `state.SetConfig` (`on` removes `telemetry`, the default; `off` writes `false`), set `App.Config`'s
+  telemetry and drop counts not yet sent. `on` says when `OT_NO_TELEMETRY` or `DO_NOT_TRACK` still keeps it off ("stays
+  off"; a `warning:` on stderr with `--json`). Both record the notice as shown. `--json` prints the status.
+- A quiet command: no daily note and no one-time notice. No API, no sign-in. Exit: 0; 2 for an unknown subcommand; 1
+  when `config.json` can't be written or isn't JSON.
 
 #### `ot feedback [message]`
 - File: `cli/feedback.go`. Args: any (joined with spaces).
@@ -930,7 +962,9 @@ Read by the CLI (`os.Getenv` calls in `cli/`, plus the keychain lookup):
 | `OTINSTALLER_ID_TOKEN` | `cli/oidc.go` `ciIDToken` | a GitLab CI job's ID token (`id_tokens:` with `aud: otinstaller`) for `ot publish --oidc`; set, it also turns `--oidc` on when no token is | unset |
 | `ACTIONS_ID_TOKEN_REQUEST_URL`, `ACTIONS_ID_TOKEN_REQUEST_TOKEN` | `cli/oidc.go` `ciIDToken` | set by GitHub Actions for jobs with `id-token: write`; `ot publish --oidc` asks it for an ID token with the audience `otinstaller`. `GITHUB_ACTIONS=true` without them makes the error hint name the permission | unset |
 | `OT_SITE_URL` | `state/state.go` `LoadConfig` | website base for `guide open`, `report` (form), `feedback` (form); overrides `site_url` | `https://otinstaller.com` |
-| `OT_NO_TELEMETRY` | `state/state.go` `LoadConfig` | any non-empty value (even `0`) disables the `POST /installs` ping; overrides `telemetry` | telemetry on |
+| `OT_NO_TELEMETRY` | `state/state.go` `TelemetryOffByEnv`, folded in by `LoadConfig` | any non-empty value (even `0`) turns off install and run counts and the failure prompt; overrides `telemetry` | telemetry on |
+| `DO_NOT_TRACK` | `state/state.go` `DoNotTrack`, `TelemetryOffByEnv`; `updatecheck.go` `noUpdateCheck` | set and not `0` or `false` (any case): as `OT_NO_TELEMETRY`, and no daily `GET /latest` or newer-ot lookup either, as `OT_NO_UPDATE_CHECK=1`. The removal check (`GET /removed`) stays on | telemetry on |
+| `OT_TELEMETRY_DEBUG` | `cli/usage.go` `add` | `1`: print each count as `telemetry: POST /runs {...}` (or `/installs`) on stderr and send nothing; milestones aren't used up | off |
 | `OT_RESULTS_DIR` | `results/results.go` `Dir` | results directory when `--results-dir` is not given (`~` expanded) | `config.json` `results_dir`, else `./results` |
 | `OTINSTALLER_RESULTS_DIR` | `results/results.go` `Dir` | legacy fallback after `OT_RESULTS_DIR` | `config.json` `results_dir`, else `./results` |
 | `OTINSTALLER_TOKEN` | `keys.Get(TokenKey)` in `NewApp` | registry API token; an env var wins over the keychain entry of the same name | keychain entry |
@@ -938,8 +972,8 @@ Read by the CLI (`os.Getenv` calls in `cli/`, plus the keychain lookup):
 | `OT_NONINTERACTIVE` | `machine.go` `interactive` | `1`: never prompt, as if there were no terminal | prompts at a terminal |
 | `OT_CONSENT` | `consent.go` `cliConsent` | `off`: unattended runs need no `--yes` (still audited) | consent checked |
 | `OT_MAX_RAW` | `run_cmd.go` | default for `--max-raw` (bytes) | no limit |
-| `CI` | `run_cmd.go` `clientKind`, `selfupdate.go` `latestOT` | any value: the envelope's and audit log's `client` is `ci`, and the install ping says so; no newer-ot check | `cli` |
-| `OT_NO_UPDATE_CHECK` | `selfupdate.go` `latestOT`, `updatecheck.go` | `1`: no daily note, `cache/latest.json` is never refreshed, and `ot outdated` never looks up the latest ot release | checked daily |
+| `CI` | `run_cmd.go` `clientKind`, `selfupdate.go` `latestOT`, `usage.go` `prepareCounts` | any value: the envelope's and audit log's `client` is `ci`, and the counts say so; no newer-ot check and no one-time notice | `cli` |
+| `OT_NO_UPDATE_CHECK` | `selfupdate.go` `latestOT`, `updatecheck.go` `noUpdateCheck` | `1`: no daily note, `cache/latest.json` is never refreshed, and `ot outdated` never looks up the latest ot release | checked daily |
 | `<SECRET_NAME>` (any manifest `secrets[].name`) | `keys.Get` in `loadSecrets` | a tool's key; env wins over the keychain | keychain entry |
 
 Other environment handling:
@@ -973,8 +1007,9 @@ Data directory (`state.Home()`): `$OT_HOME` if set; else on Windows `%APPDATA%\o
 
 | Path | Written by | Contents |
 | --- | --- | --- |
-| `<home>/state.json` | `install`, `update`, `uninstall`, `run` (auto-install), `playbook -y`, `guide tools`, `validate --smoke` | `{"installed": {"ns/name": {ref, version, runtime, artifact, local_image, native, from_backup, installed_at, manifest, manifest_raw}}}`; written atomically via `state.json.tmp` and rename, mode 0600; directory created 0700 |
-| `<home>/config.json` | `ot start` only (`state.SetConfig`: the keys it changes, others kept; atomic, mode 0600) | `api_url`, `site_url`, `telemetry` (bool), `format` (default `ot run` format), `results_dir` (results folder after `--results-dir` and the env vars; `ot mcp` uses it when it is absolute); env vars override `api_url`, `site_url`, `telemetry` and `results_dir` |
+| `<home>/state.json` | `install`, `update`, `uninstall`, `run` (auto-install), `playbook -y`, `guide tools`, `validate --smoke` | `{"installed": {"ns/name": {ref, version, runtime, artifact, local_image, native, from_backup, signer, held, local, installed_at, manifest, manifest_raw}}}` (`local`: installed from a local manifest, never counted); written atomically via `state.json.tmp` and rename, mode 0600; directory created 0700 |
+| `<home>/config.json` | `ot start` and `ot telemetry on\|off` only (`state.SetConfig`: the keys they change, others kept; atomic, mode 0600) | `api_url`, `site_url`, `telemetry` (bool), `format` (default `ot run` format), `results_dir` (results folder after `--results-dir` and the env vars; `ot mcp` uses it when it is absolute); env vars override `api_url`, `site_url`, `telemetry` and `results_dir` |
+| `<home>/telemetry.json` | the first command while counting is on, the one-time notice, `ot start`, `ot telemetry`, counts | `{"notice_shown_at", "unreachable_at", "milestones": [...]}`: when the notice was shown, when counts last couldn't reach the registry (for an hour after, commands don't wait for them), and the milestones reported. Created with every milestone reached when packages are already installed. Written atomically through a `telemetry-*.tmp` of its own (not `state.json`'s fixed temporary file), mode 0600 |
 | `<home>/keys.json` | `keys set`, `keys rm`, `login`, `logout`, `doctor` | sorted JSON array of key names (never values), mode 0600 |
 | `<home>/cache/removed.json` | pre-run check (24 h), `ot run` (1 h) | `{"fetched_at", "removed": [...]}` from `GET /removed`, mode 0644 |
 | `<home>/cache/latest.json` | the daily note and MCP `list_installed` (24 h) | `{"checked_at", "fetched_at", "noted_at", "packages", "moved"}` from `GET /latest`; written atomically, mode 0644 |
@@ -1010,22 +1045,59 @@ finished), `status` (`complete`, `failed`, `timeout`, `interrupted`), `output_pa
 `envelope` (1), `entities`, `warnings`. Secrets are never in it. A tool that never started leaves nothing behind.
 Playbook runs default to the case `playbook-<name>`.
 
-Telemetry ping: `POST <api>/installs` with `{"tool": "<ns/name>", "version": "<v>", "client": "cli|ci|mcp"}` after each successful install of
-a registry package (not local manifests), 3 s timeout, errors ignored. Disabled by `OT_NO_TELEMETRY` or `config.json`
-`"telemetry": false`. It goes through `anon()`, so it never carries the token, even when signed in. The API counts it
-once per address, version and day (a salted hash of the address and version in `rate_limits`, removed by the nightly purge once the window is over) and keeps only
-per-version and per-client-kind daily counts.
-
-Run reports (the failure prompt and `ot report --broken`) are sent only when the person says yes, and are switched
-off with the same settings. Anonymous ones also go through `anon()`; the API keeps a daily count per version and
-platform and hashes the address only to count it once a day.
-
 Container sandbox (`runner.ContainerArgs`): `run --rm --name ot-<12 hex> --read-only --tmpfs /tmp:rw,size=256m
 --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --memory 1g --cpus 2 --user 65534:65534 -e HOME=/tmp`,
 `--network none` unless the manifest has `network.egress: true`, `-e NAME` per secret, `-v <out-dir>:/out:rw`,
 `--entrypoint <command[0]> <image> <command[1:]...>`. Sandboxed pipx tools run in the registry's `sandbox_image` (amd64)
 or an image built from `python:3.12-slim@sha256:...` as `ot-local/<ns>-<name>:<version>` (`docker build`, no `--pull`;
 the wheel plus `requirements.lock`, the registry's `python_lock`, installed with `--require-hashes`).
+
+### Usage counts
+
+`cli/usage.go` counts installs and runs of registry packages; the structs in `api/usage.go` are everything that can be
+sent (the allow-list), through `anon()`, so never with the token:
+
+- `POST /installs` after each install (`countInstall`): `{tool, version, client, from_backup, first, os, arch, engine,
+  ot_version}`. Registries before run counts read only `tool`, `version` and `client`.
+- `POST /runs` (`countRun`, `countInstallFailure`): `{ot_version, client, os, arch, mcp_client?, runs: [{tool, version,
+  outcome, duration_ms, engine, via}], install_failures?: [{tool, version, reason}], milestones?}`, at most 100 rows
+  (50 install failures) a POST. A registry without `/runs` answers 404, which is ignored.
+- `client` is `cli`, `ci` or `mcp`; `engine` `docker`, `podman`, `native` (`engineName`) or `none`; `via` `run`, `all`,
+  `playbook`, `auto` or `mcp`; `ot_version` without the `v`. Never inputs, targets, results, paths, run ids, case
+  names, command lines, keys or tokens (`TestUsageSendsOnlyTheAllowList`).
+- `runOutcome`, the first that applies: `timeout` (`*runner.TimeoutError`), `interrupted` (the context ended: Ctrl-C,
+  MCP `cancel_run` or the client leaving), `no_engine` (`*runner.RuntimeMissingError`), `not_started` (any other error
+  with no envelope or sidecar), `engine_error` (exit 125 in a container), `error` (another non-zero exit), `empty`
+  (exit 0, no entities), `ok`. A missing required key is `missing_key`, for single runs only.
+- Install failures, for a known version: `refused` (an invalid manifest, or what an agent may not install), else
+  `runner.FailureReason`: `no_engine`, `pull_failed`, `verify_failed`, `build_failed` or `error`; `interrupted` after
+  Ctrl-C. They ride in `/runs`, so an old `/installs` never counts one as an install.
+- Milestones, each once per machine (`telemetry.json`): `first_install` (as the install's `first: true`), `first_run`
+  (the first started run) and `first_ok_run` (the first `ok`). A machine that has packages installed when
+  `telemetry.json` is created starts with all three reached, so an upgrade isn't counted as a new person.
+- `mayCount` gates everything: telemetry on (`ot telemetry off`, `OT_NO_TELEMETRY`, `DO_NOT_TRACK` and `"telemetry":
+  false` turn it off), not `Installed.Local`, a `ns/name` ref with a version, and not a dev build (`Version == "dev"`)
+  talking to `https://api.otinstaller.com/v1` (`counting`).
+- Sending (`usageSink`, one per `App`): rows queue (at most 1,000; more are dropped) and one background goroutine posts
+  them with `context.WithoutCancel` and a 10 s timeout, coalescing rows that arrive meanwhile. A failure drops the rows;
+  a registry out of reach drops everything queued. The goroutine never writes files. Under `ot mcp` rows wait 2 s for
+  more, and `config.json` is read again before each POST. `OT_TELEMETRY_DEBUG=1` prints each count at once instead.
+- When a command ends, `Execute` waits for the queue (`waitForCounts`): up to 1.5 s, 500 ms after Ctrl-C, and not at
+  all when the registry was out of reach in the last hour (`telemetry.json` `unreachable_at`, set when a POST couldn't
+  connect or the wait ran out, and cleared by the next answer).
+- The one-time notice (`prepareCounts`, from `PersistentPreRun`), on stderr: "note: ot counts installs and runs (the
+  tool, its version and how each run ended; never your inputs, targets or results) so we can see which tools work.
+  `ot telemetry off` turns it off: <site>/policy/privacy". Only at a terminal while counting is on, never with JSON
+  output, in `CI`, under `ot mcp`, or for `help`, completion, `telemetry` or `start`; once (`notice_shown_at`). The
+  command it is shown for is counted as usual.
+
+The API counts an install once per address, version and day (a salted hash of the address and version in
+`rate_limits`, removed by the nightly purge once the window is over) and keeps only daily totals; see the API's
+`src/usage.ts`.
+
+Run reports (the failure prompt and `ot report --broken`) are sent only when the person says yes, and are switched
+off with the same settings. Anonymous ones also go through `anon()`; the API keeps a daily count per version and
+platform and hashes the address only to count it once a day.
 
 ---
 
@@ -1036,8 +1108,8 @@ the wheel plus `requirements.lock`, the registry's `python_lock`, installed with
 | Package | One line |
 | --- | --- |
 | `agent` | Consent classes (`Classify`, `Describe`), the policy file (`LoadPolicy`, `DefaultPolicy`), sessions (`DecideRun`, `DecideShare`, approvals, limits), consent tokens (`CallHash`, `Seal`/`Open`, single use), the audit log (`Record`, `ReadAudit`, rotation) |
-| `api` | Registry HTTP client: `do`, error shape `*api.Error`, search, tool/manifest/versions, install ping, device login, `/me`, tokens, guides and docs, imports, sync, removals, reports, claims and transfers, yank/deprecate, feedback, community issues, run reports, confirmations, tool requests and shares (`CreateShare`, `MyShares`, `DeleteShare`); `Version` carries `changelog` |
-| `cli` | Every cobra command, the `App` struct, exit codes, `ExitError`, `Main`, `ExitCodeFor`, JSON errors (`machine.go`), the MCP server (`mcp_*.go`) |
+| `api` | Registry HTTP client: `do`, error shape `*api.Error`, search, tool/manifest/versions, usage counts (`usage.go`: `InstallPing`, `Runs` and their structs, the allow-list), device login, `/me`, tokens, guides and docs, imports, sync, removals, reports, claims and transfers, yank/deprecate, feedback, community issues, run reports, confirmations, tool requests and shares (`CreateShare`, `MyShares`, `DeleteShare`); `Version` carries `changelog` |
+| `cli` | Every cobra command, the `App` struct, exit codes, `ExitError`, `Main`, `ExitCodeFor`, JSON errors (`machine.go`), the MCP server (`mcp_*.go`), usage counts (`usage.go`) |
 | `envelope` | The result envelope (`Version = 1`), `ParseOutput` for json/jsonl/csv/text, `Write` for json/raw/csv/table |
 | `keys` | Keychain storage (service `osintverse-ot`), env-first `Get`, `keys.json` name index |
 | `manifest` | Typed manifest, `Parse`/`ParseJSON`/`LoadFile`, schema + semantic + file validation, content rules, embedded schema (`go generate` from `spec/`) |
@@ -1049,7 +1121,7 @@ the wheel plus `requirements.lock`, the registry's `python_lock`, installed with
 | `share` | `ot share`'s upload (`spec/schema/share-v1.json`): `FromSaved` rebuilds a saved run's envelope without local details, `Encode` checks the registry's limits; `Load`/`Remember`/`Forget` keep `shares.json` |
 | `selfupdate` | Release lookup (get.otinstaller.com, else the GitHub API), Ed25519-signed checksums, archive SHA-256, extraction, atomic replace |
 | `specfiles` | Embedded copies of `spec/schema/{envelope,run-all,error}-v1.json`, `spec/pivots.json` and `spec/types.json` (`go generate`) |
-| `state` | Data directory, `state.json` load/atomic save, `config.json` with env overrides (`LoadConfig`), as written (`FileConfig`) and changed by `ot start` (`SetConfig`) |
+| `state` | Data directory, `state.json` load/atomic save, `config.json` with env overrides (`LoadConfig`, `TelemetryOffByEnv`, `DoNotTrack`), as written (`FileConfig`) and changed by `ot start` and `ot telemetry` (`SetConfig`), `telemetry.json` (`LoadTelemetry`) |
 
 `cli/cmd/mcpb` (not under `internal/`) packs the release binaries into MCP Bundles and writes the MCP Registry
 `server.json`; the release workflow runs it after GoReleaser.
@@ -1069,14 +1141,15 @@ the wheel plus `requirements.lock`, the registry's `python_lock`, installed with
 | `cli/playbook_test.go` | `ot playbook`: `--list` with a user playbook and the TAKES column, prefixed and guessed targets, and errors (missing tools, no matching inputs, no typed input, unknown playbook, `--all`) |
 | `cli/saved_test.go` | `ot extract` and `ot diff` against saved runs |
 | `cli/update_test.go` | `ot outdated --json` and `ot update` (named, `--all`) against a fake registry (update available, removed, not in registry), plus usage errors; lifecycle flags, their warnings and the table, an update's first-week note and `latest_first_week`, `yanked` cleared by an update, and moved packages installed under their new name (old image removed only when not shared) |
-| `cli/updatecheck_test.go` | holds (exact installs, `update --all` skipping them, `list`, naming a package releasing it, with and without a reinstall), the daily note (every gate, once a day, a stale list fetched again, the registry unreachable), the note's wording, and moves counted as updates |
+| `cli/updatecheck_test.go` | holds (exact installs, `update --all` skipping them, `list`, naming a package releasing it, with and without a reinstall), the daily note (every gate, `DO_NOT_TRACK` included, once a day, a stale list fetched again, the registry unreachable), the note's wording, and moves counted as updates |
+| `cli/usage_test.go` | Usage counts against a fake registry that records the POST bodies: exactly the allow-list and no input, finding, path, run id, case name, key or token; nothing sent with each off switch (`OT_NO_TELEMETRY`, `DO_NOT_TRACK`, `config.json`, `ot telemetry off`), for a local manifest or a local install run under its registry name, or by a dev build against the public registry (and a release build would); `--all`, `auto` and playbooks counting each run with its `via`; every outcome (timeout, Ctrl-C, no engine, exit 125, missing key; `runOutcome` for the rest); `missing_key` only for single runs; install failures; the bounded exit wait (a 5 s registry, `usageWait` 200 ms, then none for an hour); MCP `run_tool` as `client: mcp` and `ot telemetry off` without a restart (state seeded as `installedFixture` does); `mcpClientSlug`; the notice once and its gates; `OT_TELEMETRY_DEBUG`; milestones once and not after an upgrade; `ot telemetry status|on|off`; `ot start` applying its choice; `engineName` |
 | `cli/guide_test.go` | Guide search and read, terminal rewriting (`forTerminal`), Glamour rendering, `guide get` then offline read, `guide tools`, `guide open` and `docs`, request IDs on server errors, guide content validation |
 | `cli/import_test.go` | Import wizard completing a draft and opening a PR, `--registry` with `--yes`, community wrapper, bulk import and `--list` |
 | `cli/login_test.go` | Device-flow login (GitHub) and `--osintverse` |
 | `cli/release_test.go` | `ot release` with real git: happy path, refusals (dirty tree, existing tag), tools refused, `--no-push` |
 | `cli/sync_test.go` | `ot sync` and `--log` |
 | `cli/publish_test.go` | `ot publish` against a fake registry: the files uploaded (and the part names), the query, stopping after validation, `--wait` to the outcome, rejections with problems (exit 2) and by a check (exit 1, JSON code), `--dry-run` without a token, nothing uploaded for an invalid manifest; `--image-archive` pushing to a fake mirror and pinning `runtime.image` (uploaded and on disk), an arm64-only image refused, `--sign` alone refused, `--sign` running cosign with the token only in `DOCKER_CONFIG`; `--oidc` by itself in GitHub Actions (a fake ID token endpoint checking the audience), with GitLab's `OTINSTALLER_ID_TOKEN` over a stored token, `already_received`, and its refusals (no ID token, an untrusted one); `ot namespace create` with `--org` and a taken name; `ot namespace trust`, `trusted` and `untrust` |
-| `cli/profile_test.go` | `ot profile`: show, `--set`/`--unset`, `--sync`, rate limit, `--json` |
+| `cli/profile_test.go` | `ot profile`: show (with the installs and runs rows), `--set`/`--unset`, `--sync`, rate limit, `--json` |
 | `cli/trust_test.go` | report/claim/transfer against a fake registry, removed-package warnings and refusal, `self-update` with a signed fake release (through the GitHub API, and through `/ot/latest` with no downgrade), the newer-ot note in `ot outdated` (daily cache, and never for dev builds, agents, CI or `OT_NO_UPDATE_CHECK=1`) |
 | `cli/changelog_test.go` | `ot changelog` newest first without removed versions, only what's newer than the installed one, JSON, control characters stripped, a local manifest refused; `ot info`'s "What's new" |
 | `cli/community_test.go` | The failure prompt (asks once a week, sends no inputs, stays quiet with telemetry off, no terminal, `--json`, CI, a passing run or a local manifest), `ot report --works` (needs a token) and `--broken`, `ot issues` table and JSON, `ot request` (sign-in, notes, voting at a terminal and with `--vote`, the request number in JSON errors) |
@@ -1089,7 +1162,7 @@ the wheel plus `requirements.lock`, the registry's `python_lock`, installed with
 | `cli/starter_test.go` | A fresh machine: `ot auto` offering the starter playbook's tools at a terminal (no, dry run, yes; deprecated tools left out), `not_installed` with the `ot playbook … --yes` hint without one, `ot playbook` asking, MCP `run_all` answering `not_installed` with `suggested_tools` |
 | `cli/install_test.go` | `ot install` with one and several packages: hints, JSON shapes, a bad reference installing nothing, exit codes when installs fail, a missing engine stopping the rest; `playbook -y` installing in one go |
 | `cli/start_test.go` | `ot start`: `--yes` installing packs and tools and writing only the changed `config.json` keys (unknown keys kept, defaults removed), `input_required` without a terminal or with `--json` alone, bad flags changing nothing, `--dry-run` (text and JSON), the wizard through `App.StartWizard` (catalog, pre-fill, VS Code configured, already set up, Ctrl-C and Cancel), `pick` and the equivalent command line, `configChanges`, registry URLs |
-| `state/state_test.go` | `SetConfig` keeps other keys and removes `nil` ones, refuses a broken file; `FileConfig` ignores env overrides |
+| `state/state_test.go` | `SetConfig` keeps other keys and removes `nil` ones, refuses a broken file; `FileConfig` ignores env overrides; `TelemetryOffByEnv` (`OT_NO_TELEMETRY`, `DO_NOT_TRACK` but `0`/`false`); `LoadTelemetry` (a new machine, an upgraded one, a broken file, no temporary file left) |
 | `agent/agent_test.go` | `Classify`, `DecideRun`, policy lists and limits, loading, live policy changes, consent tokens, the audit log, `notifies_target` in descriptions |
 | `specfiles/specfiles_test.go` | Copies equal `spec/`; the pivot map covers every entity type; every schema enum value has a description |
 | `runner/textentities_test.go`, `runner/example_test.go` | Entities from text output; example commands |
@@ -1102,7 +1175,7 @@ the wheel plus `requirements.lock`, the registry's `python_lock`, installed with
 | `playbook/playbook_test.go` | Bundled playbooks, bundled tools exist in the seed (`TestBundledPlaybooksFitSeed`: each takes one of its playbook's input types and needs no key), later dirs win, parse errors, a broken file is an error |
 | `results/results_test.go` | `Sanitize`, `Dir` precedence (flag, `OT_RESULTS_DIR`, `OTINSTALLER_RESULTS_DIR`, `DefaultDir`), start/finish sidecar, stderr file only when written |
 | `results/saved_test.go` | `Outputs` and `Extract`; `Diff` |
-| `runner/runner_test.go` | `BuildCommand` (dropping optional args, no re-expansion), `ResolveInputs`, sandbox container args, docker install and run, no engine (exit 5), signature failure refuses, wheel hash check, sandboxed pipx image build |
+| `runner/runner_test.go` | `BuildCommand` (dropping optional args, no re-expansion), `ResolveInputs`, sandbox container args, docker install and run, no engine (exit 5), signature failure refuses, wheel hash check, sandboxed pipx image build, `FailureReason` for each install error |
 | `runner/backup_test.go` | Mirror fallback with the same signature, no fallback for other failures, bad mirror signature refused, wheel fallback to the registry copy, wheel backup when PyPI dropped the file |
 | `runner/typed_test.go` | `ParseTypedInput`, `ApplyTyped` |
 | `runner/detect_test.go` | `DetectType` order; detected prefixes are known typed prefixes |
@@ -1112,8 +1185,8 @@ the wheel plus `requirements.lock`, the registry's `python_lock`, installed with
 
 ## 7. Docs drift: the site's `docs/cli.md` and `cli/README.md`
 
-`cli/README.md` is a short intro (doctor, search, a `holehe` example, links, self-update). It documents no flags, so
-nothing in it is wrong. The site's `docs/cli.md` was brought level with `ot <command> --help` on 22 October 2026:
+`cli/README.md` is a short intro (doctor, search, a `holehe` example, links, self-update) plus a Telemetry section
+(what is counted, the off switches, `OT_TELEMETRY_DEBUG`). It documents no flags, so nothing in it is wrong. The site's `docs/cli.md` was brought level with `ot <command> --help` on 22 October 2026:
 every command and flag above appears there, with exit code 130, the cobra exit-1 caveat, the wider meanings of exit
 codes 4 and 5, `OTINSTALLER_RESULTS_DIR`, keys from environment variables and `config.json`. When a flag is added or
 renamed, update that page too (it is in the site's repository); there is no test that compares them.

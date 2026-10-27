@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -47,6 +48,8 @@ type runArgs struct {
 	Detect bool
 	// Machine is set by --json or -f json/jsonl: a program reads the output, so nothing asks a question.
 	Machine bool
+	// via is what started the runs, for usage counts: run, all, playbook, auto or mcp.
+	via string
 }
 
 func parseRunArgs(args []string) (*runArgs, error) {
@@ -196,6 +199,7 @@ func (a *App) runCmd() *cobra.Command {
 				return nil
 			}
 			if ra.All {
+				ra.via = "all"
 				return a.runAll(cmd.Context(), ra, "--all", nil)
 			}
 			if ra.DryRun {
@@ -209,6 +213,7 @@ func (a *App) runCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			ra.via = "run"
 			inst, err := a.ensureInstalled(cmd, ref, ra)
 			if err != nil {
 				return err
@@ -227,6 +232,7 @@ func (a *App) runCmd() *cobra.Command {
 			}
 			secrets, err := loadSecrets(m)
 			if err != nil {
+				a.countRun(cmd.Context(), inst, "missing_key", 0, ra.via)
 				return err
 			}
 			if err := a.cliConsent(ra, []allJob{{inst: inst, values: values}}); err != nil {
@@ -238,7 +244,7 @@ func (a *App) runCmd() *cobra.Command {
 			}
 			var timedOut *runner.TimeoutError
 			if errors.As(err, &timedOut) {
-				a.offerFailureReport(cmd.Context(), ra, failedRun{ref: ref, version: inst.Version, timedOut: true})
+				a.offerFailureReport(cmd.Context(), ra, failedRun{ref: ref, version: inst.Version, native: inst.Native, timedOut: true})
 			}
 			if err != nil {
 				return err
@@ -271,7 +277,7 @@ func (a *App) runCmd() *cobra.Command {
 				fmt.Fprintf(a.Err, "Wrote %d entities to %s\n", len(env.Entities), ra.Output)
 			}
 			if env.ExitCode != 0 {
-				a.offerFailureReport(cmd.Context(), ra, failedRun{ref: ref, version: inst.Version, exitCode: env.ExitCode, entities: len(env.Entities)})
+				a.offerFailureReport(cmd.Context(), ra, failedRun{ref: ref, version: inst.Version, native: inst.Native, exitCode: env.ExitCode, entities: len(env.Entities)})
 				return &ExitError{Code: ExitToolError, Err: fmt.Errorf("%s exited with code %d", m.Ref(), env.ExitCode)}
 			}
 			return nil
@@ -291,10 +297,13 @@ func firstGiven(m *manifest.Manifest, given map[string]string) string {
 }
 
 // execute runs an installed tool and, unless --no-save, saves its output and sidecar. The meta
-// is returned whenever something was saved, including for a timeout or an interrupted run.
+// is returned whenever something was saved, including for a timeout or an interrupted run. Every
+// run, single or in a batch, from the command line or an agent, is audited and counted here.
 func (a *App) execute(ctx context.Context, inst *state.Installed, values, secrets map[string]string, target string, ra *runArgs, stderr io.Writer) (*envelope.Envelope, *results.Meta, error) {
+	started := time.Now()
 	env, meta, err := a.executeRun(ctx, inst, values, secrets, target, ra, stderr)
 	a.auditRun(ra, inst, values, env, meta, err)
+	a.countRun(ctx, inst, runOutcome(ctx, inst, env, meta, err), time.Since(started), ra.via)
 	return env, meta, err
 }
 

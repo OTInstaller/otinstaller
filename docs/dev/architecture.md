@@ -532,8 +532,9 @@ answers `already_received`, so a repository with both doesn't fail one of them.
                 gone (403/404/410/no matching file) + wheel_url -> download(wheel_url, same sha)
               sandboxed: buildPythonImage(wheel, python_lock) -> ot-local/<ns>-<name>:<version>
               --native or no engine: installPipxNative
-     state.Load -> st.Installed[ref] = inst -> st.Save      (state.json, records from_backup)
-     POST /v1/installs {tool, version}   (unless OT_NO_TELEMETRY / config telemetry false; 3 s)
+     state.Load -> st.Installed[ref] = inst -> st.Save      (state.json, records from_backup and local)
+     countInstall -> usage sink -> POST /v1/installs {tool, version, client, from_backup, first, ...}
+        (in the background; not for local manifests, or with telemetry off; a failed install: countInstallFailure)
 
  ot run ns/name [u:x d:x --input v ...]
    cli/run_cmd.go -> ensureInstalled (refuses removed versions: /v1/removed list, refreshed hourly)
@@ -542,6 +543,8 @@ answers `already_received`, so a repository with both doesn't fail one of them.
    runner.(*Runner).Run -> BuildCommand -> runContainer -> ContainerArgs -> engine run ...
    envelope.ParseOutput(output_format, stdout) -> Envelope{...}
    results.(*Run).Finish(meta) -> <stem>.meta.json (+ lazy .stderr.txt); "Saved <path>" on stderr
+   auditRun; countRun(runOutcome, duration, via) -> usage sink -> POST /v1/runs {runs: [{tool, version, outcome, ...}]}
+   (*App).Execute: after the error is printed, waitForCounts (at most 1.5 s)
 ```
 
 1. `cli/internal/cli/packages.go:(*App).install` → `api.(*Client).Manifest` →
@@ -571,13 +574,17 @@ answers `already_received`, so a repository with both doesn't fail one of them.
      runs on amd64 (the platform the scanner builds for): pull and `cosign verify` against `sandbox_signer_identity`
      together, and the image is the install (`LocalImage`), with no wheel download.
 4. `state.Load` / `(*State).Save` (`cli/internal/state/state.go`; data dir `OT_HOME` → `%APPDATA%\ot` → `~/.ot`).
-5. Install ping: `api.(*Client).InstallPing` (anonymous, through `anon()`) → `POST /v1/installs` `{tool, version,
-   client}` (`usage.ts:recordInstall`: counted once per address, version and day into `install_counts` with the
-   client kind; a request with an `Origin` header is refused; 204 even when nothing matched) unless
-   `Config.TelemetryEnabled()` is false (`OT_NO_TELEMETRY` set, or `telemetry: false` in `config.json`). Local manifests
-   never ping and skip signature checks. Runs are counted the same way through `POST /v1/runs`
-   (`usage.ts:recordRuns`, daily totals in `run_counts`); the nightly `refreshUsage` turns both into each package's
-   30-day and all-time totals.
+5. Usage counts (`cli/internal/cli/usage.go`): `countInstall` queues `api.Install` for `POST /v1/installs`
+   (`usage.ts:recordInstall`: counted once per address, version and day into `install_counts` with the client kind;
+   `first` is the machine's first install). A failed install of a known version is queued for `POST /v1/runs`
+   (`countInstallFailure`, with `runner.FailureReason`). Both go through `anon()` from a background sender (up to 100
+   rows a POST, 10 s timeout, dropped on failure). A request with an `Origin` header is refused, and the answer is
+   204 even when nothing matched.
+   - Nothing is queued unless `mayCount` holds: telemetry on (not `OT_NO_TELEMETRY`, `DO_NOT_TRACK`, `ot telemetry
+     off` or `telemetry: false` in `config.json`), not `Installed.Local`, and not a dev build talking to the public
+     registry. Local manifests skip signature checks and are never counted.
+   - Runs are counted at step 11 (`usage.ts:recordRuns`, daily totals in `run_counts`), and the nightly
+     `refreshUsage` turns both into each package's 30-day and all-time totals.
 6. Run: `cli/run_cmd.go` parses its own args; `cli/run.go:(*App).ensureInstalled` refuses a removed installed
    version (`removedList(ctx, time.Hour)` from `GET /v1/removed`, cached in `<ot home>/cache/removed.json`;
    `removal()` matches a whole-package entry with an empty version) and offers to install a missing package.
@@ -606,6 +613,12 @@ answers `already_received`, so a repository with both doesn't fail one of them.
     raw file; stderr goes to a lazily created `.stderr.txt`; `(*Run).Finish(meta)` writes `.meta.json` with
     `results.StatusComplete|Failed|Timeout|Interrupted`. Results dir: `--results-dir`, `OT_RESULTS_DIR`,
     `OTINSTALLER_RESULTS_DIR`, else `./results`.
+11. Counting (`execute`, every run: `ot run`, `--all`, playbooks, `auto`, MCP): after `auditRun`, `countRun` queues
+    `api.RunCount` with `runOutcome` (`ok`, `empty`, `error`, `timeout`, `interrupted`, `engine_error` for exit 125 in
+    a container, `no_engine`, `not_started`), the duration and `runArgs.via`. A missing key on a single run is counted
+    as `missing_key`. The sender posts the rows to `POST /v1/runs` in the background, and `(*App).Execute` waits for
+    them at most 1.5 s once the command ends (500 ms after Ctrl-C, none for an hour after the registry was out of
+    reach). Under `ot mcp` rows wait 2 s for more, and `config.json` is read again before each POST.
 
 ### f. Sign-in
 

@@ -44,7 +44,7 @@ func (a *App) mcpCmd() *cobra.Command {
 				return &ExitError{Code: ExitUsage, Err: err}
 			}
 			s := a.serveMCP(cmd.Context(), p, resultsDir)
-			fmt.Fprintf(a.Err, "ot %s: MCP server on stdio (policy: %s)\n", Version, agent.PolicyPath())
+			fmt.Fprintf(a.Err, "ot %s: MCP server on stdio (policy: %s; telemetry %s, see `ot telemetry`)\n", Version, agent.PolicyPath(), onOff(a.counting()))
 			err = s.srv.Run(cmd.Context(), &mcp.StdioTransport{})
 			// The client went away: stop what is still running, so no container keeps going unwatched, and let the
 			// runs be saved and audited as interrupted.

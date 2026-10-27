@@ -49,12 +49,16 @@ func (c *latestCache) save() {
 	}
 }
 
+// noUpdateCheck is OT_NO_UPDATE_CHECK=1, or DO_NOT_TRACK, which asks for no requests a command doesn't need: no daily
+// lookup of the latest versions or of a newer ot. The daily check for removed versions stays on, for safety.
+func noUpdateCheck() bool { return os.Getenv("OT_NO_UPDATE_CHECK") == "1" || state.DoNotTrack() }
+
 // latestList returns the registry's latest versions, asking at most once per maxAge. Every attempt counts, so an
 // offline machine waits on the registry once a day, not on every command; only an answer replaces what was cached.
-// OT_NO_UPDATE_CHECK=1 never asks. The list is the same for everyone, so asking says nothing about what is installed.
+// noUpdateCheck never asks. The list is the same for everyone, so asking says nothing about what is installed.
 func (a *App) latestList(ctx context.Context, maxAge time.Duration) *latestCache {
 	c := readLatestCache()
-	if os.Getenv("OT_NO_UPDATE_CHECK") == "1" || time.Since(c.CheckedAt) < maxAge {
+	if noUpdateCheck() || time.Since(c.CheckedAt) < maxAge {
 		return c
 	}
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
@@ -115,7 +119,7 @@ func updateCounts(st *state.State, c *latestCache) (updates, held int) {
 // output, or (completion) run on every Tab.
 var quietCommands = map[string]bool{
 	"help": true, "completion": true, cobra.ShellCompRequestCmd: true, cobra.ShellCompNoDescRequestCmd: true,
-	"uninstall": true, "outdated": true, "update": true, "self-update": true, "mcp": true, "start": true,
+	"uninstall": true, "outdated": true, "update": true, "self-update": true, "mcp": true, "start": true, "telemetry": true,
 }
 
 // topLevel is the name of the root's child that cmd belongs to, or "" for the root itself.
@@ -138,10 +142,10 @@ type dailyNote struct {
 }
 
 // startDailyNote starts the day's lookups when a person at a terminal hasn't been told about updates today. Never in
-// CI, under `ot mcp`, with JSON output or with OT_NO_UPDATE_CHECK=1.
+// CI, under `ot mcp`, with JSON output, or with OT_NO_UPDATE_CHECK=1 or DO_NOT_TRACK.
 func (a *App) startDailyNote(cmd *cobra.Command, args []string) {
 	if !a.CheckUpdates || quietCommands[topLevel(cmd)] || topLevel(cmd) == "" || a.AgentMode ||
-		os.Getenv("CI") != "" || os.Getenv("OT_NO_UPDATE_CHECK") == "1" ||
+		os.Getenv("CI") != "" || noUpdateCheck() ||
 		!a.interactive() || a.jsonMode() || jsonRequested(args) {
 		return
 	}

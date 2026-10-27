@@ -91,6 +91,7 @@ func (a *App) autoCmd() *cobra.Command {
 					fmt.Fprintf(a.Err, "%s is %s\n", t.Value, withArticle(runner.TypedPrefixes[t.Prefix]))
 				}
 			}
+			ra.via = "auto"
 			return a.runAll(cmd.Context(), ra, "auto", nil)
 		},
 	}

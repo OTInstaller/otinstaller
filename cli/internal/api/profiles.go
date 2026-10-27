@@ -45,6 +45,8 @@ type NamespaceStats struct {
 	Guides          int   `json:"guides"`
 	Installs30d     int   `json:"installs_30d"`
 	InstallsTotal   int   `json:"installs_total"`
+	Runs30d         int   `json:"runs_30d"`
+	RunsTotal       int   `json:"runs_total"`
 	Stars           int   `json:"stars"`
 	Healthy         int   `json:"healthy"`
 	Broken          int   `json:"broken"`

@@ -79,11 +79,13 @@ type ToolSummary struct {
 	Runtime       string   `json:"runtime"`
 	Stars         int      `json:"stars"`
 	Installs30d   int      `json:"installs_30d"`
-	Health        string   `json:"health"`
-	Verified      bool     `json:"verified"`
-	Signed        bool     `json:"signed"`
-	NeedsKeys     bool     `json:"needs_keys"`
-	ManifestHeld  bool     `json:"manifest_held_by_registry"`
+	// Runs30d counts runs that started in the last 30 days, as ot reports them.
+	Runs30d      int    `json:"runs_30d"`
+	Health       string `json:"health"`
+	Verified     bool   `json:"verified"`
+	Signed       bool   `json:"signed"`
+	NeedsKeys    bool   `json:"needs_keys"`
+	ManifestHeld bool   `json:"manifest_held_by_registry"`
 	// SourceGone means the source repository is gone, so no new versions will come.
 	SourceGone bool   `json:"source_unavailable"`
 	Status     string `json:"status"`
@@ -296,12 +298,6 @@ func (c *Client) Manifest(ctx context.Context, ns, name, version string) (*Manif
 	var out ManifestResponse
 	p := "/tools/" + url.PathEscape(ns) + "/" + url.PathEscape(name) + "/" + url.PathEscape(version) + "/manifest"
 	return &out, c.anon().do(ctx, http.MethodGet, p, nil, &out)
-}
-
-// InstallPing is anonymous: only the package and version are sent.
-// InstallPing counts an install anonymously; client is cli, mcp or ci (no identifiers).
-func (c *Client) InstallPing(ctx context.Context, ref, version, client string) error {
-	return c.anon().do(ctx, http.MethodPost, "/installs", map[string]string{"tool": ref, "version": version, "client": client}, nil)
 }
 
 type DeviceStart struct {
