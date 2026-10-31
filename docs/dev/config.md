@@ -167,7 +167,9 @@ it runs from.
 
 ## 6. CLI release (`.github/workflows/release-cli.yml`, `cli/.goreleaser.yaml`)
 
-Trigger: push of a tag `v*.*.*`. Permissions: `contents: read`, `id-token: write` (cosign keyless).
+Trigger: push of a tag `v*.*.*`. Permissions: `contents: read`, `id-token: write` (cosign keyless). Go: the
+`toolchain` line in `cli/go.mod`, through `actions/setup-go`'s `go-version-file` (AGENTS.md, "Releasing `ot`", says
+when to raise it).
 
 | Name | Kind | Purpose |
 | --- | --- | --- |
