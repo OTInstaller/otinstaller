@@ -10,7 +10,7 @@ removes any of them on Windows, macOS or Linux.
 | --- | --- | --- |
 | Install a tool | Clone it, find a Python it still works with, make a virtualenv, untangle conflicting requirements, then repeat for the next tool | `ot install osintverse-community/holehe`, or just run it |
 | Run it | Read each README for its flags | The same typed inputs for every tool: `ot run osintverse-community/holehe e:ada@example.com` |
-| Use the results | Text, CSV, HTML and JSON, a different shape per tool | Every run saved under `results/` in one JSON shape, ready for scripts and AI agents |
+| Use the results | Text, CSV, HTML and JSON, a different shape per tool, sent on as screenshots | Every run saved under `results/` in one JSON shape, ready for scripts and AI agents; `ot share 3f9a1c2e` gives a link to it that works for 24 hours |
 | API keys | Spread across config files and shell history | One keychain: `ot keys set ABUSEIPDB_API_KEY`; each tool gets only its own keys |
 | Keep it working | Find out a tool broke in the middle of a case | Every tool run every night; `ot outdated`, `ot update --all` |
 | Trust it | Run a stranger's script with full access to your files | Pinned, scanned and run in a container that can't read your files |
