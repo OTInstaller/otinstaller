@@ -2,6 +2,8 @@ module github.com/otinstaller/otinstaller/cli
 
 go 1.25.0
 
+toolchain go1.26.10
+
 require (
 	github.com/charmbracelet/glamour v1.0.0
 	github.com/charmbracelet/huh v1.0.0

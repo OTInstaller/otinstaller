@@ -516,6 +516,13 @@ unset). Archive names `ot_<ver>_<os>_<arch>.tar.gz|.zip` are relied on by `self-
 release in the MCP Registry is a manual step afterwards (see [Agents](#agents-ot-mcp-the-remote-mcp-server-and-the-plugin)).
 Only tag a release when asked.
 
+Releases and `cli-install.yml` are built with the Go on `cli/go.mod`'s `toolchain` line (`actions/setup-go` reads it).
+Without that line setup-go installs exactly the `go` line, which is how v0.20.0 shipped on go1.25.0 with none of the
+standard library's security fixes since. Raise `toolchain` to each new patch release of its Go (`go mod edit
+-toolchain=go1.26.N` in `cli/`), and move it to a newer minor before the current one leaves support: Go 1.26 does when
+Go 1.28 ships (around February 2027), and Go 1.27 needs macOS 13, so moving to it drops macOS 12. The `go` line stays
+the minimum for building from source and sets the runtime's GODEBUG defaults, so raise it only on purpose.
+
 ---
 
 ## API (`api/`)
