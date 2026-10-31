@@ -1292,7 +1292,7 @@ Reading production's D1, from `api/` (the reasons and the details are in the con
   always with `LIMIT` (every read counts against D1's allowance), and `--json` for output a script can read.
 - Quoting under Windows and Git Bash: keep the statement on one line with only single quotes inside it. If `npx`
   still mangles it, call `node node_modules/wrangler/bin/wrangler.js d1 execute ...` directly.
-- Never `--remote --file` for a read. On the pinned wrangler (4.151.1) it goes through D1's import API: the
+- Never `--remote --file` for a read. On the pinned wrangler (4.156.0) it goes through D1's import API: the
   database "will be unavailable to serve queries" while it runs, and only totals come back, never the rows of a
   `SELECT`. Use it only for a write that must be all-or-nothing (several statements, not safe to run twice), and
   accept that cost.
