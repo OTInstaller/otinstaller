@@ -149,7 +149,7 @@ follow [docs/publishing-setup.md](docs/publishing-setup.md).
 | `scripts/` | The end-to-end tests and the install scripts |
 | `docs/` | The developer reference (`dev/`), the operator runbook, design notes and the `otinstaller` to `ot` migration guide |
 
-Requirements: Go 1.25+, Node.js 22+, Docker Desktop or Podman, and Python 3.12 (3.10+ on Linux or macOS for otlite).
+Requirements: Go 1.26+, Node.js 22+, Docker Desktop or Podman, and Python 3.12 (3.10+ on Linux or macOS for otlite).
 
 ```sh
 (cd cli && go test ./... && go build -o ../bin/ot ./cmd/ot)       # the CLI

@@ -8,7 +8,7 @@ Windows path is the best tested. [AGENTS.md](../../AGENTS.md) has the short comm
 | Tool | Version | Needed for |
 | --- | --- | --- |
 | Git (Git Bash on Windows) | any recent | everything; `bash scripts/*.sh` on Windows runs in Git Bash |
-| Go | 1.25+ (`cli/go.mod`) | `cli/`, `ot release` tests, `scripts/e2e*.sh` |
+| Go | 1.26+ (`cli/go.mod`) | `cli/`, `ot release` tests, `scripts/e2e*.sh` |
 | Node.js | 22+ (there is no `engines` field) | `api/` |
 | Docker Desktop or Podman | recent | running tools, sandboxed pipx tools, the e2e scripts, the scanner image |
 | Python | 3.12 (3.12+ works for the scanner and seed tests); 3.10+ on Linux or macOS for `otlite/` | `ops/scanner`, seed tool tests, `scripts/pm-catalog-to-wrappers.py`, `otlite/` |
