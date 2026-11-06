@@ -376,9 +376,9 @@ directory means `<dir>/otinstaller.yaml`). Anything else without exactly one `/`
   first by the time stamp in the file names. `listSavedRuns` is also what MCP's `list_runs` uses (with only the results
   dir, as before).
 - Output: table `RUN STARTED TOOL TARGET STATUS ENTITIES CASE` (a `note:` on stderr when `--limit` cut it, and a line
-  pointing at `ot runs <run-id>` and `ot pivot`), or "No saved runs from the last 7 days under …"; JSON is an array of
+  pointing at `ot runs <run-id>`, `ot pivot` and `ot share`), or "No saved runs from the last 7 days under …"; JSON is an array of
   `list_runs` rows. With a run id (`findSavedRunIn`): tool, target, status, exit code, entity count, duration, start
-  time, case, saved path, warnings, the first ten distinct entities and, when it found any, a line suggesting `ot pivot <id>`; JSON is the sidecar.
+  time, case, saved path, warnings, the first ten distinct entities and, when it found any, a line suggesting `ot pivot <id>` and `ot share <id>`; JSON is the sidecar.
 - No API. Exit: 0, also when nothing is found; 2 for a bad flag value or an unknown run id (`run_not_found`).
 
 #### `ot share [run-id | saved file]...`

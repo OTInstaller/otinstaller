@@ -88,7 +88,7 @@ func TestRunsCommand(t *testing.T) {
 	// The table, and one run in detail.
 	out.Reset()
 	errb.Reset()
-	if code := run(a, "runs"); code != 0 || !strings.Contains(out.String(), "RUN") || !strings.Contains(errb.String(), "`ot runs <run-id>` shows a run") {
+	if code := run(a, "runs"); code != 0 || !strings.Contains(out.String(), "RUN") || !strings.Contains(errb.String(), "`ot runs <run-id>` shows a run") || !strings.Contains(errb.String(), "`ot share <run-id>`") {
 		t.Fatalf("table: exit %d: %s %s", code, out, errb)
 	}
 	id := all[0].RunID
@@ -97,7 +97,7 @@ func TestRunsCommand(t *testing.T) {
 		t.Fatalf("show: exit %d: %s", code, errb)
 	}
 	for _, want := range []string{"Run " + id + ": dheeraj/user-a 1.2.0 against other", "Status:   complete, exit 0, 1 entity", "Case:     work",
-		"  account  github.com/jd", "Next: `ot pivot " + id + "`"} {
+		"  account  github.com/jd", "Next: `ot pivot " + id + "`", "`ot share " + id + "` gives someone a link"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("show lacks %q:\n%s", want, out)
 		}
