@@ -131,7 +131,7 @@ func (a *App) runsCmd() *cobra.Command {
 			if f.Limit > 0 && len(runs) == f.Limit {
 				fmt.Fprintf(a.Err, "note: the newest %d; --limit 0 lists them all\n", f.Limit)
 			}
-			fmt.Fprintln(a.Err, "`ot runs <run-id>` shows a run; `ot pivot <run-id>` suggests what to run next.")
+			fmt.Fprintln(a.Err, "`ot runs <run-id>` shows a run; `ot pivot <run-id>` suggests what to run next; `ot share <run-id>` makes a link to it for 24 hours.")
 			return nil
 		},
 	}
@@ -183,7 +183,7 @@ func (a *App) showRun(dirs []string, id string) error {
 		}
 	}
 	if len(m.Entities) > 0 {
-		fmt.Fprintf(a.Out, "\nNext: `ot pivot %s` suggests what to run on what it found.\n", s.RunID)
+		fmt.Fprintf(a.Out, "\nNext: `ot pivot %s` suggests what to run on what it found; `ot share %s` gives someone a link to it for 24 hours.\n", s.RunID, s.RunID)
 	}
 	return nil
 }
