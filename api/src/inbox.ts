@@ -30,7 +30,8 @@ const PER_USER_DAILY = 12;
 const SETTLE = 2 * 60_000;
 
 export interface Item {
-  kind: "issue_opened" | "comment" | "status" | "moderation" | "role" | "proposal" | "release" | "lifecycle" | "security";
+  // reliability: a package's latest version started failing for many of the people who run it (usage.ts usageAlerts).
+  kind: "issue_opened" | "comment" | "status" | "moderation" | "role" | "proposal" | "release" | "lifecycle" | "security" | "reliability";
   scope: Scope;
   summary: string;
   path: string;

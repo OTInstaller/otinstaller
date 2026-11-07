@@ -1,6 +1,7 @@
 // Operations: alerts for stuck publish jobs, the reviewers' daily digest, and error reporting to Sentry.
 import { deps, type Env } from "./env";
 import { sendEmail, staffEmails, templates } from "./notify";
+import { recentAlerts } from "./usage";
 
 /** Jobs not finished within 30 minutes (each reported once). */
 export async function alertStuckJobs(env: Env, now = Date.now()) {
@@ -27,7 +28,10 @@ export function businessDays(from: number, to: number): number {
   return days;
 }
 
-/** The reviewers' daily digest: namespaces waiting more than 2 business days and reports older than 48 hours. */
+/**
+ * The reviewers' daily digest: namespaces waiting more than 2 business days, reports older than 48 hours, and
+ * versions whose runs started failing (usage alerts sent in the last day).
+ */
 export async function dailyDigest(env: Env, now = Date.now()) {
   const waiting = (await env.DB.prepare(
     `SELECT n.name, MIN(v.created_at) AS since FROM namespaces n JOIN tools t ON t.namespace_id = n.id JOIN versions v ON v.tool_id = t.id
@@ -39,12 +43,13 @@ export async function dailyDigest(env: Env, now = Date.now()) {
      WHERE r.status = 'open' AND r.created_at < ?`,
   ).bind(now - 48 * 3_600_000).all<{ ref: string; reason: string; created_at: number }>()).results
     .map((r) => ({ ref: r.ref, reason: r.reason, hours: Math.round((now - r.created_at) / 3_600_000) }));
-  if (waiting.length === 0 && reports.length === 0) return null;
+  const failing = await recentAlerts(env, now - 86_400_000);
+  if (waiting.length === 0 && reports.length === 0 && failing.length === 0) return null;
   await sendEmail(env, {
     to: await staffEmails(env, "reviewers"), kind: "digest", key: `digest:${new Date(now).toISOString().slice(0, 10)}`,
-    ...templates.dailyDigest(env, waiting, reports),
+    ...templates.dailyDigest(env, waiting, reports, failing),
   });
-  return { waiting: waiting.length, reports: reports.length };
+  return { waiting: waiting.length, reports: reports.length, failing: failing.length };
 }
 
 /** Rate-limit windows older than a day. */

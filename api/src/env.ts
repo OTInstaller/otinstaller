@@ -56,6 +56,10 @@ export interface Env {
   EDGE_CACHE?: string; // "off" sends every anonymous read to D1 (the tests do this)
   // IndexNow (indexnow.ts): the key the site serves at /<key>.txt; unset or empty sends nothing.
   INDEXNOW_KEY?: string;
+  // PostHog (posthog.ts): counted installs and runs are forwarded as events when both are set; unset sends nothing.
+  // The token is a project token, public by design; the host is the ingestion host, such as https://us.i.posthog.com.
+  POSTHOG_PROJECT_TOKEN?: string;
+  POSTHOG_HOST?: string;
 }
 
 /**

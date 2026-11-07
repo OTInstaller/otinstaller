@@ -46,7 +46,7 @@ import { purgeCiTokens } from "./trusted";
 import { refreshDueProfiles } from "./profiles";
 import { backfillBackups, expireDrills, expireRuns, installFallbacks, pipxInstall, purgeBackups, queueMirrorSweeps, RESTORE_DRILL_CRON, startDrill, WEEKLY_BACKUP_CRON, weeklyBackups } from "./backups";
 import { alertStuckJobs, dailyDigest, nightly, purgeRateLimits, reportError } from "./ops";
-import { refreshUsage } from "./usage";
+import { refreshUsage, usageAlerts } from "./usage";
 import { usageRoutes } from "./routes/usage";
 import { flushIndexNow } from "./indexnow";
 import { queueNightlyLinkChecks } from "./guides";
@@ -616,6 +616,8 @@ export default {
     // links. Each step is reported on its own, so one that fails doesn't stop the rest.
     if (event.cron === "17 3 * * *") {
       await nightly(env, "refreshUsage", () => refreshUsage(env));
+      // Before the digest, which lists the alerts it sent.
+      await nightly(env, "usageAlerts", () => usageAlerts(env));
       await nightly(env, "queueNightlyLinkChecks", () => queueNightlyLinkChecks(env));
       await nightly(env, "dailyDigest", () => dailyDigest(env));
       await nightly(env, "purgeRateLimits", () => purgeRateLimits(env));

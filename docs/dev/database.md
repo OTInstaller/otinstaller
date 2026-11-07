@@ -4,8 +4,8 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 `api/migrations/*.sql` and the code in `api/src/`, `api/test/` and `api/scripts/`.
 
 - Binding: `DB`, database name `otinstaller`, `migrations_dir: "migrations"` (`api/wrangler.jsonc`).
-- 44 migrations, `0001` to `0044`.
-- Final schema: **69 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 70. FTS5 also creates its own shadow
+- 45 migrations, `0001` to `0045`.
+- Final schema: **70 regular tables + 1 FTS5 virtual table (`tools_fts`)** = 71. FTS5 also creates its own shadow
   tables, which aren't listed here.
 
 ---
@@ -48,7 +48,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0032 | `0032_problem_signals.sql` | New table `problem_signals` (anonymous daily counts from a tool page's **Report a problem**: broken or outdated, by version and platform), with `CREATE TABLE IF NOT EXISTS`: production got the table on 24 Oct from this file under its first name, `0030_problem_signals.sql`, so there it is recorded as applied and does nothing. Apply before an API that serves `POST /tools/:ns/:name/problem-reports` is deployed. |
 | 0033 | `0033_email_retries.sql` | `notifications` + `body`, `headers_json`, `attempts` (NN default 0), `sent_at`; partial index `notifications_retry`. Apply before an API that writes them is deployed. |
 | 0034 | `0034_namespace_rename_search.sql` | Trigger `tools_fts_namespace_rename` (AFTER UPDATE OF name ON namespaces): rewrites the namespace's tools' `tools_fts` rows with the new name. |
-| 0035 | `0035_cache_epoch.sql` | New table `settings` (`key` PK, `value`, `updated_at`) with the row `cache_epoch`, which edge-cache keys carry and removals and yanks move on. Apply before an API that reads it is deployed. |
+| 0035 | `0035_cache_epoch.sql` | New table `settings` (`key` PK, `value`, `updated_at`) with the row `cache_epoch`, which edge-cache keys carry and removals and yanks move on. Since 0045's code, also `usage_salt` (`YYYY-MM-DD:<64 hex>`, `posthog.ts`): today's random salt for PostHog distinct IDs, replaced on the first forwarded request of each UTC day. Apply before an API that reads it is deployed. |
 | 0036 | `0036_people_and_notification_settings.sql` | `users` + `display_name`, `bio`, `location`, `website` (TEXT), `links_json` (TEXT NN default `'[]'`), `handle_changed_at`; new table `handle_aliases` (old handles, kept by their owner and redirecting) and index `handle_aliases_user`; `package_follows` + `level` (CHECK all/releases/muted, default all); `email_prefs` + `lifecycle` and `security` (CHECK immediate/daily/off, default immediate, then set to each row's `releases`), `inbox_muted_json` (TEXT NN default `'[]'`), `email_provider`; `inbox` rebuilt so `scope` also takes `lifecycle` and `security`, indexes `inbox_user` and `inbox_pending` again. Apply before an API that reads them is deployed. |
 | 0037 | `0037_indexnow.sql` | New table `indexnow_queue` (`path` PK, `queued_at`) and index `idx_indexnow_queue_queued`: site pages waiting to be sent to IndexNow. Apply before an API that writes it is deployed. |
 | 0038 | `0038_versions_artifact_from_manifest.sql` | Data only: sets `versions.runtime_kind` and `artifact_ref` from `manifest_json` where they differ (versions re-released after a rejection kept the rejected release's; naminter 1.0.9 and octosuite 5.1.0 in production). |
@@ -58,6 +58,7 @@ Reference for the `otinstaller` D1 database used by the registry API (`api/`). E
 | 0042 | `0042_search_fields.sql` | `tools` + `title`, `level`, `format`, `language`, `touches_target`, `auth_required`, `collects_personal_data`, `notifies_target`, `egress`: the latest version's manifest fields search filters on and summaries show, filled for every tool with `SEARCH_FIELDS`. |
 | 0043 | `0043_shares.sql` | New table `shares` (shared results: `ot share`, `otlite share`) with indexes `idx_shares_expires` and `idx_shares_owner`. |
 | 0044 | `0044_usage.sql` | Usage counts (`usage.ts`): new tables `run_counts`, `run_runners`, `install_outcomes` and `usage_daily`; **rebuilds `install_counts`** with a `client` column (rows before it become `'unknown'`), PK `(tool_id, day, version_id, client)`, no FK to `versions` and index `install_counts_day`; `tools` + `runs_30d`, `installs_total` (filled from `install_counts`) and `runs_total`. `install_clients` stays but is no longer written. Must be applied before an API that reads `runs_30d` is deployed: `SUMMARY_COLUMNS` selects it on every catalog read. |
+| 0045 | `0045_usage_alerts.sql` | New table `usage_alerts` (failure alerts: a latest version whose runs started failing, one row per version, written when its maintainers are told) with index `usage_alerts_sent`. |
 
 ---
 
@@ -315,6 +316,16 @@ Purpose: how many addresses ran a package on a day (runs that started), each onc
 `rate_limits`.
 - PK `(tool_id, day)` · `tool_id` → `tools(id)` ON DELETE CASCADE · `runners` INTEGER NN default 0 · index
   `run_runners_day (day)`
+
+#### `usage_alerts` (0045)
+Purpose: failure alerts (`usage.ts:usageAlerts`, nightly): a package's latest version whose runs failed (tool errors and
+timeouts over finished runs) at least half the time in 7 days, from at least 20 runs and 3 runner-days, and at least
+twice plus 15 points its other versions' rate over 30 days. The row is written when the maintainers get an inbox item
+(kind `reliability`, scope `owner_issues`), so a version is alerted at most once every 14 days.
+- PK `(tool_id, version_id)` · `tool_id` → `tools(id)` ON DELETE CASCADE · `version_id` TEXT NN (no FK)
+- `failure_rate` REAL NN · `baseline_rate` REAL (NULL when the other versions have fewer than 20 runs) · `runs` INTEGER NN
+  · `sent_at` INTEGER NN · index `usage_alerts_sent (sent_at)`
+- Read by the daily digest (alerts of the last day) and `GET /admin/usage` (`alerts`).
 
 #### `usage_daily` (0044)
 Purpose: registry-wide daily counts, one dimension at a time, values from fixed lists only.

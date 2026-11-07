@@ -579,7 +579,8 @@ and beta work, so `R2_*`, `ISSUES_REPO`/`ISSUES_TOKEN` and `EDGE_CACHE` are only
 | `submissions.ts` | Community wrapper submissions: checks, `dockerfileChecks`, the community bot (`COMMUNITY_*`), the first-release review gate |
 | `upstream-pin.ts` / `upstream.ts` / `bumps.ts` | Reading a wrapper's upstream pin from its Dockerfile; the nightly upstream watcher (`UPSTREAM_WATCH`); bump pull requests, "merge and release", following each release to released or failed (`settleBump`, `sweepBumps`) and releasing on its own in auto mode |
 | `shares.ts` | Shared results (`ot share`, `otlite share`): `cleanShare` checks share-v1 and drops local details, `createShare` (R2 `shares/<id>.json` plus a `shares` row; the owner is never served), `readShare` (410 after 24 hours), `deleteShare` (owner or delete token), `listShares`, `purgeExpiredShares` (every cron run) |
-| `usage.ts` | Usage counts from `ot` (no address, user or token kept): `installInput` and `runsInput` (what may be sent; unknown values dropped or `other`), `recordInstall` and `recordRuns` (refs resolved with aliases, yanked versions counted; per-address caps and once-a-day runners through salted keys in `rate_limits`), `refreshUsage` (nightly `installs_30d`, `runs_30d`, `installs_total`, `runs_total` on `tools`) and `usageReport` (`GET /admin/usage`) |
+| `usage.ts` | Usage counts from `ot` (no address, user or token kept): `installInput` and `runsInput` (what may be sent; unknown values dropped or `other`), `recordInstall` and `recordRuns` (refs resolved with aliases, yanked versions counted; per-address caps and once-a-day runners through salted keys in `rate_limits`), `refreshUsage` (nightly `installs_30d`, `runs_30d`, `installs_total`, `runs_total` on `tools`), `usageAlerts` (nightly: a latest version whose runs started failing tells its maintainers, `usage_alerts`) and `usageReport` (`GET /admin/usage`) |
+| `posthog.ts` | Forwards what `/installs` and `/runs` counted to PostHog as `ot_install`, `ot_run`, `ot_install_failed` and `ot_activation` events, after the answer; no address or person profile, the distinct ID an HMAC of the address with a salt replaced every UTC day (`settings.usage_salt`). Off unless `POSTHOG_PROJECT_TOKEN` and `POSTHOG_HOST` are set |
 | `proposals.ts` | Change proposals: a wrapper's maintainers change its manifest, Dockerfile or README beyond the pin (`checkProposal`), the community bot opens the pull request, a reviewer who isn't the proposer approves it and the bot merges and releases it |
 | `build-watch.ts` | The build watcher: first-party tools' requirements.txt pins against PyPI (issues, dependency update pull requests, auto releases under `UPSTREAM_WATCH`), and each community-namespace build's base image on Docker Hub (rebuilds under `REBUILD_WATCH`) |
 | `first-week.ts` | A new version's first week: its works/broken counts (`firstWeekCounts`) for the status line, the versions list and the activity feed |
@@ -694,7 +695,7 @@ nothing cached before a takedown is served again. On a hit the original `Cache-C
    drills, backfill up to 5 versions with no backup, email inbox items due now, send queued pages to IndexNow. `scheduled()` runs this block on
    **every** trigger, including the nightly, weekly and monthly ones. Nightly also, each step through `nightly()`
    (`ops.ts`: a step that throws is reported to Sentry and the rest still run): first `refreshUsage` (each package's
-   `installs_30d`, `runs_30d`, `installs_total` and `runs_total`), then guide link rechecks (> 20% dead → needs
+   `installs_30d`, `runs_30d`, `installs_total` and `runs_total`), then `usageAlerts` (failure alerts to maintainers), then guide link rechecks (> 20% dead → needs
    update), the reviewer digest, rate-limit purge, backup purge, locking stale closed threads, recomputing every
    package's health (`refreshAllHealth`, so reports older than 30 days stop counting), daily inbox
    digests and the inbox purge, the `contributor_stats` recount, queuing every community wrapper's upstream check and
@@ -763,7 +764,7 @@ cache's epoch (`settings`, 0035), people's profiles and notification settings (`
 `latestMetadata`). 0040 drops the never-written `stars` table and `tools.stars_count` (responses keep `stars: 0`).
 0043 adds `shares` (shared results). 0044 adds usage counts (`run_counts`, `run_runners`, `install_outcomes`,
 `usage_daily`, and `tools.runs_30d`, `installs_total`, `runs_total`) and rebuilds `install_counts` with a `client`
-column and no foreign key to `versions` (`install_clients` is kept but no longer written). That is 69 tables plus
+column and no foreign key to `versions` (`install_clients` is kept but no longer written). 0045 adds `usage_alerts` (failure alerts). That is 70 tables plus
 `tools_fts`; every
 table, column, CHECK value set and status transition is in
 [docs/dev/database.md](docs/dev/database.md).
