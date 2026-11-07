@@ -71,7 +71,7 @@ The first-party namespace is `osintverse-community` (a GitHub organisation). The
 ```
 spec/        Manifest JSON Schema, valid/invalid fixtures, release workflow templates, the envelope, run-all and
              error schemas, types.json, pivots.json, openapi/v1.json and dockerfile-templates.ts (the source of truth)
-cli/         The `ot` CLI (Go 1.25+, cobra); cmd/ot is the binary, cmd/mcpb packs the release's MCP bundles
+cli/         The `ot` CLI (Go 1.26+, cobra); cmd/ot is the binary, cmd/mcpb packs the release's MCP bundles
 api/         Registry API and image mirror (TypeScript, Hono on Cloudflare Workers, D1, Queues, R2)
 ops/         scanner/ (scan.py, backup.py, tests, Dockerfile), workflows/ (scan.yml) copied into registry-ops,
              get/ (worker.js, wrangler.jsonc: the get.otinstaller.com Worker)
@@ -98,7 +98,7 @@ reads `otlite/`; no test does.)
 
 ## Requirements
 
-- Go 1.25+ (CLI)
+- Go 1.26+ (CLI)
 - Node.js 22+ (API); dependencies are pinned in each `package-lock.json`, install with `npm install`
 - Docker Desktop or Podman (running Docker tools, sandboxed pipx tools, the e2e scripts, the scanner image)
 - Python 3.12 (scanner, seed tool unit tests, the converter); Python 3.10+ on Linux or macOS for `otlite/`
