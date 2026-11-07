@@ -52,6 +52,7 @@ restore drill).
 | `MIRROR_HOST` | no | host in mirror targets and `mirror_image` | defaults to `mirror.otinstaller.com` |
 | `GITHUB_APP_SLUG` | no (commented out) | App install link `https://github.com/apps/<slug>/installations/new` | defaults to `otinstaller` |
 | `INDEXNOW_KEY` | no | IndexNow key (`indexnow.ts`); public by design, must equal the name and content of the site's `web/public/<key>.txt` | nothing queued or sent (also off when `SITE_URL` is http or localhost; tests set it to `""`) |
+| `POSTHOG_PROJECT_TOKEN`, `POSTHOG_HOST` | no | PostHog project token (public by design) and ingestion host, such as `https://us.i.posthog.com`, for forwarding counted installs and runs (`posthog.ts`); set both only after the privacy policy says so | nothing forwarded |
 
 ### 1.3 Secrets and optional settings (from `env.ts`)
 

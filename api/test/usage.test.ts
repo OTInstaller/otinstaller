@@ -2,7 +2,9 @@ import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { sha256Hex, ulid } from "../src/lib/crypto";
 import { nightly } from "../src/ops";
-import { LIMITS, recordRuns, refreshUsage, runsInput } from "../src/usage";
+import { ALERT, LIMITS, recordRuns, refreshUsage, runsInput, usageAlerts } from "../src/usage";
+import { usageEvents } from "../src/posthog";
+import { templates } from "../src/notify";
 import worker from "../src/index";
 import { call, fakeHosts, testEnv } from "./helpers";
 
@@ -49,7 +51,7 @@ async function pkg(versions: [string, string][] = [["1.0.0", "published"]]) {
   }
   stmts.push(DB().prepare(`UPDATE tools SET latest_version_id = ? WHERE id = ?`).bind(ids[versions.at(-1)![0]], toolId));
   await DB().batch(stmts);
-  return { ref: `${ns}/${name}`, ns, name, toolId, versionIds: ids };
+  return { ref: `${ns}/${name}`, ns, name, nsId, toolId, versionIds: ids };
 }
 
 const post = (path: string, body: unknown, headers: Record<string, string> = {}) =>
@@ -275,5 +277,125 @@ describe("usage report", () => {
     expect(one.tool.daily.at(-1)).toMatchObject({ day: today(), runs: 4, installs: 1, ok: 3, failed: 1 });
     expect((await call("/admin/usage?days=365", { headers: reviewer.auth })).status).toBe(400);
     expect((await call("/admin/usage?tool=nobody/nothing", { headers: reviewer.auth })).status).toBe(404);
+  });
+});
+
+// ---------- PostHog forwarding ----------
+
+describe("forwarding to PostHog", () => {
+  const withPostHog = async () => ({ ...(await testEnv()), POSTHOG_PROJECT_TOKEN: "phc_test", POSTHOG_HOST: "https://ph.example" });
+
+  it("sends each counted run as an event with only the counted fields, and never the address", async () => {
+    const p = await pkg();
+    const calls = fakeHosts({ "POST https://ph.example/batch/": {} });
+    const e = await withPostHog();
+    const address = "198.51.100.77";
+    const body = JSON.stringify(batch([run(p.ref, "ok", { duration_ms: 2500 }), run("nobody/nothing", "ok")], { client: "mcp", mcp_client: "cursor", milestones: ["first_run"] }));
+    const send = () => call("/runs", { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": address }, body }, e);
+    expect((await send()).status).toBe(204);
+    expect((await send()).status).toBe(204);
+    const sent = calls.filter((c) => c.url === "https://ph.example/batch/");
+    expect(sent).toHaveLength(2);
+    for (const c of sent) expect(c.body).not.toContain(address);
+    const first = JSON.parse(sent[0]!.body);
+    expect(first.api_key).toBe("phc_test");
+    const runEvent = first.batch.find((x: any) => x.event === "ot_run");
+    expect(runEvent.properties).toEqual({
+      tool: p.ref, tool_version: "1.0.0", tool_runtime: "docker", outcome: "ok", duration_ms: 2500, engine: "docker", via: "run",
+      mcp_client: "cursor", client: "mcp", os: "linux", arch: "amd64", ot_version: "0.16.0",
+      $process_person_profile: false, $geoip_disable: true, $lib: "otinstaller-api",
+    });
+    // The unknown package isn't counted, so it isn't sent; the milestone counts once per address a day.
+    expect(first.batch.map((x: any) => x.event).sort()).toEqual(["ot_activation", "ot_run"]);
+    expect(JSON.parse(sent[1]!.body).batch.map((x: any) => x.event)).toEqual(["ot_run"]);
+    // One address keeps its code through the day.
+    expect(JSON.parse(sent[1]!.body).batch[0].distinct_id).toBe(runEvent.distinct_id);
+  });
+
+  it("gives an address a different code on another day", async () => {
+    const e = await testEnv();
+    const counted = { installs: [], runs: [], failures: [], milestones: ["first_run"] };
+    const sender = { client: "cli", os: "linux", arch: "amd64", ot_version: "0.20.0" };
+    const day1 = Date.UTC(2031, 0, 1, 12);
+    const [a] = await usageEvents(e, counted, sender, "203.0.113.9", "DE", day1);
+    const [b] = await usageEvents(e, counted, sender, "203.0.113.9", "DE", day1 + 3_600_000);
+    const [c] = await usageEvents(e, counted, sender, "203.0.113.9", "DE", day1 + 86_400_000);
+    expect(a!.distinct_id).toBe(b!.distinct_id);
+    expect(c!.distinct_id).not.toBe(a!.distinct_id);
+    expect(a!.properties.$geoip_country_code).toBe("DE");
+  });
+
+  it("sends installs too, and nothing without its settings", async () => {
+    const p = await pkg();
+    const calls = fakeHosts({ "POST https://ph.example/batch/": {} });
+    const install = { tool: p.ref, version: "1.0.0", client: "cli", from_backup: true, first: true, os: "darwin", arch: "arm64", engine: "podman", ot_version: "0.20.0" };
+    await call("/installs", { method: "POST", headers: { "cf-connecting-ip": "198.51.100.78" }, body: JSON.stringify(install) }, await withPostHog());
+    const events = JSON.parse(calls.find((c) => c.url === "https://ph.example/batch/")!.body).batch;
+    expect(events.find((x: any) => x.event === "ot_install").properties).toMatchObject({ tool: p.ref, from_backup: true, first: true, os: "darwin", engine: "podman" });
+    calls.length = 0;
+    await call("/installs", { method: "POST", headers: { "cf-connecting-ip": "198.51.100.79" }, body: JSON.stringify(install) });
+    await post("/runs", batch([run(p.ref, "ok")]), { "cf-connecting-ip": "198.51.100.79" });
+    expect(calls.filter((c) => c.url.startsWith("https://ph.example"))).toHaveLength(0);
+  });
+});
+
+// ---------- failure alerts ----------
+
+describe("failure alerts", () => {
+  async function failing(opts: { latest: [number, number]; before?: [number, number]; runnerDays?: number }) {
+    const p = await pkg([["1.0.0", "published"], ["1.1.0", "published"]]);
+    const owner = await person();
+    const stmts = [
+      DB().prepare(`INSERT INTO namespace_members (namespace_id, user_id, role) VALUES (?, ?, 'owner')`).bind(p.nsId, owner.id),
+      DB().prepare(`INSERT INTO run_counts (tool_id, version_id, day, client, outcome, count) VALUES (?, ?, ?, 'cli', 'ok', ?)`).bind(p.toolId, p.versionIds["1.1.0"], today(), opts.latest[0]),
+      DB().prepare(`INSERT INTO run_counts (tool_id, version_id, day, client, outcome, count) VALUES (?, ?, ?, 'cli', 'error', ?)`).bind(p.toolId, p.versionIds["1.1.0"], daysAgo(1), opts.latest[1]),
+      ...Array.from({ length: opts.runnerDays ?? 3 }, (_, i) =>
+        DB().prepare(`INSERT INTO run_runners (tool_id, day, runners) VALUES (?, ?, 1)`).bind(p.toolId, daysAgo(i))),
+    ];
+    if (opts.before) {
+      stmts.push(
+        DB().prepare(`INSERT INTO run_counts (tool_id, version_id, day, client, outcome, count) VALUES (?, ?, ?, 'cli', 'ok', ?)`).bind(p.toolId, p.versionIds["1.0.0"], daysAgo(20), opts.before[0]),
+        DB().prepare(`INSERT INTO run_counts (tool_id, version_id, day, client, outcome, count) VALUES (?, ?, ?, 'cli', 'timeout', ?)`).bind(p.toolId, p.versionIds["1.0.0"], daysAgo(20), opts.before[1]),
+      );
+    }
+    await DB().batch(stmts);
+    return { p, owner };
+  }
+  const mine = (alerts: { ref: string }[], ref: string) => alerts.filter((a) => a.ref === ref);
+
+  it("tells maintainers once when the latest version starts failing, and staff in the report", async () => {
+    const { p, owner } = await failing({ latest: [5, 20], before: [30, 2] });
+    const e = await testEnv();
+    const sent = mine(await usageAlerts(e), p.ref);
+    expect(sent).toEqual([{ tool_id: p.toolId, ref: p.ref, version: "1.1.0", version_id: p.versionIds["1.1.0"], failure_rate: 0.8, baseline_rate: 0.0625, runs: 25 }]);
+    const inbox = await DB().prepare(`SELECT kind, scope, summary, path FROM inbox WHERE user_id = ?`).bind(owner.id).all();
+    expect(inbox.results).toEqual([{
+      kind: "reliability", scope: "owner_issues", path: `/${p.ref}`,
+      summary: `Runs of ${p.ref} 1.1.0 failed 80% of the time in the last 7 days (6% for its earlier versions), from 25 runs: tool errors and timeouts, counted by ot`,
+    }]);
+    // Not again for 14 days.
+    expect(mine(await usageAlerts(e), p.ref)).toEqual([]);
+    await DB().prepare(`UPDATE usage_alerts SET sent_at = sent_at - ? WHERE tool_id = ?`).bind(ALERT.again + 60_000, p.toolId).run();
+    expect(mine(await usageAlerts(e), p.ref)).toHaveLength(1);
+    const reviewer = await person({ reviewer: true });
+    const report = (await (await call("/admin/usage", { headers: reviewer.auth })).json()) as any;
+    expect(report.alerts.find((a: any) => a.ref === p.ref)).toMatchObject({ version: "1.1.0", runs: 25 });
+  });
+
+  it("stays quiet when earlier versions failed about as often, or too few people ran it", async () => {
+    const same = await failing({ latest: [5, 20], before: [10, 25] });
+    const few = await failing({ latest: [5, 20], runnerDays: 2 });
+    const sent = await usageAlerts(await testEnv());
+    expect(mine(sent, same.p.ref)).toEqual([]);
+    expect(mine(sent, few.p.ref)).toEqual([]);
+    // With no earlier runs to compare with, half failing is enough.
+    const fresh = await failing({ latest: [10, 10] });
+    expect(mine(await usageAlerts(await testEnv()), fresh.p.ref)).toHaveLength(1);
+  });
+
+  it("lists failing versions in the reviewers' digest", () => {
+    const text = templates.dailyDigest({ SITE_URL: "https://otinstaller.com" } as any, [], [], [{ ref: "acme/finder", version: "1.1.0", failure_rate: 0.8, baseline_rate: 0.0625, runs: 25 }]).text;
+    expect(text).toContain("acme/finder 1.1.0: 80% of 25 runs (6% before)");
+    expect(text).toContain("https://otinstaller.com/admin/usage");
   });
 });

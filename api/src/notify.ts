@@ -171,11 +171,18 @@ export const templates = {
     subject: `${jobs.length} publish job(s) stuck for over 30 minutes`,
     text: jobs.map((j) => `${j.repo} ${j.tag}: ${j.status} for ${j.age_min} min (job ${j.id})`).join("\n") + `\n\n${env.SITE_URL}/admin`,
   }),
-  dailyDigest: (env: Env, waiting: { name: string; days: number }[], reports: { ref: string; reason: string; hours: number }[]) => ({
-    subject: `Review digest: ${waiting.length} namespace(s) waiting, ${reports.length} old report(s)`,
+  dailyDigest: (
+    env: Env, waiting: { name: string; days: number }[], reports: { ref: string; reason: string; hours: number }[],
+    failing: { ref: string; version: string | null; failure_rate: number; baseline_rate: number | null; runs: number }[] = [],
+  ) => ({
+    subject: `Review digest: ${waiting.length} namespace(s) waiting, ${reports.length} old report(s)` +
+      (failing.length ? `, ${failing.length} version(s) failing` : ""),
     text: [
       waiting.length ? `Namespaces waiting more than 2 business days:\n${waiting.map((w) => `  ${w.name} (${w.days} days)`).join("\n")}` : "",
       reports.length ? `Reports open more than 48 hours:\n${reports.map((r) => `  ${r.ref}: ${r.reason} (${r.hours} h)`).join("\n")}` : "",
+      failing.length ? `Versions whose runs started failing (their maintainers were told):\n${failing.map((f) =>
+        `  ${f.ref} ${f.version ?? "?"}: ${Math.round(f.failure_rate * 100)}% of ${f.runs} runs` +
+        (f.baseline_rate !== null ? ` (${Math.round(f.baseline_rate * 100)}% before)` : "")).join("\n")}\n${env.SITE_URL}/admin/usage` : "",
       `${env.SITE_URL}/admin`,
     ].filter(Boolean).join("\n\n"),
   }),

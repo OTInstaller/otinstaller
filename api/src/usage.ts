@@ -2,9 +2,11 @@
 // `ot` sends POST /installs after each install and POST /runs with a command's runs (routes/usage.ts). The nightly cron
 // folds the last 30 days into tools.installs_30d and runs_30d (refreshUsage), and staff read the totals on the admin
 // Usage tab (usageReport). An address is counted once per package and day, held only as a salted hash in rate_limits
-// (trust.ts), which the nightly purge deletes after a day. Tables: migration 0044.
+// (trust.ts), which the nightly purge deletes after a day. Nightly too, usageAlerts tells maintainers when their latest
+// version starts failing for many people. Forwarding to PostHog is in posthog.ts. Tables: migrations 0044 and 0045.
 import type { Env } from "./env";
 import { apiError } from "./lib/errors";
+import { inboxRows, maintainers } from "./inbox";
 import { hitStatement, rateKey } from "./trust";
 
 const DAY = 86_400_000;
@@ -37,7 +39,17 @@ export type RunsInput = {
   client: string; os: string; arch: string; ot_version: string; mcp_client: string | null;
   runs: RunRow[]; failures: FailureRow[]; milestones: string[];
 };
-export type InstallInput = { tool: string; version: string; client: string; from_backup: boolean; first: boolean };
+export type InstallInput = {
+  tool: string; version: string; client: string; from_backup: boolean; first: boolean;
+  os: string; arch: string; engine: string; ot_version: string;
+};
+/** What one POST counted, for forwarding to PostHog (posthog.ts): only rows the registry kept, never the address. */
+export type Counted = {
+  installs: { tool: string; version: string; runtime: string | null; from_backup: boolean; first: boolean }[];
+  runs: (RunRow & { runtime: string | null })[];
+  failures: (FailureRow & { runtime: string | null })[];
+  milestones: string[];
+};
 
 const pick = (v: unknown, allowed: readonly string[]) => (typeof v === "string" && allowed.includes(v) ? v : "other");
 const isRef = (tool: unknown, version: unknown) =>
@@ -50,8 +62,14 @@ export function installInput(body: unknown): InstallInput {
   const b = (body && typeof body === "object" && !Array.isArray(body) ? body : {}) as Record<string, unknown>;
   const [ns, name] = typeof b.tool === "string" ? b.tool.split("/") : [];
   if (!ns || !name || typeof b.version !== "string" || !b.version) apiError(400, "invalid_body", "send {tool: 'namespace/name', version}");
-  return { tool: b.tool as string, version: b.version, client: pick(b.client, CLIENTS), from_backup: b.from_backup === true, first: b.first === true };
+  return {
+    tool: b.tool as string, version: b.version, client: pick(b.client, CLIENTS), from_backup: b.from_backup === true, first: b.first === true,
+    os: pick(b.os, OSES), arch: pick(b.arch, ARCHES), engine: pick(b.engine, ENGINES), ot_version: otVersion(b.ot_version),
+  };
 }
+
+/** ot's version as sent, or "other" when it isn't a plain release number. */
+const otVersion = (v: unknown) => (typeof v === "string" && v.length <= 32 && SEMVER.test(v) ? v : "other");
 
 /**
  * Checks a POST /runs body. A wrong shape is a 400. Rows with an unknown package, outcome or reason are dropped and
@@ -81,9 +99,8 @@ export function runsInput(body: unknown): RunsInput {
       ? [{ tool: f.tool as string, version: f.version as string, reason: f.reason as string }]
       : []);
   const milestones = [...new Set(list("milestones", MILESTONES.length * 2).filter((m): m is string => typeof m === "string" && MILESTONES.includes(m)))];
-  const otVersion = typeof b.ot_version === "string" && b.ot_version.length <= 32 && SEMVER.test(b.ot_version) ? b.ot_version : "other";
   return {
-    client, os: pick(b.os, OSES), arch: pick(b.arch, ARCHES), ot_version: otVersion,
+    client, os: pick(b.os, OSES), arch: pick(b.arch, ARCHES), ot_version: otVersion(b.ot_version),
     mcp_client: client === "mcp" ? pick(b.mcp_client, MCP_CLIENTS) : null,
     runs, failures, milestones,
   };
@@ -91,7 +108,7 @@ export function runsInput(body: unknown): RunsInput {
 
 // ---------- counting ----------
 
-type Resolved = { tool_id: string; version_id: string };
+type Resolved = { tool_id: string; version_id: string; runtime: string | null };
 
 /**
  * The published or yanked versions behind tool@version refs, following transferred packages' old addresses as findTool
@@ -104,12 +121,14 @@ async function resolveRefs(db: D1Database, refs: { tool: string; version: string
     const rows = await db.prepare(sql.replace("$VALUES", list.map(() => "(?, ?, ?)").join(", ")))
       .bind(...list.flatMap((r) => [...r.tool.split("/"), r.version]))
       .all<{ tool: string; version: string } & Resolved>();
-    for (const r of rows.results) if (!found.has(refKey(r.tool, r.version))) found.set(refKey(r.tool, r.version), { tool_id: r.tool_id, version_id: r.version_id });
+    for (const r of rows.results) {
+      if (!found.has(refKey(r.tool, r.version))) found.set(refKey(r.tool, r.version), { tool_id: r.tool_id, version_id: r.version_id, runtime: r.runtime });
+    }
   };
   for (let i = 0; i < unique.length; i += LIMITS.refsPerQuery) {
     const chunk = unique.slice(i, i + LIMITS.refsPerQuery);
     await lookup(
-      `SELECT n.name || '/' || t.name AS tool, v.version, t.id AS tool_id, v.id AS version_id
+      `SELECT n.name || '/' || t.name AS tool, v.version, t.id AS tool_id, v.id AS version_id, v.runtime_kind AS runtime
        FROM tools t JOIN namespaces n ON n.id = t.namespace_id JOIN versions v ON v.tool_id = t.id
        WHERE t.status != 'removed' AND v.status IN ('published', 'yanked') AND (n.name, t.name, v.version) IN (VALUES $VALUES)`,
       chunk,
@@ -117,7 +136,7 @@ async function resolveRefs(db: D1Database, refs: { tool: string; version: string
     const moved = chunk.filter((r) => !found.has(refKey(r.tool, r.version)));
     if (moved.length) {
       await lookup(
-        `SELECT a.old_namespace || '/' || a.old_name AS tool, v.version, t.id AS tool_id, v.id AS version_id
+        `SELECT a.old_namespace || '/' || a.old_name AS tool, v.version, t.id AS tool_id, v.id AS version_id, v.runtime_kind AS runtime
          FROM aliases a JOIN tools t ON t.id = a.tool_id JOIN versions v ON v.tool_id = t.id
          WHERE t.status != 'removed' AND v.status IN ('published', 'yanked') AND (a.old_namespace, a.old_name, v.version) IN (VALUES $VALUES)`,
         moved,
@@ -142,13 +161,14 @@ const installOutcome = (db: D1Database, v: Resolved, day: string, outcome: strin
 /**
  * Counts one install: once per address, package version and day, with the kind of client, whether it came from the
  * registry's backups, and the machine's first install. Old ot sends only tool, version and client. Without an address
- * (local runs) every install counts.
+ * (local runs) every install counts. Returns what it counted.
  */
-export async function recordInstall(env: Env, address: string | null, input: InstallInput, now = Date.now()) {
-  if (!isRef(input.tool, input.version)) return;
+export async function recordInstall(env: Env, address: string | null, input: InstallInput, now = Date.now()): Promise<Counted> {
+  const out: Counted = { installs: [], runs: [], failures: [], milestones: [] };
+  if (!isRef(input.tool, input.version)) return out;
   const db = env.DB;
   const v = (await resolveRefs(db, [input])).get(refKey(input.tool, input.version));
-  if (!v) return;
+  if (!v) return out;
   const day = utcDay(now);
   let counted = true;
   let firstToday = false;
@@ -176,14 +196,19 @@ export async function recordInstall(env: Env, address: string | null, input: Ins
   if (firstToday) writes.push(daily(db, day, "addresses", "installed", 1));
   if (milestone) writes.push(daily(db, day, "milestone", "first_install", 1));
   if (writes.length) await db.batch(writes);
+  if (counted) out.installs.push({ tool: input.tool, version: input.version, runtime: v.runtime, from_backup: input.from_backup, first: input.first });
+  if (milestone) out.milestones.push("first_install");
+  return out;
 }
 
 /**
  * Counts one POST /runs. Rows for packages the registry doesn't have are dropped. With an address, a package counts at
  * most limits.runsPerTool of its runs a day, the address limits.runsPerAddress rows in all, and the address is a runner
- * of each package it ran once a day. Without one (local runs) everything counts and nobody is a runner.
+ * of each package it ran once a day. Without one (local runs) everything counts and nobody is a runner. Returns what it
+ * counted.
  */
-export async function recordRuns(env: Env, address: string | null, input: RunsInput, now = Date.now(), limits = LIMITS) {
+export async function recordRuns(env: Env, address: string | null, input: RunsInput, now = Date.now(), limits = LIMITS): Promise<Counted> {
+  const out: Counted = { installs: [], runs: [], failures: [], milestones: [] };
   const db = env.DB;
   const day = utcDay(now);
   const refs = await resolveRefs(db, [...input.runs, ...input.failures]);
@@ -195,7 +220,7 @@ export async function recordRuns(env: Env, address: string | null, input: RunsIn
     const v = refs.get(refKey(f.tool, f.version));
     return v ? [{ ...f, ...v }] : [];
   });
-  if (!runs.length && !failures.length && !input.milestones.length) return;
+  if (!runs.length && !failures.length && !input.milestones.length) return out;
 
   // How much of this POST counts.
   const tools = new Map<string, { sent: number; started: boolean; allowed: number; runner: boolean }>();
@@ -251,6 +276,7 @@ export async function recordRuns(env: Env, address: string | null, input: RunsIn
     runRows.set(key, row);
     dim("engine", r.engine);
     dim("via", r.via);
+    out.runs.push({ tool: r.tool, version: r.version, outcome: r.outcome, duration_ms: r.duration_ms, engine: r.engine, via: r.via, runtime: r.runtime });
   }
   if (counted) {
     dim("os", input.os, counted);
@@ -268,7 +294,9 @@ export async function recordRuns(env: Env, address: string | null, input: RunsIn
     const row = failureRows.get(key) ?? { v: f, reason: f.reason, count: 0 };
     row.count++;
     failureRows.set(key, row);
+    out.failures.push({ tool: f.tool, version: f.version, reason: f.reason, runtime: f.runtime });
   }
+  out.milestones = milestones;
 
   const writes: D1PreparedStatement[] = [
     ...[...runRows.values()].map((r) => db.prepare(
@@ -285,6 +313,7 @@ export async function recordRuns(env: Env, address: string | null, input: RunsIn
     }),
   ];
   if (writes.length) await db.batch(writes);
+  return out;
 }
 
 // ---------- nightly ----------
@@ -308,6 +337,85 @@ export async function refreshUsage(env: Env, now = Date.now()): Promise<number> 
     update("runs_total", "run_counts", `AND ${started}`),
   ]);
   return results.reduce((n, r) => n + (r.meta?.changes ?? 0), 0);
+}
+
+// ---------- failure alerts ----------
+
+/**
+ * When a latest version counts as failing more than usual: in the last `days` days, at least `minRuns` finished runs
+ * from at least `minRunnerDays` runner-days, with tool errors and timeouts at least `rate` of them and at least
+ * `factor` times plus `margin` the package's other versions over `baselineDays` (when those have `minRuns` too).
+ * `again`: how long before the same version can be alerted again.
+ */
+export const ALERT = { days: 7, baselineDays: 30, minRuns: 20, minRunnerDays: 3, rate: 0.5, factor: 2, margin: 0.15, again: 14 * DAY };
+
+export type UsageAlert = { tool_id: string; ref: string; version: string; version_id: string; failure_rate: number; baseline_rate: number | null; runs: number };
+
+const pct = (r: number) => `${Math.round(r * 100)}%`;
+
+/**
+ * Nightly, after refreshUsage: each package's latest version whose runs started failing for many people (ALERT). Its
+ * maintainers get an inbox item (scope owner_issues, emailed as they chose); staff see it in the daily digest and on
+ * the Usage tab. Nothing changes publicly: a package's health stays what people report. Returns the alerts sent.
+ */
+export async function usageAlerts(env: Env, now = Date.now(), rules = ALERT): Promise<UsageAlert[]> {
+  const db = env.DB;
+  const finished = `outcome IN ('ok', 'empty', 'error', 'timeout')`;
+  const failed = `outcome IN ('error', 'timeout')`;
+  type Row = {
+    tool_id: string; version_id: string; ref: string; namespace_id: string; version: string; finished: number; failed: number;
+    runner_days: number; base_finished: number | null; base_failed: number | null; sent_at: number | null;
+  };
+  const rows = (await db.prepare(
+    `SELECT l.tool_id, l.version_id, n.name || '/' || t.name AS ref, t.namespace_id, v.version, l.finished, l.failed,
+       (SELECT COALESCE(SUM(r.runners), 0) FROM run_runners r WHERE r.tool_id = l.tool_id AND r.day >= ?1) AS runner_days,
+       (SELECT SUM(CASE WHEN ${finished} THEN b.count ELSE 0 END) FROM run_counts b WHERE b.tool_id = l.tool_id AND b.version_id != l.version_id AND b.day >= ?2) AS base_finished,
+       (SELECT SUM(CASE WHEN ${failed} THEN b.count ELSE 0 END) FROM run_counts b WHERE b.tool_id = l.tool_id AND b.version_id != l.version_id AND b.day >= ?2) AS base_failed,
+       (SELECT a.sent_at FROM usage_alerts a WHERE a.tool_id = l.tool_id AND a.version_id = l.version_id) AS sent_at
+     FROM (
+       SELECT c.tool_id, c.version_id, SUM(CASE WHEN ${finished} THEN c.count ELSE 0 END) AS finished,
+         SUM(CASE WHEN ${failed} THEN c.count ELSE 0 END) AS failed
+       FROM run_counts c JOIN tools t ON t.id = c.tool_id AND t.latest_version_id = c.version_id
+       WHERE c.day >= ?1 AND t.status != 'removed' GROUP BY c.tool_id, c.version_id
+     ) l JOIN tools t ON t.id = l.tool_id JOIN namespaces n ON n.id = t.namespace_id JOIN versions v ON v.id = l.version_id
+     WHERE l.finished >= ?3`,
+  ).bind(utcDay(now - (rules.days - 1) * DAY), utcDay(now - (rules.baselineDays - 1) * DAY), rules.minRuns).all<Row>()).results;
+
+  const alerts: (UsageAlert & { namespace_id: string })[] = [];
+  for (const r of rows) {
+    const rate = r.failed / r.finished;
+    const baseline = (r.base_finished ?? 0) >= rules.minRuns ? (r.base_failed ?? 0) / r.base_finished! : null;
+    if (r.runner_days < rules.minRunnerDays || rate < rules.rate) continue;
+    if (baseline !== null && rate < rules.factor * baseline + rules.margin) continue;
+    if (r.sent_at !== null && r.sent_at > now - rules.again) continue;
+    alerts.push({ tool_id: r.tool_id, ref: r.ref, version: r.version, version_id: r.version_id, namespace_id: r.namespace_id, failure_rate: rate, baseline_rate: baseline, runs: r.finished });
+  }
+  for (const a of alerts) {
+    const people = await maintainers(env, a.namespace_id, a.tool_id);
+    await db.batch([
+      db.prepare(
+        `INSERT INTO usage_alerts (tool_id, version_id, failure_rate, baseline_rate, runs, sent_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (tool_id, version_id) DO UPDATE SET failure_rate = excluded.failure_rate, baseline_rate = excluded.baseline_rate,
+           runs = excluded.runs, sent_at = excluded.sent_at`,
+      ).bind(a.tool_id, a.version_id, a.failure_rate, a.baseline_rate, a.runs, now),
+      ...inboxRows(db, people, {
+        kind: "reliability", scope: "owner_issues", tool_id: a.tool_id, path: `/${a.ref}`,
+        summary: `Runs of ${a.ref} ${a.version} failed ${pct(a.failure_rate)} of the time in the last ${rules.days} days`
+          + (a.baseline_rate !== null ? ` (${pct(a.baseline_rate)} for its earlier versions)` : "")
+          + `, from ${a.runs} runs: tool errors and timeouts, counted by ot`,
+      }, now),
+    ]);
+  }
+  return alerts.map(({ namespace_id: _, ...a }) => a);
+}
+
+/** Alerts sent since `since` (ms), newest first, for the daily digest and the Usage tab. */
+export async function recentAlerts(env: Env, since: number) {
+  return (await env.DB.prepare(
+    `SELECT n.name || '/' || t.name AS ref, v.version, a.failure_rate, a.baseline_rate, a.runs, a.sent_at
+     FROM usage_alerts a JOIN tools t ON t.id = a.tool_id JOIN namespaces n ON n.id = t.namespace_id LEFT JOIN versions v ON v.id = a.version_id
+     WHERE a.sent_at >= ? ORDER BY a.sent_at DESC LIMIT 100`,
+  ).bind(since).all<{ ref: string; version: string | null; failure_rate: number; baseline_rate: number | null; runs: number; sent_at: number }>()).results;
 }
 
 // ---------- the staff report ----------
@@ -440,6 +548,8 @@ export async function usageReport(env: Env, days: number, tool: string | null, n
     daily: series(runDays, installDays, addressDays),
     dims,
     tools: packages.sort((a, b) => b.runs - a.runs || b.installs - a.installs || a.ref.localeCompare(b.ref)).slice(0, 200),
+    // Failure alerts sent to maintainers in the period (usageAlerts).
+    alerts: await recentAlerts(env, now - days * DAY),
     ...(tool ? { tool: await toolReport(env, tool, from, days, now, series) } : {}),
   };
 }

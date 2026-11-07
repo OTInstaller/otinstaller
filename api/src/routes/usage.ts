@@ -5,6 +5,7 @@ import type { App, AppEnv } from "../env";
 import { apiError } from "../lib/errors";
 import { ulid } from "../lib/crypto";
 import { reportError } from "../ops";
+import { forwardUsage, requestCountry } from "../posthog";
 import { installInput, LIMITS, recordInstall, recordRuns, runsInput, usageReport } from "../usage";
 import { requireReviewer } from "./review";
 
@@ -16,11 +17,15 @@ function programOnly(c: Context<AppEnv>) {
 }
 
 export function usageRoutes(app: App) {
-  // Old and new ot. Answered after counting, as before 0044.
+  // Old and new ot. Answered after counting, as before 0044; forwarding to PostHog finishes after the answer.
   app.post("/installs", async (c) => {
     programOnly(c);
     const input = installInput(await c.req.json().catch(() => ({})));
-    await recordInstall(c.env, c.req.header("cf-connecting-ip") ?? null, input);
+    const address = c.req.header("cf-connecting-ip") ?? null;
+    const counted = await recordInstall(c.env, address, input);
+    if (counted.installs.length || counted.milestones.length) {
+      c.executionCtx.waitUntil(forwardUsage(c.env, counted, input, address, requestCountry(c.req.raw)));
+    }
     return c.body(null, 204);
   });
 
@@ -38,8 +43,10 @@ export function usageRoutes(app: App) {
     }
     const input = runsInput(body);
     const address = c.req.header("cf-connecting-ip") ?? null;
-    c.executionCtx.waitUntil(recordRuns(c.env, address, input).catch((e) =>
-      reportError(c.env, e, { requestId: c.req.header("cf-ray") ?? ulid(), method: "POST", path: "/v1/runs", fingerprint: ["usage", "runs"] })));
+    const country = requestCountry(c.req.raw);
+    c.executionCtx.waitUntil(recordRuns(c.env, address, input)
+      .then((counted) => forwardUsage(c.env, counted, input, address, country))
+      .catch((e) => reportError(c.env, e, { requestId: c.req.header("cf-ray") ?? ulid(), method: "POST", path: "/v1/runs", fingerprint: ["usage", "runs"] })));
     return c.body(null, 204);
   });
 
